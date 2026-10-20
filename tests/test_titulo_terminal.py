@@ -8,6 +8,8 @@ import sys
 import tempfile
 import unittest
 
+from base import mkdtemp, rmtree  # noqa: E402
+
 SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts", "titulo_terminal.py")
 CHAVE = "terminal.integrated.tabs.title"
 VALOR = "${sequence}${separator}${process}"
@@ -18,12 +20,14 @@ from titulo_terminal import ler  # noqa: E402
 
 class TestTituloTerminal(unittest.TestCase):
     def setUp(self):
-        self.tmp = os.path.realpath(tempfile.mkdtemp(prefix="tuneup-titulo-"))
-        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.tmp = mkdtemp("tuneup-titulo-")
+        self.addCleanup(rmtree, self.tmp)
         self.env = {k: v for k, v in os.environ.items() if k not in ("XDG_CONFIG_HOME", "APPDATA")}
         self.env.update({"HOME": self.tmp, "USERPROFILE": self.tmp})
         if sys.platform == "darwin":
             self.base = os.path.join(self.tmp, "Library", "Application Support")
+        elif sys.platform == "win32":
+            self.base = os.path.join(self.tmp, "AppData", "Roaming")
         else:
             self.base = os.path.join(self.tmp, ".config")
 
@@ -32,7 +36,7 @@ class TestTituloTerminal(unittest.TestCase):
         os.makedirs(os.path.join(user, "globalStorage"))
         arq = os.path.join(user, "settings.json")
         if texto is not None:
-            with open(arq, "w") as f:
+            with open(arq, "w", encoding="utf-8") as f:
                 f.write(texto)
         return arq
 
@@ -43,7 +47,7 @@ class TestTituloTerminal(unittest.TestCase):
         return json.loads(r.stdout)
 
     def conteudo(self, arq):
-        with open(arq) as f:
+        with open(arq, encoding="utf-8") as f:
             return f.read()
 
     def test_listar_nao_escreve(self):
@@ -95,7 +99,7 @@ class TestTituloTerminal(unittest.TestCase):
         self.editor("Code", "{}")
         perfil = os.path.join(self.base, "Code", "User", "profiles", "abc")
         os.makedirs(perfil)
-        with open(os.path.join(perfil, "settings.json"), "w") as f:
+        with open(os.path.join(perfil, "settings.json"), "w", encoding="utf-8") as f:
             f.write('{"a": 1}')
         s = self.rodar("aplicar")
         self.assertEqual([e["depois"] for e in s["editores"]], ["aplicado", "aplicado"])

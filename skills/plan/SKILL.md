@@ -2,12 +2,12 @@
 name: plan
 description: Builds a phase plan (goal, progress, research, Opus plan review). Use for "plan", "plan this", "adapt this plan", "planejar", "crie o plano", "monte a fase", or a pasted outside plan. Small idea becomes a 1-part plan.
 argument-hint: "<request, topic or pasted plan>"
-allowed-tools: Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info)
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info)
 ---
 
 # Phase plan
 
-Context: !`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info`
+Context: !`sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info`
 
 Request: $ARGUMENTS
 
@@ -38,7 +38,7 @@ You (main session, highest effort) coordinate: think, decide, dispatch, check. Y
 3. Read-only worktree of `origin/<main>` in the scratchpad (`git worktree add --detach <scratchpad>/wt-main origin/<main>`). Every map uses this base and cites the hash.
 4. Number the phase: `ls <plans_dir>/phases | sort -t- -k1,1n | tail -5` right BEFORE `mkdir` (parallel sessions collide). Folder `NNN-short-kebab/`.
 5. Pasted request: save a verbatim copy as `ORIGINAL-REQUEST.md`. Outside plans are adapted to this format, never executed as they came.
-6. If the profile mandates synced folders, run `chmod u+w` in the SAME command as `mkdir`.
+6. If the profile mandates synced folders, run `chmod u+w` (macOS/Linux; on Windows `attrib -r`) in the SAME command as `mkdir`.
 7. Small idea (one behavior, few files): plan ONE part with few items; skip extra mappers and the second review round.
 
 ## Step 2 - Research (one message, all parallel)

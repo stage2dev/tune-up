@@ -14,7 +14,7 @@ from .sql_prod import pg_remoto, pg_remoto_no_texto, supabase_remoto
 # ---------------------------------------------------------------- git/gh externos
 
 INICIO = time.time()
-PRAZO = 7.0  # segundos para o evento inteiro (o hook do Bash tem 10)
+PRAZO = 7.0  # segundos para o evento inteiro (o hook do Bash tem 15: folga para o Windows)
 if TESTE and os.environ.get("TUNEUP_PRAZO"):
     PRAZO = float(os.environ["TUNEUP_PRAZO"])
 _BRANCH = {}
@@ -135,8 +135,24 @@ def ev_bash(d, cfg):
     cmd = ti.get("command")
     if not isinstance(cmd, str) or not cmd.strip():
         return None
-    if chamada_info(cmd.strip()):  # skills inject `python3 <root>/scripts/guarda.py info`
+    if d.get("tool_name") == "PowerShell":  # same hook (matcher Bash|PowerShell)
+        from .powershell import ev_powershell
+        return ev_powershell(cmd, d, cfg)
+    if chamada_info(cmd.strip()):  # skills inject `sh <root>/scripts/py scripts/guarda.py info`
         return None
+    return decidir(achados_bash(cmd, d, cfg))
+
+
+def decidir(achados):
+    if not achados:
+        return None
+    melhor = max(achados, key=lambda x: SEVERIDADE[x[0]])  # max devolve o primeiro empatado
+    return decisao_pre(*melhor)
+
+
+def achados_bash(cmd, d, cfg, regras_em=None):
+    """[(acao, msg)] of a Bash command. `regras_em`: text the project's bash_rules read
+    (PowerShell passes its own text; default: the command without heredocs)."""
     cwd = d.get("cwd") or os.getcwd()
     principais = list(cfg.get("main_branches") or ["main", "master"])
     sess = ler_sessao(d.get("session_id"))
@@ -291,19 +307,16 @@ def ev_bash(d, cfg):
     elif nivel == "turno" and not aprender:
         add("perguntar", msg("prot_perfil_bash"))
 
+    texto_regras = limpo if regras_em is None else regras_em
     for regra in cfg.get("bash_rules") or []:
         try:
-            if isinstance(regra, dict) and re.search(regra.get("regex", "(?!)"), limpo):
+            if isinstance(regra, dict) and re.search(regra.get("regex", "(?!)"), texto_regras):
                 acao = regra.get("acao", "avisar")
                 if acao in SEVERIDADE:
                     add(acao, regra.get("msg") or msg("regra_projeto"))
         except Exception as e:
             log_erro("bash", "bash_rules rule failed %r: %r" % (str(regra)[:120], e))
-
-    if not achados:
-        return None
-    melhor = max(achados, key=lambda x: SEVERIDADE[x[0]])  # max devolve o primeiro empatado
-    return decisao_pre(*melhor)
+    return achados
 
 
 def codigo_em_conversa(alvos, toks, diretorio, d, cfg):

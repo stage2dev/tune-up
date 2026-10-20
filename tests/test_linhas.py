@@ -18,7 +18,7 @@ class TestLinhas(Base):
         p = os.path.join(self.cwd, nome)
         os.makedirs(os.path.dirname(p), exist_ok=True)
         if n is not None:
-            with open(p, "w") as f:
+            with open(p, "w", encoding="utf-8") as f:
                 f.write(texto(n))
         return p
 
@@ -31,7 +31,7 @@ class TestLinhas(Base):
         p = os.path.join(self.cwd, ".tune-up")
         os.makedirs(p, exist_ok=True)
         c = os.path.join(p, "config.json")
-        with open(c, "w") as f:
+        with open(c, "w", encoding="utf-8") as f:
             json.dump(conteudo, f)
         if confiar:
             self.confiar(c)

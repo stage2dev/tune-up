@@ -120,7 +120,7 @@ class TestPerigosos(Base):
     def test_regra_do_projeto(self):
         perfil = os.path.join(self.cwd, ".tune-up")
         os.makedirs(perfil)
-        with open(os.path.join(perfil, "config.json"), "w") as f:
+        with open(os.path.join(perfil, "config.json"), "w", encoding="utf-8") as f:
             json.dump({"regras_bash": [{"regex": r"\brodar\.zsh\b", "acao": "avisar", "msg": "rode pelo dono"}]}, f)
         self.assertEqual(self.bash("./rodar.zsh"), "avisar")
 
@@ -166,7 +166,7 @@ class TestA5ReposLivres(Base):
         perfil = os.path.join(self.cwd, ".tune-up")
         os.makedirs(perfil)
         c = os.path.join(perfil, "config.json")
-        with open(c, "w") as f:
+        with open(c, "w", encoding="utf-8") as f:
             json.dump({"free_repos": ["~/plugins-x"]}, f)
         self.confiar(c)
 
@@ -217,7 +217,7 @@ class TestA9PosPR(Base):
 
     def test_hooks_json_sem_if(self):
         caminho = os.path.join(os.path.dirname(os.path.dirname(SCRIPT)), "hooks", "hooks.json")
-        with open(caminho) as f:
+        with open(caminho, encoding="utf-8") as f:
             h = json.load(f)
         for grupo in h["hooks"]["PostToolUse"]:
             for x in grupo["hooks"]:

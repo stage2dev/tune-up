@@ -2,7 +2,7 @@
 name: migration
 description: "Applies a database migration/SQL to production with a safe protocol. Use on: merged, apply the migration, where is the SQL; mergeei, pode aplicar, aplica a migration. Only on the owner's explicit request this turn."
 argument-hint: "<PR, file or migration name>"
-allowed-tools: Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info)
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info)
 ---
 
 # Migration in production
@@ -11,7 +11,7 @@ Target: $ARGUMENTS
 
 ## Context (injected)
 
-Context: !`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info`
+Context: !`sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info`
 
 Fields: `language`, `owner`, `reply_style`, `names{}`, `models{}`, `forbidden_subagent_models` (default `["fable"]`), `profile_path`, `plans_dir`, `setup_done`, `tools`, `plugin_source`, `catalog_path`. Write every reply and document in `language`. Never hardcode marker or document names: use the values in `names` (keys such as `need_you`, `progress`, `part_closed`). Call the user `owner`. If the JSON did not load, run the command once with Bash.
 

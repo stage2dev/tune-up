@@ -2,12 +2,12 @@
 name: research
 description: Research that changes NOTHING. Use for "research only", "don't change anything", "study first", "compare with our code", "só pesquisa", "não altere nada", "estude primeiro". Ends in numbered questions.
 argument-hint: "<question or topic>"
-allowed-tools: Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info)
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info)
 ---
 
 # Research - read only
 
-Context: !`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info`
+Context: !`sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info`
 
 Question: $ARGUMENTS
 

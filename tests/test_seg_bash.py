@@ -4,7 +4,7 @@ import json
 import os
 import subprocess
 import unittest
-from base import SCRIPT, PromptBase
+from base import IS_WIN, SCRIPT, PromptBase, sh_path
 
 
 class TestSegVerbosDeEscrita(PromptBase):
@@ -97,7 +97,7 @@ class TestSegExecutoresEVerbos(PromptBase):
         super().setUp()
         for p in (".config/tune-up/user.json", ".claude/plugins/data/t/perfis_confiaveis.txt"):
             os.makedirs(os.path.dirname(os.path.join(self.tmp, p)), exist_ok=True)
-            open(os.path.join(self.tmp, p), "w").close()
+            open(os.path.join(self.tmp, p), "w", encoding="utf-8").close()
 
     def test_executores_perguntam(self):
         for cmd in ["node -e \"require('fs').appendFileSync(process.env.CLAUDE_PLUGIN_DATA+'/perfis_confiaveis.txt','x')\"",
@@ -128,7 +128,9 @@ class TestSegExecutoresEVerbos(PromptBase):
         cmd = "touch " + " ".join("/var/tmp/f%d" % i for i in range(6000)) + "; cp a ~/.config/tune-up/user.json"
         t = time.time()
         self.assertEqual(self.bash(cmd), "perguntar")
-        self.assertLess(time.time() - t, 1.5)  # was ~3 s (B2); measured ~0.33 s
+        # was ~3 s (B2); measured ~0.33 s on macOS. Windows: realpath opens every path part
+        # (CreateFile per component) and the CI runner measured ~2-3 s; the hook has 15 s.
+        self.assertLess(time.time() - t, 5.0 if IS_WIN else 1.5)
 
 
 class TestSegConversaArvore(PromptBase):
@@ -150,30 +152,32 @@ class TestSegConversaArvore(PromptBase):
     def test_passa(self):
         fora = os.path.join(self.tmp, "fora")
         os.makedirs(fora)
+        fora = sh_path(fora)
         for cmd in ["git status", "git checkout -b nova", "git stash list", "unzip -l p.zip", "tar -tf p.tgz",
                     "tar -xf p.tar -C %s" % fora, "git log --oneline"]:
             with self.subTest(cmd=cmd):
                 self.assertIsNone(self.bash(cmd))
 
+    @unittest.skipIf(IS_WIN, "a sh-script fake `git` cannot be found on PATH on Windows (needs a real .exe)")
     def test_muitos_alvos_fora_sem_git_por_alvo(self):
         b = os.path.join(self.tmp, "bin")
         os.makedirs(b)
         log = os.path.join(self.tmp, "git.chamadas")
         real = subprocess.run(["sh", "-c", "command -v git"], capture_output=True, text=True).stdout.strip()
-        with open(os.path.join(b, "git"), "w") as f:
+        with open(os.path.join(b, "git"), "w", encoding="utf-8") as f:
             f.write('#!/bin/sh\necho "$@" >> %s\nexec %s "$@"\n' % (log, real))
         os.chmod(os.path.join(b, "git"), 0o755)
         fora = os.path.join(self.tmp, "fora")
         os.makedirs(fora)
         cmd = "touch " + " ".join("%s/f%d" % (fora, i) for i in range(300)) + " src/app.py"
         self.assertEqual(self.bash(cmd, {"PATH": b + os.pathsep + self.env["PATH"]}), "bloquear")
-        with open(log) as f:
+        with open(log, encoding="utf-8") as f:
             self.assertLess(len(f.read().splitlines()), 10)  # was one git per target (M2)
 
 
 class TestSegHooksTask(unittest.TestCase):
     def test_matcher_do_agent_pega_task(self):
-        with open(os.path.join(os.path.dirname(os.path.dirname(SCRIPT)), "hooks", "hooks.json")) as f:
+        with open(os.path.join(os.path.dirname(os.path.dirname(SCRIPT)), "hooks", "hooks.json"), encoding="utf-8") as f:
             h = json.load(f)
         matchers = [m["matcher"] for ms in h["hooks"].values() for m in ms if "agent" in json.dumps(m)]
         self.assertTrue(any("Task" in m.split("|") and "Agent" in m.split("|") for m in matchers), matchers)

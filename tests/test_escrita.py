@@ -4,7 +4,7 @@ import os
 import stat
 import unittest
 
-from base import Base, PromptBase
+from base import Base, IS_WIN, PromptBase, SEM_MODOS, symlink
 
 
 class TestEscrita(Base):
@@ -13,18 +13,20 @@ class TestEscrita(Base):
         sub = os.path.join(raiz, "sub")
         os.makedirs(sub)
         arq = os.path.join(raiz, "velho.txt")
-        open(arq, "w").close()
+        open(arq, "w", encoding="utf-8").close()
         os.chmod(arq, 0o444)
-        os.chmod(sub, 0o555)
+        if not IS_WIN:  # the read-only attribute of a Windows directory does not block writing into it
+            os.chmod(sub, 0o555)
         perfil = os.path.join(self.cwd, ".tune-up")
         os.makedirs(perfil)
-        with open(os.path.join(perfil, "config.json"), "w") as f:
+        with open(os.path.join(perfil, "config.json"), "w", encoding="utf-8") as f:
             json.dump({"raizes_sincronizadas": [raiz]}, f)
         self.confiar(os.path.join(perfil, "config.json"))
         s = self.rodar("escrita", {"tool_name": "Write",
                                    "tool_input": {"file_path": os.path.join(sub, "novo.txt"), "content": "x"}})
         self.assertIsNone(s)
-        self.assertTrue(os.stat(sub).st_mode & stat.S_IWUSR)
+        if not IS_WIN:
+            self.assertTrue(os.stat(sub).st_mode & stat.S_IWUSR)
         self.rodar("escrita", {"tool_name": "Edit", "tool_input": {"file_path": arq}})
         self.assertTrue(os.stat(arq).st_mode & stat.S_IWUSR)
 
@@ -102,13 +104,14 @@ class TestC5GuardaSeProtege(PromptBase):
         self.assertIsNone(self.escrever(os.path.join(self.tmp, ".claude", "projects", "p", "memory", "a.md")))
 
 
+@unittest.skipIf(IS_WIN, SEM_MODOS)
 class TestD6Permissoes(PromptBase):
     def test_modos(self):
         self.prompt("pode aplicar a migration")
         self.rodar("bash", {"tool_input": {"command": "git commit -m x"}}, {"TUNEUP_FAKE_BRANCH": ""})
         c = os.path.join(self.cwd, ".tune-up", "config.json")
         os.makedirs(os.path.dirname(c))
-        open(c, "w").write("{}")
+        open(c, "w", encoding="utf-8").write("{}")
         self.confiar(c)
         modo = lambda p: stat.S_IMODE(os.stat(p).st_mode)
         self.assertEqual(modo(self.dados), 0o700)
@@ -167,7 +170,7 @@ class TestM7SymlinkNoScratch(PromptBase):
         os.makedirs(os.path.join(self.cwd, "src"))
         self.scratch = os.path.join(self.tmp, "scratch")
         os.makedirs(self.scratch)
-        os.symlink(os.path.join(self.cwd, "src"), os.path.join(self.scratch, "lnk"))
+        symlink(os.path.join(self.cwd, "src"), os.path.join(self.scratch, "lnk"), True)
         self.alvo = os.path.join(self.scratch, "lnk", "app.py")
 
     def test_talk_nega(self):

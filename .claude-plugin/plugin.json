@@ -1,7 +1,7 @@
 {
   "name": "tune-up",
   "displayName": "tune-up",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "A disciplined Claude Code workflow: research that changes nothing, written plans, one Part per conversation, model and effort per role, and guards for git, production databases and file size.",
   "author": {
     "name": "tune-up contributors"

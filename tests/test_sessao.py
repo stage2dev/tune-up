@@ -7,15 +7,15 @@ import tempfile
 import time
 import unittest
 
-from base import Base
+from base import Base, mkdtemp
 
 
 class TestInicioPosBash(Base):
     def test_perfil(self):
         perfil = os.path.join(self.cwd, ".tune-up")
         os.makedirs(perfil)
-        open(os.path.join(perfil, "projeto.md"), "w").close()
-        with open(os.path.join(perfil, "config.json"), "w") as f:
+        open(os.path.join(perfil, "projeto.md"), "w", encoding="utf-8").close()
+        with open(os.path.join(perfil, "config.json"), "w", encoding="utf-8") as f:
             json.dump({"projeto": "demo"}, f)
         s = self.rodar("inicio", {"source": "startup"})
         c = s["hookSpecificOutput"]["additionalContext"]
@@ -55,14 +55,14 @@ class TestRobustez(Base):
     def test_excecao_interna(self):
         s = self.rodar("bash", {"tool_input": {"command": "git add -A"}}, {"TUNEUP_FAKE_EXCECAO": "1"})
         self.assertIsNone(s)
-        with open(os.path.join(self.dados, "erros.log")) as f:
+        with open(os.path.join(self.dados, "erros.log"), encoding="utf-8") as f:
             self.assertIn("simulated exception", f.read())
 
 
 class TestA2ErrosVisiveis(Base):
     def log(self):
         try:
-            with open(os.path.join(self.dados, "erros.log")) as f:
+            with open(os.path.join(self.dados, "erros.log"), encoding="utf-8") as f:
                 return f.read()
         except OSError:
             return ""
@@ -70,7 +70,7 @@ class TestA2ErrosVisiveis(Base):
     def perfil(self, conteudo):
         p = os.path.join(self.cwd, ".tune-up")
         os.makedirs(p, exist_ok=True)
-        with open(os.path.join(p, "config.json"), "w") as f:
+        with open(os.path.join(p, "config.json"), "w", encoding="utf-8") as f:
             f.write(conteudo)
 
     def test_config_invalida_loga_e_avisa_no_inicio(self):
@@ -93,14 +93,14 @@ class TestA2ErrosVisiveis(Base):
     def test_sessao_corrompida_loga(self):
         p = os.path.join(self.dados, "sessoes")
         os.makedirs(p)
-        with open(os.path.join(p, "s1.json"), "w") as f:
+        with open(os.path.join(p, "s1.json"), "w", encoding="utf-8") as f:
             f.write("{quebrado")
         self.bash("ls")
         self.assertIn("sess", self.log())
 
     def test_inicio_conta_erros_novos(self):
         os.makedirs(self.dados, exist_ok=True)
-        with open(os.path.join(self.dados, "erros.log"), "w") as f:
+        with open(os.path.join(self.dados, "erros.log"), "w", encoding="utf-8") as f:
             f.write("a\nb\n")
         s = self.rodar("inicio", {"source": "startup"})
         self.assertIn("tune-up: 2 erros nos hooks", s["systemMessage"])
@@ -109,7 +109,7 @@ class TestA2ErrosVisiveis(Base):
         s = self.rodar("inicio", {"source": "startup"})
         self.assertNotIn("erros", s.get("systemMessage", ""))
         self.assertNotIn("erros", s["hookSpecificOutput"]["additionalContext"])
-        with open(os.path.join(self.dados, "erros.log"), "a") as f:
+        with open(os.path.join(self.dados, "erros.log"), "a", encoding="utf-8") as f:
             f.write("c\n")
         s = self.rodar("inicio", {"source": "startup"})
         self.assertIn("1 erros", s["systemMessage"])
@@ -121,7 +121,7 @@ class TestD8RuidoNoLog(Base):
         del self.env["TUNEUP_FAKE_BRANCH"]
 
     def test_commit_fora_de_repo_nao_loga(self):
-        fora = tempfile.mkdtemp(dir="/private/tmp", prefix="tuneup-d8-")
+        fora = mkdtemp("tuneup-d8-")
         self.addCleanup(shutil.rmtree, fora, True)
         log = os.path.join(self.dados, "erros.log")
         s = self.rodar("bash", {"cwd": fora, "tool_input": {"command": 'git commit -m "x"'}})

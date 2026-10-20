@@ -3,7 +3,9 @@ H2b, 21/10). Run: python3 -m unittest discover -s tests -q"""
 import json
 import os
 import unittest
-from base import SCRIPT, PromptBase
+from base import SCRIPT, PromptBase, mkdtemp, rmtree, sh_path, symlink
+
+SCRIPT_ = SCRIPT
 
 
 class TestSegConfiancaPeloConteudo(PromptBase):
@@ -11,7 +13,7 @@ class TestSegConfiancaPeloConteudo(PromptBase):
         d = os.path.join(self.cwd, ".tune-up")
         os.makedirs(d, exist_ok=True)
         c = os.path.join(d, "config.json")
-        with open(c, "w") as f:
+        with open(c, "w", encoding="utf-8") as f:
             json.dump(conteudo, f)
         os.chmod(c, 0o600)
         return c
@@ -33,7 +35,7 @@ class TestSegConfiancaPeloConteudo(PromptBase):
         c = self.cfg({"claude_may_merge": True})
         os.makedirs(self.dados, exist_ok=True)
         conf = os.path.join(self.dados, "perfis_confiaveis.txt")
-        with open(conf, "w") as f:
+        with open(conf, "w", encoding="utf-8") as f:
             f.write(os.path.realpath(c) + "\n")
         os.chmod(conf, 0o600)
         self.assertEqual(self.bash("gh pr merge 12"), "bloquear")
@@ -45,11 +47,12 @@ class TestSegConfiancaPeloConteudo(PromptBase):
 
 class TestSegConfiarIndireto(PromptBase):
     def test_formas_indiretas_perguntam(self):
-        scripts = os.path.dirname(SCRIPT)
+        scripts = os.path.dirname(SCRIPT_)
         g = os.path.join(self.cwd, "g")
-        os.symlink(SCRIPT, g)  # symlink without .py
+        symlink(SCRIPT_, g)  # symlink without .py
         u = os.path.join(self.tmp, ".config", "tune-up", "user.json")
         cfg = os.path.join(self.cwd, ".tune-up", "config.json")
+        SCRIPT, scripts, u, cfg = sh_path(SCRIPT_), sh_path(scripts), sh_path(u), sh_path(cfg)
         for cmd in ["python3 -m tuneup confiar x",
                     "cd %s && python3 -c 'import tuneup; tuneup.confiar(\"x\")'" % scripts,
                     "python3 -c 'import sys; sys.argv=[\"g\",\"trust\",\"%s\"]; exec(open(\"%s\").read())'"
@@ -64,11 +67,13 @@ class TestSegConfiarIndireto(PromptBase):
                 self.assertEqual(self.bash(cmd), "perguntar")
 
     def test_info_exato_das_skills_passa(self):
+        SCRIPT = sh_path(SCRIPT_)  # Claude passes C:/x; a backslash is refused
         for cmd in ['python3 "%s" info' % SCRIPT, "python3 %s info" % SCRIPT, "python %s info" % SCRIPT]:
             with self.subTest(cmd=cmd):
                 self.assertIsNone(self.bash(cmd))
         g = os.path.join(self.cwd, "g.py")
-        os.symlink(SCRIPT, g)
+        symlink(SCRIPT_, g)
+        g = sh_path(g)
         for cmd in ["python3 %s info; echo x > ~/.config/tune-up/user.json" % SCRIPT,
                     "python3 %s info x" % SCRIPT, "python3 %s trust y" % SCRIPT,
                     "python3 -I %s info" % SCRIPT, "python3 %s info > /tmp/x" % SCRIPT,
@@ -91,14 +96,15 @@ class TestB1InfoComPontoPonto(unittest.TestCase):
         from unittest import mock
         sys.path.insert(0, os.path.dirname(SCRIPT))
         import tuneup.bash_guarda as bg
-        t = os.path.realpath(tempfile.mkdtemp(prefix="tuneup-b1-"))
-        self.addCleanup(shutil.rmtree, t, True)
+        t = mkdtemp("tuneup-b1-")
+        self.addCleanup(rmtree, t)
         for p in ("dev/tune-up/scripts/guarda.py", "evil/tune-up/scripts/guarda.py"):
             os.makedirs(os.path.dirname(os.path.join(t, p)), exist_ok=True)
-            open(os.path.join(t, p), "w").close()
+            open(os.path.join(t, p), "w", encoding="utf-8").close()
         os.makedirs(os.path.join(t, "evil", "x"))
-        os.symlink(os.path.join(t, "evil", "x"), os.path.join(t, "dev", "L"))
-        with mock.patch.object(bg, "RAIZ_PLUGIN", os.path.join(t, "dev", "tune-up")):
+        symlink(os.path.join(t, "evil", "x"), os.path.join(t, "dev", "L"), True)
+        t = t.replace("\\", "/")  # CLAUDE_PLUGIN_ROOT and commands use forward slashes on Windows too
+        with mock.patch.object(bg, "RAIZ_PLUGIN", t + "/dev/tune-up"):
             self.assertTrue(bg.chamada_info("python3 %s/dev/tune-up/scripts/guarda.py info" % t))
             self.assertFalse(bg.chamada_info("python3 %s/dev/L/../tune-up/scripts/guarda.py info" % t))
             self.assertFalse(bg.chamada_info("python3 %s/dev/./tune-up/scripts/guarda.py info" % t))

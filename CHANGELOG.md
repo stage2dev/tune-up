@@ -2,6 +2,19 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## 2.1.0
+
+Windows support (native, with Git for Windows).
+
+- Launcher `scripts/py`: hooks and skills run Python through it. It picks `python3`, `python` or `py -3` (3.9 or newer, the Microsoft Store alias is skipped), remembers the choice in the plugin data folder, sets `PYTHONUTF8=1`. Without Python the hooks fail open and the session start says so.
+- `PowerShell` tool goes through the guard (hook matcher `Bash|PowerShell`): git/gh/psql checks, protected files and `bash_rules` apply; in talk and research modes only read-only PowerShell passes. Limits (variables, aliases, `Start-Process`, `-File`, .NET calls) are in the README.
+- Git Bash paths (`/c/Users/...`, `/tmp`, `~`) are converted to Windows paths before comparison; the owner/permission checks that used `os.getuid` have a Windows equivalent (ACLs are not read; trusted files must be inside the user profile).
+- `setup` checks Git, the launcher and Python first, and gives the `winget` commands to type when something is missing; `reference.md` has a Windows install for each optional tool.
+- README: requirements and Windows notes. Docs for synced folders say `chmod u+w` is for macOS/Linux (Windows: `attrib -r`).
+- Wrappers `cmd /c`, `powershell "..."`, `iex` and strings piped into `sh`/`bash` are opened one level; `.cmd`/`.bat`/`.ps1`/`.com` shims count as the command they wrap.
+- Line limit also works on files with CRLF line endings.
+- CI runs the test suite on Windows, macOS and Linux.
+
 ## 2.0.0
 
 First public version.

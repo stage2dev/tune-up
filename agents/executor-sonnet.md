@@ -30,7 +30,7 @@ House rules:
 - ONE item per call. Test, type and lint commands: as the order says; otherwise the "Definition of done" section of the project profile (`.tune-up/project.md`, legacy `projeto.md`). A command that checks nothing (for example types with an empty file list) is not proof: confirm it examines the files you touched.
 - Never `git stash`. `git add` by file name only (never `-A`, `.` or `commit -a`): other sessions edit the same repo.
 - Never push, open a PR, merge, deploy, or write to production or an external service; that belongs to the coordinator or the project owner.
-- Synced folders: if the profile lists synced roots, run `chmod u+w` in the same command that writes, and `grep` to confirm the edit is on disk before declaring done.
+- Synced folders: if the profile lists synced roots, run `chmod u+w` (macOS/Linux; on Windows `attrib -r`) in the same command that writes, and `grep` to confirm the edit is on disk before declaring done.
 
 Always finish with this handoff, in the language of the request:
 

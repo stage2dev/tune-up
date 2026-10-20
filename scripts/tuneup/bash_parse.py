@@ -1,6 +1,7 @@
 """tune-up: leitura do comando de shell (heredoc, tokens, segmentos, redireções, git, flags)."""
 import os
 import re
+from .caminhos import NT, nativo
 
 # ---------------------------------------------------------------- parsing bash
 
@@ -62,12 +63,18 @@ def segmentos(cmd):
 
 
 def comando_interno(toks):
-    """String de `bash|sh|zsh -c "<x>"` ou `eval "<x>"`; senão None."""
+    """String de `bash|sh|zsh -c "<x>"`, `eval "<x>"` ou `cmd /c|/k <x>` (Windows; `%X%` vira
+    `$X`); senão None."""
     if not toks:
         return None
     exe = os.path.basename(toks[0])
     if exe == "eval":
         return " ".join(toks[1:])
+    if exe == "cmd":
+        for j, t in enumerate(toks[1:], 1):
+            if re.fullmatch(r"/{1,2}[cCkK]", t):  # Git Bash needs `//c`
+                return re.sub(r"%(\w+)%", r"$\1", " ".join(toks[j + 1:])) if toks[j + 1:] else None
+        return None
     if exe in SHELLS:
         for j, t in enumerate(toks[1:], 1):
             if t.startswith("-") and not t.startswith("--") and "c" in t[1:]:
@@ -113,7 +120,7 @@ def comando_simples(seg):
     toks = limpar_redirecoes(seg)
     i = 0
     while i < len(toks):
-        t = toks[i]
+        t = toks[i] = _sem_ext(toks[i])  # only command positions: `rm npx.cmd` keeps its target
         if RE_ATRIB.match(t) or t in PALAVRAS_SHELL:
             i += 1
         elif t in PREFIXOS:
@@ -144,11 +151,41 @@ def comando_simples(seg):
                 i += 1
         else:
             break
-    return toks[i:]
+    return lancador(toks[i:])
+
+
+EXTENSOES = (".exe", ".cmd", ".bat", ".ps1", ".com")
+CORREDORES = PREFIXOS | {"npx", "bunx", "npm", "pnpm", "yarn"}
+
+
+def _sem_ext(t):
+    """`npx.cmd`/`sudo.exe` (Windows) -> `npx`/`sudo` for the prefixes and runners."""
+    if t.lower().endswith(EXTENSOES) and os.path.basename(t).rsplit(".", 1)[0].lower() in CORREDORES:
+        return os.path.basename(t).rsplit(".", 1)[0].lower()
+    return t
+
+
+def lancador(toks):
+    """The plugin launcher (`sh .../scripts/py x.py`, `.../scripts/py x.py`) and the Windows `py`
+    launcher (`py -3 x.py`) run Python: they become `python x.py`. `git.exe` -> `git`, also
+    `.cmd`, `.bat`, `.ps1`, `.com` (Windows; `npx.cmd`)."""
+    if len(toks) > 1 and os.path.basename(toks[0]) in SHELLS and os.path.basename(toks[1]) == "py":
+        toks = ["python"] + toks[2:]
+    elif toks and os.path.basename(toks[0]).lower() in ("py", "py.exe"):
+        j = 1
+        while j < len(toks) and re.fullmatch(r"-(\d[\d.]*(-\d+)?|V:\S+)", toks[j]):
+            j += 1
+        toks = ["python"] + toks[j:]
+    elif toks and toks[0].lower().endswith(EXTENSOES):
+        toks = [os.path.basename(toks[0]).rsplit(".", 1)[0].lower()] + toks[1:]
+    return toks
 
 
 def junta_dir(base, d):
-    return os.path.normpath(os.path.join(base, os.path.expanduser(d)))
+    """Absolute path of `d` from `base` (Windows: Git Bash spellings first, see caminhos.nativo;
+    a drive-relative `D:x` on another drive resolves against that drive's current folder)."""
+    p = os.path.normpath(os.path.join(nativo(base), nativo(os.path.expanduser(d))))
+    return os.path.abspath(p) if NT and not os.path.isabs(p) else p
 
 
 def analisar_git(toks, cwd):

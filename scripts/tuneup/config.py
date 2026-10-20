@@ -73,8 +73,15 @@ def _achar_perfil(cwd):
 
 
 def arquivo_seguro(caminho):
-    """Dono = usuário atual e sem escrita para grupo/outros."""
+    """Dono = usuário atual e sem escrita para grupo/outros.
+    Windows: não há uid nem bits de modo (os.stat devolve uid 0 e 0o666), e as ACLs não são
+    lidas. Vale só arquivo ou pasta cujo caminho real fica dentro do perfil do usuário, cuja ACL
+    padrão só deixa o próprio usuário (mais SYSTEM e Administradores) gravar."""
     st = os.stat(caminho)
+    if os.name == "nt":
+        import stat
+        return (stat.S_ISREG(st.st_mode) or stat.S_ISDIR(st.st_mode)) and \
+            dentro(os.path.realpath(caminho), home_real())
     return st.st_uid == os.getuid() and not st.st_mode & 0o022
 
 

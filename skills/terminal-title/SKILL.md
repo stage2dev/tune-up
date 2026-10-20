@@ -2,14 +2,14 @@
 name: terminal-title
 description: "Make the VS Code-family terminal tab (VS Code, Cursor, Windsurf, Antigravity, VSCodium) show the conversation title instead of the Claude Code version. Use on: terminal tab title, undo terminal title; título da aba do terminal, desfazer."
 argument-hint: "[undo]"
-allowed-tools: Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info), Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/titulo_terminal.py"), Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/titulo_terminal.py" aplicar), Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/titulo_terminal.py" desfazer)
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/titulo_terminal.py), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/titulo_terminal.py aplicar), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/titulo_terminal.py desfazer)
 ---
 
 # Terminal title
 
 Argument: $ARGUMENTS (`undo` / `desfazer` = remove the setting tune-up added)
 
-Context: !`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info`
+Context: !`sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info`
 
 Fields: `language`, `owner`, `reply_style`. Reply in `language`, in the `reply_style` format. Call the user `owner`. If the JSON did not load, run the command once with Bash.
 
@@ -19,7 +19,7 @@ VS Code-family editors name the terminal tab after the running process. The Clau
 
 ## Steps
 
-1. `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/titulo_terminal.py"` lists the editors found and changes nothing.
+1. `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/titulo_terminal.py` lists the editors found and changes nothing.
 2. Run it again with `aplicar` (or `desfazer` when the argument asks to undo). It edits only each editor's user `settings.json` (and its profiles), saves `settings.json.bak-tune-up` first, never replaces a value the owner chose, and leaves an unreadable file untouched.
 3. Do not edit any editor settings by hand: the script is the only writer.
 

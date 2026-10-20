@@ -2,7 +2,7 @@
 import os
 import unittest
 
-from base import PromptBase
+from base import IS_WIN, PromptBase, sh_path
 
 
 class TalkBase(PromptBase):
@@ -96,7 +96,9 @@ class TestTalkEscrita(TalkBase):
         scratch = os.path.join(self.tmp, "scratch")
         casos = [os.path.join(self.tmp, ".claude", "projects", "p", "memory", "a.md"),
                  os.path.join(self.tmp, ".claude", "plans", "plano.md"),
-                 os.path.join(scratch, "x.py"), "/tmp/x.py", "/private/tmp/x.py"]
+                 os.path.join(scratch, "x.py"), "/tmp/x.py"]
+        if not IS_WIN:  # /private/tmp is the macOS spelling of /tmp; it is not a temp dir on Windows
+            casos.append("/private/tmp/x.py")
         for c in casos:
             with self.subTest(c=c):
                 self.assertIsNone(self.escrever(c, extra={"scratchpad_dir": scratch}))
@@ -123,7 +125,7 @@ class TestTalkBash(TalkBase):
     def test_libera(self):
         scratch = os.path.join(self.tmp, "scratch")
         for cmd in ["ls > /dev/null", "grep -r x . > /dev/null 2>&1", "echo nota > docs/notas.md",
-                    "sed -i 's/a/b/' docs/x.md", "echo x > %s/a.py" % scratch, "echo x > /tmp/a.py",
+                    "sed -i 's/a/b/' docs/x.md", "echo x > %s/a.py" % sh_path(scratch), "echo x > /tmp/a.py",
                     "cat x.py", "git status"]:
             with self.subTest(cmd=cmd):
                 self.assertIsNone(self.bash_em(cmd, {"scratchpad_dir": scratch}))

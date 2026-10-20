@@ -129,18 +129,18 @@ class TestA10Baixos(PromptBase):
     def test_frase_config_normalizada(self):
         p = os.path.join(self.cwd, ".tune-up")
         os.makedirs(p)
-        with open(os.path.join(p, "config.json"), "w") as f:
+        with open(os.path.join(p, "config.json"), "w", encoding="utf-8") as f:
             json.dump({"frases_pesquisa_liga": [r"\bSÓ OLHA\b"]}, f)
         self.confiar(os.path.join(p, "config.json"))
         self.assertIn("MODO PESQUISA", self.ctx(self.prompt("só olha isso")))
 
     def test_gravar_falha_ainda_avisa(self):
         os.makedirs(self.dados)
-        with open(os.path.join(self.dados, "sessoes"), "w") as f:
+        with open(os.path.join(self.dados, "sessoes"), "w", encoding="utf-8") as f:
             f.write("arquivo no lugar da pasta")
         s = self.prompt("por enquanto é só research, não altere nada")
         self.assertIn("MODO PESQUISA", self.ctx(s))
-        with open(os.path.join(self.dados, "erros.log")) as f:
+        with open(os.path.join(self.dados, "erros.log"), encoding="utf-8") as f:
             self.assertIn("gravar", f.read())
 
 
@@ -206,7 +206,7 @@ class TestH2bFrasesGenericas(PromptBase):
     def test_giria_pelo_config_confiado(self):
         c = os.path.join(self.cwd, ".tune-up", "config.json")
         os.makedirs(os.path.dirname(c))
-        with open(c, "w") as f:
+        with open(c, "w", encoding="utf-8") as f:
             json.dump({"research_off_phrases": ["bora"]}, f)
         self.confiar(c)
         self.sessao(modo_pesquisa=True)

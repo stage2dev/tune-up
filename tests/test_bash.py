@@ -4,7 +4,7 @@ import os
 import stat
 import unittest
 
-from base import Base, PromptBase
+from base import Base, PromptBase, sh_path, symlink
 
 
 class TestD1Shell(Base):
@@ -32,13 +32,13 @@ class TestD2ChmodSeguro(Base):
         os.makedirs(perfil)
         cfg = {"raizes_sincronizadas": [self.raiz]}
         cfg.update(extra)
-        with open(os.path.join(perfil, "config.json"), "w") as f:
+        with open(os.path.join(perfil, "config.json"), "w", encoding="utf-8") as f:
             json.dump(cfg, f)
         self.confiar(os.path.join(perfil, "config.json"))
 
     def arq(self, caminho):
         os.makedirs(os.path.dirname(caminho), exist_ok=True)
-        open(caminho, "w").close()
+        open(caminho, "w", encoding="utf-8").close()
         os.chmod(caminho, 0o444)
         return caminho
 
@@ -49,14 +49,14 @@ class TestD2ChmodSeguro(Base):
         self.preparar()
         alvo = self.arq(os.path.join(self.tmp, "fora", "alvo.txt"))
         link = os.path.join(self.raiz, "link.txt")
-        os.symlink(alvo, link)
+        symlink(alvo, link)
         self.rodar("escrita", {"tool_name": "Edit", "tool_input": {"file_path": link}})
         self.assertFalse(self.gravavel(alvo))
 
     def test_dir_symlink_para_fora(self):
         self.preparar()
         alvo = self.arq(os.path.join(self.tmp, "fora", "alvo.txt"))
-        os.symlink(os.path.dirname(alvo), os.path.join(self.raiz, "d"))
+        symlink(os.path.dirname(alvo), os.path.join(self.raiz, "d"), True)
         self.rodar("escrita", {"tool_name": "Edit",
                                "tool_input": {"file_path": os.path.join(self.raiz, "d", "alvo.txt")}})
         self.assertFalse(self.gravavel(alvo))
@@ -103,9 +103,9 @@ class TestD7HeredocFalsoGit(Base):
 
 class TestD9GuardaNoBash(PromptBase):
     def test_pergunta(self):
-        g = os.path.join(self.tmp, ".claude", "plugins", "tune-up", "scripts", "guarda.py")
-        conf = os.path.join(self.dados, "perfis_confiaveis.txt")
-        cfg = os.path.join(self.cwd, ".tune-up", "config.json")
+        g = sh_path(os.path.join(self.tmp, ".claude", "plugins", "tune-up", "scripts", "guarda.py"))
+        conf = sh_path(os.path.join(self.dados, "perfis_confiaveis.txt"))
+        cfg = sh_path(os.path.join(self.cwd, ".tune-up", "config.json"))
         for cmd in ["python3 %s confiar x" % g, "echo x >> %s" % conf, "echo {} > %s" % cfg,
                     "tee -a %s < x" % conf, "sed -i '' s/a/b/ %s" % cfg, "cp x %s" % conf,
                     "mv %s y" % cfg, "rm -f %s" % conf, "chmod 666 %s" % conf, "ln -sf x %s" % cfg,
@@ -202,8 +202,9 @@ class TestH2bConfiarNaoLiteral(Base):
     def test_perguntam(self):
         g = os.path.join(self.tmp, "x", "guarda.py")
         copia = os.path.join(self.tmp, "g2.py")
-        with open(copia, "w") as f:
+        with open(copia, "w", encoding="utf-8") as f:
             f.write("import tuneup\n# confiar|trust\n")
+        g, copia = sh_path(g), sh_path(copia)
         for cmd in ["S=trust; python3 %s $S x" % g, "python3 %s $(printf trust) x" % g,
                     "python3 %s `printf trust` x" % g, 'python3 %s "$S" x' % g,
                     "python3 %s trust x" % copia, "python3 %s $S x" % copia]:
@@ -213,7 +214,7 @@ class TestH2bConfiarNaoLiteral(Base):
     def test_passam(self):
         g = os.path.join(self.tmp, "x", "guarda.py")
         outro = os.path.join(self.tmp, "outro.py")
-        with open(outro, "w") as f:
+        with open(outro, "w", encoding="utf-8") as f:
             f.write("print(1)\n")
         for cmd in ["cat %s $HOME" % g, "python3 %s $S" % outro]:
             with self.subTest(cmd=cmd):
@@ -232,7 +233,7 @@ class TestB5EntradaMalformada(Base):
                         {"tool_name": "Bash", "tool_input": {"command": "ls"}, "cwd": ["/x"]}):
             with self.subTest(entrada=entrada):
                 self.assertEqual(self.decisao(self.rodar("bash", entrada)), "perguntar")
-        with open(os.path.join(self.dados, "erros.log")) as f:
+        with open(os.path.join(self.dados, "erros.log"), encoding="utf-8") as f:
             self.assertIn("malformed input", f.read())
 
 
