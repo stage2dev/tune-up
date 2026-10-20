@@ -15,7 +15,8 @@ class TestEscrita(Base):
         arq = os.path.join(raiz, "velho.txt")
         open(arq, "w", encoding="utf-8").close()
         os.chmod(arq, 0o444)
-        os.chmod(sub, 0o555)
+        if not IS_WIN:  # the read-only attribute of a Windows directory does not block writing into it
+            os.chmod(sub, 0o555)
         perfil = os.path.join(self.cwd, ".tune-up")
         os.makedirs(perfil)
         with open(os.path.join(perfil, "config.json"), "w", encoding="utf-8") as f:
@@ -24,7 +25,8 @@ class TestEscrita(Base):
         s = self.rodar("escrita", {"tool_name": "Write",
                                    "tool_input": {"file_path": os.path.join(sub, "novo.txt"), "content": "x"}})
         self.assertIsNone(s)
-        self.assertTrue(os.stat(sub).st_mode & stat.S_IWUSR)
+        if not IS_WIN:
+            self.assertTrue(os.stat(sub).st_mode & stat.S_IWUSR)
         self.rodar("escrita", {"tool_name": "Edit", "tool_input": {"file_path": arq}})
         self.assertTrue(os.stat(arq).st_mode & stat.S_IWUSR)
 

@@ -98,7 +98,8 @@ class TestB1InfoComPontoPonto(unittest.TestCase):
             open(os.path.join(t, p), "w", encoding="utf-8").close()
         os.makedirs(os.path.join(t, "evil", "x"))
         symlink(os.path.join(t, "evil", "x"), os.path.join(t, "dev", "L"), True)
-        with mock.patch.object(bg, "RAIZ_PLUGIN", os.path.join(t, "dev", "tune-up")):
+        t = t.replace("\\", "/")  # CLAUDE_PLUGIN_ROOT and commands use forward slashes on Windows too
+        with mock.patch.object(bg, "RAIZ_PLUGIN", t + "/dev/tune-up"):
             self.assertTrue(bg.chamada_info("python3 %s/dev/tune-up/scripts/guarda.py info" % t))
             self.assertFalse(bg.chamada_info("python3 %s/dev/L/../tune-up/scripts/guarda.py info" % t))
             self.assertFalse(bg.chamada_info("python3 %s/dev/./tune-up/scripts/guarda.py info" % t))
