@@ -4,7 +4,7 @@ import json
 import os
 import subprocess
 import unittest
-from base import SCRIPT, PromptBase
+from base import IS_WIN, SCRIPT, PromptBase
 
 
 class TestSegVerbosDeEscrita(PromptBase):
@@ -155,6 +155,7 @@ class TestSegConversaArvore(PromptBase):
             with self.subTest(cmd=cmd):
                 self.assertIsNone(self.bash(cmd))
 
+    @unittest.skipIf(IS_WIN, "a sh-script fake `git` cannot be found on PATH on Windows (needs a real .exe)")
     def test_muitos_alvos_fora_sem_git_por_alvo(self):
         b = os.path.join(self.tmp, "bin")
         os.makedirs(b)

@@ -1,6 +1,7 @@
 """tune-up: leitura do comando de shell (heredoc, tokens, segmentos, redireções, git, flags)."""
 import os
 import re
+from .caminhos import NT, nativo
 
 # ---------------------------------------------------------------- parsing bash
 
@@ -144,11 +145,29 @@ def comando_simples(seg):
                 i += 1
         else:
             break
-    return toks[i:]
+    return lancador(toks[i:])
+
+
+def lancador(toks):
+    """The plugin launcher (`sh .../scripts/py x.py`, `.../scripts/py x.py`) and the Windows `py`
+    launcher (`py -3 x.py`) run Python: they become `python x.py`. `git.exe` -> `git` (Windows)."""
+    if len(toks) > 1 and os.path.basename(toks[0]) in SHELLS and os.path.basename(toks[1]) == "py":
+        toks = ["python"] + toks[2:]
+    elif toks and os.path.basename(toks[0]).lower() in ("py", "py.exe"):
+        j = 1
+        while j < len(toks) and re.fullmatch(r"-(\d[\d.]*(-\d+)?|V:\S+)", toks[j]):
+            j += 1
+        toks = ["python"] + toks[j:]
+    elif toks and toks[0].lower().endswith(".exe"):
+        toks = [os.path.basename(toks[0])[:-4].lower()] + toks[1:]
+    return toks
 
 
 def junta_dir(base, d):
-    return os.path.normpath(os.path.join(base, os.path.expanduser(d)))
+    """Absolute path of `d` from `base` (Windows: Git Bash spellings first, see caminhos.nativo;
+    a drive-relative `D:x` on another drive resolves against that drive's current folder)."""
+    p = os.path.normpath(os.path.join(nativo(base), nativo(os.path.expanduser(d))))
+    return os.path.abspath(p) if NT and not os.path.isabs(p) else p
 
 
 def analisar_git(toks, cwd):

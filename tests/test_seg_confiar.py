@@ -3,7 +3,7 @@ H2b, 21/10). Run: python3 -m unittest discover -s tests -q"""
 import json
 import os
 import unittest
-from base import SCRIPT, PromptBase
+from base import SCRIPT, PromptBase, mkdtemp, rmtree, symlink
 
 
 class TestSegConfiancaPeloConteudo(PromptBase):
@@ -47,7 +47,7 @@ class TestSegConfiarIndireto(PromptBase):
     def test_formas_indiretas_perguntam(self):
         scripts = os.path.dirname(SCRIPT)
         g = os.path.join(self.cwd, "g")
-        os.symlink(SCRIPT, g)  # symlink without .py
+        symlink(SCRIPT, g)  # symlink without .py
         u = os.path.join(self.tmp, ".config", "tune-up", "user.json")
         cfg = os.path.join(self.cwd, ".tune-up", "config.json")
         for cmd in ["python3 -m tuneup confiar x",
@@ -68,7 +68,7 @@ class TestSegConfiarIndireto(PromptBase):
             with self.subTest(cmd=cmd):
                 self.assertIsNone(self.bash(cmd))
         g = os.path.join(self.cwd, "g.py")
-        os.symlink(SCRIPT, g)
+        symlink(SCRIPT, g)
         for cmd in ["python3 %s info; echo x > ~/.config/tune-up/user.json" % SCRIPT,
                     "python3 %s info x" % SCRIPT, "python3 %s trust y" % SCRIPT,
                     "python3 -I %s info" % SCRIPT, "python3 %s info > /tmp/x" % SCRIPT,
@@ -91,13 +91,13 @@ class TestB1InfoComPontoPonto(unittest.TestCase):
         from unittest import mock
         sys.path.insert(0, os.path.dirname(SCRIPT))
         import tuneup.bash_guarda as bg
-        t = os.path.realpath(tempfile.mkdtemp(prefix="tuneup-b1-"))
-        self.addCleanup(shutil.rmtree, t, True)
+        t = mkdtemp("tuneup-b1-")
+        self.addCleanup(rmtree, t)
         for p in ("dev/tune-up/scripts/guarda.py", "evil/tune-up/scripts/guarda.py"):
             os.makedirs(os.path.dirname(os.path.join(t, p)), exist_ok=True)
             open(os.path.join(t, p), "w").close()
         os.makedirs(os.path.join(t, "evil", "x"))
-        os.symlink(os.path.join(t, "evil", "x"), os.path.join(t, "dev", "L"))
+        symlink(os.path.join(t, "evil", "x"), os.path.join(t, "dev", "L"), True)
         with mock.patch.object(bg, "RAIZ_PLUGIN", os.path.join(t, "dev", "tune-up")):
             self.assertTrue(bg.chamada_info("python3 %s/dev/tune-up/scripts/guarda.py info" % t))
             self.assertFalse(bg.chamada_info("python3 %s/dev/L/../tune-up/scripts/guarda.py info" % t))

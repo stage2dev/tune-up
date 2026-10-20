@@ -8,7 +8,7 @@ import sys
 import tempfile
 import unittest
 
-from base import SCRIPT, PromptBase
+from base import IS_WIN, SCRIPT, SEM_MODOS, PromptBase, mkdtemp, symlink
 
 
 class TestC2PerfilConfiavel(PromptBase):
@@ -21,7 +21,7 @@ class TestC2PerfilConfiavel(PromptBase):
         return c
 
     def test_fora_do_home_ignorada(self):
-        fora = tempfile.mkdtemp(dir="/private/tmp", prefix="tuneup-fora-")
+        fora = mkdtemp("tuneup-fora-")
         self.addCleanup(shutil.rmtree, fora, True)
         self.cfg({"regras_bash": [{"regex": "echo", "acao": "bloquear", "msg": "x"}]}, fora)
         s = self.rodar("bash", {"cwd": fora, "tool_name": "Bash", "tool_input": {"command": "echo oi"}})
@@ -54,6 +54,7 @@ class TestC2PerfilConfiavel(PromptBase):
         self.cfg({"frases_autorizacao": ["oi"]})
         self.assertNotIn("autoriza", self.ctx(self.prompt("oi tudo bem")))
 
+    @unittest.skipIf(IS_WIN, SEM_MODOS)
     def test_escrita_por_grupo_ignora_tudo(self):
         c = self.cfg({"merge_pelo_claude": True, "regras_bash": [{"regex": "rodar", "acao": "avisar"}]})
         self.confiar(c)
@@ -288,7 +289,7 @@ class TestM8PerfilPorSymlink(PromptBase):
         self.assertIsNone(s)  # A itself stays trusted
         b = os.path.join(self.tmp, "B")
         os.makedirs(b)
-        os.symlink(os.path.join(a, ".tune-up"), os.path.join(b, ".tune-up"))
+        symlink(os.path.join(a, ".tune-up"), os.path.join(b, ".tune-up"), True)
         s = self.rodar("bash", {"cwd": b, "tool_name": "Bash", "tool_input": {"command": "gh pr merge 1"}})
         self.assertEqual(self.decisao(s), "bloquear")
         with open(os.path.join(self.dados, "erros.log")) as f:

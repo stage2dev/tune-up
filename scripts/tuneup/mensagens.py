@@ -27,6 +27,7 @@ CATALOG = {
         "prod": "prod write without your request this turn (%s). Confirm or say \"apply the migration\".",
         "prod_cli": "command touches a remote database/project (%s); confirm first — an authorization phrase does not unlock it.",
         "pesquisa": "research mode on (%s); confirm or say \"go ahead\" to leave it.",
+        "ps_ilegivel": "could not read this PowerShell command (%s); confirm it.",
         "prot_settings_bash": "the command writes to Claude's permissions and hooks (settings*.json); confirm.",
         "prot_perfil_bash": "the command writes to the tune-up profile/plugin/trust list; "
                             "confirm, or say \"new rule\" or run /tune-up:profile this turn.",
@@ -118,6 +119,7 @@ CATALOG = {
         "prod": "escrita em prod sem pedido seu neste turno (%s). Confirme ou diga \"pode aplicar\".",
         "prod_cli": "comando que mexe em banco/projeto remoto (%s); confirme antes — frase de autorização não libera.",
         "pesquisa": "modo pesquisa ativo (%s); confirme ou diga \"pode fazer\" para sair.",
+        "ps_ilegivel": "não consegui ler este comando do PowerShell (%s); confirme.",
         "prot_settings_bash": "o comando grava nas permissões e hooks do Claude (settings*.json); confirme.",
         "prot_perfil_bash": "o comando grava no perfil/plugin/lista de confiança do tune-up; "
                             "confirme ou diga \"regra nova\"/\"perfil\" neste turno.",

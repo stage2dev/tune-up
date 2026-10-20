@@ -3,11 +3,11 @@ the commands that talk mode denies inside the project."""
 import os
 import re
 from .bash_parse import analisar_git, junta_dir, posicionais
-from .caminhos import nome
+from .caminhos import NT, nome
 from .config import achar_perfil, home_real
 from .escrita import RAIZ_PLUGIN, alvos_de_escrita, contem_protegida, raizes_protegidas, tar_extrai, valor_de
 
-RE_EXECUTOR = re.compile(r"(?<![\w.-])(python[\d.]*|exec|xargs|node|nodejs|perl|ruby|deno|bun|osascript)(?![\w-])")
+RE_EXECUTOR = re.compile(r"(?<![\w.-])(python[\d.]*|py|exec|xargs|node|nodejs|perl|ruby|deno|bun|osascript)(?![\w-])")
 RE_CAMINHO = re.compile(r"\S*[/.]\S*")  # a path-like word: its name is not a trust word
 RE_ATRIBUI = re.compile(r"[A-Za-z_]\w*=")
 RE_CONFIAR = re.compile(r"guarda\.py|perfis_confiaveis|(?<![\w-])(tuneup|confiar|trust)(?![\w-])")
@@ -51,11 +51,23 @@ def ln_da_guarda(toks, diretorio, cwd):
 
 
 def expandido(texto):
-    """Text with ~ and $HOME expanded, casefolded."""
+    """Text with ~ and $HOME (Windows: also $USERPROFILE) expanded, casefolded, then `_nt`."""
     for h in {os.path.expanduser("~"), home_real()}:
         texto = texto.replace("${HOME}", h).replace("$HOME", h)
+        if NT:
+            texto = texto.replace("${USERPROFILE}", h).replace("$USERPROFILE", h)
         texto = re.sub(r"(?<![\w/~])~(?=/|\s|$|['\"])", h, texto)
-    return texto.casefold()
+    return _nt(texto.casefold())
+
+
+def _nt(t):
+    """Windows: text and roots compared alike: `/` for `\\`, no `//?/` prefix, Git Bash `/c/` as
+    `c:/`, and no trailing dot after a name (`settings.json.` opens settings.json). Elsewhere: t."""
+    if not NT:
+        return t
+    t = t.replace("\\", "/").replace("//?/", "").replace("//./", "")
+    t = re.sub(r"(?<![\w/:.~$-])/([a-z])(?=/)", r"\1:", t)
+    return re.sub(r"(?<=\w)\.+(?=[/'\"\s:]|$)", "", t)
 
 
 def citacoes(seg, toks, diretorio, alvos):
@@ -81,7 +93,7 @@ def nivel_do_texto(executor, links, cwd, escrita):
                          re.search(r"guarda\.py|perfis_confiaveis", x, re.I)] +
                         [os.path.basename(x) for x in links]).casefold()
     t = expandido(" ".join(executor + links))
-    raizes = {os.path.normpath(r).casefold() for r in (RAIZ_PLUGIN, os.path.realpath(RAIZ_PLUGIN))}
+    raizes = {_nt(os.path.normpath(r).casefold()) for r in (RAIZ_PLUGIN, os.path.realpath(RAIZ_PLUGIN))}
     if executor and (RE_CONFIAR.search(palavras) or cita(t, raizes)):
         return "turno"
     if not escrita:
@@ -89,9 +101,9 @@ def nivel_do_texto(executor, links, cwd, escrita):
     t = expandido(escrita)
     homes = {os.path.expanduser("~"), home_real()}
     for h in homes:
-        if re.search(re.escape(os.path.join(h, ".claude", "settings").casefold()) + r"[^/\s]*\.json(?![\w.-])", t):
+        if re.search(re.escape(_nt(os.path.join(h, ".claude", "settings").casefold())) + r"[^/\s]*\.json(?![\w.-])", t):
             return "sempre"  # settings*.json (a `settings.json.bak` copy is not)
-    protegidas = {os.path.normpath(r).casefold() for r in raizes_protegidas(homes, cwd)}
+    protegidas = {_nt(os.path.normpath(r).casefold()) for r in raizes_protegidas(homes, cwd)}
     protegidas |= {"perfis_confiaveis", ".tune-up/config.json"}
     return "turno" if cita(t, protegidas) else None
 
@@ -145,8 +157,11 @@ def nega_em_conversa(seg, toks, diretorio):
 
 
 def chamada_info(cmd):
-    """The command is exactly `python3 <this plugin>/scripts/guarda.py info` (what the skills
-    inject): no other argument, operator, redirection or expansion; no copy or symlink."""
+    """The command is exactly what the skills inject: `sh <this plugin>/scripts/py
+    scripts/guarda.py info` (the launcher; guarda.py relative to the plugin or its exact path),
+    or the older `python3 <this plugin>/scripts/guarda.py info`. No other argument, operator,
+    redirection or expansion; no copy or symlink. Windows: `C:/x` and `C:\\x` spellings of the
+    same path, without letter case."""
     import shlex
     if re.search(r"[;&|<>$`()\n\\]", cmd):
         return False
@@ -154,9 +169,23 @@ def chamada_info(cmd):
         toks = shlex.split(cmd)
     except ValueError:
         return False
+    g = os.path.join(RAIZ_PLUGIN, "scripts", "guarda.py")
+    if len(toks) == 4 and toks[0] == "sh" and toks[3] == "info":
+        if not _exato(toks[1], os.path.join(RAIZ_PLUGIN, "scripts", "py")):
+            return False
+        return toks[2] == "scripts/guarda.py" or _exato(toks[2], g)
     if len(toks) != 3 or toks[0] not in ("python3", "python") or toks[2] != "info":
         return False
-    g = os.path.join(RAIZ_PLUGIN, "scripts", "guarda.py")
-    if ".." in toks[1].split("/"):  # `~/dev/L/../tune-up/...`: the kernel resolves L first
+    return _exato(toks[1], g)
+
+
+def _exato(tok, alvo):
+    """`tok` spells `alvo` (or its realpath) itself, and resolves to it."""
+    if ".." in re.split(r"[/\\]", tok):  # `~/dev/L/../tune-up/...`: the kernel resolves L first
         return False
-    return toks[1] in {g, os.path.realpath(g)} and os.path.realpath(toks[1]) == os.path.realpath(g)
+    if NT:
+        def norm(x):
+            return os.path.normcase(os.path.normpath(x))
+        return norm(tok) in {norm(alvo), norm(os.path.realpath(alvo))} and \
+            norm(os.path.realpath(tok)) == norm(os.path.realpath(alvo))
+    return tok in {alvo, os.path.realpath(alvo)} and os.path.realpath(tok) == os.path.realpath(alvo)

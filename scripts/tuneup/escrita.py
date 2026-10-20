@@ -5,7 +5,7 @@ import json
 import os
 import re
 from .bash_parse import analisar_git, junta_dir, posicionais
-from .caminhos import SEM_CAIXA, cadeia, grafia, ident, mesmo, nome
+from .caminhos import NT, SEM_CAIXA, absoluto, cadeia, grafia, ident, mesmo, nativo, nome, temporarios
 from .config import achar_perfil, arquivo_confiaveis, home_real
 from .mensagens import msg
 from .sessao import decisao_pre, dentro, ler_sessao, log_erro
@@ -181,7 +181,8 @@ def alvos_que_contem(toks, diretorio):
 def liberar_escrita(caminho, raiz):
     """chmod u+w no arquivo (e no diretório pai) ou no ancestral existente mais próximo,
     sem sair da raiz sincronizada. Compara caminhos reais; pula symlink, `.git` e
-    arquivo de outro dono."""
+    arquivo de outro dono. Windows: sem dono nem bits de modo (ACLs não são lidas); só tira o
+    atributo somente-leitura de arquivo, nunca de pasta."""
     import stat
     raiz = os.path.realpath(raiz)
 
@@ -193,7 +194,9 @@ def liberar_escrita(caminho, raiz):
             if os.path.islink(p) or not pode(p):
                 return
             st = os.lstat(p)
-            if st.st_uid != os.getuid():
+            if NT and stat.S_ISDIR(st.st_mode):
+                return
+            if not NT and st.st_uid != os.getuid():
                 return
             if not st.st_mode & stat.S_IWUSR:
                 os.chmod(p, stat.S_IMODE(st.st_mode) | stat.S_IWUSR)
@@ -223,7 +226,7 @@ def livre_em_pesquisa(caminho, d, cfg, real=True):
     r = os.path.realpath(caminho)
     if real and r != os.path.normpath(caminho) and not livre_em_pesquisa(r, d, cfg, False):
         return False
-    raizes = [d.get("scratchpad_dir"), "/tmp", "/private/tmp"]
+    raizes = [d.get("scratchpad_dir")] + temporarios()
     if any(dentro(caminho, r) for r in raizes if r):
         return True
     c = caminho
@@ -241,10 +244,10 @@ def livre_em_pesquisa(caminho, d, cfg, real=True):
             return True
     for livre in cfg.get("research_free_paths") or []:
         livre = str(livre)
-        if livre.startswith("/") or livre.startswith("~"):
+        if absoluto(livre):
             if dentro(caminho, livre):
                 return True
-        elif "/" + livre.strip("/") + "/" in c:
+        elif "/" + livre.strip("/") + "/" in c.replace(os.sep, "/"):
             return True
     return False
 
@@ -268,7 +271,7 @@ def caminhos_protegidos(registrar=False):
         for x in lst if isinstance(lst, list) else ([] if lst is None else [lst]):
             if not isinstance(x, str):
                 ign.append(("not text", repr(x)[:80]))
-            elif x.startswith(("/", "~")):
+            elif absoluto(x):
                 abs_.append(x)
             else:
                 ign.append(("not absolute", x[:120]))
@@ -305,7 +308,7 @@ def _raizes_com_ids(homes, cwd):
     if perfil:
         raizes.add(os.path.join(perfil, "config.json"))
     for p in caminhos_protegidos()[0]:
-        raizes.add(os.path.normpath(os.path.expanduser(p)))
+        raizes.add(os.path.normpath(nativo(os.path.expanduser(p))))
     _RAIZES[chave] = [(os.path.normpath(r), ident(r), cadeia(r), {grafia(r), grafia(os.path.realpath(r))})
                       for r in raizes]
     return _RAIZES[chave]
@@ -333,7 +336,8 @@ def settings_do_claude(caminho, h, real=None):
 
 def protecao_da_guarda(caminho, cwd=None):
     """'sempre' (settings do Claude), 'turno' (perfil, plugin, confiáveis) ou None.
-    Compares by file identity, and without letter case on darwin/win32."""
+    Compares by file identity, and without letter case on darwin/win32 (Windows: after nativo)."""
+    caminho = nativo(caminho)
     homes = {os.path.expanduser("~"), home_real()}
     c, real, cad, graf = os.path.normpath(caminho), os.path.realpath(caminho), None, None
     if any(settings_do_claude(caminho, h, real) for h in homes):
@@ -358,6 +362,7 @@ def protecao_da_guarda(caminho, cwd=None):
 def contem_protegida(caminho, cwd=None):
     """Same level as protecao_da_guarda when `caminho` is a protected root's ancestor
     (`~/.claude`, `~/.config`, a `.tune-up` folder...)."""
+    caminho = nativo(caminho)
     homes = {os.path.expanduser("~"), home_real()}
     if any(dentro(os.path.join(h, ".claude", "settings.json"), caminho) for h in homes):
         return "sempre"

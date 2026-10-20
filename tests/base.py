@@ -9,16 +9,53 @@ import unittest
 
 SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts", "guarda.py")
 
+IS_WIN = os.name == "nt"
+SEM_MODOS = "Windows has no POSIX permission bits (mode, owner, group)"
+
+
+def mkdtemp(prefix="tuneup-teste-"):
+    """Real path of a fresh temp dir that is NOT under /tmp or /private/tmp on POSIX.
+
+    The guard treats /tmp as free scratch space in research mode, so a test tree under
+    /tmp (the default on Linux) would hide the decisions the tests want to see.
+    """
+    base = None
+    if not IS_WIN:
+        padrao = os.path.realpath(tempfile.gettempdir())
+        if any(padrao == r or padrao.startswith(r + os.sep) for r in ("/tmp", "/private/tmp")):
+            base = os.path.realpath(os.path.expanduser("~"))
+    return os.path.realpath(tempfile.mkdtemp(prefix=prefix, dir=base))
+
+
+def rmtree(caminho):
+    """rmtree that also removes read-only entries (needed on Windows)."""
+    def _forcar(func, path, _exc):
+        try:
+            os.chmod(path, 0o700)
+            func(path)
+        except OSError:
+            pass
+    shutil.rmtree(caminho, onerror=_forcar)
+
+
+def symlink(alvo, link, dir_=False):
+    """os.symlink, or skip the test when the platform/account cannot create symlinks."""
+    try:
+        os.symlink(alvo, link, target_is_directory=dir_)
+    except (OSError, NotImplementedError) as e:
+        raise unittest.SkipTest("cannot create symlinks here: %s" % e)
+
 
 class Base(unittest.TestCase):
     def setUp(self):
-        self.tmp = os.path.realpath(tempfile.mkdtemp(prefix="tuneup-teste-"))
+        self.tmp = mkdtemp("tuneup-teste-")
         self.dados = os.path.join(self.tmp, "dados")
         self.cwd = os.path.join(self.tmp, "proj")
         os.makedirs(self.cwd)
         self.env = {k: v for k, v in os.environ.items()
                     if not k.startswith("TUNEUP_") and k not in ("CLAUDE_PROJECT_DIR", "CLAUDE_PLUGIN_DATA")}
         self.env.update({"TUNEUP_TESTE": "1", "CLAUDE_PLUGIN_DATA": self.dados, "HOME": self.tmp,
+                         "USERPROFILE": self.tmp,  # os.path.expanduser reads this one on Windows
                          "TUNEUP_FAKE_BRANCH": "feat/x", "TUNEUP_FAKE_GH_MERGED": ""})
         if self.USER_JSON is not None:  # old classes assert pt-BR texts
             self.user_json(self.USER_JSON)
@@ -39,7 +76,7 @@ class Base(unittest.TestCase):
                     os.chmod(os.path.join(raiz, x), 0o755)
                 except OSError:
                     pass
-        shutil.rmtree(self.tmp, ignore_errors=True)
+        rmtree(self.tmp)
 
     def rodar(self, evento, entrada, env=None, bruto=None):
         e = dict(self.env)
@@ -111,10 +148,12 @@ class PromptBase(Base):
 
 class FakeBin(Base):
     def fake(self, nome, corpo):
+        if IS_WIN:  # the guard runs `git`/`gh` without a shell: CreateProcess only finds real .exe files
+            raise unittest.SkipTest("a sh-script fake of %s cannot be found on PATH on Windows" % nome)
         b = os.path.join(self.tmp, "bin")
         os.makedirs(b, exist_ok=True)
         p = os.path.join(b, nome)
-        with open(p, "w") as f:
+        with open(p, "w", newline="\n") as f:
             f.write("#!/bin/sh\necho \"$@\" >> %s/%s.chamadas\n%s\n" % (self.tmp, nome, corpo))
         os.chmod(p, 0o755)
         self.env["PATH"] = b + os.pathsep + self.env.get("PATH", "")

@@ -8,6 +8,8 @@ import sys
 import tempfile
 import unittest
 
+from base import mkdtemp, rmtree  # noqa: E402
+
 SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts", "titulo_terminal.py")
 CHAVE = "terminal.integrated.tabs.title"
 VALOR = "${sequence}${separator}${process}"
@@ -18,12 +20,14 @@ from titulo_terminal import ler  # noqa: E402
 
 class TestTituloTerminal(unittest.TestCase):
     def setUp(self):
-        self.tmp = os.path.realpath(tempfile.mkdtemp(prefix="tuneup-titulo-"))
-        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.tmp = mkdtemp("tuneup-titulo-")
+        self.addCleanup(rmtree, self.tmp)
         self.env = {k: v for k, v in os.environ.items() if k not in ("XDG_CONFIG_HOME", "APPDATA")}
         self.env.update({"HOME": self.tmp, "USERPROFILE": self.tmp})
         if sys.platform == "darwin":
             self.base = os.path.join(self.tmp, "Library", "Application Support")
+        elif sys.platform == "win32":
+            self.base = os.path.join(self.tmp, "AppData", "Roaming")
         else:
             self.base = os.path.join(self.tmp, ".config")
 

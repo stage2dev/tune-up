@@ -7,7 +7,7 @@ import tempfile
 import time
 import unittest
 
-from base import Base
+from base import Base, mkdtemp
 
 
 class TestInicioPosBash(Base):
@@ -121,7 +121,7 @@ class TestD8RuidoNoLog(Base):
         del self.env["TUNEUP_FAKE_BRANCH"]
 
     def test_commit_fora_de_repo_nao_loga(self):
-        fora = tempfile.mkdtemp(dir="/private/tmp", prefix="tuneup-d8-")
+        fora = mkdtemp("tuneup-d8-")
         self.addCleanup(shutil.rmtree, fora, True)
         log = os.path.join(self.dados, "erros.log")
         s = self.rodar("bash", {"cwd": fora, "tool_input": {"command": 'git commit -m "x"'}})

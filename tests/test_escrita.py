@@ -4,7 +4,7 @@ import os
 import stat
 import unittest
 
-from base import Base, PromptBase
+from base import Base, IS_WIN, PromptBase, SEM_MODOS, symlink
 
 
 class TestEscrita(Base):
@@ -102,6 +102,7 @@ class TestC5GuardaSeProtege(PromptBase):
         self.assertIsNone(self.escrever(os.path.join(self.tmp, ".claude", "projects", "p", "memory", "a.md")))
 
 
+@unittest.skipIf(IS_WIN, SEM_MODOS)
 class TestD6Permissoes(PromptBase):
     def test_modos(self):
         self.prompt("pode aplicar a migration")
@@ -167,7 +168,7 @@ class TestM7SymlinkNoScratch(PromptBase):
         os.makedirs(os.path.join(self.cwd, "src"))
         self.scratch = os.path.join(self.tmp, "scratch")
         os.makedirs(self.scratch)
-        os.symlink(os.path.join(self.cwd, "src"), os.path.join(self.scratch, "lnk"))
+        symlink(os.path.join(self.cwd, "src"), os.path.join(self.scratch, "lnk"), True)
         self.alvo = os.path.join(self.scratch, "lnk", "app.py")
 
     def test_talk_nega(self):

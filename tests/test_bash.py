@@ -4,7 +4,7 @@ import os
 import stat
 import unittest
 
-from base import Base, PromptBase
+from base import Base, PromptBase, symlink
 
 
 class TestD1Shell(Base):
@@ -49,14 +49,14 @@ class TestD2ChmodSeguro(Base):
         self.preparar()
         alvo = self.arq(os.path.join(self.tmp, "fora", "alvo.txt"))
         link = os.path.join(self.raiz, "link.txt")
-        os.symlink(alvo, link)
+        symlink(alvo, link)
         self.rodar("escrita", {"tool_name": "Edit", "tool_input": {"file_path": link}})
         self.assertFalse(self.gravavel(alvo))
 
     def test_dir_symlink_para_fora(self):
         self.preparar()
         alvo = self.arq(os.path.join(self.tmp, "fora", "alvo.txt"))
-        os.symlink(os.path.dirname(alvo), os.path.join(self.raiz, "d"))
+        symlink(os.path.dirname(alvo), os.path.join(self.raiz, "d"), True)
         self.rodar("escrita", {"tool_name": "Edit",
                                "tool_input": {"file_path": os.path.join(self.raiz, "d", "alvo.txt")}})
         self.assertFalse(self.gravavel(alvo))
