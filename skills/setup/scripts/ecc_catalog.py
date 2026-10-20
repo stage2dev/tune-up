@@ -204,6 +204,7 @@ class Writer:
         self.kept = []
 
     def put(self, rel, data):
+        rel = rel.replace(os.sep, "/")  # manifest keys and reports use / on every OS
         dest = os.path.join(self.out, rel)
         real_parent = os.path.realpath(os.path.dirname(dest))
         if not (real_parent == self.out or real_parent.startswith(self.out + os.sep)) or os.path.islink(dest):
