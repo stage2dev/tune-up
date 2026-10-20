@@ -11,7 +11,7 @@ class TestSegConfiancaPeloConteudo(PromptBase):
         d = os.path.join(self.cwd, ".tune-up")
         os.makedirs(d, exist_ok=True)
         c = os.path.join(d, "config.json")
-        with open(c, "w") as f:
+        with open(c, "w", encoding="utf-8") as f:
             json.dump(conteudo, f)
         os.chmod(c, 0o600)
         return c
@@ -33,7 +33,7 @@ class TestSegConfiancaPeloConteudo(PromptBase):
         c = self.cfg({"claude_may_merge": True})
         os.makedirs(self.dados, exist_ok=True)
         conf = os.path.join(self.dados, "perfis_confiaveis.txt")
-        with open(conf, "w") as f:
+        with open(conf, "w", encoding="utf-8") as f:
             f.write(os.path.realpath(c) + "\n")
         os.chmod(conf, 0o600)
         self.assertEqual(self.bash("gh pr merge 12"), "bloquear")
@@ -95,7 +95,7 @@ class TestB1InfoComPontoPonto(unittest.TestCase):
         self.addCleanup(rmtree, t)
         for p in ("dev/tune-up/scripts/guarda.py", "evil/tune-up/scripts/guarda.py"):
             os.makedirs(os.path.dirname(os.path.join(t, p)), exist_ok=True)
-            open(os.path.join(t, p), "w").close()
+            open(os.path.join(t, p), "w", encoding="utf-8").close()
         os.makedirs(os.path.join(t, "evil", "x"))
         symlink(os.path.join(t, "evil", "x"), os.path.join(t, "dev", "L"), True)
         with mock.patch.object(bg, "RAIZ_PLUGIN", os.path.join(t, "dev", "tune-up")):

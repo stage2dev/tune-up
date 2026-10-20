@@ -111,13 +111,13 @@ class PrototypeTests(unittest.TestCase):
     def run_cli(self, design_text, out):
         with tempfile.TemporaryDirectory() as d:
             src = os.path.join(d, "DESIGN.md")
-            with open(src, "w") as f:
+            with open(src, "w", encoding="utf-8") as f:
                 f.write(design_text)
             dst = os.path.join(d, out)
             r = subprocess.run([sys.executable, os.path.join(HERE, "tokens_to_css.py"), src,
                                 "--prototype", TEMPLATE, "--out", dst],
                                capture_output=True, text=True)
-            html = open(dst).read() if os.path.exists(dst) else None
+            html = open(dst, encoding="utf-8").read() if os.path.exists(dst) else None
             return r, html
 
     def test_prototype_offline_and_filled(self):
@@ -140,14 +140,14 @@ class PrototypeTests(unittest.TestCase):
     def test_name_is_escaped(self):
         tree = t.parse(t.frontmatter(SAMPLE))
         tree["name"] = "<b>&"
-        with open(TEMPLATE) as f:
+        with open(TEMPLATE, encoding="utf-8") as f:
             html = t.build_prototype(f.read(), tree, t.root_block(t.to_variables(tree)))
         self.assertIn("&lt;b&gt;&amp;", html)
 
     def test_cli_prints_root(self):
         with tempfile.TemporaryDirectory() as d:
             src = os.path.join(d, "D.md")
-            open(src, "w").write(SAMPLE)
+            open(src, "w", encoding="utf-8").write(SAMPLE)
             r = subprocess.run([sys.executable, os.path.join(HERE, "tokens_to_css.py"), src],
                                capture_output=True, text=True)
             self.assertEqual(r.returncode, 0)

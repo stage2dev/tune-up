@@ -97,7 +97,7 @@ class TestSegExecutoresEVerbos(PromptBase):
         super().setUp()
         for p in (".config/tune-up/user.json", ".claude/plugins/data/t/perfis_confiaveis.txt"):
             os.makedirs(os.path.dirname(os.path.join(self.tmp, p)), exist_ok=True)
-            open(os.path.join(self.tmp, p), "w").close()
+            open(os.path.join(self.tmp, p), "w", encoding="utf-8").close()
 
     def test_executores_perguntam(self):
         for cmd in ["node -e \"require('fs').appendFileSync(process.env.CLAUDE_PLUGIN_DATA+'/perfis_confiaveis.txt','x')\"",
@@ -161,20 +161,20 @@ class TestSegConversaArvore(PromptBase):
         os.makedirs(b)
         log = os.path.join(self.tmp, "git.chamadas")
         real = subprocess.run(["sh", "-c", "command -v git"], capture_output=True, text=True).stdout.strip()
-        with open(os.path.join(b, "git"), "w") as f:
+        with open(os.path.join(b, "git"), "w", encoding="utf-8") as f:
             f.write('#!/bin/sh\necho "$@" >> %s\nexec %s "$@"\n' % (log, real))
         os.chmod(os.path.join(b, "git"), 0o755)
         fora = os.path.join(self.tmp, "fora")
         os.makedirs(fora)
         cmd = "touch " + " ".join("%s/f%d" % (fora, i) for i in range(300)) + " src/app.py"
         self.assertEqual(self.bash(cmd, {"PATH": b + os.pathsep + self.env["PATH"]}), "bloquear")
-        with open(log) as f:
+        with open(log, encoding="utf-8") as f:
             self.assertLess(len(f.read().splitlines()), 10)  # was one git per target (M2)
 
 
 class TestSegHooksTask(unittest.TestCase):
     def test_matcher_do_agent_pega_task(self):
-        with open(os.path.join(os.path.dirname(os.path.dirname(SCRIPT)), "hooks", "hooks.json")) as f:
+        with open(os.path.join(os.path.dirname(os.path.dirname(SCRIPT)), "hooks", "hooks.json"), encoding="utf-8") as f:
             h = json.load(f)
         matchers = [m["matcher"] for ms in h["hooks"].values() for m in ms if "agent" in json.dumps(m)]
         self.assertTrue(any("Task" in m.split("|") and "Agent" in m.split("|") for m in matchers), matchers)

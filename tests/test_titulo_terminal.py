@@ -36,7 +36,7 @@ class TestTituloTerminal(unittest.TestCase):
         os.makedirs(os.path.join(user, "globalStorage"))
         arq = os.path.join(user, "settings.json")
         if texto is not None:
-            with open(arq, "w") as f:
+            with open(arq, "w", encoding="utf-8") as f:
                 f.write(texto)
         return arq
 
@@ -47,7 +47,7 @@ class TestTituloTerminal(unittest.TestCase):
         return json.loads(r.stdout)
 
     def conteudo(self, arq):
-        with open(arq) as f:
+        with open(arq, encoding="utf-8") as f:
             return f.read()
 
     def test_listar_nao_escreve(self):
@@ -99,7 +99,7 @@ class TestTituloTerminal(unittest.TestCase):
         self.editor("Code", "{}")
         perfil = os.path.join(self.base, "Code", "User", "profiles", "abc")
         os.makedirs(perfil)
-        with open(os.path.join(perfil, "settings.json"), "w") as f:
+        with open(os.path.join(perfil, "settings.json"), "w", encoding="utf-8") as f:
             f.write('{"a": 1}')
         s = self.rodar("aplicar")
         self.assertEqual([e["depois"] for e in s["editores"]], ["aplicado", "aplicado"])

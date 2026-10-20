@@ -2,12 +2,12 @@
 name: skills
 description: Finds the right skill for a task in the tune-up skills catalog and loads only that one. Use for "find a skill", "which skill", "is there a skill for", "qual skill usar", "tem skill para".
 argument-hint: "<what you need to do>"
-allowed-tools: Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info)
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info)
 ---
 
 # Find a skill
 
-Context: !`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info`
+Context: !`sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info`
 
 Request: $ARGUMENTS
 

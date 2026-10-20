@@ -112,16 +112,16 @@ class EccCatalogTest(Base):
     def test_user_edit_not_overwritten(self):
         self.run_cli("--source", os.path.join(self.cache, "2.9.0"))
         mine = os.path.join(self.out, "ecc-skills", "alpha-site", "SKILL.md")
-        with open(mine, "w") as fh:
+        with open(mine, "w", encoding="utf-8") as fh:
             fh.write("my edit\n")
         res = json.loads(self.run_cli("--source", os.path.join(self.cache, "2.10.0"))[1])
-        with open(mine) as fh:
+        with open(mine, encoding="utf-8") as fh:
             self.assertEqual(fh.read(), "my edit\n")
         self.assertIn("ecc-skills/alpha-site/SKILL.md", res["kept_user_files"])
 
     def test_preexisting_untracked_file_kept(self):
         os.makedirs(os.path.join(self.out, "ecc-skills", "beta-ads"))
-        with open(os.path.join(self.out, "ecc-skills", "beta-ads", "SKILL.md"), "w") as fh:
+        with open(os.path.join(self.out, "ecc-skills", "beta-ads", "SKILL.md"), "w", encoding="utf-8") as fh:
             fh.write("theirs\n")
         self.run_cli()
         self.assertEqual(self.read("ecc-skills/beta-ads/SKILL.md"), "theirs\n")
@@ -143,7 +143,7 @@ class EccCatalogTest(Base):
     def test_nothing_outside_out_and_symlinks_skipped(self):
         src = os.path.join(self.cache, "2.10.0")
         secret = os.path.join(self.tmp, "secret.txt")
-        with open(secret, "w") as fh:
+        with open(secret, "w", encoding="utf-8") as fh:
             fh.write("secret")
         os.symlink(secret, os.path.join(src, "skills", "alpha-site", "link.txt"))
         os.symlink(self.tmp, os.path.join(src, "skills", "alpha-site", "linkdir"))
@@ -175,11 +175,11 @@ class EccCatalogTest(Base):
         src = os.path.join(self.cache, "2.10.0")
         for bad in ("x$(touch PWNED)", "a|b`c", "Upper", ".hidden"):
             os.makedirs(os.path.join(src, "skills", bad))
-            with open(os.path.join(src, "skills", bad, "SKILL.md"), "w") as fh:
+            with open(os.path.join(src, "skills", bad, "SKILL.md"), "w", encoding="utf-8") as fh:
                 fh.write("---\nname: bad\ndescription: bad\n---\n")
-        with open(os.path.join(src, "agents", "x$(id)-review.md"), "w") as fh:
+        with open(os.path.join(src, "agents", "x$(id)-review.md"), "w", encoding="utf-8") as fh:
             fh.write("evil\n")
-        with open(os.path.join(src, "skills", "beta-ads", "SKILL.md"), "w") as fh:
+        with open(os.path.join(src, "skills", "beta-ads", "SKILL.md"), "w", encoding="utf-8") as fh:
             fh.write("---\nname: beta-ads\ndescription: pipe | and `tick` here\n---\n")
         cwd = os.getcwd()
         os.chdir(self.tmp)
@@ -225,32 +225,32 @@ class InstallTest(Base):
         res = json.loads(so)
         self.assertEqual(res["installed"], ["delta-video", "alpha-site"])
         self.assertEqual(res["stripped_allowed_tools"], [{"name": "delta-video", "value": "Bash(python:*)"}])
-        with open(os.path.join(self.dest, "delta-video", "SKILL.md")) as fh:
+        with open(os.path.join(self.dest, "delta-video", "SKILL.md"), encoding="utf-8") as fh:
             txt = fh.read()
         self.assertNotIn("allowed-tools", txt)
         self.assertTrue(txt.startswith("---\nname: delta-video\ndescription: Edit short videos with a script.\n---\n"))
         self.assertIn("Run the video helper.", txt)
         self.assertTrue(os.path.isfile(os.path.join(self.dest, "alpha-site", "notes.txt")))
-        with open(os.path.join(self.dest, "alpha-site", "LICENSE")) as fh:
+        with open(os.path.join(self.dest, "alpha-site", "LICENSE"), encoding="utf-8") as fh:
             self.assertIn("MIT", fh.read())
 
     def test_strips_multiline_allowed_tools(self):
         p = os.path.join(self.out, "ecc-skills", "beta-ads", "SKILL.md")
-        with open(p, "w") as fh:
+        with open(p, "w", encoding="utf-8") as fh:
             fh.write("---\nname: beta-ads\nallowed-tools:\n  - Bash\n  - Write\ndescription: x\n---\nbody\n")
         res = json.loads(self.install("beta-ads")[1])
         self.assertEqual(res["stripped_allowed_tools"][0]["value"], "- Bash - Write")
-        with open(os.path.join(self.dest, "beta-ads", "SKILL.md")) as fh:
+        with open(os.path.join(self.dest, "beta-ads", "SKILL.md"), encoding="utf-8") as fh:
             self.assertEqual(fh.read(), "---\nname: beta-ads\ndescription: x\n---\nbody\n")
 
     def test_never_overwrites_existing(self):
         os.makedirs(os.path.join(self.dest, "alpha-site"))
-        with open(os.path.join(self.dest, "alpha-site", "SKILL.md"), "w") as fh:
+        with open(os.path.join(self.dest, "alpha-site", "SKILL.md"), "w", encoding="utf-8") as fh:
             fh.write("mine\n")
         res = json.loads(self.install("alpha-site")[1])
         self.assertEqual(res["skipped_existing"], ["alpha-site"])
         self.assertEqual(res["installed"], [])
-        with open(os.path.join(self.dest, "alpha-site", "SKILL.md")) as fh:
+        with open(os.path.join(self.dest, "alpha-site", "SKILL.md"), encoding="utf-8") as fh:
             self.assertEqual(fh.read(), "mine\n")
 
     def test_existing_symlink_not_followed(self):
@@ -264,7 +264,7 @@ class InstallTest(Base):
 
     def test_rejects_unknown_and_malicious_names(self):
         os.makedirs(os.path.join(self.out, "ecc-skills", "not-listed"))
-        with open(os.path.join(self.out, "ecc-skills", "not-listed", "SKILL.md"), "w") as fh:
+        with open(os.path.join(self.out, "ecc-skills", "not-listed", "SKILL.md"), "w", encoding="utf-8") as fh:
             fh.write("x\n")
         res = json.loads(self.install("not-listed,../etc,x$(touch PWNED),a|b`c,nope")[1])
         self.assertEqual(res["installed"], [])
@@ -277,7 +277,7 @@ class InstallTest(Base):
 
     def test_source_symlink_not_followed(self):
         secret = os.path.join(self.tmp, "secret.txt")
-        with open(secret, "w") as fh:
+        with open(secret, "w", encoding="utf-8") as fh:
             fh.write("secret")
         os.symlink(secret, os.path.join(self.out, "ecc-skills", "alpha-site", "leak.txt"))
         self.install("alpha-site")
@@ -296,18 +296,18 @@ class InstallTest(Base):
         self.assertEqual(res["risky"], [{"name": "epsilon-hooks", "why": "has hooks"}])
         self.assertEqual(res["stripped_hooks"][0]["name"], "epsilon-hooks")
         self.assertIn("./lint.sh", res["stripped_hooks"][0]["value"])
-        with open(os.path.join(self.dest, "epsilon-hooks", "SKILL.md")) as fh:
+        with open(os.path.join(self.dest, "epsilon-hooks", "SKILL.md"), encoding="utf-8") as fh:
             self.assertEqual(fh.read(), "---\nname: epsilon-hooks\ndescription: Lint after each edit.\n---\n"
                                         "Keep the code tidy.\n")
 
     def test_strips_single_line_hooks_and_allowed_tools_together(self):
         p = os.path.join(self.out, "ecc-skills", "beta-ads", "SKILL.md")
-        with open(p, "w") as fh:
+        with open(p, "w", encoding="utf-8") as fh:
             fh.write("---\nname: beta-ads\nhooks: {}\nallowed-tools: Bash\ndescription: x\n---\nhooks: body stays\n")
         res = json.loads(self.install("beta-ads")[1])
         self.assertEqual(res["risky"], [{"name": "beta-ads", "why": "has allowed-tools, has hooks"}])
         self.assertEqual(res["stripped_hooks"], [{"name": "beta-ads", "value": "{}"}])
-        with open(os.path.join(self.dest, "beta-ads", "SKILL.md")) as fh:
+        with open(os.path.join(self.dest, "beta-ads", "SKILL.md"), encoding="utf-8") as fh:
             self.assertEqual(fh.read(), "---\nname: beta-ads\ndescription: x\n---\nhooks: body stays\n")
 
     def test_shell_skill_skipped_without_allow_shell(self):
@@ -322,7 +322,7 @@ class InstallTest(Base):
         self.assertEqual(res["installed"], ["zeta-shell"])
         self.assertEqual(res["skipped_shell"], [])
         self.assertEqual(res["risky"], [{"name": "zeta-shell", "why": "runs shell on load"}])
-        with open(os.path.join(self.dest, "zeta-shell", "SKILL.md")) as fh:
+        with open(os.path.join(self.dest, "zeta-shell", "SKILL.md"), encoding="utf-8") as fh:
             self.assertIn("\n!`git diff HEAD`\n", fh.read())
 
     def test_shell_detection_follows_claude_code_rule(self):

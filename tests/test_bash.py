@@ -32,13 +32,13 @@ class TestD2ChmodSeguro(Base):
         os.makedirs(perfil)
         cfg = {"raizes_sincronizadas": [self.raiz]}
         cfg.update(extra)
-        with open(os.path.join(perfil, "config.json"), "w") as f:
+        with open(os.path.join(perfil, "config.json"), "w", encoding="utf-8") as f:
             json.dump(cfg, f)
         self.confiar(os.path.join(perfil, "config.json"))
 
     def arq(self, caminho):
         os.makedirs(os.path.dirname(caminho), exist_ok=True)
-        open(caminho, "w").close()
+        open(caminho, "w", encoding="utf-8").close()
         os.chmod(caminho, 0o444)
         return caminho
 
@@ -202,7 +202,7 @@ class TestH2bConfiarNaoLiteral(Base):
     def test_perguntam(self):
         g = os.path.join(self.tmp, "x", "guarda.py")
         copia = os.path.join(self.tmp, "g2.py")
-        with open(copia, "w") as f:
+        with open(copia, "w", encoding="utf-8") as f:
             f.write("import tuneup\n# confiar|trust\n")
         for cmd in ["S=trust; python3 %s $S x" % g, "python3 %s $(printf trust) x" % g,
                     "python3 %s `printf trust` x" % g, 'python3 %s "$S" x' % g,
@@ -213,7 +213,7 @@ class TestH2bConfiarNaoLiteral(Base):
     def test_passam(self):
         g = os.path.join(self.tmp, "x", "guarda.py")
         outro = os.path.join(self.tmp, "outro.py")
-        with open(outro, "w") as f:
+        with open(outro, "w", encoding="utf-8") as f:
             f.write("print(1)\n")
         for cmd in ["cat %s $HOME" % g, "python3 %s $S" % outro]:
             with self.subTest(cmd=cmd):
@@ -232,7 +232,7 @@ class TestB5EntradaMalformada(Base):
                         {"tool_name": "Bash", "tool_input": {"command": "ls"}, "cwd": ["/x"]}):
             with self.subTest(entrada=entrada):
                 self.assertEqual(self.decisao(self.rodar("bash", entrada)), "perguntar")
-        with open(os.path.join(self.dados, "erros.log")) as f:
+        with open(os.path.join(self.dados, "erros.log"), encoding="utf-8") as f:
             self.assertIn("malformed input", f.read())
 
 

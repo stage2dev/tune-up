@@ -2,12 +2,12 @@
 name: new-project
 description: Creates a new project folder with git, docs, plans, tests, CI and agent rules from the talk's vision; the user picks the stack. Use for "new project", "start a project", "scaffold", "projeto novo", "criar projeto", "começar um projeto".
 argument-hint: "[folder name]"
-allowed-tools: Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info)
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info)
 ---
 
 # New project
 
-Context: !`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info`
+Context: !`sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info`
 
 Folder name (optional): $ARGUMENTS
 
@@ -64,7 +64,7 @@ Do not create `LICENSE`, `CONTRIBUTING` or any file not listed.
 ## Step 3 - Check
 
 - `grep -rn "\[STACK\]\|{{" .` finds nothing (git internals excluded). Fix every hit.
-- `python3 -c "import json; json.load(open('.tune-up/config.json'))"` passes.
+- `python3 -c "import json; json.load(open('.tune-up/config.json'))"` passes (`python` where `python3` is missing).
 - `.env.example` has no value that looks like a secret.
 - Each code file is at or under 450 lines.
 - Do not run the install, lint or test commands: nothing is installed yet.

@@ -3,7 +3,7 @@ name: profile
 description: "Creates or updates the project profile (.tune-up/project.md and config.json) by detecting git, stack, tests, database and deploy. Use on: create the project profile, profile; cria o perfil do projeto, perfil do projeto."
 argument-hint: "[project folder]"
 disable-model-invocation: true
-allowed-tools: Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info)
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info)
 ---
 
 # Project profile
@@ -12,7 +12,7 @@ Folder: $ARGUMENTS (empty = current directory)
 
 ## Context (injected)
 
-Context: !`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info`
+Context: !`sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info`
 
 Fields: `language`, `owner`, `reply_style`, `names{}`, `models{}`, `profile_path`, `plans_dir`, `setup_done`, `tools`. If the JSON did not load, run the command once with Bash. Reply in `language`; if the project already has a `language` in `.tune-up/config.json`, that one wins for the project files. Call the user `owner`.
 
@@ -47,11 +47,11 @@ If a profile already exists: read it, show what changed and update only that.
 
 - `${CLAUDE_PLUGIN_ROOT}/templates/profile/project.md` is the model of `.tune-up/project.md`. Fill ALL sections; what you do not know stays "not defined". No secrets, passwords or tokens. Write it in the project language.
 - `${CLAUDE_PLUGIN_ROOT}/templates/profile/config.json` is the model of `.tune-up/config.json`. Keep the contract keys (`project, main_branches, claude_may_merge, commit_on_main, synced_roots, free_repos, research_free_paths, auth_phrases, research_on_phrases, research_off_phrases, bash_rules, language, plans_dir, supabase_guard, line_limit, line_limit_exclude`), drop the `_comment*` keys and the ones you do not use. Keep the safe defaults unless the owner asked otherwise.
-- If the folder is synced, run `chmod u+w` in the SAME command as the `mkdir` and the write.
+- If the folder is synced, run `chmod u+w` (macOS/Linux; on Windows `attrib -r`) in the SAME command as the `mkdir` and the write.
 
 ## Step 4 - Check
 
-- `python3 -c "import json; json.load(open('.tune-up/config.json'))"` must pass.
+- `python3 -c "import json; json.load(open('.tune-up/config.json'))"` must pass (`python` where `python3` is missing).
 - Every command under "Definition of done" must really exist: run `--help` or check the script; mark "not tested" if you did not run it.
 - Do not commit unless asked. Say whether `.tune-up/` goes into git or stays local.
 
@@ -60,7 +60,7 @@ If a profile already exists: read it, show what changed and update only that.
 Run this yourself as the last step (it is a guard-relevant file, so the hook asks the owner to confirm; they approve in the prompt):
 
 ```
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" confiar <absolute path of .tune-up/config.json>
+sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py confiar <absolute path of .tune-up/config.json>
 ```
 
 Warn: settings that loosen a guard (merge by Claude, commit on main, free repos, `supabase_guard: false`, a higher `line_limit`, extra authorization phrases) only take effect AFTER this command is confirmed, and again after each later edit of the file.

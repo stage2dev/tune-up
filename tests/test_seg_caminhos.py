@@ -8,7 +8,7 @@ from base import PromptBase
 
 def disco_sem_caixa(pasta):
     p = os.path.join(pasta, "SondaCaixa")
-    open(p, "w").close()
+    open(p, "w", encoding="utf-8").close()
     try:
         return os.path.exists(os.path.join(pasta, "sondacaixa"))
     finally:
@@ -23,9 +23,9 @@ class SegBase(PromptBase):
         os.makedirs(os.path.join(self.cwd, ".tune-up"))
         for p, txt in ((".config/tune-up/user.json", "{}"), (".claude/settings.json", "{}"),
                        ("dados/perfis_confiaveis.txt", "")):
-            with open(os.path.join(self.tmp, p), "w") as f:
+            with open(os.path.join(self.tmp, p), "w", encoding="utf-8") as f:
                 f.write(txt)
-        with open(os.path.join(self.cwd, ".tune-up", "config.json"), "w") as f:
+        with open(os.path.join(self.cwd, ".tune-up", "config.json"), "w", encoding="utf-8") as f:
             f.write('{"project": "p"}')
 
     def escrever(self, caminho):
@@ -97,7 +97,7 @@ class TestSegProtectedPaths(SegBase):
         s = self.rodar("inicio", {"source": "startup"})
         self.assertIn("protected_paths", s["systemMessage"])
         self.assertIn("rel/dir", s["systemMessage"])
-        with open(os.path.join(self.dados, "erros.log")) as f:
+        with open(os.path.join(self.dados, "erros.log"), encoding="utf-8") as f:
             log = f.read()
         self.assertIn("protected_paths ignored (not absolute): rel/dir", log)
         self.assertIn("protected_paths ignored (not text): 5", log)

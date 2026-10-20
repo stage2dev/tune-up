@@ -30,7 +30,7 @@ House rules:
 - ONE item per call. Test, type and lint commands: as the order says; otherwise the "Definition of done" section of the project profile (`.tune-up/project.md`, legacy `projeto.md`). A command that checks nothing (for example types with an empty file list) is not proof: confirm it examines the files you touched.
 - Never `git stash`. `git add` by file name only (never `-A`, `.` or `commit -a`): other sessions edit the same repo.
 - Never push, open a PR, merge, deploy, or write to production or an external service; that belongs to the coordinator or the project owner.
-- Synced folders: if the profile lists synced roots, run `chmod u+w` in the same command that writes, and `grep` to confirm the edit is on disk before declaring done.
+- Synced folders: if the profile lists synced roots, run `chmod u+w` (macOS/Linux; on Windows `attrib -r`) in the same command that writes, and `grep` to confirm the edit is on disk before declaring done.
 - Risky item: prove database work on a local or disposable Postgres (embedded or container), NEVER on production. Migration: test twice (idempotency) and with pre-existing data. Read real database state only through the read-only query the order authorizes; the repo may differ from production.
 - Money, auth and external sending: test the failure path and the repeat path (retry, timeout, duplicate call), not just the happy path. Never send a real message or use a real customer in a test.
 - A write that can be blocked silently (RLS, constraint): check affected rows, not just the absence of an error.

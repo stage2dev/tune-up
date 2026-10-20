@@ -184,7 +184,7 @@ def liberar_escrita(caminho, raiz):
     arquivo de outro dono. Windows: sem dono nem bits de modo (ACLs não são lidas); só tira o
     atributo somente-leitura de arquivo, nunca de pasta."""
     import stat
-    raiz = os.path.realpath(raiz)
+    raiz, caminho = os.path.realpath(nativo(raiz)), nativo(caminho)
 
     def pode(p):
         return dentro(p, raiz) and ".git" not in os.path.relpath(p, raiz).split(os.sep)

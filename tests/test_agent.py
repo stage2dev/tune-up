@@ -47,7 +47,7 @@ class TestAgent(AgentBase):
 class TestA7ModeloDaSessao(AgentBase):
     def test_synthetic_no_fim(self):
         p = os.path.join(self.tmp, "t.jsonl")
-        with open(p, "w") as f:
+        with open(p, "w", encoding="utf-8") as f:
             f.write(json.dumps({"type": "assistant", "message": {"model": "claude-fable-5-1"}}) + "\n")
             f.write(json.dumps({"type": "assistant", "message": {"model": "<synthetic>"}}) + "\n")
         s = self.agent({"subagent_type": "general-purpose", "prompt": "x"}, {"transcript_path": p})
@@ -55,7 +55,7 @@ class TestA7ModeloDaSessao(AgentBase):
 
     def test_requested_model(self):
         p = os.path.join(self.tmp, "t.jsonl")
-        with open(p, "w") as f:
+        with open(p, "w", encoding="utf-8") as f:
             f.write(json.dumps({"type": "assistant", "requestedModel": "fable",
                                 "message": {"model": "<synthetic>"}}) + "\n")
         s = self.agent({"subagent_type": "general-purpose", "prompt": "x"}, {"transcript_path": p})

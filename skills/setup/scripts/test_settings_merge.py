@@ -75,7 +75,7 @@ class SettingsMergeTest(unittest.TestCase):
         self.assertEqual(len(baks), 2)
         for b in baks:
             self.assertRegex(b, r"^settings\.json\.bak-tune-up-\d{8}-\d{6}(-\d+)?$")
-        with open(os.path.join(self.tmp, baks[0])) as fh:
+        with open(os.path.join(self.tmp, baks[0]), encoding="utf-8") as fh:
             self.assertEqual(fh.read(), '{"a": 1}')
 
     def test_refuses_secret_like_keys(self):
@@ -131,7 +131,7 @@ class SettingsMergeTest(unittest.TestCase):
         real = settings_merge.write_atomic
 
         def racing(path, data, st):
-            with open(path, "w") as fh:
+            with open(path, "w", encoding="utf-8") as fh:
                 fh.write('{"other": "writer"}')
             return real(path, data, st)
 

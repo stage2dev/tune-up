@@ -2,12 +2,12 @@
 name: talk
 description: Talk mode - interview, brainstorm and persona debate that turns an idea into project documents, no code. Use for "talk mode", "modo conversa", "let's talk about", "brainstorm", "quero discutir uma ideia".
 argument-hint: "<idea, topic or change to discuss>"
-allowed-tools: Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info)
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info)
 ---
 
 # Talk mode
 
-Context: !`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info`
+Context: !`sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info`
 
 Topic: $ARGUMENTS
 

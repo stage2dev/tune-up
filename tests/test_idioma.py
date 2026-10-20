@@ -50,11 +50,11 @@ class TestIdioma(PromptBase):
 
     def test_user_json_quebrado_usa_padrao_e_loga(self):
         p = os.path.join(self.tmp, "user.json")
-        with open(p, "w") as f:
+        with open(p, "w", encoding="utf-8") as f:
             f.write("{quebrado")
         self.env["TUNEUP_USER_JSON"] = p
         self.assertIn("add files by name", self.razao("git add -A"))
-        with open(os.path.join(self.dados, "erros.log")) as f:
+        with open(os.path.join(self.dados, "erros.log"), encoding="utf-8") as f:
             self.assertIn("user.json invalid", f.read())
 
     def test_projeto_confiado_vence_user_json(self):
@@ -62,7 +62,7 @@ class TestIdioma(PromptBase):
         perfil = os.path.join(self.cwd, ".tune-up")
         os.makedirs(perfil)
         c = os.path.join(perfil, "config.json")
-        with open(c, "w") as f:
+        with open(c, "w", encoding="utf-8") as f:
             json.dump({"language": "pt-BR"}, f)
         self.assertIn("add files by name", self.razao("git add -A"))  # not trusted: user.json wins
         self.confiar(c)
@@ -91,7 +91,7 @@ class TestIdioma(PromptBase):
         c = os.path.join(perfil, "config.json")
         for lang, esperado in (("fr", "adicione os arquivos pelo nome"), ("EN", "add files by name")):
             with self.subTest(lang=lang):
-                with open(c, "w") as f:
+                with open(c, "w", encoding="utf-8") as f:
                     json.dump({"language": lang}, f)
                 self.confiar(c)
                 self.assertIn(esperado, self.razao("git add -A"))
@@ -100,7 +100,7 @@ class TestIdioma(PromptBase):
         p = os.path.join(self.tmp, "user.json")
         for bruto in ("{quebrado", "[1, 2]"):
             with self.subTest(bruto=bruto):
-                with open(p, "w") as f:
+                with open(p, "w", encoding="utf-8") as f:
                     f.write(bruto)
                 self.env["TUNEUP_USER_JSON"] = p
                 s = self.rodar("inicio", {"source": "startup"})

@@ -15,7 +15,8 @@ Talk and research modes: only obviously read-only commands pass without a questi
 Get-Location/pwd/gl, git status/log/diff/show without global options or --output), without
 redirection, `$(`/`@(` or any other statement. Everything else asks.
 
-Unparseable (open quote, here-string or block comment, `--%`, `<`) always asks.
+`iex "<x>"` and `powershell -Command "<x>"` are opened one level (like `eval`/`bash -c`).
+Unparseable (open quote, here-string or block comment, `--%`, `<`, -EncodedCommand) always asks.
 
 Limits: no variable, alias or function resolution (`$c = "rm"; & $c x` asks only through
 the modes and the text check); a redefined alias (`Set-Alias ls Remove-Item`) is not
@@ -123,8 +124,16 @@ def instrucoes(texto):
         elif c in ";|{}()\n" or texto.startswith("&&", i):
             separa()
             i += 2 if texto.startswith(("&&", "||"), i) else 1
-        elif c == "&" or (c in "$@" and texto[i + 1:i + 2] in ("(", "{") and not tem):
-            separa() if c == "&" else fecha()  # call operator / $( @( @{: the bracket splits next
+        elif c == "$" and texto[i + 1:i + 2] == "{":  # ${env:X}: one variable, not a block
+            j = texto.find("}", i)
+            if j < 0:
+                raise ValueError("open ${")
+            atual, tem, i = atual + texto[i:j + 1], True, j + 1
+        elif c == "&":  # call operator: what follows is a statement of its own
+            separa()
+            i += 1
+        elif c in "$@" and texto[i + 1:i + 2] in ("(", "{") and not tem:
+            fecha()  # $( @( @{: the bracket splits next
             i += 1
         elif c == "<":
             raise ValueError("'<' is reserved")
@@ -134,9 +143,7 @@ def instrucoes(texto):
             if not m.group(1):
                 stmts[-1].append(REDIR)
             i = m.end()
-        elif c == "," and not tem:
-            i += 1
-        elif c == ",":
+        elif c == ",":  # `Remove-Item a,b`: two paths
             fecha()
             i += 1
         else:
@@ -146,6 +153,26 @@ def instrucoes(texto):
     if any(t == "--%" for s in stmts for t in s):
         raise ValueError("--% stop-parsing")
     return [s for s in stmts if s]
+
+
+def abre(stmts):
+    """One level of `iex "<x>"` / `powershell|pwsh -Command "<x>"` opened, like `eval`/`bash -c`
+    in Bash. `-EncodedCommand` cannot be read: ValueError."""
+    out = []
+    for s in stmts:
+        c, interno = nome_cmd(s[0]), None
+        if c in ("iex", "invoke-expression") and len(s) > 1:
+            interno = valor_ps(s, "command") or s[-1]
+        elif c in ("powershell", "pwsh"):
+            for j, t in enumerate(s[1:], 1):
+                pr = param(t)
+                if pr and ("encodedcommand".startswith(pr[0]) or pr[0] == "ec"):
+                    raise ValueError("-EncodedCommand")
+                if pr and "command".startswith(pr[0]):
+                    interno = pr[1] if pr[1] is not None else " ".join(s[j + 1:])
+                    break
+        out.extend(instrucoes(interno) if interno else [s])
+    return out
 
 
 def nome_cmd(t):
@@ -193,30 +220,48 @@ def leitura(toks):
     c = nome_cmd(toks[0])
     if c in LEITURA:
         return True
-    return c == "git" and toks[1:2] and toks[1] in GIT_LEITURA and \
+    return c == "git" and len(toks) > 1 and toks[1] in GIT_LEITURA and \
         not any(t.startswith(("--output", "--ext-diff", "--textconv")) or t == "-o" for t in toks)
+
+
+def valor_ps(toks, nome):
+    """Value of `-<nome>` / `-<nome>:v` (full name), or None."""
+    for j, t in enumerate(toks):
+        pr = param(t)
+        if pr and pr[0] == nome:
+            return pr[1] if pr[1] is not None else (toks[j + 1] if j + 1 < len(toks) else None)
+    return None
 
 
 def como_bash(toks):
     """Bash spelling of one statement for achados_bash."""
     c = nome_cmd(toks[0])
+    redir = [toks[j + 1] for j, t in enumerate(toks[:-1]) if t == REDIR]
+    todos, destino, pos = caminhos(toks, c in SO_PRIMEIRO)
     if c in CD:
-        todos = caminhos(toks)[0]
-        out = ["cd"] + todos[:1]
-    elif c in ESCREVE or c in COPIA:
-        todos, destino, pos = caminhos(toks, c in SO_PRIMEIRO)
-        if c in COPIA:
-            todos = destino or pos[-1:] if len(pos) > 1 or destino else []
-        out = ["tee"] + todos if todos else []
+        return " ".join(map(_q, ["cd"] + todos[:1] + [x for r in redir for x in (REDIR, r)]))
+    if c in COPIA:
+        alvos = destino or (pos[-1:] if len(pos) > 1 else [])
+    elif c in ESCREVE:
+        alvos = todos + extras(toks, todos)
     else:
-        destino = caminhos(toks)[1]
-        out = [t for t in toks if t != REDIR] and list(toks)
-        if destino:
-            return " ".join(_q(t) for t in out) + " ; tee " + " ".join(_q(t) for t in destino)
-    if not out:
-        return ""
-    alvos = [toks[j + 1] for j, t in enumerate(toks[:-1]) if t == REDIR]
-    return " ".join(_q(t) for t in out) + "".join(" > " + _q(a) for a in alvos)
+        sem = [t for j, t in enumerate(toks) if t != REDIR and (j == 0 or toks[j - 1] != REDIR)]
+        out = " ".join(map(_q, sem + [x for r in redir for x in (REDIR, r)]))
+        return out + (" ; tee " + " ".join(map(_q, destino)) if destino else "")
+    alvos = alvos + redir
+    return "tee " + " ".join(map(_q, alvos)) if alvos else ""
+
+
+def extras(toks, todos):
+    """New-Item -Path d -Name n -> d/n; Rename-Item p -NewName n -> dirname(p)/n."""
+    out = []
+    nome, novo = valor_ps(toks, "name"), valor_ps(toks, "newname")
+    base = ([x for x in todos if x != novo] or ["."])[0].replace("\\", "/").rstrip("/")
+    if nome:
+        out.append(base + "/" + nome)
+    if novo:
+        out.append((base.rsplit("/", 1)[0] if "/" in base else ".") + "/" + novo)
+    return out
 
 
 def _q(t):
@@ -235,7 +280,7 @@ def ev_powershell(cmd, d, cfg):
     pesquisa = bool(sess.get("modo_pesquisa")) or conversa
     curto = " ".join(cmd.split())[:60]
     try:
-        stmts = instrucoes(cmd.replace("\r\n", "\n"))
+        stmts = abre(instrucoes(cmd.replace("\r\n", "\n")))
     except ValueError:
         return decidir([("perguntar", msg("ps_ilegivel", curto))])
     achados = achados_bash(" ; ".join(x for x in map(como_bash, stmts) if x), d, cfg, regras_em=cmd)

@@ -124,7 +124,7 @@ class TestC4McpAllowlist(Base):
 
     def test_hooks_json_matcher(self):
         caminho = os.path.join(os.path.dirname(os.path.dirname(SCRIPT)), "hooks", "hooks.json")
-        with open(caminho) as f:
+        with open(caminho, encoding="utf-8") as f:
             h = json.load(f)
         ms = [g["matcher"] for g in h["hooks"]["PreToolUse"] if "prod" in g["hooks"][0]["command"]]
         self.assertEqual(ms, ["mcp__.*[Ss]upabase.*"])
@@ -184,7 +184,7 @@ class TestH2bSupabaseGuard(Base):
     def projeto(self, conteudo, confiar):
         c = os.path.join(self.cwd, ".tune-up", "config.json")
         os.makedirs(os.path.dirname(c), exist_ok=True)
-        with open(c, "w") as f:
+        with open(c, "w", encoding="utf-8") as f:
             json.dump(conteudo, f)
         if confiar:
             self.confiar(c)

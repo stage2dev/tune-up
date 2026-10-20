@@ -2,12 +2,12 @@
 name: ship
 description: Commits and opens the PR with an honest body. Use for "push and PR", "commit", "open the PR", "ship it", "entrega", "sobe a PR", "abre a pr". Merge belongs to the owner, never to you (unless the profile says otherwise).
 argument-hint: "[branch or note]"
-allowed-tools: Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info)
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info)
 ---
 
 # Ship - commit, push and PR
 
-Context: !`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info`
+Context: !`sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info`
 
 Request: $ARGUMENTS
 

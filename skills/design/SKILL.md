@@ -2,12 +2,12 @@
 name: design
 description: Builds the design system (DESIGN.md with tokens) and a static HTML prototype made from it. Use for "design system", "prototype", "DESIGN.md", "screen", "protótipo", "tela", "sistema de design", "identidade visual".
 argument-hint: "[visual direction or references]"
-allowed-tools: Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info)
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info)
 ---
 
 # Design system and prototype
 
-Context: !`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info`
+Context: !`sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info`
 
 Request: $ARGUMENTS
 
@@ -44,7 +44,7 @@ Format rules for the frontmatter (the converter reads this subset only):
 
 ```
 mkdir -p docs/prototype
-python3 "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tokens_to_css.py" docs/<names.design> \
+sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" skills/design/scripts/tokens_to_css.py docs/<names.design> \
   --prototype "${CLAUDE_PLUGIN_ROOT}/skills/design/templates/prototype.html" --out docs/prototype/index.html
 ```
 

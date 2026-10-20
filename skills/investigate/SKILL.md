@@ -2,12 +2,12 @@
 name: investigate
 description: Investigates a bug, pasted error, "stopped answering", failed booking or customer conversation. Read-only first, cause with proof, smallest fix. Use for "find out why", "investigar", "descobre o porquê".
 argument-hint: "<symptom, error, identifier or conversation>"
-allowed-tools: Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info)
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info)
 ---
 
 # Investigate - find the cause before touching anything
 
-Context: !`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info`
+Context: !`sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info`
 
 Symptom: $ARGUMENTS
 

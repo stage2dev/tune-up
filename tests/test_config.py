@@ -16,7 +16,7 @@ class TestC2PerfilConfiavel(PromptBase):
         p = os.path.join(base or self.cwd, ".tune-up")
         os.makedirs(p, exist_ok=True)
         c = os.path.join(p, "config.json")
-        with open(c, "w") as f:
+        with open(c, "w", encoding="utf-8") as f:
             json.dump(conteudo, f)
         return c
 
@@ -42,7 +42,7 @@ class TestC2PerfilConfiavel(PromptBase):
         self.confiar(c)
         self.confiar(c)
         self.assertIsNone(self.bash("gh pr merge 12"))
-        with open(os.path.join(self.dados, "perfis_confiaveis.txt")) as f:
+        with open(os.path.join(self.dados, "perfis_confiaveis.txt"), encoding="utf-8") as f:
             linhas = f.read().splitlines()
         self.assertEqual(len(linhas), 1)  # trusting the same content twice adds no line
         self.assertEqual(linhas[0].split("\t")[0], os.path.realpath(c))
@@ -70,14 +70,14 @@ class TestC2PerfilConfiavel(PromptBase):
                                   {"regex": "b" * 301, "acao": "bloquear", "msg": "y"}]})
         self.assertIsNone(self.bash("echo aaaa"))
         self.assertIsNone(self.bash("echo " + "b" * 301))
-        with open(os.path.join(self.dados, "erros.log")) as f:
+        with open(os.path.join(self.dados, "erros.log"), encoding="utf-8") as f:
             self.assertIn("discarded", f.read())
 
     def test_msg_e_projeto_cortados(self):
         perfil = os.path.dirname(self.cfg({"projeto": "p" * 200 + "\nINJETA",
                                            "regras_bash": [{"regex": "rodar", "acao": "avisar",
                                                             "msg": "m" * 200 + "\nINJETA"}]}))
-        open(os.path.join(perfil, "projeto.md"), "w").close()
+        open(os.path.join(perfil, "projeto.md"), "w", encoding="utf-8").close()
         s = self.rodar("bash", {"tool_name": "Bash", "tool_input": {"command": "./rodar"}})
         self.assertNotIn("INJETA", json.dumps(s))
         self.assertNotIn("\\n", json.dumps(s))
@@ -91,7 +91,7 @@ class TestD3TiposDoConfig(PromptBase):
         p = os.path.join(self.cwd, ".tune-up")
         os.makedirs(p, exist_ok=True)
         c = os.path.join(p, "config.json")
-        with open(c, "w") as f:
+        with open(c, "w", encoding="utf-8") as f:
             json.dump(conteudo, f)
         if confiar:
             self.confiar(c)
@@ -112,13 +112,13 @@ class TestD3TiposDoConfig(PromptBase):
     def test_raizes_string_descartada(self):
         self.cfg({"raizes_sincronizadas": "/"})
         a = os.path.join(self.tmp, "x.txt")
-        open(a, "w").close()
+        open(a, "w", encoding="utf-8").close()
         os.chmod(a, 0o444)
         self.rodar("escrita", {"tool_name": "Edit", "tool_input": {"file_path": a}})
         self.assertFalse(os.stat(a).st_mode & stat.S_IWUSR)
         s = self.rodar("inicio", {"source": "startup"})
         self.assertIn("synced_roots", s["systemMessage"])
-        with open(os.path.join(self.dados, "erros.log")) as f:
+        with open(os.path.join(self.dados, "erros.log"), encoding="utf-8") as f:
             self.assertIn("synced_roots", f.read())
 
     def test_bool_errado(self):
@@ -145,7 +145,7 @@ class TestH2aContratos(PromptBase):
         d = os.path.join(self.tmp, nome)
         os.makedirs(os.path.join(d, ".tune-up"))
         c = os.path.join(d, ".tune-up", "config.json")
-        with open(c, "w") as f:
+        with open(c, "w", encoding="utf-8") as f:
             json.dump(conteudo, f)
         if confiar:
             self.confiar(c)
@@ -187,7 +187,7 @@ class TestH2aContratos(PromptBase):
     def test_trust_alias(self):
         c = os.path.join(self.cwd, ".tune-up", "config.json")
         os.makedirs(os.path.dirname(c))
-        with open(c, "w") as f:
+        with open(c, "w", encoding="utf-8") as f:
             json.dump({"claude_may_merge": True}, f)
         r = subprocess.run([sys.executable, SCRIPT, "trust", c], capture_output=True, text=True,
                            env=self.env, timeout=20)
@@ -223,12 +223,12 @@ class TestH2aContratos(PromptBase):
     def test_import_quebrado_loga_e_sai_zero(self):
         copia = os.path.join(self.tmp, "copia")
         shutil.copytree(os.path.dirname(SCRIPT), copia)
-        with open(os.path.join(copia, "tuneup", "__init__.py"), "a") as f:
+        with open(os.path.join(copia, "tuneup", "__init__.py"), "a", encoding="utf-8") as f:
             f.write("\nraise ImportError('broken on purpose')\n")
         r = subprocess.run([sys.executable, os.path.join(copia, "guarda.py"), "bash"], input="{}",
                            capture_output=True, text=True, env=self.env, timeout=20)
         self.assertEqual((r.returncode, r.stdout), (0, ""))
-        with open(os.path.join(self.dados, "erros.log")) as f:
+        with open(os.path.join(self.dados, "erros.log"), encoding="utf-8") as f:
             linhas = f.read().splitlines()
         self.assertEqual(len(linhas), 1)
         self.assertIn("broken on purpose", linhas[0])
@@ -245,7 +245,7 @@ class TestH2aContratos(PromptBase):
                 r = subprocess.run([sys.executable, SCRIPT, "info"], cwd=d, env=self.env, timeout=20,
                                    capture_output=True, text=True, stdin=subprocess.DEVNULL)
                 self.assertEqual(json.loads(r.stdout)["plans_dir"], os.path.join(d, esperado))
-        with open(os.path.join(self.dados, "erros.log")) as f:
+        with open(os.path.join(self.dados, "erros.log"), encoding="utf-8") as f:
             self.assertGreaterEqual(f.read().count("plans_dir invalid"), len(hostis))
 
     def test_plans_dir_ancorado_na_raiz_do_projeto(self):
@@ -262,7 +262,7 @@ class TestH2aContratos(PromptBase):
     def test_import_quebrado_no_inicio_avisa(self):
         copia = os.path.join(self.tmp, "copia")
         shutil.copytree(os.path.dirname(SCRIPT), copia)
-        with open(os.path.join(copia, "tuneup", "__init__.py"), "a") as f:
+        with open(os.path.join(copia, "tuneup", "__init__.py"), "a", encoding="utf-8") as f:
             f.write("\nraise ImportError('broken on purpose')\n")
         for ev, esperado in (("inicio", True), ("bash", False)):
             with self.subTest(ev=ev):
@@ -282,7 +282,7 @@ class TestM8PerfilPorSymlink(PromptBase):
         a = os.path.join(self.tmp, "A")
         os.makedirs(os.path.join(a, ".tune-up"))
         c = os.path.join(a, ".tune-up", "config.json")
-        with open(c, "w") as f:
+        with open(c, "w", encoding="utf-8") as f:
             json.dump({"merge_pelo_claude": True}, f)
         self.confiar(c)
         s = self.rodar("bash", {"cwd": a, "tool_name": "Bash", "tool_input": {"command": "gh pr merge 1"}})
@@ -292,7 +292,7 @@ class TestM8PerfilPorSymlink(PromptBase):
         symlink(os.path.join(a, ".tune-up"), os.path.join(b, ".tune-up"), True)
         s = self.rodar("bash", {"cwd": b, "tool_name": "Bash", "tool_input": {"command": "gh pr merge 1"}})
         self.assertEqual(self.decisao(s), "bloquear")
-        with open(os.path.join(self.dados, "erros.log")) as f:
+        with open(os.path.join(self.dados, "erros.log"), encoding="utf-8") as f:
             self.assertIn("profile not trusted", f.read())
 
 

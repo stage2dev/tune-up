@@ -37,7 +37,7 @@ class TestInfo(Base):
         self.assertEqual(i["owner"], "")
         self.assertEqual(i["models"]["reviewer-security"], {"model": "opus", "effort": "high"})
         self.assertEqual(i["models"]["mapper"], {"model": "haiku", "effort": "medium"})
-        with open(NAMES) as f:
+        with open(NAMES, encoding="utf-8") as f:
             self.assertEqual(i["names"], json.load(f)["en"])
         self.assertEqual(set(i["tools"]), {"gh", "graphify", "uv", "node"})
         self.assertTrue(all(isinstance(v, bool) for v in i["tools"].values()))
@@ -68,16 +68,16 @@ class TestInfo(Base):
     def test_plans_dir_do_projeto(self):
         perfil = os.path.join(self.cwd, ".tune-up")
         os.makedirs(perfil)
-        with open(os.path.join(perfil, "config.json"), "w") as f:
+        with open(os.path.join(perfil, "config.json"), "w", encoding="utf-8") as f:
             json.dump({"plans_dir": "docs/plans"}, f)
         self.assertEqual(self.info()["plans_dir"], os.path.join(self.cwd, "docs", "plans"))
 
     def test_project_md_e_legado(self):
         perfil = os.path.join(self.cwd, ".tune-up")
         os.makedirs(perfil)
-        open(os.path.join(perfil, "projeto.md"), "w").close()
+        open(os.path.join(perfil, "projeto.md"), "w", encoding="utf-8").close()
         self.assertEqual(self.info()["profile_path"], os.path.join(perfil, "projeto.md"))
-        open(os.path.join(perfil, "project.md"), "w").close()
+        open(os.path.join(perfil, "project.md"), "w", encoding="utf-8").close()
         self.assertEqual(self.info()["profile_path"], os.path.join(perfil, "project.md"))
 
     def test_plugin_source_e_catalogo(self):
@@ -87,7 +87,7 @@ class TestInfo(Base):
         self.assertIsNone(self.info()["plugin_source"])  # not a git repo
         subprocess.run(["git", "init", "-q", fonte], check=True)
         catalogo = os.path.join(os.path.dirname(p), "skills-catalog.md")
-        open(catalogo, "w").close()
+        open(catalogo, "w", encoding="utf-8").close()
         i = self.info()
         self.assertEqual(i["plugin_source"], fonte)
         self.assertEqual(i["catalog_path"], catalogo)
@@ -95,7 +95,7 @@ class TestInfo(Base):
 
     def test_confiar_nao_le_stdin(self):
         c = os.path.join(self.tmp, "c.json")
-        open(c, "w").close()
+        open(c, "w", encoding="utf-8").close()
         for sub in ("confiar", "trust"):
             p = subprocess.Popen([sys.executable, SCRIPT, sub, c], env=self.env, stdin=subprocess.PIPE,
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -124,12 +124,12 @@ class TestInfo(Base):
                                            "research": "x" * 81, "progress": "a\\b", "decisions": "OK.md"}})
         i = self.info()
         self.assertEqual((i["language"], i["reply_style"]), ("pt-BR", "plain"))
-        with open(NAMES) as f:
+        with open(NAMES, encoding="utf-8") as f:
             pt = json.load(f)["pt-BR"]
         for k in ("goal", "need_you", "vision", "research", "progress"):
             self.assertEqual(i["names"][k], pt[k])
         self.assertEqual(i["names"]["decisions"], "OK.md")
-        with open(os.path.join(self.dados, "erros.log")) as f:
+        with open(os.path.join(self.dados, "erros.log"), encoding="utf-8") as f:
             log = f.read()
         self.assertIn("reply_style", log)
         self.assertIn("names_override", log)
@@ -142,7 +142,7 @@ class TestInfo(Base):
         for bruto in ("{quebrado", "[1, 2]", "5"):
             with self.subTest(bruto=bruto):
                 p = os.path.join(self.tmp, "user.json")
-                with open(p, "w") as f:
+                with open(p, "w", encoding="utf-8") as f:
                     f.write(bruto)
                 self.env["TUNEUP_USER_JSON"] = p
                 self.assertFalse(self.info()["setup_done"])

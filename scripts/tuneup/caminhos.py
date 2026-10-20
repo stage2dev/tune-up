@@ -1,9 +1,10 @@
 """tune-up: compare paths by file identity (case-insensitive disks, hard links, symlinks).
 
 Windows: every path goes through `nativo` first, so the spellings Windows opens as the same
-file compare as the same path (Git Bash `/c/x`, `/tmp`, `\\?\`, admin shares, `name.`,
+file compare as the same path (Git Bash `/c/x`, `/tmp`, the `\\\\?\\` prefix, admin shares, `name.`,
 `name:stream`). 8.3 short names (PROGRA~1) are matched by file identity (os.stat) or by
 realpath of the existing ancestor; a junction or subst drive the same way."""
+import ntpath
 import os
 import re
 import sys
@@ -59,7 +60,7 @@ def nativo(p):
         q = m.group(1).upper() + ":" + (q[2:] or "/")
     elif q == "/tmp" or q.startswith("/tmp/"):
         q = temporarios()[0].replace("\\", "/") + q[4:]
-    unidade, resto = os.path.splitdrive(q)
+    unidade, resto = ntpath.splitdrive(q)
     partes = [x if x in ("", ".", "..") else x.split(":", 1)[0].rstrip(". ") or "."
               for x in resto.split("/")]
     return unidade + "/".join(partes)
@@ -74,6 +75,8 @@ def grafia(p):
 def ident(p):
     try:
         st = os.stat(nativo(p))
+        if NT and not st.st_ino:  # some Windows file systems give no file id: all would match
+            return None
         return (st.st_dev, st.st_ino)
     except (OSError, ValueError):
         return None

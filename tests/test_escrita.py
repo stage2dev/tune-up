@@ -13,12 +13,12 @@ class TestEscrita(Base):
         sub = os.path.join(raiz, "sub")
         os.makedirs(sub)
         arq = os.path.join(raiz, "velho.txt")
-        open(arq, "w").close()
+        open(arq, "w", encoding="utf-8").close()
         os.chmod(arq, 0o444)
         os.chmod(sub, 0o555)
         perfil = os.path.join(self.cwd, ".tune-up")
         os.makedirs(perfil)
-        with open(os.path.join(perfil, "config.json"), "w") as f:
+        with open(os.path.join(perfil, "config.json"), "w", encoding="utf-8") as f:
             json.dump({"raizes_sincronizadas": [raiz]}, f)
         self.confiar(os.path.join(perfil, "config.json"))
         s = self.rodar("escrita", {"tool_name": "Write",
@@ -109,7 +109,7 @@ class TestD6Permissoes(PromptBase):
         self.rodar("bash", {"tool_input": {"command": "git commit -m x"}}, {"TUNEUP_FAKE_BRANCH": ""})
         c = os.path.join(self.cwd, ".tune-up", "config.json")
         os.makedirs(os.path.dirname(c))
-        open(c, "w").write("{}")
+        open(c, "w", encoding="utf-8").write("{}")
         self.confiar(c)
         modo = lambda p: stat.S_IMODE(os.stat(p).st_mode)
         self.assertEqual(modo(self.dados), 0o700)

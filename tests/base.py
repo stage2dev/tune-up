@@ -64,7 +64,7 @@ class Base(unittest.TestCase):
 
     def user_json(self, dados):
         p = os.path.join(self.tmp, "user.json")
-        with open(p, "w") as f:
+        with open(p, "w", encoding="utf-8") as f:
             json.dump(dados, f)
         self.env["TUNEUP_USER_JSON"] = p
         return p
@@ -86,13 +86,13 @@ class Base(unittest.TestCase):
             dados.update(entrada)
             bruto = json.dumps(dados)
         r = subprocess.run([sys.executable, SCRIPT, evento], input=bruto, capture_output=True,
-                           text=True, env=e, timeout=20)
+                           text=True, encoding="utf-8", env=e, timeout=20)
         self.assertEqual(r.returncode, 0, r.stderr)
         return json.loads(r.stdout) if r.stdout.strip() else None
 
     def confiar(self, caminho):
         r = subprocess.run([sys.executable, SCRIPT, "confiar", caminho], capture_output=True,
-                           text=True, env=self.env, timeout=20)
+                           text=True, encoding="utf-8", env=self.env, timeout=20)
         self.assertEqual(r.returncode, 0, r.stderr)
         return r
 
@@ -101,11 +101,11 @@ class Base(unittest.TestCase):
         os.makedirs(p, exist_ok=True)
         d = {"auth_prompt_id": None, "modo_pesquisa": False, "atualizado": 0}
         d.update(campos)
-        with open(os.path.join(p, "s1.json"), "w") as f:
+        with open(os.path.join(p, "s1.json"), "w", encoding="utf-8") as f:
             json.dump(d, f)
 
     def ler_sessao(self):
-        with open(os.path.join(self.dados, "sessoes", "s1.json")) as f:
+        with open(os.path.join(self.dados, "sessoes", "s1.json"), encoding="utf-8") as f:
             return json.load(f)
 
     # asserts
@@ -131,7 +131,7 @@ class AgentBase(Base):
 
     def transcript(self, modelo):
         p = os.path.join(self.tmp, "t.jsonl")
-        with open(p, "w") as f:
+        with open(p, "w", encoding="utf-8") as f:
             f.write(json.dumps({"type": "user", "message": {"content": "oi"}}) + "\n")
             f.write(json.dumps({"type": "assistant", "message": {"model": modelo}}) + "\n")
             f.write(json.dumps({"type": "system", "subtype": "x"}) + "\n")
@@ -153,14 +153,14 @@ class FakeBin(Base):
         b = os.path.join(self.tmp, "bin")
         os.makedirs(b, exist_ok=True)
         p = os.path.join(b, nome)
-        with open(p, "w", newline="\n") as f:
+        with open(p, "w", newline="\n", encoding="utf-8") as f:
             f.write("#!/bin/sh\necho \"$@\" >> %s/%s.chamadas\n%s\n" % (self.tmp, nome, corpo))
         os.chmod(p, 0o755)
         self.env["PATH"] = b + os.pathsep + self.env.get("PATH", "")
 
     def chamadas(self, nome):
         try:
-            with open(os.path.join(self.tmp, nome + ".chamadas")) as f:
+            with open(os.path.join(self.tmp, nome + ".chamadas"), encoding="utf-8") as f:
                 return f.read().splitlines()
         except OSError:
             return []

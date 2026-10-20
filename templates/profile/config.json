@@ -1,5 +1,5 @@
 {
-  "_comment": "Template for .tune-up/config.json. Every key is optional; delete the _comment* keys and what you do not use. Scalars here override the default; lists ADD to the default. Keys that loosen a guard only take effect after: python3 guarda.py confiar <this file>.",
+  "_comment": "Template for .tune-up/config.json. Every key is optional; delete the _comment* keys and what you do not use. Scalars here override the default; lists ADD to the default. Keys that loosen a guard only take effect after: sh \"<plugin>/scripts/py\" scripts/guarda.py confiar <this file>.",
   "project": "short name",
   "_comment_language": "Project language for replies and documents (en, pt-BR...). Overrides the user language. Empty = use the user's.",
   "language": "",
@@ -11,7 +11,7 @@
   "claude_may_merge": false,
   "_comment_commit": "false = committing while on a main branch is blocked. Branch from origin first.",
   "commit_on_main": false,
-  "_comment_synced": "Folders kept in sync by a file-sync tool: the hook runs chmod u+w before writing to them.",
+  "_comment_synced": "Folders kept in sync by a file-sync tool: the hook makes files writable before writing to them (chmod u+w on macOS/Linux, read-only attribute on Windows).",
   "synced_roots": [],
   "_comment_free_repos": "Repos where the git guard rules are relaxed. Default: none.",
   "free_repos": [],

@@ -3,7 +3,7 @@ name: git-clean
 description: "Git cleanup with backup, item by item. Use on: git is a mess, clean branches, old PRs, worktrees, stash; limpa as branches, git bagunçado, PRs velhas. Deletes only after the owner's ok."
 argument-hint: "[repository]"
 disable-model-invocation: true
-allowed-tools: Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info)
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info)
 ---
 
 # Git clean
@@ -12,7 +12,7 @@ Repository: $ARGUMENTS (empty = the current one)
 
 ## Context (injected)
 
-Context: !`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guarda.py" info`
+Context: !`sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info`
 
 Fields: `language`, `owner`, `reply_style`, `names{}`, `models{}`, `forbidden_subagent_models` (default `["fable"]`), `profile_path`, `plans_dir`, `setup_done`, `tools`, `plugin_source`, `catalog_path`. Write every reply and document in `language`. Never hardcode marker or document names: use the values in `names` (keys such as `need_you`, `progress`, `part_closed`). Call the user `owner`. If the JSON did not load, run the command once with Bash.
 

@@ -14,7 +14,7 @@ from .sql_prod import pg_remoto, pg_remoto_no_texto, supabase_remoto
 # ---------------------------------------------------------------- git/gh externos
 
 INICIO = time.time()
-PRAZO = 7.0  # segundos para o evento inteiro (o hook do Bash tem 10)
+PRAZO = 7.0  # segundos para o evento inteiro (o hook do Bash tem 15: folga para o Windows)
 if TESTE and os.environ.get("TUNEUP_PRAZO"):
     PRAZO = float(os.environ["TUNEUP_PRAZO"])
 _BRANCH = {}
