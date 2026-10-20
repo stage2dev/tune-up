@@ -4,7 +4,7 @@ import os
 import stat
 import unittest
 
-from base import Base, PromptBase, symlink
+from base import Base, PromptBase, sh_path, symlink
 
 
 class TestD1Shell(Base):
@@ -103,9 +103,9 @@ class TestD7HeredocFalsoGit(Base):
 
 class TestD9GuardaNoBash(PromptBase):
     def test_pergunta(self):
-        g = os.path.join(self.tmp, ".claude", "plugins", "tune-up", "scripts", "guarda.py")
-        conf = os.path.join(self.dados, "perfis_confiaveis.txt")
-        cfg = os.path.join(self.cwd, ".tune-up", "config.json")
+        g = sh_path(os.path.join(self.tmp, ".claude", "plugins", "tune-up", "scripts", "guarda.py"))
+        conf = sh_path(os.path.join(self.dados, "perfis_confiaveis.txt"))
+        cfg = sh_path(os.path.join(self.cwd, ".tune-up", "config.json"))
         for cmd in ["python3 %s confiar x" % g, "echo x >> %s" % conf, "echo {} > %s" % cfg,
                     "tee -a %s < x" % conf, "sed -i '' s/a/b/ %s" % cfg, "cp x %s" % conf,
                     "mv %s y" % cfg, "rm -f %s" % conf, "chmod 666 %s" % conf, "ln -sf x %s" % cfg,
@@ -204,6 +204,7 @@ class TestH2bConfiarNaoLiteral(Base):
         copia = os.path.join(self.tmp, "g2.py")
         with open(copia, "w", encoding="utf-8") as f:
             f.write("import tuneup\n# confiar|trust\n")
+        g, copia = sh_path(g), sh_path(copia)
         for cmd in ["S=trust; python3 %s $S x" % g, "python3 %s $(printf trust) x" % g,
                     "python3 %s `printf trust` x" % g, 'python3 %s "$S" x' % g,
                     "python3 %s trust x" % copia, "python3 %s $S x" % copia]:

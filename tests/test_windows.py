@@ -245,7 +245,8 @@ class TestChamadaInfo(unittest.TestCase):
 
     def test_forma_nova(self):
         L = os.path.join(self.r, "scripts", "py").replace("\\", "/")  # Claude passes C:/x; a backslash is refused
-        g = os.path.join(self.r, "scripts", "guarda.py")
+        g = os.path.join(self.r, "scripts", "guarda.py").replace("\\", "/")
+        T = self.t.replace("\\", "/")
         self.assertTrue(self.ok('sh "%s" scripts/guarda.py info' % L))
         self.assertTrue(self.ok("sh %s %s info" % (L, g)))
         self.assertTrue(self.ok("python3 %s info" % g))  # the older form still passes
@@ -253,9 +254,9 @@ class TestChamadaInfo(unittest.TestCase):
                      'bash "%s" scripts/guarda.py info' % L, '"%s" scripts/guarda.py info' % L,
                      'sh "%s" scripts/../scripts/guarda.py info' % L, 'sh "%s" ./scripts/guarda.py info' % L,
                      'sh "%s" scripts/other.py info' % L, 'sh "%s" scripts/guarda.py info; ls' % L,
-                     'sh "%s/dev/x/../tune-up/scripts/py" scripts/guarda.py info' % self.t,
-                     'sh "%s/evil/tune-up/scripts/py" scripts/guarda.py info' % self.t,
-                     'sh "%s" %s/evil/tune-up/scripts/guarda.py info' % (L, self.t)):
+                     'sh "%s/dev/x/../tune-up/scripts/py" scripts/guarda.py info' % T,
+                     'sh "%s/evil/tune-up/scripts/py" scripts/guarda.py info' % T,
+                     'sh "%s" %s/evil/tune-up/scripts/guarda.py info' % (L, T)):
             self.assertFalse(self.ok(ruim), ruim)
 
     @unittest.skipUnless(NT, "Windows spellings")

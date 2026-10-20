@@ -181,7 +181,8 @@ def chamada_info(cmd):
 
 def _exato(tok, alvo):
     """`tok` spells `alvo` (or its realpath) itself, and resolves to it."""
-    if ".." in re.split(r"[/\\]", tok):  # `~/dev/L/../tune-up/...`: the kernel resolves L first
+    partes = re.split(r"[/\\]", tok)
+    if ".." in partes or "." in partes:  # `~/dev/L/../tune-up/...`: the kernel resolves L first
         return False
     if NT:
         def norm(x):

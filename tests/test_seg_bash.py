@@ -4,7 +4,7 @@ import json
 import os
 import subprocess
 import unittest
-from base import IS_WIN, SCRIPT, PromptBase
+from base import IS_WIN, SCRIPT, PromptBase, sh_path
 
 
 class TestSegVerbosDeEscrita(PromptBase):
@@ -128,7 +128,9 @@ class TestSegExecutoresEVerbos(PromptBase):
         cmd = "touch " + " ".join("/var/tmp/f%d" % i for i in range(6000)) + "; cp a ~/.config/tune-up/user.json"
         t = time.time()
         self.assertEqual(self.bash(cmd), "perguntar")
-        self.assertLess(time.time() - t, 1.5)  # was ~3 s (B2); measured ~0.33 s
+        # was ~3 s (B2); measured ~0.33 s on macOS. Windows: realpath opens every path part
+        # (CreateFile per component) and the CI runner measured ~2-3 s; the hook has 15 s.
+        self.assertLess(time.time() - t, 5.0 if IS_WIN else 1.5)
 
 
 class TestSegConversaArvore(PromptBase):
@@ -150,6 +152,7 @@ class TestSegConversaArvore(PromptBase):
     def test_passa(self):
         fora = os.path.join(self.tmp, "fora")
         os.makedirs(fora)
+        fora = sh_path(fora)
         for cmd in ["git status", "git checkout -b nova", "git stash list", "unzip -l p.zip", "tar -tf p.tgz",
                     "tar -xf p.tar -C %s" % fora, "git log --oneline"]:
             with self.subTest(cmd=cmd):

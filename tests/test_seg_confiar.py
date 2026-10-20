@@ -3,7 +3,9 @@ H2b, 21/10). Run: python3 -m unittest discover -s tests -q"""
 import json
 import os
 import unittest
-from base import SCRIPT, PromptBase, mkdtemp, rmtree, symlink
+from base import SCRIPT, PromptBase, mkdtemp, rmtree, sh_path, symlink
+
+SCRIPT_ = SCRIPT
 
 
 class TestSegConfiancaPeloConteudo(PromptBase):
@@ -45,11 +47,12 @@ class TestSegConfiancaPeloConteudo(PromptBase):
 
 class TestSegConfiarIndireto(PromptBase):
     def test_formas_indiretas_perguntam(self):
-        scripts = os.path.dirname(SCRIPT)
+        scripts = os.path.dirname(SCRIPT_)
         g = os.path.join(self.cwd, "g")
-        symlink(SCRIPT, g)  # symlink without .py
+        symlink(SCRIPT_, g)  # symlink without .py
         u = os.path.join(self.tmp, ".config", "tune-up", "user.json")
         cfg = os.path.join(self.cwd, ".tune-up", "config.json")
+        SCRIPT, scripts, u, cfg = sh_path(SCRIPT_), sh_path(scripts), sh_path(u), sh_path(cfg)
         for cmd in ["python3 -m tuneup confiar x",
                     "cd %s && python3 -c 'import tuneup; tuneup.confiar(\"x\")'" % scripts,
                     "python3 -c 'import sys; sys.argv=[\"g\",\"trust\",\"%s\"]; exec(open(\"%s\").read())'"
@@ -64,11 +67,13 @@ class TestSegConfiarIndireto(PromptBase):
                 self.assertEqual(self.bash(cmd), "perguntar")
 
     def test_info_exato_das_skills_passa(self):
+        SCRIPT = sh_path(SCRIPT_)  # Claude passes C:/x; a backslash is refused
         for cmd in ['python3 "%s" info' % SCRIPT, "python3 %s info" % SCRIPT, "python %s info" % SCRIPT]:
             with self.subTest(cmd=cmd):
                 self.assertIsNone(self.bash(cmd))
         g = os.path.join(self.cwd, "g.py")
-        symlink(SCRIPT, g)
+        symlink(SCRIPT_, g)
+        g = sh_path(g)
         for cmd in ["python3 %s info; echo x > ~/.config/tune-up/user.json" % SCRIPT,
                     "python3 %s info x" % SCRIPT, "python3 %s trust y" % SCRIPT,
                     "python3 -I %s info" % SCRIPT, "python3 %s info > /tmp/x" % SCRIPT,

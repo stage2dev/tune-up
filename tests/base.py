@@ -13,14 +13,24 @@ IS_WIN = os.name == "nt"
 SEM_MODOS = "Windows has no POSIX permission bits (mode, owner, group)"
 
 
-def mkdtemp(prefix="tuneup-teste-"):
-    """Real path of a fresh temp dir that is NOT under /tmp or /private/tmp on POSIX.
+def sh_path(p):
+    """The spelling a Bash command uses for `p`: on Windows (Git Bash) an unquoted backslash is an
+    escape character, so `C:\\x` must be written `C:/x`."""
+    return p.replace("\\", "/") if IS_WIN else p
 
-    The guard treats /tmp as free scratch space in research mode, so a test tree under
-    /tmp (the default on Linux) would hide the decisions the tests want to see.
+
+def mkdtemp(prefix="tuneup-teste-"):
+    """Real path of a fresh temp dir that is NOT under /tmp or /private/tmp on POSIX, nor under
+    %TEMP% on Windows.
+
+    The guard treats /tmp (Windows: %TEMP%, Git Bash's /tmp) as free scratch space in research
+    mode, so a test tree there (the default on Linux and Windows) would hide the decisions the
+    tests want to see.
     """
     base = None
-    if not IS_WIN:
+    if IS_WIN:
+        base = os.path.realpath(os.path.expanduser("~"))
+    else:
         padrao = os.path.realpath(tempfile.gettempdir())
         if any(padrao == r or padrao.startswith(r + os.sep) for r in ("/tmp", "/private/tmp")):
             base = os.path.realpath(os.path.expanduser("~"))
