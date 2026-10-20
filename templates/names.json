@@ -1,0 +1,42 @@
+{
+  "en": {
+    "vision": "VISION.md",
+    "prd": "PRD.md",
+    "architecture": "ARCHITECTURE.md",
+    "design": "DESIGN.md",
+    "decisions": "DECISIONS.md",
+    "roadmap": "ROADMAP.md",
+    "backlog": "BACKLOG.md",
+    "agents": "AGENTS.md",
+    "goal": "GOAL.md",
+    "research": "RESEARCH.md",
+    "progress": "PROGRESS.md",
+    "plan_review": "PLAN-REVIEW.md",
+    "later": "LATER.md",
+    "brief": "BRIEF.md",
+    "open_questions": "OPEN QUESTIONS",
+    "decisions_heading": "DECISIONS",
+    "need_you": "NEED YOU:",
+    "part_closed": "Part {X} closed"
+  },
+  "pt-BR": {
+    "vision": "VISAO.md",
+    "prd": "PRD.md",
+    "architecture": "ARQUITETURA.md",
+    "design": "DESIGN.md",
+    "decisions": "DECISOES.md",
+    "roadmap": "ROADMAP.md",
+    "backlog": "BACKLOG.md",
+    "agents": "AGENTS.md",
+    "goal": "GOAL.md",
+    "research": "PESQUISA.md",
+    "progress": "PROGRESS.md",
+    "plan_review": "REVISAO-PLANO.md",
+    "later": "DEPOIS.md",
+    "brief": "BRIEF.md",
+    "open_questions": "OPEN QUESTIONS",
+    "decisions_heading": "DECISÕES",
+    "need_you": "PRECISO DE VOCÊ:",
+    "part_closed": "Parte {X} fechada"
+  }
+}

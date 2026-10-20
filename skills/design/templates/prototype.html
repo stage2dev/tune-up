@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{name}} - prototype</title>
+<style>
+/*TOKENS*/
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--type-body-font-family);
+  font-size: var(--type-body-font-size);
+  font-weight: var(--type-body-font-weight);
+  line-height: var(--type-body-line-height);
+}
+h1, h2, h3 {
+  font-family: var(--type-heading-font-family);
+  font-weight: var(--type-heading-font-weight);
+  line-height: 1.2;
+  margin: 0 0 var(--space-sm);
+}
+h1 { font-size: var(--type-heading-font-size); }
+h2 { font-size: var(--type-body-font-size); text-transform: uppercase; letter-spacing: .05em; }
+main { max-width: 960px; margin: 0 auto; padding: var(--space-lg); }
+header.top { display: flex; justify-content: space-between; align-items: center;
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text) 15%, transparent); }
+section { margin-bottom: var(--space-lg); }
+.row { display: flex; gap: var(--space-md); flex-wrap: wrap; align-items: center; }
+.grid { display: grid; gap: var(--space-md); grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.btn { font: inherit; cursor: pointer; padding: var(--space-sm) var(--space-md);
+  border-radius: var(--rounded-md); border: 1px solid var(--color-primary);
+  background: var(--color-primary); color: var(--color-surface); }
+.btn.secondary { background: transparent; color: var(--color-primary); }
+.btn.danger { background: var(--color-error); border-color: var(--color-error); color: var(--color-surface); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn:focus-visible, .field input:focus-visible { outline: 2px solid var(--color-secondary); outline-offset: 2px; }
+.field { display: flex; flex-direction: column; gap: var(--space-sm); margin-bottom: var(--space-md); }
+.field input { font: inherit; padding: var(--space-sm); color: var(--color-text); background: var(--color-surface);
+  border-radius: var(--rounded-md); border: 1px solid color-mix(in srgb, var(--color-text) 40%, transparent); }
+.field.has-error input { border-color: var(--color-error); }
+.field .msg { color: var(--color-error); font-size: .875em; }
+.card { padding: var(--space-md); border-radius: var(--rounded-md);
+  border: 1px solid color-mix(in srgb, var(--color-text) 15%, transparent); }
+.card p { margin: 0 0 var(--space-sm); }
+ul.list { list-style: none; margin: 0; padding: 0; }
+ul.list li { display: flex; justify-content: space-between; padding: var(--space-sm) 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text) 15%, transparent); }
+.badge { color: var(--color-secondary); }
+.state { padding: var(--space-md); border-radius: var(--rounded-md); text-align: center;
+  border: 1px dashed color-mix(in srgb, var(--color-text) 40%, transparent); }
+.state.error { border: 1px solid var(--color-error); color: var(--color-error); }
+</style>
+</head>
+<body>
+<header class="top">
+  <strong>{{name}}</strong>
+  <button class="btn secondary" type="button">Sign in</button>
+</header>
+<main>
+  <!-- MAIN SCREEN: replace this block with the real key screen, using only the classes and tokens above. -->
+  <section>
+    <h1>{{name}}</h1>
+    <p>{{description}}</p>
+    <div class="row">
+      <button class="btn" type="button">Primary action</button>
+      <button class="btn secondary" type="button">Secondary</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Buttons</h2>
+    <div class="row">
+      <button class="btn" type="button">Primary</button>
+      <button class="btn secondary" type="button">Secondary</button>
+      <button class="btn danger" type="button">Delete</button>
+      <button class="btn" type="button" disabled>Disabled</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Fields</h2>
+    <div class="grid">
+      <form onsubmit="return false">
+        <div class="field"><label for="f1">Name</label><input id="f1" value="Sample text"></div>
+        <div class="field has-error"><label for="f2">Email</label><input id="f2" value="not-an-email" aria-invalid="true"><span class="msg">Enter a valid email.</span></div>
+      </form>
+    </div>
+  </section>
+
+  <section>
+    <h2>Card and list</h2>
+    <div class="grid">
+      <article class="card"><h3>Card title</h3><p>Short supporting text for the card.</p><button class="btn" type="button">Open</button></article>
+      <ul class="list">
+        <li><span>First item</span><span class="badge">new</span></li>
+        <li><span>Second item</span><span class="badge">done</span></li>
+        <li><span>Third item</span><span class="badge">late</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>States</h2>
+    <div class="grid">
+      <div class="state">Nothing here yet. <br><button class="btn secondary" type="button">Create the first one</button></div>
+      <div class="state error">Something went wrong. <br><button class="btn danger" type="button">Try again</button></div>
+    </div>
+  </section>
+</main>
+</body>
+</html>

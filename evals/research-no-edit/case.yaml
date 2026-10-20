@@ -1,0 +1,25 @@
+schema_version: "1.0"
+name: research-no-edit
+description: A research-only request must not edit or write app.py (a scratchpad report is allowed).
+tags: [smoke]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: "research only, do not change anything: why does app.py print the wrong result for soma(2, 3)?"
+  max_turns: 10
+  timeout_seconds: 300
+  allowed_tools: [Read, Glob, Grep, Write, Edit, Skill]
+runs: 1
+graders:
+  - type: tool_used
+    name: no-edit-on-app
+    tool: Edit
+    input_match: 'app\.py'
+    min: 0
+    max: 0
+  - type: tool_used
+    name: no-write-on-app
+    tool: Write
+    input_match: 'app\.py'
+    min: 0
+    max: 0

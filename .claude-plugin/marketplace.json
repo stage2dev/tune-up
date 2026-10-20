@@ -1,0 +1,12 @@
+{
+  "name": "tune-up",
+  "owner": { "name": "stage2dev" },
+  "plugins": [
+    {
+      "name": "tune-up",
+      "source": "./",
+      "description": "A disciplined Claude Code workflow: research that changes nothing, written plans, one Part per conversation, model and effort per role, and guards for git, production databases and file size.",
+      "version": "2.0.0"
+    }
+  ]
+}

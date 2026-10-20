@@ -1,0 +1,15 @@
+{
+  "project": "",
+  "main_branches": ["main", "master"],
+  "claude_may_merge": false,
+  "commit_on_main": false,
+  "synced_roots": [],
+  "free_repos": [],
+  "research_free_paths": [],
+  "bash_rules": [],
+  "auth_phrases": [],
+  "research_on_phrases": [],
+  "research_off_phrases": [],
+  "plans_dir": ".planning",
+  "supabase_guard": true
+}

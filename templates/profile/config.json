@@ -1,0 +1,38 @@
+{
+  "_comment": "Template for .tune-up/config.json. Every key is optional; delete the _comment* keys and what you do not use. Scalars here override the default; lists ADD to the default. Keys that loosen a guard only take effect after: python3 guarda.py confiar <this file>.",
+  "project": "short name",
+  "_comment_language": "Project language for replies and documents (en, pt-BR...). Overrides the user language. Empty = use the user's.",
+  "language": "",
+  "_comment_plans_dir": "Folder of phase plans, relative to the git toplevel.",
+  "plans_dir": ".planning",
+  "_comment_main_branches": "Main branches. Direct commit and force push to them are blocked.",
+  "main_branches": ["main", "master"],
+  "_comment_merge": "false = Claude never runs gh pr merge; the merge is the owner's.",
+  "claude_may_merge": false,
+  "_comment_commit": "false = committing while on a main branch is blocked. Branch from origin first.",
+  "commit_on_main": false,
+  "_comment_synced": "Folders kept in sync by a file-sync tool: the hook runs chmod u+w before writing to them.",
+  "synced_roots": [],
+  "_comment_free_repos": "Repos where the git guard rules are relaxed. Default: none.",
+  "free_repos": [],
+  "_comment_research_paths": "Paths that may be edited even in research mode.",
+  "research_free_paths": [".planning/"],
+  "_comment_phrases": "Optional regexes (lowercase, no accents) that ADD to the built-in phrases: auth_phrases authorize a guarded action; research_on_phrases / research_off_phrases switch research mode.",
+  "auth_phrases": [],
+  "research_on_phrases": [],
+  "research_off_phrases": [],
+  "_comment_bash_rules": "Extra rules on the Bash command (regex, heredoc body excluded). action: block, ask or warn. msg: 1-2 sentences naming the right alternative.",
+  "bash_rules": [
+    {
+      "regex": "\\bdangerous-command\\b",
+      "action": "ask",
+      "msg": "Explain the risk and what to do instead."
+    }
+  ],
+  "_comment_supabase_guard": "true = writes to a hosted database need the owner's request in the turn. Turning it off only works in a trusted project.",
+  "supabase_guard": true,
+  "_comment_line_limit": "Max lines per code file (new files above it are denied). Raising it only works in a trusted project.",
+  "line_limit": 450,
+  "_comment_line_limit_exclude": "Extra globs exempt from the line limit, e.g. generated code.",
+  "line_limit_exclude": []
+}

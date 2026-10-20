@@ -1,0 +1,31 @@
+# Minimal CI: lint + tests on every push to main and every pull request.
+# [STACK] replace the marked steps by the chosen stack's commands; delete the job of a side that does not exist.
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      # [STACK] toolchain setup step, e.g. setup-node
+      - run: echo "[STACK] install command"
+      - run: echo "[STACK] lint command"
+      - run: echo "[STACK] test command"
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      # [STACK] toolchain setup step, e.g. setup-python
+      - run: echo "[STACK] install command"
+      - run: echo "[STACK] lint command"
+      - run: echo "[STACK] test command"
