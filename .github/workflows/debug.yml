@@ -1,0 +1,12 @@
+name: debug
+on: push
+jobs:
+  d:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python dbg.py
+        shell: bash
