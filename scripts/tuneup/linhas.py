@@ -80,6 +80,8 @@ def _aplica(texto, ed):
         if velho:
             raise _SemDecisao()
         return novo
+    if velho not in texto and "\r\n" in texto:  # CRLF file (Windows), old_string with \n: same lines
+        texto, velho, novo = (x.replace("\r\n", "\n") for x in (texto, velho, novo))
     if not velho or velho not in texto:
         raise _SemDecisao()
     return texto.replace(velho, novo) if ed.get("replace_all") else texto.replace(velho, novo, 1)

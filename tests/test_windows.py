@@ -292,6 +292,18 @@ class TestArquivoSeguroWindows(unittest.TestCase):
         self.assertTrue(os.stat(f).st_mode & stat.S_IWUSR)
 
 
+class TestCrlf(Base):
+    USER_JSON = {"language": "en"}
+
+    def test_edit_em_arquivo_crlf_conta_linhas(self):  # Windows files often end lines with \r\n
+        p = os.path.join(self.cwd, "a.py")
+        with open(p, "wb") as f:
+            f.write(b"".join(b"x = %d\r\n" % i for i in range(449)))
+        s = self.rodar("escrita", {"tool_name": "Edit", "tool_input": {
+            "file_path": p, "old_string": "x = 5\n", "new_string": "x = 5\na\nb\n"}})
+        self.assertEqual(self.decisao(s), "bloquear")
+
+
 class TestTituloWindows(unittest.TestCase):
     def test_pastas_do_windows(self):
         import importlib.util
@@ -362,10 +374,11 @@ class TestGrafiasWindowsReais(Base):
         rel = self.cwd[:2] + "..\\.claude\\settings.json"  # C:..\.claude: from the cwd on that drive
         self.assertEqual(self.escrita(rel), "perguntar")
 
-    def test_tmp_livre_em_pesquisa(self):
+    def test_tmp_livre_em_pesquisa(self):  # Git Bash /tmp = %TEMP%: free for the Write tool in research mode
         self.sessao(modo_pesquisa=True)
-        self.assertIsNone(self.bash("echo x > /tmp/tuneup-%s.txt" % os.getpid()))
-        self.assertEqual(self.bash("echo x > '%s'" % os.path.join(self.cwd, "a.txt")), "perguntar")
+        self.assertIsNone(self.escrita("/tmp/tuneup-%s.txt" % os.getpid()))
+        self.assertIsNone(self.escrita(os.path.join(tempfile.gettempdir(), "tuneup-x.txt")))
+        self.assertEqual(self.escrita(os.path.join(self.cwd, "a.txt")), "perguntar")
 
     def test_chmod_tira_somente_leitura(self):
         f = os.path.join(self.tmp, "ro.txt")
