@@ -33,9 +33,10 @@ class Base(unittest.TestCase):
         for v in ("2.9.0", "2.10.0"):
             shutil.copytree(os.path.join(FIX, v), os.path.join(self.cache, v))
         self.out = os.path.join(self.tmp, "out")
-        old = os.environ.get("HOME")
-        os.environ["HOME"] = self.home
-        self.addCleanup(lambda: os.environ.__setitem__("HOME", old) if old else os.environ.pop("HOME", None))
+        for var in ("HOME", "USERPROFILE"):  # os.path.expanduser reads USERPROFILE on Windows
+            old = os.environ.get(var)
+            os.environ[var] = self.home
+            self.addCleanup(lambda v=var, o=old: os.environ.__setitem__(v, o) if o else os.environ.pop(v, None))
 
     def run_cli(self, *args, out=True):
         argv = list(args) + (["--out", self.out] if out else [])
@@ -173,7 +174,8 @@ class EccCatalogTest(Base):
 
     def test_invalid_names_skipped_and_cells_escaped(self):
         src = os.path.join(self.cache, "2.10.0")
-        for bad in ("x$(touch PWNED)", "a|b`c", "Upper", ".hidden"):
+        pipe = [] if os.name == "nt" else ["a|b`c"]  # Windows forbids `|` in file names: no such case there
+        for bad in ["x$(touch PWNED)", "Upper", ".hidden"] + pipe:
             os.makedirs(os.path.join(src, "skills", bad))
             with open(os.path.join(src, "skills", bad, "SKILL.md"), "w", encoding="utf-8") as fh:
                 fh.write("---\nname: bad\ndescription: bad\n---\n")
@@ -188,7 +190,8 @@ class EccCatalogTest(Base):
         self.assertEqual(code, 0)
         res = json.loads(so)
         self.assertEqual(res["skills"], 6)
-        for bad in ("skills/x$(touch PWNED)", "skills/a|b`c", "skills/Upper", "skills/.hidden", "agents/x$(id)-review.md"):
+        for bad in ["skills/x$(touch PWNED)", "skills/Upper", "skills/.hidden", "agents/x$(id)-review.md"] + \
+                ["skills/" + x for x in pipe]:
             self.assertIn(bad, res["skipped_invalid"])
         self.assertFalse(any("PWNED" in c or "|b" in c for c in res["candidates"]))
         self.assertFalse(os.path.exists(os.path.join(self.tmp, "PWNED")))
