@@ -15,7 +15,7 @@ Fields: `language`, `owner`, `reply_style`. Reply in `language`, in the `reply_s
 
 ## Why
 
-VS Code-family editors name the terminal tab after the running process. The Claude Code executable is named after its version, so the tab reads `2.1.304`. The setting `terminal.integrated.tabs.title` = `${sequence}${separator}${process}` puts the title Claude Code writes first, e.g. `✳ Fix login - 2.1.304`.
+VS Code-family editors name the terminal tab after the running process. The Claude Code executable is named after its version, so the tab reads `2.1.304`. The setting `terminal.integrated.tabs.title` = `${sequence}` shows only the title Claude Code writes, e.g. `✳ Fix login`. Until Claude Code writes one, the editor shows the process name; the topic appears once the conversation starts. (Up to 2.1.0 tune-up wrote `${sequence}${separator}${process}`, which repeated the name, e.g. `Claude Code - claude`; `aplicar` replaces that old value.)
 
 ## Steps
 
@@ -27,7 +27,7 @@ VS Code-family editors name the terminal tab after the running process. The Clau
 
 | Field | Meaning |
 |---|---|
-| `editores[].antes` / `depois` | `falta` (missing), `aplicado` (set by tune-up), `valor_do_dono` (owner's own value, kept; shown in `valor`), `sem_arquivo` (no settings file yet), `ilegivel` (could not read or edit; see `erro`) |
+| `editores[].antes` / `depois` | `falta` (missing), `aplicado` (set by tune-up), `antigo` (old tune-up value; `aplicar` updates it, `desfazer` removes it), `valor_do_dono` (owner's own value, kept; shown in `valor`), `sem_arquivo` (no settings file yet), `ilegivel` (could not read or edit; see `erro`) |
 | `terminal_atual.tipo` | `vscode`: the change applies here. `jetbrains`: not covered, the owner renames the tab by hand (right click on the tab). `outro`: standalone terminals (iTerm2, Ghostty, Terminal, Windows Terminal) already show the title Claude Code writes |
 | `titulo_do_claude_desligado` | `true` = `CLAUDE_CODE_DISABLE_TERMINAL_TITLE` is set, so Claude Code sends no title and the tab stays the process name until the owner removes it |
 | `editores` empty | No VS Code-family editor found in the user config folder (portable install or custom `--user-data-dir`): say so |

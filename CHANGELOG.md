@@ -13,6 +13,7 @@ Windows support (native, with Git for Windows).
 - README: requirements and Windows notes. Docs for synced folders say `chmod u+w` is for macOS/Linux (Windows: `attrib -r`).
 - Wrappers `cmd /c`, `powershell "..."`, `iex` and strings piped into `sh`/`bash` are opened one level; `.cmd`/`.bat`/`.ps1`/`.com` shims count as the command they wrap.
 - Line limit also works on files with CRLF line endings.
+- `terminal-title`: the tab title is now `${sequence}` only, so it no longer repeats the name (`Claude Code - claude`) before the conversation has a topic; `aplicar` updates the old value, `desfazer` removes either.
 - README: workaround for the Windows `EPERM` rename error of `marketplace add` (install from a local clone).
 - CI runs the test suite on Windows, macOS and Linux.
 

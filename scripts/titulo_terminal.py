@@ -4,7 +4,10 @@
 The integrated terminal of VS Code-family editors (VS Code, Cursor, Windsurf,
 Antigravity, VSCodium...) names the tab after the process by default. The Claude
 Code executable is named after its version (e.g. 2.1.304), so the tab becomes a
-number. Putting ${sequence} first makes the tab show the title Claude Code writes.
+number. ${sequence} alone makes the tab show only the title Claude Code writes
+(with ${process} after it the name repeated, e.g. "Claude Code - claude", until
+the conversation got a topic); VS Code falls back to the process name when no
+title was sent yet.
 
 Usage: python3 titulo_terminal.py            list what would change (writes nothing)
        python3 titulo_terminal.py aplicar    write to every editor found
@@ -19,9 +22,13 @@ import shutil
 import sys
 
 CHAVE = "terminal.integrated.tabs.title"
-VALOR = "${sequence}${separator}${process}"
+VALOR = "${sequence}"
+ANTIGO = "${sequence}${separator}${process}"  # value written by tune-up up to 2.1.0
 SUFIXO_BACKUP = ".bak-tune-up"
-_PAR = r'"terminal\.integrated\.tabs\.title"\s*:\s*"\$\{sequence\}\$\{separator\}\$\{process\}"'
+
+
+def _par(valor):
+    return r'"%s"\s*:\s*"%s"' % (re.escape(CHAVE), re.escape(valor))
 
 
 def bases():
@@ -176,17 +183,24 @@ def inserir(texto):
     return novo
 
 
-def remover(texto):
-    novo, n = re.subn(r",\s*" + _PAR, "", texto, count=1)
+def remover(texto, valor):
+    novo, n = re.subn(r",\s*" + _par(valor), "", texto, count=1)
     if not n:
-        novo, n = re.subn(r"[ \t]*" + _PAR + r"[ \t]*,?[ \t]*\n?", "", texto, count=1)
+        novo, n = re.subn(r"[ \t]*" + _par(valor) + r"[ \t]*,?[ \t]*\n?", "", texto, count=1)
     return novo
+
+
+def trocar(texto):
+    """Old tune-up value -> current one, in place."""
+    return re.sub(_par(ANTIGO), lambda _m: '"%s": "%s"' % (CHAVE, VALOR), texto, count=1)
 
 
 def estado(d):
     if CHAVE not in d:
         return "falta"
-    return "aplicado" if d[CHAVE] == VALOR else "valor_do_dono"
+    if d[CHAVE] == VALOR:
+        return "aplicado"
+    return "antigo" if d[CHAVE] == ANTIGO else "valor_do_dono"
 
 
 def tratar(arquivo, acao):
@@ -211,8 +225,11 @@ def tratar(arquivo, acao):
     if acao == "aplicar" and item["antes"] in ("falta", "sem_arquivo"):
         novo = inserir(texto or "")
         esperado = dict(antes, **{CHAVE: VALOR})
-    elif acao == "desfazer" and item["antes"] == "aplicado":
-        novo = remover(texto)
+    elif acao == "aplicar" and item["antes"] == "antigo":
+        novo = trocar(texto)
+        esperado = dict(antes, **{CHAVE: VALOR})
+    elif acao == "desfazer" and item["antes"] in ("aplicado", "antigo"):
+        novo = remover(texto, antes[CHAVE])
         esperado = {k: v for k, v in antes.items() if k != CHAVE}
     else:
         return item

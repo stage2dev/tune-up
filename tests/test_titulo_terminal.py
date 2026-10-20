@@ -12,7 +12,8 @@ from base import mkdtemp, rmtree  # noqa: E402
 
 SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts", "titulo_terminal.py")
 CHAVE = "terminal.integrated.tabs.title"
-VALOR = "${sequence}${separator}${process}"
+VALOR = "${sequence}"
+ANTIGO = "${sequence}${separator}${process}"
 
 sys.path.insert(0, os.path.dirname(SCRIPT))
 from titulo_terminal import ler  # noqa: E402
@@ -116,6 +117,20 @@ class TestTituloTerminal(unittest.TestCase):
         primeiro = self.editor("F", '{\n    "%s": "%s",\n    "a": 1\n}' % (CHAVE, VALOR))
         self.rodar("desfazer")
         self.assertEqual(ler(self.conteudo(primeiro)), {"a": 1})
+
+    def test_aplicar_troca_valor_antigo_do_tune_up(self):
+        arq = self.editor("Code", '{\n    "a": 1,\n    "%s": "%s"\n}\n' % (CHAVE, ANTIGO))
+        s = self.rodar()
+        self.assertEqual(s["editores"][0]["antes"], "antigo")
+        s = self.rodar("aplicar")
+        self.assertEqual(s["editores"][0]["depois"], "aplicado")
+        self.assertEqual(self.conteudo(arq), '{\n    "a": 1,\n    "%s": "%s"\n}\n' % (CHAVE, VALOR))
+
+    def test_desfazer_tira_valor_antigo_do_tune_up(self):
+        arq = self.editor("Code", '{\n    "a": 1,\n    "%s": "%s"\n}\n' % (CHAVE, ANTIGO))
+        s = self.rodar("desfazer")
+        self.assertEqual(s["editores"][0]["depois"], "falta")
+        self.assertEqual(ler(self.conteudo(arq)), {"a": 1})
 
     def test_desfazer_nao_tira_valor_do_dono(self):
         arq = self.editor("Code", '{"%s": "${cwdFolder}"}' % CHAVE)
