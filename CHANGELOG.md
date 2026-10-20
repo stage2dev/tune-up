@@ -13,6 +13,7 @@ Windows support (native, with Git for Windows).
 - README: requirements and Windows notes. Docs for synced folders say `chmod u+w` is for macOS/Linux (Windows: `attrib -r`).
 - Wrappers `cmd /c`, `powershell "..."`, `iex` and strings piped into `sh`/`bash` are opened one level; `.cmd`/`.bat`/`.ps1`/`.com` shims count as the command they wrap.
 - Line limit also works on files with CRLF line endings.
+- README: workaround for the Windows `EPERM` rename error of `marketplace add` (install from a local clone).
 - CI runs the test suite on Windows, macOS and Linux.
 
 ## 2.0.0

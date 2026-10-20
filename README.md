@@ -34,6 +34,20 @@ Then, inside Claude Code:
 
 New plugins only work after `/reload-plugins` or a new session.
 
+### Windows: `marketplace add` fails with `EPERM ... rename`
+
+A known Claude Code bug on Windows, not specific to this plugin: Claude Code clones the repo and then renames the folder, and Windows Defender or the Search Indexer may still be holding a file in it. Install from a local clone instead:
+
+```
+git clone https://github.com/stage2dev/tune-up "%USERPROFILE%\.claude\plugins\local\tune-up"
+claude plugin marketplace add "%USERPROFILE%\.claude\plugins\local\tune-up"
+claude plugin install tune-up@tune-up
+```
+
+(In PowerShell, write `$env:USERPROFILE` instead of `%USERPROFILE%`.) If an earlier attempt left a half-copied folder in `%USERPROFILE%\.claude\plugins\marketplaces\`, delete it first.
+
+A local marketplace does not update by itself. To update: `git pull` in that folder, then `claude plugin marketplace update tune-up`, then reinstall the plugin.
+
 ## `/tune-up:setup`
 
 A one-time guided setup. It speaks the language you pick from the first question on.
