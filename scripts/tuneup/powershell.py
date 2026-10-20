@@ -3,9 +3,12 @@
 How: the command is split into statements (`;`, `|`, `&&`, `||`, newline, and the insides of
 `{}`, `()`, `$()`, `@()`), each one rewritten as a Bash simple command and handed to
 achados_bash: git/gh/psql/supabase checks, protected files and bash_rules (these read the
-original text) work as in Bash. Write cmdlets become `tee <targets>` (Set-Content, Out-File,
-Remove-Item, Move-Item, New-Item, Rename-Item...; Copy-Item: the destination; any `-OutFile`,
-`-Destination`), Set-Location becomes `cd`, `>`/`>>` stay redirections.
+original text) work as in Bash. Copy-Item/Move-Item become `cp -r`/`mv`, Remove-Item `rm -r`,
+Rename-Item `mv p dirname(p)/new`, Expand-Archive `unzip -d` plus `rm -r <destination>` (it can
+replace anything below it); other write cmdlets become `tee <targets>` (Set-Content, Out-File,
+New-Item...; any `-OutFile`), Set-Location becomes `cd`, `>`/`>>` stay redirections,
+`$env:X` becomes `$X` and `$env:X = v` becomes `export X=v`. Before parsing, `$($env:X)` is read
+as `$env:X` and a `(Join-Path a b)` with literal parts as the path `a/b`.
 
 Text check: statements that are not read-only, cd, git or gh count as script code (like
 `python -c` in Bash); citing the plugin, a trust word or a protected root asks.
@@ -15,7 +18,9 @@ Talk and research modes: only obviously read-only commands pass without a questi
 Get-Location/pwd/gl, git status/log/diff/show without global options or --output), without
 redirection, `$(`/`@(` or any other statement. Everything else asks.
 
-`iex "<x>"` and `powershell -Command "<x>"` are opened one level (like `eval`/`bash -c`).
+Opened one level, like `eval`/`bash -c`: `iex "<x>"`, `powershell|pwsh [-Command] <x>`,
+`cmd /c <x>` (read as Bash, `%X%` as `$X`), a string piped into iex/sh/bash/cmd/powershell, and
+`& x` / `. x`.
 Unparseable (open quote, here-string or block comment, `--%`, `<`, -EncodedCommand) always asks.
 
 Limits: no variable, alias or function resolution (`$c = "rm"; & $c x` asks only through
@@ -40,6 +45,15 @@ ESCREVE = {"set-content", "sc", "add-content", "ac", "out-file", "tee-object", "
            "clc", "rename-item", "ren", "rni", "move-item", "mv", "move", "mi", "set-item", "si",
            "clear-item", "cli", "new-itemproperty", "set-itemproperty", "sp", "remove-itemproperty", "rp"}
 COPIA = {"copy-item", "cp", "copy", "cpi"}
+MOVE = {"move-item", "mv", "move", "mi"}
+REMOVE = {"remove-item", "rm", "del", "erase", "rd", "rmdir", "ri"}
+RENOMEIA = {"rename-item", "ren", "rni"}
+INTERPRETA = {"iex", "invoke-expression"}
+SHELLS_SH = {"bash", "sh", "zsh"}
+EXTENSOES = (".exe", ".cmd", ".bat", ".ps1", ".com")
+BASH_CRU = "\x00bash"  # marker statement [BASH_CRU, text]: text goes to achados_bash as it is
+VALOR_PS_EXE = ("executionpolicy", "ep", "windowstyle", "outputformat", "inputformat", "configurationname",
+                "workingdirectory", "wd", "version", "psconsolefile", "settingsfile", "custompipename")
 SO_PRIMEIRO = {"set-content", "sc", "add-content", "ac"}  # 2nd positional is -Value, not a path
 P_CAMINHO = ("path", "literalpath", "pspath", "lp", "filepath", "destination", "newname",
              "outfile", "destinationpath", "outputfile")
@@ -50,6 +64,25 @@ P_VALOR = ("value", "encoding", "filter", "include", "exclude", "itemtype", "typ
 ASPAS_S = "'‘’‚‛"
 ASPAS_D = '"“”„'
 RE_HOME = re.compile(r"\$\{?env:(userprofile|home)\}?|\$\{home\}|\$home(?![\w:])", re.I)
+RE_ENV = re.compile(r"\$\{?env:([A-Za-z_]\w*)\}?", re.I)
+RE_ENV_ATRIB = re.compile(r"\$\{?env:([A-Za-z_]\w*)\}?(?:=(.*))?", re.I | re.S)
+
+
+def previo(texto):
+    """`$($env:X)` -> `$env:X`; `(Join-Path a b c)` with literal parts -> 'a/b/c'."""
+    texto = re.sub(r"\$\(\s*(\$\{?env:\w+\}?|\$home)\s*\)", r"\1", texto, flags=re.I)
+
+    def junta(m):
+        try:
+            st = instrucoes(m.group(1))
+        except ValueError:
+            return m.group(0)
+        partes = [t.replace("\\", "/") for t in (st[0] if len(st) == 1 else []) if not param(t)]
+        if not partes:
+            return m.group(0)
+        p = "/".join([partes[0].rstrip("/")] + [x.strip("/") for x in partes[1:]])
+        return "'" + p.replace("'", "''") + "'"
+    return re.sub(r"\(\s*Join-Path\b([^()|;&{}`]*)\)", junta, texto, flags=re.I)
 
 
 def instrucoes(texto):
@@ -156,28 +189,83 @@ def instrucoes(texto):
 
 
 def abre(stmts):
-    """One level of `iex "<x>"` / `powershell|pwsh -Command "<x>"` opened, like `eval`/`bash -c`
-    in Bash. `-EncodedCommand` cannot be read: ValueError."""
+    """One level of the wrappers opened, like `eval`/`bash -c` in Bash: `iex "<x>"`,
+    `powershell|pwsh [-Command] <x>`, `cmd /c <x>`, a string piped into iex/sh/bash/cmd/powershell,
+    `. x` (dot-source). `-EncodedCommand` cannot be read: ValueError."""
     out = []
-    for s in stmts:
-        c, interno = nome_cmd(s[0]), None
-        if c in ("iex", "invoke-expression") and len(s) > 1:
+    for k, s in enumerate(stmts):
+        if s[0] == "." and len(s) > 1:
+            s = s[1:]
+        c, interno, cru = nome_cmd(s[0]), None, None
+        if c in INTERPRETA and len(s) > 1:
             interno = valor_ps(s, "command") or s[-1]
         elif c in ("powershell", "pwsh"):
-            for j, t in enumerate(s[1:], 1):
-                pr = param(t)
-                if pr and ("encodedcommand".startswith(pr[0]) or pr[0] == "ec"):
-                    raise ValueError("-EncodedCommand")
-                if pr and "command".startswith(pr[0]):
-                    interno = pr[1] if pr[1] is not None else " ".join(s[j + 1:])
-                    break
-        out.extend(instrucoes(interno) if interno else [s])
+            interno = comando_ps(s)
+        elif c == "cmd":
+            cru = comando_cmd(s[1:])
+        ant = stmts[k - 1] if k else []
+        if len(s) == 1 and ant and c in INTERPRETA | SHELLS_SH | {"cmd", "powershell", "pwsh"}:
+            texto = ant[0] if len(ant) == 1 else (" ".join(ant[1:]) if nome_cmd(ant[0]) in (
+                "echo", "write-output", "write") else None)  # `"x" | iex`, `echo x | bash`
+            if texto is not None and c in SHELLS_SH:
+                cru = texto
+            elif texto is not None and c == "cmd":
+                cru = comando_cmd(["/c", texto])
+            elif texto is not None:
+                interno = texto
+        if cru is not None:
+            out.append([BASH_CRU, cru])
+        elif interno:
+            out.extend(instrucoes(previo(interno)))
+        else:
+            out.append(s)
     return out
+
+
+def _ps_q(t):
+    return t if re.fullmatch(r"[\w./:~$=@%+,\\-]+", t) else "'" + t.replace("'", "''") + "'"
+
+
+def _resto(toks):
+    """The rest of a powershell command line as command text (one token: the string itself)."""
+    return toks[0] if len(toks) == 1 else " ".join(map(_ps_q, toks))
+
+
+def comando_ps(s):
+    """Command text of `powershell|pwsh [options] [-Command] <x>`; None for -File or none."""
+    j = 1
+    while j < len(s):
+        pr = param(s[j])
+        if not pr:
+            return _resto(s[j:])
+        p, v = pr
+        if "encodedcommand".startswith(p) or p == "ec":
+            raise ValueError("-EncodedCommand")
+        if "command".startswith(p):
+            return v if v is not None else _resto(s[j + 1:])
+        if "file".startswith(p):
+            return None
+        if v is None and _e(p, VALOR_PS_EXE):
+            j += 1
+        j += 1
+    return None
+
+
+def comando_cmd(args):
+    """Bash text of `cmd /c|/k <x>` (`%X%` -> `$X`, `^` escapes dropped), or None."""
+    for j, t in enumerate(args):
+        if re.fullmatch(r"/{1,2}[cCkK]", t):
+            resto = args[j + 1:]
+            if not resto:
+                return None
+            x = resto[0] if len(resto) == 1 else " ".join(shlex.quote(r) if re.search(r"\s", r) else r for r in resto)
+            return re.sub(r"\^(.)", r"\1", re.sub(r"%(\w+)%", r"$\1", x))
+    return None
 
 
 def nome_cmd(t):
     b = re.split(r"[\\/]", t)[-1].casefold()
-    return b[:-4] if b.endswith(".exe") else b
+    return b[:-4] if b.endswith(EXTENSOES) else b
 
 
 def param(t):
@@ -201,9 +289,9 @@ def caminhos(toks, so_primeiro=False):
             leva = _e(nome, P_CAMINHO) or _e(nome, P_VALOR)
             if valor is None and leva and j + 1 < len(toks):
                 valor, j = toks[j + 1], j + 1
-            if valor is not None and _e(nome, P_CAMINHO) and not _e(nome, P_VALOR):
+            if valor is not None and _e(nome, P_CAMINHO):  # ambiguous (-f, -d): a path too
                 todos.append(valor)
-                if _e(nome, P_DESTINO):
+                if _e(nome, P_DESTINO) and not _e(nome, P_VALOR):
                     destino.append(valor)
         elif t == REDIR:
             j += 1
@@ -224,50 +312,69 @@ def leitura(toks):
         not any(t.startswith(("--output", "--ext-diff", "--textconv")) or t == "-o" for t in toks)
 
 
-def valor_ps(toks, nome):
-    """Value of `-<nome>` / `-<nome>:v` (full name), or None."""
+def valor_ps(toks, nome, prefixo=False):
+    """Value of `-<nome>` / `-<nome>:v` (full name; `prefixo`: any prefix), or None."""
     for j, t in enumerate(toks):
         pr = param(t)
-        if pr and pr[0] == nome:
+        if pr and (pr[0] == nome or prefixo and nome.startswith(pr[0])):
             return pr[1] if pr[1] is not None else (toks[j + 1] if j + 1 < len(toks) else None)
     return None
 
 
 def como_bash(toks):
     """Bash spelling of one statement for achados_bash."""
+    if toks[0] == BASH_CRU:
+        return toks[1]
+    m = RE_ENV_ATRIB.fullmatch(toks[0])
+    if m and (m.group(2) is not None or toks[1:2] == ["="] or toks[1:2] and toks[1].startswith("=")):
+        valor = m.group(2) if m.group(2) is not None else (
+            (toks[2] if len(toks) > 2 else "") if toks[1] == "=" else toks[1][1:])
+        return "export %s=%s" % (m.group(1).upper(), _q(valor))  # `$env:PGHOST = "h"`
     c = nome_cmd(toks[0])
-    redir = [toks[j + 1] for j, t in enumerate(toks[:-1]) if t == REDIR]
+    redir = [x for j, t in enumerate(toks[:-1]) if t == REDIR for x in (REDIR, toks[j + 1])]
     todos, destino, pos = caminhos(toks, c in SO_PRIMEIRO)
     if c in CD:
-        return " ".join(map(_q, ["cd"] + todos[:1] + [x for r in redir for x in (REDIR, r)]))
-    if c in COPIA:
-        alvos = destino or (pos[-1:] if len(pos) > 1 else [])
+        out = ["cd"] + todos[:1]
+    elif c in COPIA or c in MOVE:
+        dest = destino[-1] if destino else (pos[-1] if len(pos) > 1 else ".")
+        fontes = [x for x in todos if x != dest]
+        out = (["cp", "-r"] if c in COPIA else ["mv"]) + ["--"] + fontes + [dest] if fontes else []
+    elif c in REMOVE:
+        out = ["rm", "-r", "--"] + todos if todos else []
+    elif c in RENOMEIA:
+        novo = valor_ps(toks, "newname", True) or (pos[1] if len(pos) > 1 else None)
+        velho = ([x for x in todos if x != novo] or [None])[0]
+        base = (velho or "").replace("\\", "/").rstrip("/")
+        out = ["mv", "--", velho, (base.rsplit("/", 1)[0] if "/" in base else ".") + "/" + novo] \
+            if velho and novo else (["tee"] + todos if todos else [])
+    elif c == "expand-archive":
+        fonte = valor_ps(toks, "path", True) or valor_ps(toks, "literalpath", True) or (pos[:1] or ["x.zip"])[0]
+        dest = valor_ps(toks, "destinationpath", True) or (pos[1] if len(pos) > 1 else ".")
+        return " ".join(map(_q, ["unzip", fonte, "-d", dest])) + " ; rm -r -- " + _q(dest)
     elif c in ESCREVE:
-        alvos = todos + extras(toks, todos)
+        alvos = todos + extras(toks, todos) + redir[1::2]
+        out = ["tee"] + alvos if alvos else []
+        redir = []
     else:
         sem = [t for j, t in enumerate(toks) if t != REDIR and (j == 0 or toks[j - 1] != REDIR)]
-        out = " ".join(map(_q, sem + [x for r in redir for x in (REDIR, r)]))
+        out = " ".join(map(_q, sem + redir))
         return out + (" ; tee " + " ".join(map(_q, destino)) if destino else "")
-    alvos = alvos + redir
-    return "tee " + " ".join(map(_q, alvos)) if alvos else ""
+    if not out:
+        return " ".join(map(_q, ["true"] + redir)) if redir else ""
+    return " ".join(map(_q, out + redir))
 
 
 def extras(toks, todos):
-    """New-Item -Path d -Name n -> d/n; Rename-Item p -NewName n -> dirname(p)/n."""
-    out = []
-    nome, novo = valor_ps(toks, "name"), valor_ps(toks, "newname")
-    base = ([x for x in todos if x != novo] or ["."])[0].replace("\\", "/").rstrip("/")
-    if nome:
-        out.append(base + "/" + nome)
-    if novo:
-        out.append((base.rsplit("/", 1)[0] if "/" in base else ".") + "/" + novo)
-    return out
+    """New-Item -Path d -Name n -> d/n."""
+    nome = valor_ps(toks, "name")
+    base = (todos or ["."])[0].replace("\\", "/").rstrip("/")
+    return [base + "/" + nome] if nome else []
 
 
 def _q(t):
     if t == REDIR:
         return ">"
-    t = RE_HOME.sub("~", t) if t[:1] == "$" else t
+    t = RE_ENV.sub(lambda m: "$" + m.group(1).upper(), RE_HOME.sub("~", t) if t[:1] == "$" else t)
     if t.startswith("~"):
         return "~" + shlex.quote(t[1:]) if t[1:] else "~"
     return shlex.quote(t)
@@ -280,7 +387,8 @@ def ev_powershell(cmd, d, cfg):
     pesquisa = bool(sess.get("modo_pesquisa")) or conversa
     curto = " ".join(cmd.split())[:60]
     try:
-        stmts = abre(instrucoes(cmd.replace("\r\n", "\n")))
+        texto = previo(cmd.replace("\r\n", "\n"))
+        stmts = abre(instrucoes(texto))
     except ValueError:
         return decidir([("perguntar", msg("ps_ilegivel", curto))])
     achados = achados_bash(" ; ".join(x for x in map(como_bash, stmts) if x), d, cfg, regras_em=cmd)
@@ -294,7 +402,7 @@ def ev_powershell(cmd, d, cfg):
         if not pid or sess.get("aprender_prompt_id") != pid:
             achados.append(("perguntar", msg("prot_perfil_bash")))
     escreve = [s for s in stmts if not leitura(s)]
-    if pesquisa and (escreve or "$(" in cmd or "@(" in cmd):
+    if pesquisa and (escreve or "$(" in texto or "@(" in texto):
         rotulo = "PowerShell: " + (escreve[0][0] if escreve else curto)
         achados.append(("perguntar", msg("talk_pergunta", rotulo) if conversa else msg("pesquisa", rotulo)))
     return decidir(achados)

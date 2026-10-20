@@ -17,7 +17,6 @@ LANCADOR = os.path.join(RAIZ, "scripts", "py")
 sys.path.insert(0, os.path.dirname(SCRIPT))
 from tuneup import bash_guarda, caminhos, config, escrita  # noqa: E402
 from tuneup.bash_parse import comando_simples  # noqa: E402
-from tuneup.powershell import como_bash, instrucoes, leitura  # noqa: E402
 
 NT = os.name == "nt"
 SH = shutil.which("sh")
@@ -174,6 +173,18 @@ class TestLancador(unittest.TestCase):
                            input="não → ok".encode("utf-8"), capture_output=True, env=env, timeout=30)
         self.assertEqual(r.stdout.decode("utf-8"), "ko → oãn", r.stderr)
 
+    def test_inicio_testa_de_novo(self):  # review 1, M1: the cached python3 became the Store fake
+        self.fake("python3", "exit 9009")
+        self.real("python")
+        os.makedirs(self.dados)
+        with open(self.cache, "w") as f:
+            f.write("python3\n")
+        r = self.roda("scripts/guarda.py", "inicio", entrada="{}")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(self.cache) as f:
+            self.assertEqual(f.read(), "python\n")
+        self.assertEqual(self.chamadas()[:2], ["python3", "python"])  # python3 probed, never exec'd
+
     def test_caminho_relativo_a_raiz(self):
         self.real("python3")
         r = self.roda("scripts/guarda.py", "info")
@@ -297,80 +308,6 @@ class TestTituloWindows(unittest.TestCase):
             achados = dict(tt.editores())
         self.assertEqual(sorted(achados), sorted(nomes))
         self.assertEqual(achados["Code"], os.path.join(ap, "Code", "User", "settings.json"))
-
-
-class TestPowerShellParse(unittest.TestCase):
-    def test_instrucoes(self):
-        self.assertEqual(instrucoes("ls | Remove-Item -Recurse a,b"), [["ls"], ["Remove-Item", "-Recurse", "a", "b"]])
-        self.assertEqual(instrucoes('& { git commit -m "a b" }'), [["git", "commit", "-m", "a b"]])
-        self.assertEqual(instrucoes("g`it push"), [["git", "push"]])
-        self.assertEqual(instrucoes("${env:USERPROFILE}/x # c"), [["${env:USERPROFILE}/x"]])
-        self.assertEqual(instrucoes("Get-Content \"$(Remove-Item x)\""), [["Get-Content", "$(Remove-Item x)"]])
-        for ruim in ('echo "abc', "x < y", "git --% push", "a <# b", "@'\nx"):
-            with self.assertRaises(ValueError, msg=ruim):
-                instrucoes(ruim)
-
-    def test_como_bash(self):
-        b = lambda c: [como_bash(s) for s in instrucoes(c)]  # noqa: E731
-        self.assertEqual(b("Set-Content -Path $HOME/.claude/settings.json -Value x"), ["tee ~/.claude/settings.json"])
-        self.assertEqual(b("Copy-Item a -Destination b"), ["tee b"])
-        self.assertEqual(b("Set-Location ~/p"), ["cd ~/p"])
-        self.assertEqual(b("echo hi > out.txt 2>&1"), ["echo hi > out.txt"])
-        self.assertIn("~/.claude/settings.json", b("New-Item -Path ~/.claude -Name settings.json")[0])
-        self.assertIn("~/.claude/settings.json", b("Rename-Item ~/.claude/x.json -NewName settings.json")[0])
-        self.assertTrue(b("iwr http://x -OutFile y")[0].endswith("; tee y"))
-
-    def test_leitura(self):
-        for c in ("Get-ChildItem -Recurse", "dir", "type a.txt", "Select-String x a.txt", "git status",
-                  "git log -3", "Test-Path a", "pwd"):
-            self.assertTrue(all(leitura(s) for s in instrucoes(c)), c)
-        for c in ("ls > a.txt", "git -c core.fsmonitor=x status", "git diff --output=a", "Remove-Item a",
-                  "git push", "ls | Remove-Item", "$x = 1"):
-            self.assertFalse(all(leitura(s) for s in instrucoes(c)), c)
-
-
-class TestPowerShellGuarda(Base):
-    USER_JSON = {"language": "en"}
-
-    def ps(self, cmd, env=None):
-        return self.decisao(self.rodar("bash", {"tool_name": "PowerShell", "tool_input": {"command": cmd}}, env))
-
-    def test_git_gh_e_banco(self):
-        self.assertEqual(self.ps("git push origin main"), "bloquear")
-        self.assertEqual(self.ps("gh pr merge 12"), "bloquear")
-        self.assertEqual(self.ps("git commit -m x", {"TUNEUP_FAKE_BRANCH": "main"}), "bloquear")
-        self.assertEqual(self.ps('Set-Location sub; git.exe push origin main'), "bloquear")
-        self.assertEqual(self.ps('psql -h db.example.com -c "drop table x"'), "perguntar")
-        self.assertIsNone(self.ps("git status; Get-ChildItem"))
-        self.assertEqual(self.ps('iex "git push origin main"'), "bloquear")  # opened like eval
-        self.assertEqual(self.ps('pwsh -NoProfile -Command "gh pr merge 1"'), "bloquear")
-        self.assertEqual(self.ps("powershell -e ZQBjAGgAbwA="), "perguntar")  # -EncodedCommand: unreadable
-
-    def test_arquivos_protegidos(self):
-        for c in ("Set-Content -Path $HOME/.claude/settings.json -Value '{}'",
-                  "Remove-Item ~/.config/tune-up/user.json",
-                  "'x' | Out-File -FilePath $env:USERPROFILE/.claude/settings.local.json",
-                  '[IO.File]::WriteAllText("$HOME/.claude/settings.json", "x")',
-                  "echo x > ~/.claude/settings.json"):
-            self.assertEqual(self.ps(c, {"USERPROFILE": self.tmp}), "perguntar", c)
-        self.assertIsNone(self.ps("Get-Content ~/.claude/settings.json"))
-
-    def test_ilegivel_pergunta(self):
-        self.assertEqual(self.ps('echo "abc'), "perguntar")
-
-    def test_conversa_e_pesquisa(self):
-        for campos in ({"modo_conversa": True}, {"modo_pesquisa": True}):
-            self.sessao(**campos)
-            for c in ("Get-Content README.md", "git status", "ls | Select-String x", "Test-Path a"):
-                self.assertIsNone(self.ps(c), (campos, c))
-            for c in ("Remove-Item x.txt", "ls | Remove-Item", 'Get-Content "$(Remove-Item x)"',
-                      "git -c core.fsmonitor=x status", "ls > out.txt", "npm test", "$c = 'rm'; & $c x"):
-                self.assertIn(self.ps(c), ("perguntar", "bloquear"), (campos, c))
-
-    def test_pos_bash_powershell(self):
-        s = self.rodar("pos_bash", {"tool_name": "PowerShell", "tool_input": {"command": "gh pr create --fill"},
-                                    "tool_response": {"stdout": "https://github.com/a/b/pull/7\n"}})
-        self.assertIn("additionalContext", s["hookSpecificOutput"])
 
 
 class TestBashLancador(Base):

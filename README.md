@@ -157,6 +157,7 @@ Some guards only warn or ask, they do not block: research mode, self-protection,
 - The hooks need Git Bash. Without it Claude Code runs hooks in PowerShell and they fail. Fix: install Git for Windows, or set `CLAUDE_CODE_GIT_BASH_PATH` to its `bash.exe`.
 - If no Python 3.9+ is found, the hooks switch themselves off (fail-open) and the session start says so. Install Python and reopen Claude Code.
 - The `PowerShell` tool goes through the same guard as `Bash` (git/gh/psql checks, protected files, `bash_rules`). In talk and research modes only obviously read-only PowerShell passes (`Get-ChildItem`, `Get-Content`, `Select-String`, `Test-Path`, `git status/log/diff/show`...); everything else asks.
+- Wrappers are opened one level, like `bash -c` and `eval`: `cmd /c`, `powershell "..."` / `pwsh -Command`, `iex`, and a string piped into `sh`, `bash` or `iex`. `$env:NAME` and `(Join-Path ...)` with literal parts are understood. `.cmd`, `.bat`, `.ps1` and `.com` shims count as the command they wrap.
 - PowerShell limits: variables, aliases and functions are not resolved (`$c = "rm"; & $c x`), nor are `Start-Process` or `-File` scripts; .NET calls (`[IO.File]::WriteAllText(...)`) are seen only by a text check. Like on Linux and macOS, this is a safety net, not a sandbox.
 - Windows ACLs are not read. Trusted files (profile trust) must be inside your user profile folder.
 - Paths from Git Bash (`/c/Users/...`, `/tmp`, `~`) are converted to Windows paths before they are compared with the protected folders.

@@ -160,8 +160,8 @@ def chamada_info(cmd):
     """The command is exactly what the skills inject: `sh <this plugin>/scripts/py
     scripts/guarda.py info` (the launcher; guarda.py relative to the plugin or its exact path),
     or the older `python3 <this plugin>/scripts/guarda.py info`. No other argument, operator,
-    redirection or expansion; no copy or symlink. Windows: `C:/x` and `C:\\x` spellings of the
-    same path, without letter case."""
+    redirection or expansion; no copy or symlink. Windows: the `C:/x` spelling (a backslash is
+    refused, like any `\\`), without letter case."""
     import shlex
     if re.search(r"[;&|<>$`()\n\\]", cmd):
         return False
