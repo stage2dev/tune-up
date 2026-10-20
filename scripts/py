@@ -16,8 +16,12 @@
 : "${PYTHONUTF8:=1}"
 export PYTHONUTF8
 
-case "$0" in
-  */*) dir=${0%/*} ;;
+me=$0
+case "$me" in
+  *\\*) me=$(printf '%s' "$me" | tr '\\' '/') ;; # `D:\x\scripts\py`: only then a subprocess
+esac
+case "$me" in
+  */*) dir=${me%/*} ;;
   *) dir=. ;;
 esac
 case "$dir" in
@@ -27,6 +31,9 @@ case "$dir" in
 esac
 
 script=${1-}
+case "$script" in
+  *\\*) script=$(printf '%s' "$script" | tr '\\' '/') ;;
+esac
 case "$script" in
   "" | -* | /* | [A-Za-z]:*) ;;
   *) script=$raiz/$script ;;

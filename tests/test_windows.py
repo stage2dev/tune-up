@@ -91,13 +91,12 @@ class TestLancador(unittest.TestCase):
         self.dados = os.path.join(self.tmp, "dados")
         self.cache = os.path.join(self.dados, "python")
         self.so_bin = self.bin  # PATH with the fakes and the few tools the launcher calls, no Python
-        for t in ("mkdir", "mv", "rm", "tr"):
+        if NT:  # Git's usr/bin has mkdir/mv/tr and no Python; copies there would lose msys-2.0.dll
+            self.so_bin += os.pathsep + os.path.dirname(shutil.which("mkdir"))
+        for t in ("mkdir", "mv", "rm", "tr") if not NT else ():
             origem = shutil.which(t)
             if origem:
-                try:
-                    os.symlink(origem, os.path.join(self.bin, t))
-                except (OSError, NotImplementedError):
-                    shutil.copy(origem, os.path.join(self.bin, t))
+                os.symlink(origem, os.path.join(self.bin, t))
 
     def fake(self, nome, corpo):
         p = os.path.join(self.bin, nome)
@@ -117,7 +116,8 @@ class TestLancador(unittest.TestCase):
 
     def roda(self, *args, entrada="", path=None):
         env = {k: v for k, v in os.environ.items() if k != "CLAUDE_PLUGIN_DATA"}
-        env.update(CLAUDE_PLUGIN_DATA=self.dados, PATH=path or (self.bin + os.pathsep + "/usr/bin" + os.pathsep + "/bin"))
+        padrao = self.so_bin if NT else self.bin + os.pathsep + "/usr/bin" + os.pathsep + "/bin"
+        env.update(CLAUDE_PLUGIN_DATA=self.dados, PATH=path or padrao)
         return subprocess.run([SH, LANCADOR] + list(args), input=entrada, capture_output=True, text=True,
                               env=env, timeout=30)
 
@@ -168,7 +168,7 @@ class TestLancador(unittest.TestCase):
     def test_utf8_no_stdin_e_stdout(self):  # Claude sends UTF-8; Windows Python would use the ANSI page
         self.real("python3")
         env = {k: v for k, v in os.environ.items() if k not in ("CLAUDE_PLUGIN_DATA", "PYTHONUTF8")}
-        env.update(CLAUDE_PLUGIN_DATA=self.dados, PATH=self.bin + os.pathsep + "/usr/bin" + os.pathsep + "/bin")
+        env.update(CLAUDE_PLUGIN_DATA=self.dados, PATH=self.so_bin if NT else self.bin + os.pathsep + "/usr/bin")
         r = subprocess.run([SH, LANCADOR, "-c", "import sys; sys.stdout.write(sys.stdin.read()[::-1])"],
                            input="não → ok".encode("utf-8"), capture_output=True, env=env, timeout=30)
         self.assertEqual(r.stdout.decode("utf-8"), "ko → oãn", r.stderr)
@@ -244,7 +244,7 @@ class TestChamadaInfo(unittest.TestCase):
             return bash_guarda.chamada_info(cmd)
 
     def test_forma_nova(self):
-        L = os.path.join(self.r, "scripts", "py")
+        L = os.path.join(self.r, "scripts", "py").replace("\\", "/")  # Claude passes C:/x; a backslash is refused
         g = os.path.join(self.r, "scripts", "guarda.py")
         self.assertTrue(self.ok('sh "%s" scripts/guarda.py info' % L))
         self.assertTrue(self.ok("sh %s %s info" % (L, g)))

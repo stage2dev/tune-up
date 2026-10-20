@@ -56,7 +56,7 @@ def expandido(texto):
         texto = texto.replace("${HOME}", h).replace("$HOME", h)
         if NT:
             texto = texto.replace("${USERPROFILE}", h).replace("$USERPROFILE", h)
-        texto = re.sub(r"(?<![\w/~])~(?=/|\s|$|['\"])", h, texto)
+        texto = re.sub(r"(?<![\w/~])~(?=/|\s|$|['\"])", lambda _m, h=h: h, texto)  # h is a path, not a template
     return _nt(texto.casefold())
 
 
