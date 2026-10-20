@@ -183,7 +183,7 @@ def tree_files(root):
         for f in files:
             p = os.path.join(cur, f)
             if not os.path.islink(p) and os.path.isfile(p):
-                found.append(os.path.relpath(p, root))
+                found.append(os.path.relpath(p, root).replace(os.sep, "/"))  # same keys on every OS
     return sorted(found)
 
 
