@@ -210,7 +210,7 @@ class EccCatalogTest(Base):
         code, _, _ = self.run_cli()
         self.assertNotEqual(code, 0)
         files = json.loads(self.read("manifest.json"))["files"]
-        self.assertIn(os.path.join("ecc-skills", "alpha-site", "SKILL.md"), files)
+        self.assertIn("ecc-skills/alpha-site/SKILL.md", files)  # manifest keys use / on every OS
 
 
 class InstallTest(Base):
