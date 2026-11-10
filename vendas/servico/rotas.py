@@ -7,7 +7,7 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
-from servico import banco
+from servico import banco, portao, telefone
 
 CORPO_MAX = 1024 * 1024
 HOSTS = ("127.0.0.1", "localhost")
@@ -16,6 +16,8 @@ CAB_TOKEN = "X-Vendas-Token"
 CAB_SEGREDO = "X-Vendas-Segredo"
 INSTANCIA = re.compile(r"^/webhook/([A-Za-z0-9_-]{1,64})$")
 MODO_REGISTRA, MODO_RECUSA = "registra_e_conta", "recusa"
+ID_TELA = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+TEXTO_MAX = 4096
 
 
 def origem_do_painel(valor):
@@ -46,13 +48,14 @@ def guardar_evento(con, instancia, corpo, segredo_ok):
 class App:
     """Estado do serviço que o handler usa: porta, origem do painel, token, segredo e o gancho do webhook."""
 
-    def __init__(self, pasta_dados, porta, painel, token, segredo, despachar=guardar_evento):
+    def __init__(self, pasta_dados, porta, painel, token, segredo, despachar=guardar_evento, conector=None):
         self.pasta_dados = pasta_dados
         self.porta = porta
         self.painel = painel
         self.token = token
         self.segredo = segredo
         self.despachar = despachar
+        self.conector = conector  # só o portão chama o envio dele
         self.desde = banco.agora()
 
     def abrir(self):
@@ -155,6 +158,8 @@ def fazer_handler(app):
             achado = INSTANCIA.match(self._caminho())
             if not self._host(webhook=bool(achado)):
                 return
+            if self._caminho() == "/enviar":
+                return self._enviar()
             if not achado:
                 self.close_connection = True
                 return self._erro(404, "Rota desconhecida.")
@@ -181,6 +186,37 @@ def fazer_handler(app):
             finally:
                 con.close()
             self._json(200, {"ok": True})
+
+        def _enviar(self):
+            """Envio manual da tela: origem 'manual' fixada aqui; 'origem' no corpo é ignorada."""
+            if not igual(self.headers.get(CAB_TOKEN), app.token):
+                self.close_connection = True
+                return self._erro(403, "Token de envio errado. Recarregue a tela.")
+            corpo = self._corpo_json()
+            if corpo is None:
+                return
+            texto, id_tela = corpo.get("texto"), corpo.get("id_tela")
+            if not isinstance(texto, str) or not texto.strip() or len(texto) > TEXTO_MAX:
+                return self._erro(400, "Mensagem vazia ou longa demais.")
+            if not isinstance(id_tela, str) or not ID_TELA.match(id_tela):
+                return self._erro(400, "Envio sem identificador da tela.")
+            if not isinstance(corpo.get("telefone"), str):
+                return self._erro(400, "Telefone inválido.")
+            if app.conector is None:
+                return self._erro(503, "WhatsApp não configurado no serviço.")
+            con = app.abrir()
+            try:
+                instancia = banco.ler_config(con, "instancia")
+                if not instancia:
+                    return self._erro(503, "Conecte o WhatsApp primeiro.")
+                try:
+                    r = portao.enviar_manual(con, app.conector, instancia, corpo["telefone"], texto, id_tela,
+                                             confirmar_optout=corpo.get("confirmar_optout") is True)
+                except telefone.TelefoneInvalido:
+                    return self._erro(400, "Telefone inválido.")
+            finally:
+                con.close()
+            self._json(200, {"estado": r["estado"], "motivo": r["motivo"], "envio_id": r["envio_id"]})
 
         def _corpo_json(self):
             tipo = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()

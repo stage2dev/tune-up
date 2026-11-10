@@ -38,11 +38,32 @@ Routes:
 | `GET /saude` | health, no secrets |
 | `GET /token-de-envio` | returns the send token only when `Origin` is exactly the `--painel` origin; any other origin or no `Origin` = 403. `OPTIONS` and CORS only for that origin |
 | `GET /estado` | requires header `X-Vendas-Token` (compared in constant time); webhook mode and counters |
+| `POST /enviar` | requires `X-Vendas-Token`; JSON `{telefone, texto, id_tela, confirmar_optout}`. Always origin `manual` (an `origem` field in the body is ignored) and always through the send gate. Replies `{estado, motivo, envio_id}`; 503 when the Evolution connector or the instance is not configured |
 | `POST /webhook/<instance>` | JSON only, 1 MB limit; secret in header `X-Vendas-Segredo` (constant-time compare). Mode `registra_e_conta` (default) accepts and counts valid/invalid; mode `recusa` answers 401 to a wrong secret. The raw event goes to the `eventos` table |
 
 `Host` must be `127.0.0.1` or `localhost` (and the service port); `host.docker.internal` is accepted only on the webhook route. Nothing from a request is written to logs.
 
 The send token is new on every start and stored 0600 in the data folder (deleted on clean stop); the webhook secret is kept 0600 in the data folder across restarts. The panel screen never reads either file.
+
+## Send gate
+
+`servico/portao.py` is the only code that calls a connector's `enviar_texto`/`enviar_audio` (a test scans the source and fails otherwise). Each origin has its own function, so the origin comes from the action, never from a request body:
+
+| Origin | Opt-out | Human pause | Window 09-19 | Rate | Dedupe key |
+|---|---|---|---|---|---|
+| `manual` | needs `confirmar_optout=True` | no | no | 8/min | screen id per click |
+| `rascunho_aprovado` | denied | no | no | 8/min | draft id |
+| `ia` | denied | denied | no | 8/min, 200/h | conversation + trigger message id + bubble |
+| `campanha` | denied | denied | denied outside | 8/min, 200/h, new contacts/day hook | campaign + contact + step |
+| `audio_ia` | denied | denied | no | 8/min, 200/h, audio/day (config `teto_audio_dia`, default 20) | the `ia` key + `audio` |
+| `teste_audio` | no | no | no | 5/day, only to config `numero_dono` | screen id |
+| `confirmacao_sair` | allowed only after opt-out | no | no | 1 per contact | contact |
+
+- The window uses config `fuso` (`-03:00` or an IANA name; unset = the machine's zone; invalid = denied).
+- The reservation runs in `BEGIN IMMEDIATE` and re-checks opt-out, pause and limits at send time. The `envios` row is written as `pendente` before the connector call, then becomes `enviado` (with `id_externo`), `falhou` (surely not sent) or `incerto` (may have been sent).
+- `negado` rows carry the reason and do not hold the dedupe key; a key already held returns `duplicado` without a new row or a connector call.
+- On start, every `pendente` row becomes `incerto`. Nothing is resent automatically; `portao.reenviar()` (an explicit owner action) moves the same row back to `pendente` after re-checking the rules.
+- The daily new-contacts limit for campaigns is a hook (`teto_contatos_novos`) that returns no limit for now; the daily counter (`contatos_novos_no_dia`) is in place.
 
 ## Where data lives
 

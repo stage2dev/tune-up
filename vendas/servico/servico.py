@@ -17,7 +17,8 @@ import secrets  # noqa: E402
 import signal  # noqa: E402
 import threading  # noqa: E402
 
-from servico import banco, pasta, rotas, travas  # noqa: E402
+from servico import banco, pasta, portao, rotas, travas  # noqa: E402
+from servico.conectores import evolution  # noqa: E402
 
 PORTA = 8791
 PAINEL = "http://127.0.0.1:8787"
@@ -74,8 +75,13 @@ def rodar(args, avisar=print):
     parar = threading.Event()
     try:
         con = banco.abrir(pasta_dados)
-        banco.bater(con)
-        con.close()
+        try:
+            incertos = portao.pendentes_para_incerto(con)  # caiu no meio de um envio: o dono decide, sem reenvio
+            banco.bater(con)
+        finally:
+            con.close()
+        if incertos:
+            avisar("vendas: %d envio(s) ficaram incertos na última parada; veja na tela" % incertos, file=sys.stderr)
         token = secrets.token_urlsafe(32)
         travas.gravar_segredo(caminho_token, token)
         segredo = travas.ler_ou_criar_segredo(os.path.join(pasta_dados, ARQUIVO_SEGREDO))
@@ -85,6 +91,11 @@ def rodar(args, avisar=print):
         except OSError as e:
             avisar("vendas: não subi: a porta %d não abriu (%s)" % (args.porta, e.strerror or e), file=sys.stderr)
             return 4
+        try:
+            app.conector = evolution.Evolution.do_ambiente("http://%s:%d" % (rotas.HOST_DOCKER, app.porta),
+                                                           segredo, os.environ)
+        except ValueError:
+            app.conector = None  # POST /enviar responde 503 até o dono configurar a Evolution
         for sinal in (signal.SIGINT, signal.SIGTERM):
             signal.signal(sinal, lambda *_: parar.set())
         batimento = threading.Thread(target=bater_sempre, args=(pasta_dados, parar), daemon=True)

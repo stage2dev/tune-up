@@ -69,6 +69,13 @@ MIGRACOES = [
         "CREATE TABLE config (chave TEXT PRIMARY KEY, valor TEXT)",
         "CREATE TABLE batimento (id INTEGER PRIMARY KEY CHECK (id = 1), pid INTEGER, em TEXT NOT NULL)",
     ],
+    # 2: o portão guarda destino e conteúdo do envio (para o dono reenviar a MESMA linha) e conta por tempo
+    [
+        "ALTER TABLE envios ADD COLUMN telefone TEXT",
+        "ALTER TABLE envios ADD COLUMN tipo TEXT",
+        "ALTER TABLE envios ADD COLUMN conteudo TEXT",
+        "CREATE INDEX envios_criado_em ON envios(criado_em)",
+    ],
 ]
 VERSAO = len(MIGRACOES)
 PARECE_SEGREDO = re.compile(r"chave|senha|token|segredo|secret|key|password", re.I)
@@ -184,14 +191,17 @@ def registrar_mensagem(con, conversa_id, direcao, texto, id_externo=None, tipo="
     return cur.lastrowid
 
 
-def registrar_envio(con, chave_dedupe, origem, estado="pendente", motivo=None, contato_id=None):
+def registrar_envio(con, chave_dedupe, origem, estado="pendente", motivo=None, contato_id=None, telefone=None,
+                    tipo=None, conteudo=None, quando=None):
     """Grava o envio. Devolve o id, ou None se a chave já está ocupada por um envio não negado.
     Um 'negado' nunca ocupa a chave (índice único parcial)."""
     if estado not in ESTADOS_ENVIO:
         raise ValueError("estado de envio inválido: %r" % estado)
     try:
-        cur = con.execute("INSERT INTO envios (chave_dedupe, contato_id, estado, origem, motivo, criado_em) "
-                          "VALUES (?, ?, ?, ?, ?, ?)", (chave_dedupe, contato_id, estado, origem, motivo, agora()))
+        cur = con.execute("INSERT INTO envios (chave_dedupe, contato_id, estado, origem, motivo, telefone, tipo, "
+                          "conteudo, criado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                          (chave_dedupe, contato_id, estado, origem, motivo, telefone, tipo, conteudo,
+                           quando or agora()))
     except sqlite3.IntegrityError as erro:
         if _unico(erro):
             return None
