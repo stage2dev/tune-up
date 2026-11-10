@@ -228,9 +228,25 @@ def gravar_config(con, chave, valor):
     _exigir(cur)
 
 
+def somar_config(con, chave, n=1):
+    """Soma n a um contador em config numa instrução só (sem ler e regravar). Devolve o valor novo."""
+    if PARECE_SEGREDO.search(chave):
+        raise ValueError("config %r parece segredo; segredo não vai para o banco" % chave)
+    cur = con.execute("INSERT INTO config (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE "
+                      "SET valor = CAST(COALESCE(valor, '0') AS INTEGER) + ?", (chave, str(n), n))
+    _exigir(cur)
+    return int(ler_config(con, chave))
+
+
 def bater(con, pid=None):
     """Batimento do serviço: uma linha só, atualizada a cada volta."""
     cur = con.execute("INSERT INTO batimento (id, pid, em) VALUES (1, ?, ?) "
                       "ON CONFLICT(id) DO UPDATE SET pid = excluded.pid, em = excluded.em",
                       (os.getpid() if pid is None else pid, agora()))
     _exigir(cur)
+
+
+def parar_batimento(con, pid=None):
+    """Apaga o batimento deste processo na saída limpa. Devolve quantas linhas saíram (0 se outro já bateu)."""
+    cur = con.execute("DELETE FROM batimento WHERE id = 1 AND pid = ?", (os.getpid() if pid is None else pid,))
+    return cur.rowcount

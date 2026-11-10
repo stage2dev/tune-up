@@ -47,10 +47,15 @@ def validar(pasta, raiz_projeto):
         atual = acima
 
 
+def caminho_da_pasta(raiz_projeto, base=None):
+    """Só o caminho da pasta de dados deste projeto: não cria nem valida (leitura pela tela)."""
+    marca = hashlib.sha256(os.path.realpath(raiz_projeto).encode("utf-8")).hexdigest()[:16]
+    return os.path.join(base or pasta_base(), marca)
+
+
 def pasta_de_dados(raiz_projeto, base=None):
     """Cria (0700) e devolve a pasta de dados deste projeto. Recusa com PastaRecusada antes de criar qualquer coisa."""
-    marca = hashlib.sha256(os.path.realpath(raiz_projeto).encode("utf-8")).hexdigest()[:16]
-    pasta = os.path.join(base or pasta_base(), marca)
+    pasta = caminho_da_pasta(raiz_projeto, base)
     validar(pasta, raiz_projeto)
     os.makedirs(pasta, mode=0o700, exist_ok=True)
     if os.name != "nt":
