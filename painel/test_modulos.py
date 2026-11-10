@@ -185,7 +185,7 @@ class TesteProjetoVazio(unittest.TestCase):
         self.assertEqual(d["fases"], [])
         st, d = self.pedir("/api/acoes")
         self.assertTrue(d["acoes"])
-        self.assertEqual({a["grupo"] for a in d["acoes"]}, {"dev"})
+        self.assertEqual({a["grupo"] for a in d["acoes"]}, {"dev", "chat"})
         st, d = self.pedir("/api/modulos")
         self.assertEqual(d, {"modulos": [], "avisos": []})
         st, d = self.pedir("/api/acompanhamento")

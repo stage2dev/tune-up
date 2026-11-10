@@ -4,7 +4,7 @@ Uso: python3 painel.py [--port 8787] [--projeto PASTA] [--plans-dir PASTA]
 Rotas: veja contrato/api.d.ts. O núcleo é genérico: o que é do projeto vem de
 <raiz>/.tune-up/painel.json e do pacote do projeto (veja config.py). Todo POST exige X-Painel-Token (nasce a cada
 subida), Origin do próprio endereço, Sec-Fetch-Site same-origin (ou ausente),
-Content-Type application/json e corpo até 16 KB.
+Content-Type application/json e corpo até 32 KB.
 """
 import sys
 
@@ -32,8 +32,8 @@ import transcricao  # noqa: E402
 AQUI = os.path.dirname(os.path.abspath(__file__))
 HOSTS_OK = {"127.0.0.1", "localhost"}
 TTL_ESTADO = 3  # segundos: várias abas abertas não refazem a leitura toda hora
-CORPO_MAX = 16 * 1024
-RE_ROTA_EXEC = re.compile(r"^/api/execucoes/([^/]{1,40})/(eventos|parar|abrir)$")
+CORPO_MAX = 32 * 1024  # uma mensagem do chat tem até 6000 letras (acento = 2 bytes)
+RE_ROTA_EXEC = re.compile(r"^/api/execucoes/([^/]{1,40})/(eventos|parar|abrir|responder)$")
 RE_ROTA_MODULO = re.compile(r"^/api/modulos/([^/]{1,80})$")
 RE_SESSAO = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
@@ -239,6 +239,8 @@ def fazer_handler(app):
                 return self._json(200, {"acoes": acoes, "avisos": avisos})
             if caminho == "/api/execucoes":
                 return self._json(200, {"execucoes": app.lancador.execucoes()})
+            if caminho == "/api/modelos":
+                return self._json(200, {"modelos": app.lancador.status_modelos()})
             if caminho == "/api/acompanhamento":
                 return self._json(*app.modulo("acompanhamento"))
             if caminho == "/api/agentes":
@@ -272,7 +274,9 @@ def fazer_handler(app):
                 return self._erro(400, "O número 'desde' é inválido.")
             caminho = transcricao.localizar(app.cfg["projects_dir"], ex.get("sessao_id") or reg.get("sessao_id"),
                                             reg.get("cwd") or app.cfg["workspace"])
-            dado = transcricao.ler(caminho, int(desde))
+            inteiro = (query.get("inteiro") or ["0"])[0] in ("1", "true")
+            dado = transcricao.ler(caminho, int(desde),
+                                   corte_fala=transcricao.CORTE_INTEIRO if inteiro else transcricao.CORTE)
             dado["estado"] = ex.get("estado", "sumiu")
             return self._json(200, dado)
 
@@ -299,6 +303,10 @@ def fazer_handler(app):
                     return self._json(200, r)
                 if m and m.group(2) == "abrir":
                     return self._json(200, app.lancador.abrir(m.group(1)))
+                if m and m.group(2) == "responder":
+                    ex = app.lancador.responder(m.group(1), corpo.get("texto"))
+                    app.estado.invalidar()
+                    return self._json(200, {"execucao": ex})
                 return self._erro(404, "Não encontrado.")
             except lanc.ErroAcao as e:
                 extra = {"execucao_id": e.execucao_id} if e.execucao_id else {}

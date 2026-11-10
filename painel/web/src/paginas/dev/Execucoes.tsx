@@ -5,12 +5,13 @@ import { Cartao, Erro, EsqueletoPagina, EstadoVazio, Pagina, Selo } from '../../
 import { useAgora } from './useAgora';
 import { emAndamento, tempoDecorrido } from './logica';
 import type { Execucao } from '../../api/tipos';
+import { destinoDaExecucao } from '../chat/logica';
 
 function Linha({ e, agora }: { e: Execucao; agora: number }) {
   return (
     <li>
       <Link
-        to={`/execucoes/${encodeURIComponent(e.id)}`}
+        to={destinoDaExecucao(e)}
         className="flex items-center gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 hover:bg-[var(--color-bg-tertiary)] transition-colors"
       >
         <div className="flex-1 min-w-0 grid grid-cols-1 gap-1">

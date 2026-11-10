@@ -109,7 +109,7 @@ class TesteHTTP(unittest.TestCase):
         self.assertEqual(self.post("/api/execucoes", ok, Origin="http://127.0.0.1:1")[0], 403)
         self.assertEqual(self.post("/api/execucoes", ok, **{"Sec-Fetch-Site": "same-site"})[0], 403)
         self.assertEqual(self.post("/api/execucoes", ok, **{"Content-Type": "text/plain"})[0], 415)
-        st, d = self.post("/api/execucoes", b'{"acao": "x", "lixo": "' + b"x" * 20000 + b'"}')
+        st, d = self.post("/api/execucoes", b'{"acao": "x", "lixo": "' + b"x" * 40000 + b'"}')
         self.assertEqual((st, set(d)), (413, {"erro"}))
         self.assertEqual(self.post("/api/execucoes", b"{nao e json")[0], 400)
         self.assertEqual(self.post("/api/execucoes", b"[1]")[0], 400)

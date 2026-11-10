@@ -2,6 +2,18 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## 2.4.0
+
+The panel's home screen is now a chat.
+
+- Home (`/`) is a chat: write the request, pick a level. The old home moved to `/resumo`. Each level is an action of group `chat` in `painel/acoes/chat.json`: ask only (sonnet, read-only), simple fix (opus, 1 reviewer, PR), moderate fix (opus high, executors + up to 2 reviewers, one PR), full change (fable, falling back to opus; `/tune-up:plan` with 2 Opus plan reviewers; no code), marketing (opus, drafts only).
+- Any action may now set `modelos` (one alias or a preference list), `esforco` and `equipe`. The session starts with the first model the license has; the last one is the fallback. The panel probes the license once with a minimal `claude -p` (about 900 tokens), cached 7 days in the project's `dados/modelos.json`; `modelos_disponiveis` in `painel.json` overrides it.
+- Reply in the same conversation: `POST /api/execucoes/{id}/responder`. It stops the idle process, waits for it to exit and runs `claude --bg --resume <sessionId> "text"` with no other option, which wakes the same session with its saved options, tool rules included (measured on CLI 2.1.322). If the CLI starts a copy instead, the copy is stopped and removed.
+- The read-only level is enforced by rules, not only by the prompt: Edit/Write denied, and in Bash file writes, state-changing git, PRs and outbound data. The full-change level denies commit, push, PR and merge.
+- A project package can replace a core level with the same id and `"substitui": true`, or add levels.
+- Text parameters accept line breaks with `"linhas": true` (up to 6000 chars). POST body limit is 32 KB. `eventos?inteiro=1` returns full messages for the chat.
+- `painel/web/dist` rebuilt from these sources.
+
 ## 2.3.1
 
 - Panel: `painel/web/dist` (the prebuilt screens) is now in the repo. 2.3.0 said it was and it was not: an ignore rule left it out, so a fresh install only showed "run npm run build". CI now fails if the build is missing.
