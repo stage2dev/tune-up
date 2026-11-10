@@ -36,6 +36,8 @@ class TesteTranscricao(unittest.TestCase):
     def test_localizar(self):
         self.escrever(linha("user", "oi"))
         self.assertEqual(tr.pasta_do_projeto("/Users/x/Meu Projeto"), "-Users-x-Meu-Projeto")
+        # Windows: só documenta o comportamento atual; a regra do CLI ali não foi conferida
+        self.assertEqual(tr.pasta_do_projeto("C:\\Users\\x\\Meu Projeto"), "C--Users-x-Meu-Projeto")
         self.assertEqual(tr.localizar(self.tmp, SID, "/Users/x/Meu Projeto"), self.arq)
         self.assertEqual(tr.localizar(self.tmp, SID, "/outro"), self.arq)  # acha pelo glob
         self.assertIsNone(tr.localizar(self.tmp, "../../etc/passwd", "/x"))

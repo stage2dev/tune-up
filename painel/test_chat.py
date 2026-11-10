@@ -221,7 +221,8 @@ class TesteModelos(Base):
         self.assertEqual(lc.modelos.escolher(["fable", "opus"])[0], "opus")  # não insiste antes de 10 min
         self.t[0] += modelos.VALE_NAO_SEI + 1
         self.assertEqual(lc.modelos.escolher(["fable", "opus"])[0], "fable")
-        self.assertEqual(oct(os.stat(lc.modelos.arquivo).st_mode & 0o777), "0o600")
+        if os.name != "nt":  # Windows não tem modo 0600
+            self.assertEqual(oct(os.stat(lc.modelos.arquivo).st_mode & 0o777), "0o600")
 
     def test_painel_json_vence_a_sonda(self):
         lc = self.lanc(modelos_disponiveis={"fable": False})

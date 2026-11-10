@@ -36,7 +36,8 @@ def cortar(texto, n=CORTE):
 
 
 def pasta_do_projeto(cwd):
-    """~/.claude/projects/<cwd com tudo que não é letra ou número trocado por '-'>."""
+    """~/.claude/projects/<cwd com tudo que não é letra ou número trocado por '-'>.
+    Windows: a regra do CLI para 'C:\\...' não foi conferida; se errar, `localizar` cai no glob."""
     return re.sub(r"[^A-Za-z0-9]", "-", cwd or "")
 
 
