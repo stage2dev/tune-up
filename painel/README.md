@@ -7,7 +7,7 @@ O núcleo (esta pasta) é genérico e serve a qualquer projeto. O que é de um p
 - `<raiz>/.tune-up/painel.json`: configuração (tudo opcional);
 - `<raiz>/.tune-up/<pacote>/` (padrão `painel-projeto`): ações extras, telas extras (módulos) e dados.
 
-Sem `painel.json` e sem pacote o painel sobe do mesmo jeito, com as telas Início, Agentes, Fases, Execuções e Acompanhamento e avisos dizendo o que falta.
+Sem `painel.json` e sem pacote o painel sobe do mesmo jeito, com as telas Chat, Resumo, Agentes, Fases, Execuções e Acompanhamento e avisos dizendo o que falta.
 
 ## Rodar
 
@@ -40,6 +40,7 @@ Tipos em `contrato/api.d.ts` (`PainelJson`). Caminho relativo vale a partir da r
 | `origens_extras` | nenhuma |
 | `pacote` | `painel-projeto` (nome simples de pasta dentro de `.tune-up`; atalho para fora é ignorado) |
 | `modulos` | `[]` (ids de telas extras do pacote que ficam ligadas) |
+| `modelos_disponiveis` | nada: o painel sonda a licença. `{"fable": false}` (ou `true`) vence a sonda |
 | `areas_acompanhamento` | nenhuma: toda lista cai em "geral" |
 | `projeto_mem` / `claude_mem_db` | nome da pasta raiz / `~/.claude-mem/claude-mem.db` |
 
@@ -77,13 +78,35 @@ Chave que o núcleo não conhece é ignorada, mas chega aos módulos em `ctx["co
 - `montar()` roda com tempo limite de 20 s; exceção ou demora vira 500 só daquele módulo. Resultado fica 30 s em cache.
 - O servidor confere a forma mínima (alerta fora do formato, aba sem `id`/`blocos` e bloco sem `tipo` saem com aviso); o resto do bloco passa como veio.
 
+## Chat (tela inicial)
+
+A tela inicial é um chat: a pessoa escreve o pedido e escolhe o **nível**. Cada nível é uma ação do grupo `chat` (`acoes/chat.json`), com um único parâmetro de texto `pedido` (aceita várias linhas, até 6000 letras) e três campos que qualquer ação pode ter:
+
+- `modelos`: apelido do CLI ou lista em ordem de preferência (`["fable", "opus"]`). A sessão sai com o primeiro que a licença tem; o último é a reserva e nunca é sondado. Sem o campo, vale o modelo padrão do CLI.
+- `esforco`: `low`, `medium`, `high`, `xhigh` ou `max` (vira `--effort`).
+- `equipe`: texto curto para a tela ("1 a 2 agentes").
+
+| nível | modelo · esforço | o que a sessão faz |
+|---|---|---|
+| Só perguntar | sonnet · medium | responde lendo; travado de verdade: Edit/Write negados e, no Bash, escrita em arquivo, git que muda, PR e envio de dados |
+| Ajuste simples | opus · medium | faz a mudança, 1 revisor Opus, abre a PR |
+| Ajuste moderado | opus · high | mini-plano, executores Sonnet/Opus, até 2 revisores Opus por item, uma PR |
+| Mudança completa | fable (reserva opus) · xhigh | `/tune-up:plan` com 2 revisores Opus do plano; commit, push, PR e merge negados por trava (não mexer no código do produto é pedido no prompt); as Partes rodam na tela Fases |
+| Marketing | opus · medium | rascunho em arquivo; nunca posta, anuncia ou gasta |
+
+O pacote do projeto pode acrescentar níveis (ações com `grupo: "chat"`) ou trocar um do núcleo: mesmo `id` e `"substitui": true` (ex.: Marketing com as travas das ferramentas do projeto). Sem `substitui`, id repetido segue ignorado com aviso.
+
+**Licença.** `GET /api/modelos` diz, para cada modelo preferido, `sim`, `nao`, `verificando` ou `nao_sei`. A sonda é um `claude -p --safe-mode --tools "" --system-prompt ok --model <apelido>` (uns 900 tokens e 10 s, medido no CLI 2.1.322), guardada em `<pacote>/dados/modelos.json`: "tem" vale 7 dias, "não tem" 1 dia, falha de rede não é guardada (tenta de novo depois de 10 min e, enquanto isso, a sessão sai com a reserva).
+
+**Continuar a conversa.** `POST /api/execucoes/{id}/responder {texto}` manda outra mensagem para a mesma sessão quando ela terminou a vez dela. Medido no CLI 2.1.322: `claude --bg --resume <sessionId> "texto"` sem nenhuma outra opção acorda a sessão com as opções guardadas (nome, modelo, esforço, `--settings` das travas) e o mesmo id; com o processo antigo ainda vivo, ou com qualquer opção a mais, o CLI abre uma cópia com outro id. Por isso o painel roda `claude stop <id>` antes, não passa opção e, se mesmo assim vier outro id, para e apaga a cópia e devolve erro. Sessão esperando pergunta no terminal (`precisa_de_voce`) não aceita resposta pela tela: use "Abrir".
+
 ## Botões (ações)
 
 O catálogo é `acoes/dev.json` do núcleo (grupo `dev`: Rodar Parte, Planejar fase, Investigar, Status) mais `<pacote>/acoes/*.json`. Id repetido é ignorado com aviso. Cada ação tem `grupo` (`^[a-z0-9_-]{1,40}$`; `area` ainda vale como nome antigo), `risco` (`leitura`, `rascunho`, `codigo`, `credito`) e um modelo de prompt com `{param}`.
 
 - O navegador só manda `{acao, params}`. **O prompt é montado no servidor**; o cliente nunca manda comando.
-- Validação: a ação existe; fase e Parte existem no estado atual e a Parte não está fechada; texto sem caractere de controle (nem quebra de linha), até o limite, e nunca começando com `-`; escolha só entre as opções; campo desconhecido é recusado.
-- Disparo: `claude --bg -n "NOME" --settings <travas> "PROMPT"` com lista de argumentos, sem shell, `cwd` = raiz e **sem modo que pula permissão**. Rodar Parte usa o nome `Fase N Parte X`, que o leitor liga à Parte.
+- Validação: a ação existe; fase e Parte existem no estado atual e a Parte não está fechada; texto sem caractere de controle (quebra de linha só em parâmetro com `"linhas": true`), até o limite, e nunca começando com `-`; escolha só entre as opções; campo desconhecido é recusado.
+- Disparo: `claude --bg -n "NOME" [--model M] [--effort E] --settings <travas> "PROMPT"` com lista de argumentos, sem shell, `cwd` = raiz e **sem modo que pula permissão** (a não ser com `pular_permissoes`). Rodar Parte usa o nome `Fase N Parte X`, que o leitor liga à Parte.
 - Regras-objeto de `negar`/`permitir` aceitam regex de até 1000 caracteres (no JSON; dá para escrever lista do que pode com lookahead negativo, ex. `mcp__servidor__(?!(get_\\w+|list_\\w+)$).*`).
 - Ação de risco `codigo` ou `credito` sempre pede confirmação na tela.
 - A mesma ação com os mesmos campos rodando dá 409; passar do teto (`max_execucoes`, contando "rodando" e "precisa de você") também dá 409.
@@ -118,7 +141,7 @@ Cruza o registro com `claude agents --json --all` (cache de 3 s). Medido no CLI 
 ## Segurança
 
 - Escuta só em `127.0.0.1`; `Host` precisa ser `127.0.0.1` ou `localhost` (421).
-- Todo POST exige: `X-Painel-Token` igual ao token (nasce a cada subida; comparação em tempo constante), `Origin` igual ao próprio endereço, `Sec-Fetch-Site` ausente ou `same-origin`, `Content-Type: application/json` e corpo até 16 KB (413).
+- Todo POST exige: `X-Painel-Token` igual ao token (nasce a cada subida; comparação em tempo constante), `Origin` igual ao próprio endereço, `Sec-Fetch-Site` ausente ou `same-origin`, `Content-Type: application/json` e corpo até 32 KB (413).
 - CSP: só `'self'` (estilo inline permitido).
 - Arquivos: `/assets/*` com cache longo, `index.html` sem cache, outra rota que não seja `/api` cai no `index.html`. Nada de `..`, ponto inicial, barra invertida, byte nulo ou atalho que saia de `web/dist`.
 - O leitor não segue atalho para fora do `plans_dir`, e nome de arquivo vindo do perfil (`goal`, `progress`, `later`) só vale se for nome simples.
@@ -139,7 +162,9 @@ Tipos exatos em `contrato/api.d.ts`.
 | `GET /api/acoes` | catálogo de botões |
 | `POST /api/execucoes` | roda uma ação (201, 400, 409) |
 | `GET /api/execucoes` | execuções, mais novas primeiro |
-| `GET /api/execucoes/{id}/eventos?desde=N` | conversa aos pedaços |
+| `GET /api/execucoes/{id}/eventos?desde=N[&inteiro=1]` | conversa aos pedaços (`inteiro=1`: falas com até 12000 letras, para o chat) |
+| `POST /api/execucoes/{id}/responder` | outra mensagem na mesma sessão (200, 400, 404, 409) |
+| `GET /api/modelos` | o que a licença tem, para os modelos preferidos das ações |
 | `POST /api/execucoes/{id}/parar` | `claude stop` |
 | `POST /api/execucoes/{id}/abrir` | Terminal em `claude attach` |
 | `GET /api/acompanhamento` | listas do claude-mem separadas por área |

@@ -2,7 +2,7 @@
 // (sem zustand/API deles; menu em gaveta no celular; navegacao do painel tune-up)
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
-import { Bot, ClipboardList, Home, ListChecks, Menu, Play, X, Zap, type LucideIcon } from 'lucide-react';
+import { Bot, ClipboardList, Home, ListChecks, Menu, MessageSquare, Play, X, Zap, type LucideIcon } from 'lucide-react';
 import { useEstado, useModulos, useSessao } from './api/ganchos';
 import { nomeDoProjeto } from './api/projeto';
 import { iconeDoModulo } from './componentes/iconesModulo';
@@ -18,7 +18,8 @@ interface ItemMenu {
 }
 
 const ITENS: ItemMenu[] = [
-  { para: '/', rotulo: 'Início', icone: Home, fim: true },
+  { para: '/', rotulo: 'Chat', icone: MessageSquare, fim: true },
+  { para: '/resumo', rotulo: 'Resumo', icone: Home },
   { para: '/agentes', rotulo: 'Agentes', icone: Bot },
   { para: '/fases', rotulo: 'Fases', icone: ListChecks },
   { para: '/execucoes', rotulo: 'Execuções', icone: Play },

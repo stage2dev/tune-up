@@ -1,0 +1,164 @@
+{
+  "_sobre": "Níveis do chat da tela inicial. Cada ação do grupo 'chat' é um nível: um único parâmetro de texto 'pedido', mais 'modelos' (ordem de preferência; a sessão sai com o primeiro que a licença tem), 'esforco' e 'equipe' (texto para a tela). O pacote do projeto pode trocar um nível com o mesmo id e \"substitui\": true (ex.: marketing com as travas das ferramentas do projeto) ou acrescentar níveis novos com grupo 'chat'.",
+  "acoes": [
+    {
+      "id": "chat.pergunta",
+      "grupo": "chat",
+      "titulo": "Só perguntar",
+      "descricao": "Tira uma dúvida sobre o seu negócio ou o sistema. Só lê: não muda nada.",
+      "risco": "leitura",
+      "confirmar": false,
+      "modelos": "sonnet",
+      "esforco": "medium",
+      "equipe": "1 agente",
+      "nome_sessao": "Pergunta: {pedido}",
+      "negar": [
+        "Edit",
+        "Write",
+        "MultiEdit",
+        "NotebookEdit",
+        {
+          "ferramenta": "Bash",
+          "campo": "command",
+          "decisao": "deny",
+          "entrada": "\\bgit\\s+(?:-C\\s+\\S+\\s+)?(?:commit|push|merge|rebase|reset|cherry-pick|am|apply)\\b|\\bgh\\s+(?:pr\\s+(?:create|merge|close|edit)|release|repo\\s+(?:create|delete))\\b",
+          "motivo": "este nível do chat não faz commit, push, PR nem merge"
+        },
+        {
+          "ferramenta": "Bash",
+          "campo": "command",
+          "decisao": "deny",
+          "entrada": "\\bsed\\s+(?:-\\w+\\s+)*-i|\\bperl\\s+(?:-\\w+\\s+)*-\\w*i|\\btee\\b|\\brm\\b|\\bmv\\b|\\bcp\\b|\\bln\\b|\\btouch\\b|\\bmkdir\\b|\\bchmod\\b|\\btruncate\\b|\\bdd\\b|\\bpatch\\b|\\bgit\\s+(?:-C\\s+\\S+\\s+)?(?:add|stash|checkout|switch|restore|clean|worktree|branch|tag)\\b|(?:^|[^0-9&>])>{1,2}\\s*(?!/dev/null\\b|&)\\S",
+          "motivo": "este nível do chat só lê: não muda arquivo"
+        },
+        {
+          "ferramenta": "Bash",
+          "campo": "command",
+          "decisao": "deny",
+          "entrada": "(?i)\\b(?:curl|wget|http|https)\\b[^|;&]*(?:\\s-X\\s*(?:POST|PUT|PATCH|DELETE)|\\s--request\\s+(?:POST|PUT|PATCH|DELETE)|\\s-d\\b|\\s--data\\b|\\s--data-\\w+|\\s-F\\b|\\s--form\\b|\\s--post-\\w+|\\s-T\\b|\\s--upload-file\\b)",
+          "motivo": "este nível do chat não envia dados para fora"
+        }
+      ],
+      "prompt": "PEDIDO DO DONO (veio do chat do painel):\n{pedido}\n\nCOMO FAZER (nível: só perguntar)\n- Responda à pergunta. Só leia: não mude arquivo, não faça commit, não escreva em produção, não mande mensagem a ninguém.\n- Antes de tudo leia o perfil do projeto do tune-up (o caminho aparece no início da sessão; costuma ser `.tune-up/projeto.md`) e o AGENTS/CLAUDE do repositório: quem faz merge, definição de pronto, produção, armadilhas.\n- Leia o que precisar do código, dos planos ou dos dados para responder com fato, não com palpite. Diga o que conferiu e o que não conseguiu conferir.\n- Se a resposta pedir uma mudança, não faça: diga qual nível do chat serve (ajuste simples, ajuste moderado, mudança completa ou marketing).\n- Resposta final curta, em linguagem simples, no idioma do perfil: a resposta e de onde ela veio.",
+      "params": [
+        {
+          "nome": "pedido",
+          "rotulo": "O que você quer?",
+          "tipo": "texto",
+          "obrigatorio": true,
+          "max": 6000,
+          "linhas": true,
+          "ajuda": "Escreva com suas palavras. Pode ser mais de uma linha."
+        }
+      ]
+    },
+    {
+      "id": "chat.simples",
+      "grupo": "chat",
+      "titulo": "Ajuste simples",
+      "descricao": "Uma mudança pequena: um texto, uma cor, um botão, um erro claro. Faz, revisa e abre a PR para você ver.",
+      "risco": "codigo",
+      "confirmar": true,
+      "modelos": "opus",
+      "esforco": "medium",
+      "equipe": "1 a 2 agentes",
+      "nome_sessao": "Ajuste: {pedido}",
+      "prompt": "PEDIDO DO DONO (veio do chat do painel):\n{pedido}\n\nCOMO FAZER (nível: ajuste simples, 1 a 2 agentes)\n- Você mesmo faz a mudança: é coisa pequena (um comportamento, poucos arquivos). Sem plano de fase e sem documento de planejamento.\n- Antes de tudo leia o perfil do projeto do tune-up (o caminho aparece no início da sessão; costuma ser `.tune-up/projeto.md`) e o AGENTS/CLAUDE do repositório: quem faz merge, definição de pronto, produção, armadilhas.\n- `git fetch` e trabalhe numa worktree própria, em branch nova cortada da principal de hoje. Nunca `git stash -u`. `git add` só por nome de arquivo. Preserve mudanças e arquivos que já existem.\n- Antes de escrever, leia as listas de armadilhas do projeto (skills com armadilhas/pitfalls no nome) que casam com os arquivos que vai tocar.\n- Depois de mexer: rode a definição de pronto do perfil nos lados que tocou e compare com a principal (falha que já existia não é sua, mas diga qual).\n- Revisão: UM agente `tune-up:reviewer-failures` (model opus, effort high) recebe só o diff e o que o dono pediu. Sem o plugin tune-up, use um agente de revisão comum. CRÍTICO ou ALTO: corrija e peça nova olhada, no máximo 2 voltas. MÉDIO e BAIXO: liste na resposta final.\n- Entrega: siga /tune-up:ship para commit, push e PR. Este pedido autoriza push e PR.\n- Se descobrir que não é pequeno (banco de dados, dinheiro, login, envio para cliente, mais de uns 5 arquivos ou mais de um comportamento): PARE antes de mexer, explique em 3 linhas e diga para pedir de novo como ajuste moderado ou mudança completa.\n- Merge, deploy, banco de produção, mensagem para cliente, anúncio e gasto são do dono: nunca faça sem ele pedir nesta conversa.\n- Nunca use o modelo fable em subagente.\n- Resposta final curta, em linguagem simples, no idioma do perfil: o que mudou, o link da PR, o que o dono precisa fazer e o que não rodou.",
+      "params": [
+        {
+          "nome": "pedido",
+          "rotulo": "O que você quer?",
+          "tipo": "texto",
+          "obrigatorio": true,
+          "max": 6000,
+          "linhas": true,
+          "ajuda": "Escreva com suas palavras. Pode ser mais de uma linha."
+        }
+      ]
+    },
+    {
+      "id": "chat.moderado",
+      "grupo": "chat",
+      "titulo": "Ajuste moderado",
+      "descricao": "Uma melhoria com alguns passos: uma tela nova, uma regra que muda. Monta um mini-plano, usa executores e revisores e abre uma PR só.",
+      "risco": "codigo",
+      "confirmar": true,
+      "modelos": "opus",
+      "esforco": "high",
+      "equipe": "coordenador + até 4 agentes",
+      "nome_sessao": "Melhoria: {pedido}",
+      "prompt": "PEDIDO DO DONO (veio do chat do painel):\n{pedido}\n\nCOMO FAZER (nível: ajuste moderado; você coordena e julga, não escreve o código dos itens)\n- Antes de tudo leia o perfil do projeto do tune-up (o caminho aparece no início da sessão; costuma ser `.tune-up/projeto.md`) e o AGENTS/CLAUDE do repositório: quem faz merge, definição de pronto, produção, armadilhas.\n- Base: `git fetch`, worktree própria e branch nova cortada da principal de hoje. Nunca `git stash -u`. `git add` só por nome de arquivo.\n- Mini-plano no rascunho da sessão (não na pasta de planos): 2 a 6 itens, cada um com arquivo:linha e um critério de pronto que dá para medir. Um `tune-up:mapper` (model haiku) confere as linhas na base de hoje.\n- Um item por vez, com ordem de serviço como em /tune-up:part (inclua as armadilhas do projeto que casam com os arquivos): `tune-up:executor-sonnet` (sonnet, medium) para tela, texto, teste e rota simples; `tune-up:executor-opus` (opus, medium) para banco, dinheiro, login, envio externo ou concorrência.\n- Revisão por item: até 2 revisores (model opus, effort high) num envio só, recebendo só o diff do item e o critério: `tune-up:reviewer-failures` sempre; `tune-up:reviewer-database` ou `tune-up:reviewer-security` quando o item tocar nisso. CRÍTICO e ALTO voltam para um executor novo (no máximo 2 voltas). MÉDIO e BAIXO: anote e liste no corpo da PR.\n- Portão: `tune-up:checker` (model haiku) roda a definição de pronto do perfil na worktree, comparando com a principal.\n- Migration: entregue o arquivo e os passos; aplicar em produção é só com ordem do dono.\n- Entrega: UMA PR, seguindo /tune-up:ship. Este pedido autoriza push e PR.\n- Se for grande demais (mais de uma PR, decisão de produto em aberto, integração externa nova): PARE antes de codar, explique em 3 linhas e diga para pedir como mudança completa.\n- Merge, deploy, banco de produção, mensagem para cliente, anúncio e gasto são do dono: nunca faça sem ele pedir nesta conversa.\n- Nunca use o modelo fable em subagente.\n- Resposta final curta, em linguagem simples, no idioma do perfil: o que entrou, o link da PR, o que depende do dono (merge, deploy, banco) e o que não rodou.",
+      "params": [
+        {
+          "nome": "pedido",
+          "rotulo": "O que você quer?",
+          "tipo": "texto",
+          "obrigatorio": true,
+          "max": 6000,
+          "linhas": true,
+          "ajuda": "Escreva com suas palavras. Pode ser mais de uma linha."
+        }
+      ]
+    },
+    {
+      "id": "chat.completo",
+      "grupo": "chat",
+      "titulo": "Mudança completa",
+      "descricao": "Algo grande ou novo. Pesquisa, monta o plano de uma fase em Partes e revisa o plano com dois revisores. Não faz commit nem PR: depois você roda cada Parte na tela Fases.",
+      "risco": "rascunho",
+      "confirmar": false,
+      "modelos": [
+        "fable",
+        "opus"
+      ],
+      "esforco": "xhigh",
+      "equipe": "coordenador + 2 revisores Opus",
+      "nome_sessao": "Plano: {pedido}",
+      "prompt": "/tune-up:plan {pedido}\n\nREGRAS DESTE PEDIDO (veio do chat do painel, nível mudança completa)\n- Só o plano: não mexa em código do produto, não faça commit nem PR.\n- Na revisão do plano (Passo 6) use DOIS `tune-up:plan-reviewer` (model opus, effort high) num envio só, com focos diferentes: um em dados, segurança e o que já existe em produção; o outro em escopo, ordem das Partes e critérios que dá para medir. Junte os achados dos dois numa volta só de correção.\n- Nunca use o modelo fable em subagente.\n- Perguntas que só o dono decide: no máximo 4, com a recomendada primeiro.\n- No fim diga em linguagem simples: o que foi decidido, quantas Partes são e que cada uma roda pelo botão Rodar Parte da tela Fases do painel.",
+      "params": [
+        {
+          "nome": "pedido",
+          "rotulo": "O que você quer?",
+          "tipo": "texto",
+          "obrigatorio": true,
+          "max": 6000,
+          "linhas": true,
+          "ajuda": "Escreva com suas palavras. Pode ser mais de uma linha."
+        }
+      ],
+      "negar": [
+        {
+          "ferramenta": "Bash",
+          "campo": "command",
+          "decisao": "deny",
+          "entrada": "\\bgit\\s+(?:-C\\s+\\S+\\s+)?(?:commit|push|merge|rebase|reset|cherry-pick|am|apply)\\b|\\bgh\\s+(?:pr\\s+(?:create|merge|close|edit)|release|repo\\s+(?:create|delete))\\b",
+          "motivo": "este nível do chat não faz commit, push, PR nem merge"
+        }
+      ]
+    },
+    {
+      "id": "chat.marketing",
+      "grupo": "chat",
+      "titulo": "Marketing",
+      "descricao": "Cria um rascunho de marketing: texto de post, anúncio, e-mail, roteiro ou arte. Nunca posta, anuncia ou gasta sem você mandar.",
+      "risco": "rascunho",
+      "confirmar": false,
+      "modelos": "opus",
+      "esforco": "medium",
+      "equipe": "1 a 3 agentes",
+      "nome_sessao": "Marketing: {pedido}",
+      "prompt": "PEDIDO DO DONO (veio do chat do painel):\n{pedido}\n\nCOMO FAZER (nível: marketing, só RASCUNHO)\n- Antes de tudo leia o perfil do projeto do tune-up (o caminho aparece no início da sessão; costuma ser `.tune-up/projeto.md`) e o AGENTS/CLAUDE do repositório: quem faz merge, definição de pronto, produção, armadilhas.\n- Entregue o que foi pedido como rascunho em arquivo, na pasta de marketing que o perfil ou o projeto indicar; se não houver, crie uma pasta com a data de hoje e o assunto dentro da pasta de dados do painel (`.tune-up/<pacote>/dados/marketing/`).\n- Antes de criar, leia a marca do projeto (nome, tom, cores, padrões aprovados, o que pode e o que não pode prometer). Use as skills e os agentes de marketing que o projeto tiver (redação, arte, vídeo, revisão de peça).\n- Fato sobre o produto só o que está no projeto: não invente número, preço, prazo, depoimento nem resultado.\n- NUNCA poste, publique, agende, anuncie, mude orçamento, pause ou ligue campanha. Só leitura nas contas de anúncio e redes.\n- Geração paga (imagem, vídeo ou voz por serviço externo): diga quanto custa e pergunte antes de gastar.\n- Uma revisão antes de entregar: confira tamanho e formato do canal, ortografia, promessa que o produto cumpre e regras da plataforma.\n- Merge, deploy, banco de produção, mensagem para cliente, anúncio e gasto são do dono: nunca faça sem ele pedir nesta conversa.\n- Nunca use o modelo fable em subagente.\n- Resposta final curta, em linguagem simples, no idioma do perfil: o que foi criado, o caminho de cada arquivo e o que falta o dono aprovar.",
+      "params": [
+        {
+          "nome": "pedido",
+          "rotulo": "O que você quer?",
+          "tipo": "texto",
+          "obrigatorio": true,
+          "max": 6000,
+          "linhas": true,
+          "ajuda": "Escreva com suas palavras. Pode ser mais de uma linha."
+        }
+      ]
+    }
+  ]
+}

@@ -190,7 +190,7 @@ class TesteArgv(unittest.TestCase):
     def test_dev_json_do_nucleo_carrega(self):
         acoes, avisos = catalogo.carregar_catalogo(os.path.join(AQUI, "acoes"))
         self.assertEqual(avisos, [])
-        self.assertTrue(all(a["grupo"] == "dev" for a in acoes))
+        self.assertTrue(all(a["grupo"] in ("dev", "chat") for a in acoes))
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 // (nunca isLoading) para mostrar esqueleto; so mostre "vazio" quando !isPending && !isError.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost } from './cliente';
-import type { Acao, Acompanhamento, DadosModulo, EstadoPainel, Eventos, Execucao, ListaModulos, Sessao } from './tipos';
+import type { Acao, Acompanhamento, DadosModulo, EstadoPainel, Eventos, Execucao, ListaModulos, RespModelos, Sessao } from './tipos';
 import { obterSessao } from './cliente';
 import { buscarEventos, intervaloEventos, type EventosCache } from './eventos';
 
@@ -12,6 +12,9 @@ export const chaves = {
   acoes: ['acoes'] as const,
   execucoes: ['execucoes'] as const,
   eventos: (id: string) => ['eventos', id] as const,
+  /** Eventos com as falas inteiras (?inteiro=1, tela de conversa). Chave propria: nao mistura com o texto cortado. */
+  eventosInteiro: (id: string) => ['eventos-inteiro', id] as const,
+  modelos: ['modelos'] as const,
   modulos: ['modulos'] as const,
   modulo: (id: string) => ['modulo', id] as const,
   acompanhamento: ['acompanhamento'] as const,
@@ -54,18 +57,44 @@ export const useAcompanhamento = () =>
  * junta no cache; cada busca segue pedindo ate o `proximo` parar de andar. Para de
  * buscar so quando a execucao terminou E o fim do arquivo ja chegou.
  */
-export function useEventos(id: string | undefined) {
+export function useEventos(id: string | undefined, inteiro = false) {
   const qc = useQueryClient();
+  const chave = inteiro ? chaves.eventosInteiro(id ?? '') : chaves.eventos(id ?? '');
+  const extra = inteiro ? '&inteiro=1' : '';
   return useQuery({
-    queryKey: chaves.eventos(id ?? ''),
+    queryKey: chave,
     enabled: !!id,
     refetchInterval: (q) => intervaloEventos(q.state.data),
     // Pede pedaco atras de pedaco ate o fim, mesmo com a execucao ja acabada.
     queryFn: (): Promise<EventosCache> =>
       buscarEventos(
-        (desde) => apiGet<Eventos>(`/api/execucoes/${encodeURIComponent(id ?? '')}/eventos?desde=${desde}`),
-        qc.getQueryData<EventosCache>(chaves.eventos(id ?? '')),
+        (desde) => apiGet<Eventos>(`/api/execucoes/${encodeURIComponent(id ?? '')}/eventos?desde=${desde}${extra}`),
+        qc.getQueryData<EventosCache>(chave),
       ),
+  });
+}
+
+/** GET /api/modelos. Busca de novo a cada 4 s so enquanto algum modelo estiver 'verificando'. */
+export const useModelos = () =>
+  useQuery({
+    queryKey: chaves.modelos,
+    queryFn: () => apiGet<RespModelos>('/api/modelos').then((r) => r.modelos ?? {}),
+    refetchInterval: (q) => (Object.values(q.state.data ?? {}).includes('verificando') ? 4000 : false),
+  });
+
+/** POST /api/execucoes/{id}/responder: continua a mesma sessao. */
+export function useResponder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, texto }: { id: string; texto: string }) =>
+      apiPost<{ execucao: Execucao }>(`/api/execucoes/${encodeURIComponent(id)}/responder`, { texto }).then((r) => r.execucao),
+    onSuccess: (e) => {
+      // Troca a execucao na lista ja (sem esperar os 3 s) e religa a busca de eventos, que tinha parado no fim.
+      qc.setQueryData<Execucao[]>(chaves.execucoes, (l) => l?.map((x) => (x.id === e.id ? e : x)));
+      qc.setQueryData<EventosCache>(chaves.eventosInteiro(e.id), (d) => (d ? { ...d, estado: e.estado } : d));
+      void qc.invalidateQueries({ queryKey: chaves.execucoes });
+      void qc.invalidateQueries({ queryKey: chaves.eventosInteiro(e.id) });
+    },
   });
 }
 
