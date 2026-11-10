@@ -41,7 +41,7 @@ SCRIPT_TERMINAL = ["on run argv", 'tell application "Terminal"', "activate",
 
 
 def agora_iso(t):
-    return datetime.datetime.fromtimestamp(t).astimezone().isoformat(timespec="seconds")
+    return datetime.datetime.fromtimestamp(t, datetime.timezone.utc).astimezone().isoformat(timespec="seconds")
 
 
 def _insistir(fazer):

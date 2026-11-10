@@ -1,4 +1,5 @@
 """Testes do leitor de agentes com pastas temporárias que imitam ~/.claude/projects."""
+import datetime
 import json
 import os
 import shutil
@@ -8,6 +9,7 @@ import unittest
 
 import agentes
 import agentes_disco as disco
+import lancador
 
 SID = "11111111-2222-4333-8444-555555555555"
 SID2 = "66666666-7777-4888-9999-aaaaaaaaaaaa"
@@ -328,6 +330,23 @@ class TestDisco(unittest.TestCase):
     def test_ultima_acao_limite(self):
         texto = disco.descrever_ferramenta({"name": "Edit", "input": {"file_path": "/a/" + "x" * 300}})
         self.assertLessEqual(len(texto), 120)
+
+
+
+class TesteHoraLocal(unittest.TestCase):
+    """Data com fuso já na criação: no Windows `astimezone()` em data ingênua dá OSError p/ carimbo pequeno."""
+    CARIMBOS = (0, 1, 1000, 86399, 1e6, 1700000000, 1711846800, 1730000000.7, time.time())
+
+    def test_mesmo_texto_que_o_jeito_antigo(self):
+        for t in self.CARIMBOS:
+            esperado = disco.iso_local(t)
+            self.assertIsNotNone(esperado, t)
+            self.assertEqual(lancador.agora_iso(t), esperado)
+            try:  # jeito antigo: falha no Windows p/ carimbo pequeno; onde roda, o texto tem de ser igual
+                antigo = datetime.datetime.fromtimestamp(t).astimezone().isoformat(timespec="seconds")
+            except OSError:
+                continue
+            self.assertEqual(esperado, antigo, t)
 
 
 if __name__ == "__main__":
