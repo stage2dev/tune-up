@@ -1,7 +1,7 @@
 """Módulos: telas extras declarativas que vêm do pacote do projeto.
 
 Só carrega <pacote>/modulos/<id>/modulo.py de ids listados em painel.json
-"modulos". O id segue ^[a-z0-9_-]{1,40}$ e o caminho real do arquivo tem de
+"modulos" (ou, de plugin instalado, "modulos_de_plugins": ver modulos_plugin.py). O id segue ^[a-z0-9_-]{1,40}$ e o caminho real do arquivo tem de
 ficar dentro de <pacote>/modulos/<id>/ (atalho para fora é recusado). O módulo
 expõe INFO = {"id","titulo","icone"} e montar(ctx) -> dict; ctx = {"raiz",
 "pacote","dados","config","hoje"}. montar() roda com tempo limite, exceção vira
@@ -20,6 +20,7 @@ import sys
 import threading
 import time
 
+import modulos_plugin
 import travas
 
 RE_ID = re.compile(r"^[a-z0-9_-]{1,40}$")
@@ -54,8 +55,16 @@ def _agora():
 
 def caminho_do_modulo(cfg, mid):
     """Caminho real de modulo.py ou levanta ErroModulo(404)."""
-    if not isinstance(mid, str) or not RE_ID.match(mid) or mid not in (cfg.get("modulos") or []):
+    if not isinstance(mid, str) or not RE_ID.match(mid):
         raise ErroModulo(404, "Essa tela não existe neste projeto.")
+    if mid not in (cfg.get("modulos") or []):
+        chave = modulos_plugin.ligados(cfg)[0].get(mid)
+        if not chave:
+            raise ErroModulo(404, "Essa tela não existe neste projeto.")
+        real, aviso = modulos_plugin.caminho(cfg, mid, chave)
+        if not real:
+            raise ErroModulo(404, "Essa tela não existe neste projeto.", [aviso])
+        return real
     pacote = cfg.get("pacote_dir")
     if not pacote or not cfg.get("pacote_ok"):
         raise ErroModulo(404, "Essa tela não existe neste projeto.", ["sem pacote do projeto"])
@@ -243,7 +252,9 @@ def listar(cfg, tempo=TEMPO_LIMITE):
     saida, avisos = [], []
     if cfg.get("modulos") and not cfg.get("pacote_ok"):
         avisos.append("painel.json lista módulos, mas não achei o pacote do projeto")
-    for mid in cfg.get("modulos") or []:
+    de_plugins, av_plugins = modulos_plugin.ligados(cfg)
+    avisos.extend(av_plugins)
+    for mid in list(cfg.get("modulos") or []) + list(de_plugins):
         item = {"id": mid, "titulo": mid, "icone": "", "alertas": 0}
         try:
             item.update(info(carregar(cfg, mid), mid))
@@ -325,8 +336,9 @@ def negar_dos_modulos(cfg):
     Só importa o módulo e lê INFO (montar() não roda). Lista de textos no formato do "negar" das
     ações; forma errada é ignorada com aviso. O núcleo só junta os textos declarados.
     """
-    regras, avisos = [], []
-    for mid in cfg.get("modulos") or []:
+    regras = []
+    de_plugins, avisos = modulos_plugin.ligados(cfg)
+    for mid in list(cfg.get("modulos") or []) + list(de_plugins):
         try:
             mod = carregar(cfg, mid)
         except ErroModulo as e:

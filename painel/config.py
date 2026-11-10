@@ -98,26 +98,50 @@ def achar_guarda(home=None):
 
     Devolve (caminho ou None, aviso ou None). Sem o plugin o painel segue sem ele.
     """
+    todas = _instalacoes(home)
+    if todas is None:
+        return None, "plugin tune-up não encontrado (sem installed_plugins.json); sigo sem ele"
+    candidatos = []
+    for chave, e in todas:
+        if str(chave).split("@", 1)[0] != "tune-up":
+            continue
+        g = os.path.join(os.path.expanduser(e["installPath"]), "scripts", "guarda.py")
+        if os.path.isfile(g):
+            candidatos.append((_quando(e), g))
+    if not candidatos:
+        return None, "plugin tune-up não está instalado; sigo sem ele (nomes de marcador padrão)"
+    return sorted(candidatos)[-1][1], None
+
+
+def _quando(e):
+    return str(e.get("lastUpdated") or e.get("installedAt") or "")
+
+
+def _instalacoes(home=None):
+    """[(chave, entrada)] de ~/.claude/plugins/installed_plugins.json (só entradas com installPath);
+    None se o arquivo não existe ou não lê. `home` troca o ~ (testes)."""
     home = home or os.path.expanduser("~")
     registro = os.path.join(home, ".claude", "plugins", "installed_plugins.json")
     try:
         with open(registro, encoding="utf-8") as f:
             dado = json.load(f)
     except (OSError, ValueError):
-        return None, "plugin tune-up não encontrado (sem installed_plugins.json); sigo sem ele"
+        return None
     plugins = dado.get("plugins") if isinstance(dado, dict) else None
-    candidatos = []
+    saida = []
     for chave, entradas in (plugins.items() if isinstance(plugins, dict) else []):
-        if str(chave).split("@", 1)[0] != "tune-up":
-            continue
         for e in entradas if isinstance(entradas, list) else [entradas]:
             if isinstance(e, dict) and isinstance(e.get("installPath"), str):
-                g = os.path.join(os.path.expanduser(e["installPath"]), "scripts", "guarda.py")
-                if os.path.isfile(g):
-                    candidatos.append((str(e.get("lastUpdated") or e.get("installedAt") or ""), g))
-    if not candidatos:
-        return None, "plugin tune-up não está instalado; sigo sem ele (nomes de marcador padrão)"
-    return sorted(candidatos)[-1][1], None
+                saida.append((chave, e))
+    return saida
+
+
+def achar_plugin(chave, home=None):
+    """installPath do plugin `plugin@marketplace`, ou None. Com várias entradas vale a de
+    lastUpdated (ou installedAt) mais recente; empate fica com a última do arquivo."""
+    achados = [(_quando(e), i, e["installPath"]) for i, (c, e) in enumerate(_instalacoes(home) or [])
+               if c == chave]
+    return os.path.expanduser(sorted(achados)[-1][2]) if achados else None
 
 
 def _ler_arquivo(caminho, avisos):
@@ -304,6 +328,7 @@ def carregar(raiz=None, arquivo=None, home=None):
         pacote_dir=pacote,
         pacote_ok=pacote_ok,
         modulos=_modulos(bruto, avisos),
+        home=home or os.path.expanduser("~"),
         areas_acompanhamento=_areas(bruto, avisos),
         painel_dir=PAINEL,
         # registro das execuções e arquivos das ações; pacote fora de .tune-up não recebe escrita

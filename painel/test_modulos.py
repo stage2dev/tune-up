@@ -330,5 +330,83 @@ class TesteProjetoVazio(unittest.TestCase):
         self.assertIn("avisos", d)
 
 
+PLUG = ("def montar(ctx):\n    return {\"alertas\": [{\"nivel\": \"info\", \"texto\": \"ola\"}]}\n"
+        "INFO = {\"titulo\": \"De plugin\", \"acoes\": [\"x\"], \"negar\": [\"Bash(rm:*)\"]}\n"
+        "def agir(ctx, acao, dados):\n    return {\"feito\": acao}\n")
+
+
+class TesteModulosDePlugin(unittest.TestCase):
+    def setUp(self):
+        self.tmp = os.path.realpath(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.inst = os.path.join(self.tmp, "cache", "meuplugin", "2")
+        escrever(os.path.join(self.inst, "painel", "modulos", "vendas", "modulo.py"), PLUG)
+        escrever(os.path.join(self.inst, "painel", "modulos", "outro", "modulo.py"), PLUG)
+        escrever(os.path.join(self.tmp, "fora", "modulo.py"), PLUG)
+        os.symlink(os.path.join(self.tmp, "fora"), os.path.join(self.inst, "painel", "modulos", "fuga"))
+        antigo = os.path.join(self.tmp, "cache", "meuplugin", "1")
+        escrever(os.path.join(antigo, "painel", "modulos", "vendas", "modulo.py"), "raise RuntimeError('velho')\n")
+        escrever(os.path.join(self.tmp, ".claude", "plugins", "installed_plugins.json"), json.dumps({
+            "version": 2, "plugins": {"meuplugin@meumarket": [
+                {"installPath": self.inst, "lastUpdated": "2026-02-01"},
+                {"installPath": antigo, "lastUpdated": "2026-01-01"}]}}))
+        modulos.esquecer()
+        self.addCleanup(modulos.esquecer)
+
+    def cfg(self, **chaves):
+        escrever(os.path.join(self.tmp, ".tune-up", "painel.json"), json.dumps(dict({"nome": "L"}, **chaves)))
+        return config.carregar(self.tmp, home=self.tmp)
+
+    def test_sem_a_chave_nada_aparece(self):
+        for chaves in ({}, {"modulos_de_plugins": []}):
+            cfg = self.cfg(**chaves)
+            self.assertEqual(modulos.listar(cfg), {"modulos": [], "avisos": []})
+            self.assertEqual(modulos.montar(cfg, "vendas")[0], 404)
+            self.assertEqual(modulos.agir(cfg, "vendas", "x", {})[0], 404)
+            self.assertNotIn("painel_modulo_vendas", sys.modules)
+
+    def test_modulo_de_plugin_funciona_como_o_do_projeto(self):
+        cfg = self.cfg(modulos_de_plugins=["meuplugin@meumarket:vendas"])
+        r = modulos.listar(cfg)
+        self.assertEqual(r["avisos"], [])
+        self.assertEqual([(m["id"], m["titulo"], m["alertas"]) for m in r["modulos"]], [("vendas", "De plugin", 1)])
+        codigo, corpo = modulos.montar(cfg, "vendas", usar_cache=False)
+        self.assertEqual((codigo, corpo["id"]), (200, "vendas"))
+        self.assertEqual(modulos.agir(cfg, "vendas", "x", {}), (200, {"ok": True, "resultado": {"feito": "x"}}))
+        self.assertEqual(modulos.negar_dos_modulos(cfg), (["Bash(rm:*)"], []))
+        self.assertEqual(modulos.montar(cfg, "outro")[0], 404)  # só o que foi nomeado
+
+    def test_id_igual_ao_do_projeto_e_recusado(self):
+        escrever(os.path.join(self.tmp, ".tune-up", "painel-projeto", "modulos", "vendas", "modulo.py"),
+                 "INFO = {\"titulo\": \"Do projeto\"}\ndef montar(ctx):\n    return {}\n")
+        cfg = self.cfg(modulos=["vendas"], modulos_de_plugins=["meuplugin@meumarket:vendas"])
+        r = modulos.listar(cfg)
+        self.assertEqual([m["titulo"] for m in r["modulos"]], ["Do projeto"])
+        self.assertTrue(any("já é um módulo do projeto" in a for a in r["avisos"]))
+
+    def test_recusas_com_aviso(self):
+        cfg = self.cfg(modulos_de_plugins=[
+            "naoexiste@meumarket:zzz", "meuplugin@meumarket:sumido", "meuplugin@meumarket:fuga",
+            "ruim", 7, "meuplugin@meumarket:Vendas", "a b@meumarket:x", "meuplugin@meumarket:outro",
+            "meuplugin@meumarket:vendas", "meuplugin@meumarket:vendas"])
+        r = modulos.listar(cfg)
+        self.assertEqual(sorted(m["id"] for m in r["modulos"]), ["outro", "vendas"])
+        texto = " | ".join(r["avisos"])
+        for trecho in ("naoexiste@meumarket não está instalado", "sumido", "fuga", "'ruim'", "'7'", "Vendas",
+                       "a b@meumarket", "já veio de"):
+            self.assertIn(trecho, texto)
+        self.assertEqual(modulos.montar(cfg, "vendas", usar_cache=False)[0], 200)  # painel segue
+
+    def test_duplicado_vale_o_primeiro(self):
+        cfg = self.cfg(modulos_de_plugins=["meuplugin@meumarket:vendas", "outroplug@meumarket:vendas"])
+        r = modulos.listar(cfg)
+        self.assertEqual(len(r["modulos"]), 1)
+        self.assertEqual(len([a for a in r["avisos"] if "já veio de" in a]), 1)
+
+    def test_versao_mais_recente_do_registro(self):
+        cfg = self.cfg(modulos_de_plugins=["meuplugin@meumarket:vendas"])
+        self.assertEqual(config.achar_plugin("meuplugin@meumarket", cfg["home"]), self.inst)
+
+
 if __name__ == "__main__":
     unittest.main()
