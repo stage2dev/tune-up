@@ -79,7 +79,7 @@ class TestePastaDeTrabalho(test_chat.Base):
         conf = json.loads(cmd[cmd.index("--settings") + 1])
         self.assertEqual(conf["permissions"]["allow"], ["Edit(%s/**)" % trabalho.caminho_de_regra(pasta)])
         self.assertTrue(conf["permissions"]["allow"][0].startswith("Edit(//"))
-        gancho = travas._decodificar(shlex.split(conf["hooks"]["PreToolUse"][0]["hooks"][0]["command"])[-1])
+        gancho = travas._decodificar(shlex.split(conf["hooks"]["PreToolUse"][0]["hooks"][0]["command"])[4])
         self.assertEqual(gancho["n"][0]["entrada"], "^(?!%s/)" % re.escape(pasta))
         self.assertIsNone(travas.decidir(gancho, "Write", {"file_path": pasta + "/saida.png"}))
         for fora in (pasta + "x/a.png", os.path.dirname(pasta) + "/outro/a.png", "/tmp/a.png"):

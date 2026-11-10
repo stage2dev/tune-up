@@ -15,10 +15,13 @@ JSON da própria ação, em dois campos opcionais:
   Uma regra de "permitir" que casa cala o gancho (antes das de "negar"); a proteção
   fixa abaixo vale sempre.
 
-Proteção fixa do núcleo (toda ação): mexer em .claude/settings*.json, .claude/hooks/,
-no painel.json, no núcleo ou no pacote do painel (menos <pacote>/dados/) nega em ação
-de risco leitura/rascunho e pergunta em código/crédito. Se o gancho falhar: nega em
-leitura/rascunho, pergunta no resto. Deny de gancho vence o "allow" de outro gancho.
+Proteção fixa do núcleo (toda ação): mexer em .claude/settings*.json, .claude/hooks|skills|plugins,
+CLAUDE.md, .mcp.json, no painel.json, no núcleo ou no pacote do painel (menos <pacote>/dados/) nega
+em ação de risco leitura/rascunho e pergunta em código/crédito. No Bash de leitura/rascunho, só
+verbo de leitura conhecido pode citar essas árvores. Ação com Bash no `permitir`: comando composto,
+código inline, heredoc ou script é negado antes do `permitir`. Se o gancho falhar: nega em
+leitura/rascunho, pergunta no resto; se o processo nem rodar, sai com 2 (bloqueia).
+Deny de gancho vence o "allow" de outro gancho.
 Python 3.9, só biblioteca padrão; o gancho não importa nada do painel.
 """
 import base64
@@ -39,9 +42,28 @@ RE_CAMPO = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,40}$")
 RE_CONTROLE = re.compile(r"[\x00-\x1f\x7f]")
 NEGAR_LEVE = ["Edit(**/.claude/settings*.json)", "Write(**/.claude/settings*.json)",
               "MultiEdit(**/.claude/settings*.json)"]
-CAMINHO_CONFIG = re.compile(r"(^|[/\s'\"=])\.claude/(settings[^/\s'\"]*\.json|hooks/)"
+CAMINHO_CONFIG = re.compile(r"(?i)(^|[/\s'\"=])\.claude/(settings[^/\s'\"]*\.json|(hooks|skills|plugins)\b)"
+                            r"|(^|[/\s'\"=])(claude(\.local)?\.md|\.mcp\.json)($|[/\s'\";|&)<>])"
                             r"|(^|[/\s'\"=])\.tune-up/painel(\.json|[\w.-]*/(?!dados/))")
 BASH_ESCREVE = re.compile(r">|\btee\b|\bsed\s+-i|\bmv\b|\bcp\b|\brm\b|\bchmod\b|\bln\b|\btouch\b|\btruncate\b")
+# Bash por texto: o que mais escreve (verbo no início do comando, heredoc, find -delete...).
+BASH_ESCREVE_MAIS = re.compile(r"(?i)<<|\s-(delete|exec|execdir|ok)\b|\bsort\b[^;|&]*\s-o|\b(perl|ruby)\b[^;|&]*\s-\w*i")
+INTERPRETES = {"python", "py", "node", "perl", "ruby", "php", "bash", "sh", "zsh", "dash", "ksh", "fish", "pwsh",
+               "powershell", "cmd", "deno", "bun", "osascript", "source", "."}
+VERBOS_ESCRITA = INTERPRETES | {
+    "dd", "install", "rsync", "unlink", "mkdir", "rmdir", "patch", "xargs", "copy", "xcopy", "robocopy", "move",
+    "del", "erase", "ren", "rename", "rd", "md", "set-content", "add-content", "out-file", "remove-item",
+    "copy-item", "move-item", "new-item", "rename-item", "sudo", "doas", "env", "eval", "exec", "git", "tar",
+    "unzip", "ditto", "scp", "curl", "wget"}
+VERBOS_LEITURA = {"cat", "ls", "head", "tail", "grep", "egrep", "fgrep", "rg", "wc", "stat", "file", "du", "diff",
+                  "cmp", "less", "more", "type", "dir", "findstr", "pwd", "cd", "echo", "printf", "test", "true",
+                  "realpath", "readlink", "basename", "dirname", "tree", "jq", "md5", "md5sum", "shasum",
+                  "sha256sum", "get-content", "get-childitem"}
+SEP_BASH = re.compile(r"&&|\|\||\$\(|[;&|\n(){}`]")
+META_BASH = re.compile(r";|&&|\|\||\||\$\(|`|<<|[<>]\(|\n|(?<![<>])&(?!>)")
+CURINGA = re.compile(r"[*?\[{$`]")
+NOMES_CONFIG = (".claude", ".tune-up", "claude.md", "claude.local.md", ".mcp.json")
+PONTO_PONTO = re.compile(r"(^|[/\s'\"=])\.\.($|[/\s'\";|&)<>])")
 FERR_ARQUIVO = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 RE_UNIDADE = re.compile(r"^[A-Za-z]:")
 FIM_LIB = "/\\ \t\n'\""  # depois do liberado: separador, espaço, aspas ou fim (dadosx/ não é dados/)
@@ -102,7 +124,10 @@ def validar_travas(acao):
 def config_gancho(acao, protegidos=(), liberados=()):
     trv = acao.get("_travas") or {}
     leve = acao.get("risco") in RISCO_LEVE
+    bash = (any(re.match(r"Bash(\(|$)", r) for r in trv.get("permitir") or [])
+            or any(re.fullmatch(r["ferramenta"], "Bash") for r in trv.get("regras_permitir") or []))
     return {"v": 1, "falha": "deny" if leve else "ask", "forte": "deny" if leve else "ask",
+            "leve": leve, "bash": bash,
             "prot": [p for p in protegidos if p], "lib": [p for p in liberados if p],
             "n": trv.get("regras_negar") or [], "p": trv.get("regras_permitir") or []}
 
@@ -125,6 +150,7 @@ def settings_da_sessao(acao, protegidos=(), liberados=(), python=None, este_arqu
     este_arquivo = este_arquivo or os.path.abspath(__file__)
     conf = config_gancho(acao, protegidos, liberados)
     comando = " ".join(shlex.quote(x) for x in (python, "-I", "-B", este_arquivo, _codificar(conf)))
+    comando += " || exit 2"  # python ausente ou quebrado: código 2 bloqueia a chamada (não deixa passar)
     cfg = {"hooks": {"PreToolUse": [{"matcher": "*", "hooks": [
         {"type": "command", "command": comando, "timeout": 15}]}]}}
     trv = acao.get("_travas") or {}
@@ -150,8 +176,8 @@ def argv_travas(acao, cfg=None):
 # ---------------------------------------------------------------- o gancho
 
 def _sem_caixa(texto):
-    """No Windows (ou com cara de caminho do Windows) o disco não diferencia maiúsculas."""
-    return os.name == "nt" or "\\" in texto or RE_UNIDADE.match(texto) is not None
+    """No Windows e no macOS (ou com cara de caminho do Windows) o disco não diferencia maiúsculas."""
+    return os.name == "nt" or sys.platform == "darwin" or "\\" in texto or RE_UNIDADE.match(texto) is not None
 
 
 def _barra(texto, sem_caixa):
@@ -173,11 +199,11 @@ def _liberado(texto, i, libs):
     return False
 
 
-def _protegido(texto, conf, forma=None):
+def _protegido(texto, conf, forma=None, sem_lib=False):
     """`forma` (opcional) normaliza protegidos e liberados do mesmo jeito que o texto."""
     if CAMINHO_CONFIG.search(texto):
         return True
-    libs = [forma(x) if forma else x for x in conf.get("lib") or []]
+    libs = [] if sem_lib else [forma(x) if forma else x for x in conf.get("lib") or []]
     for p in conf.get("prot") or []:
         p = forma(p) if forma else p
         i = texto.find(p)
@@ -188,13 +214,69 @@ def _protegido(texto, conf, forma=None):
     return False
 
 
+def _bash_comparavel(cmd, sc):
+    """Comando com aspas tiradas ("/a"'b' = /ab), `\\` -> `/`, `/./` e `//` no meio da palavra colapsados."""
+    t = _barra(re.sub(r"[\"']", "", cmd), sc)
+    t = re.sub(r"/\.(?=/)", "", t)
+    return re.sub(r"(?<=[^\s=<>;|&(])/{2,}", "/", t)
+
+
+def _disfarcado(norm, conf, forma):
+    """Palavra com curinga ou variável que o shell pode expandir para dentro de uma árvore protegida."""
+    prots = [forma(p) for p in conf.get("prot") or []]
+    for tok in re.split(r"[\s=<>;|&()]+", norm):
+        m = CURINGA.search(tok)
+        if not m:
+            continue
+        fixo = tok[:m.start()]
+        if tok[m.start()] in "$`" and "/" in tok[m.start():]:
+            return True  # $X/y, `pwd`/y: o shell decide o caminho
+        if (fixo.startswith("/") or RE_UNIDADE.match(fixo)) and any(p.startswith(fixo) for p in prots):
+            return True
+        ultimo = fixo.rsplit("/", 1)[-1].lower()
+        if (ultimo and any(n.startswith(ultimo) for n in NOMES_CONFIG)) or re.search(r"(?i)\.(claude|tune-up)/", fixo):
+            return True
+    return False
+
+
 def _protegido_normal(texto, conf, comando):
-    """Mesma checagem com `\\` -> `/` (e `..` resolvido se for caminho). Só soma proteção."""
+    """Mesma checagem com `\\` -> `/` (e `..` resolvido se for caminho). Só soma proteção.
+    No Bash: aspas, `//`, `/./` e curinga/variável não disfarçam; com `..` a exceção `dados` não vale."""
     sc = _sem_caixa(texto)
-    norm = _barra(texto, sc) if comando else caminho_comparavel(texto, sc)
-    if _protegido(norm, conf, lambda p: caminho_comparavel(p, sc)):
+    forma = lambda p: caminho_comparavel(p, sc)  # noqa: E731
+    norm = _bash_comparavel(texto, sc) if comando else caminho_comparavel(texto, sc)
+    if _protegido(norm, conf, forma, sem_lib=comando and PONTO_PONTO.search(norm) is not None):
         return True
-    return not comando and CAMINHO_CONFIG.search(RE_UNIDADE.sub("", norm)) is not None
+    if comando:
+        return _disfarcado(norm, conf, forma)
+    return CAMINHO_CONFIG.search(RE_UNIDADE.sub("", norm)) is not None
+
+
+def _verbos(cmd):
+    """Primeira palavra de cada comando (pula VAR=valor), em minúsculas, sem pasta, `.exe` nem versão."""
+    out = []
+    for seg in SEP_BASH.split(cmd):
+        for w in seg.split():
+            w = w.strip("\"'")
+            if re.match(r"^[A-Za-z_]\w*=", w):
+                continue
+            v = posixpath.basename(w.replace("\\", "/")).lower()
+            v = re.sub(r"^(python|node|perl|ruby|php|pwsh)[\d.]*$", r"\1", re.sub(r"\.exe$", "", v))
+            out.append((w, v))
+            break
+    return out
+
+
+def _escreve(cmd, verbos):
+    return bool(BASH_ESCREVE.search(cmd) or BASH_ESCREVE_MAIS.search(cmd)
+                or any(v in VERBOS_ESCRITA for _, v in verbos))
+
+
+def _composto_ou_script(cmd, verbos):
+    """Metacaractere de shell, código inline, heredoc ou script executado (gravado antes ou não)."""
+    return bool(META_BASH.search(cmd)) or any(
+        v in INTERPRETES or w.startswith(("./", ".\\", "/", "~")) or RE_UNIDADE.match(w)
+        or re.search(r"(?i)\.(sh|bash|zsh|py|js|mjs|pl|rb|php|ps1|bat|cmd)$", w) for w, v in verbos)
 
 
 def _casa(regra, ferramenta, entrada):
@@ -225,8 +307,13 @@ def decidir(conf, ferramenta, entrada):
         cmd = entrada.get("command")
         if not isinstance(cmd, str):
             return forte, "comando ilegível"
-        if (_protegido(cmd, conf) or _protegido_normal(cmd, conf, True)) and BASH_ESCREVE.search(cmd):
+        verbos = _verbos(cmd)
+        # leitura/rascunho: só verbo de leitura conhecido pode citar árvore protegida
+        if (_protegido(cmd, conf) or _protegido_normal(cmd, conf, True)) and (
+                _escreve(cmd, verbos) or conf.get("leve") and any(v not in VERBOS_LEITURA for _, v in verbos)):
             return forte, "mexer nas regras do Claude ou do painel"
+        if conf.get("bash") and _composto_ou_script(cmd, verbos):  # antes do `permitir`: nada o cala
+            return "deny", "comando composto, código inline ou script numa ação com Bash liberado"
     for regra in conf.get("p") or []:
         if _casa(regra, ferramenta, entrada):
             return None
