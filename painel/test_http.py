@@ -24,18 +24,21 @@ class TesteHTTP(unittest.TestCase):
         cls.tmp = tempfile.mkdtemp()
         t = cls.tmp
         os.makedirs(os.path.join(t, "acoes"))
-        with open(os.path.join(t, "acoes", "t.json"), "w") as f:
+        with open(os.path.join(t, "acoes", "t.json"), "w", encoding="utf-8", newline="\n") as f:
             json.dump(ACOES_TESTE, f)
         os.makedirs(os.path.join(t, "plans", "phases"))
         os.makedirs(os.path.join(t, "web", "assets"))
-        with open(os.path.join(t, "web", "index.html"), "w") as f:
+        with open(os.path.join(t, "web", "index.html"), "w", encoding="utf-8", newline="\n") as f:
             f.write("<!doctype html><title>novo</title>")
-        with open(os.path.join(t, "web", "assets", "app-123.js"), "w") as f:
+        with open(os.path.join(t, "web", "assets", "app-123.js"), "w", encoding="utf-8", newline="\n") as f:
             f.write("console.log(1)")
-        with open(os.path.join(t, "segredo.txt"), "w") as f:
+        with open(os.path.join(t, "segredo.txt"), "w", encoding="utf-8", newline="\n") as f:
             f.write("NAO PODE SAIR")
-        os.symlink(os.path.join(t, "segredo.txt"), os.path.join(t, "web", "assets", "fuga.js"))
-        os.symlink(t, os.path.join(t, "web", "atalho"))
+        try:  # Windows sem permissão de symlink: sem os atalhos, o teste ainda confere a travessia
+            os.symlink(os.path.join(t, "segredo.txt"), os.path.join(t, "web", "assets", "fuga.js"))
+            os.symlink(t, os.path.join(t, "web", "atalho"))
+        except (OSError, NotImplementedError):
+            pass
         cls.cli = CLIFalso()
         cls.cfg = cfg_teste(t, web_dir=os.path.join(t, "web"))
         lanc = lancador.Lancador(cls.cfg, lambda: ESTADO, rodar=cls.cli, plataforma="darwin")
@@ -153,7 +156,7 @@ class TesteHTTP(unittest.TestCase):
         sid = ex["id"] + "-1111-2222-3333-444455556666"
         pasta = os.path.join(self.cfg["projects_dir"], "x")
         os.makedirs(pasta, exist_ok=True)
-        with open(os.path.join(pasta, sid + ".jsonl"), "w") as f:
+        with open(os.path.join(pasta, sid + ".jsonl"), "w", encoding="utf-8", newline="\n") as f:
             f.write(json.dumps({"type": "user", "message": {"content": "/tune-up:part 187 C"}}) + "\n")
         st, _c, dados = self.pedir("GET", "/api/execucoes/%s/eventos?desde=0" % ex["id"])
         d = json.loads(dados)

@@ -30,7 +30,7 @@ class TesteTranscricao(unittest.TestCase):
         self.arq = os.path.join(self.pasta, SID + ".jsonl")
 
     def escrever(self, *linhas, modo="w"):
-        with open(self.arq, modo, encoding="utf-8") as f:
+        with open(self.arq, modo, encoding="utf-8", newline="\n") as f:
             f.write("".join(linhas))
 
     def test_localizar(self):
@@ -210,7 +210,7 @@ class TesteTranscricao(unittest.TestCase):
 
     def test_mascara_todos_os_campos_da_transcricao(self):
         seg = "FAL_KEY=abc123def456 ana@exemplo.com (19) 99999-8888"
-        with open(self.arq, "w") as f:
+        with open(self.arq, "w", encoding="utf-8", newline="\n") as f:
             f.write(linha("user", "usuario " + seg))
             f.write(linha("assistant", [{"type": "text", "text": "assistente " + seg},
                                         {"type": "tool_use", "name": "Bash", "input": {"command": "echo " + seg}}]))

@@ -33,7 +33,7 @@ LENTO = 'import time\ndef montar(ctx):\n    time.sleep(2)\n    return {}\n'
 
 def escrever(caminho, texto):
     os.makedirs(os.path.dirname(caminho), exist_ok=True)
-    with open(caminho, "w") as f:
+    with open(caminho, "w", encoding="utf-8", newline="\n") as f:
         f.write(texto)
 
 
@@ -47,7 +47,10 @@ class TesteModulos(unittest.TestCase):
         escrever(os.path.join(pac, "quebrado", "modulo.py"), QUEBRADO)
         escrever(os.path.join(pac, "lento", "modulo.py"), LENTO)
         escrever(os.path.join(self.tmp, "fora", "modulo.py"), "def montar(ctx):\n    return {}\n")
-        os.symlink(os.path.join(self.tmp, "fora"), os.path.join(pac, "fuga"))
+        try:  # Windows sem permissão de symlink: sem o atalho, o módulo "fuga" também não existe
+            os.symlink(os.path.join(self.tmp, "fora"), os.path.join(pac, "fuga"))
+        except (OSError, NotImplementedError):
+            pass
         escrever(os.path.join(pac, "desligado", "modulo.py"), "def montar(ctx):\n    return {}\n")
         escrever(os.path.join(self.tmp, ".tune-up", "painel.json"), json.dumps(
             {"nome": "Loja", "modulos": ["vendas", "quebrado", "fuga", "lento", "sumido"]}))
@@ -349,7 +352,10 @@ class TesteModulosDePlugin(unittest.TestCase):
         escrever(os.path.join(self.inst, "painel", "modulos", "vendas", "modulo.py"), PLUG)
         escrever(os.path.join(self.inst, "painel", "modulos", "outro", "modulo.py"), PLUG)
         escrever(os.path.join(self.tmp, "fora", "modulo.py"), PLUG)
-        os.symlink(os.path.join(self.tmp, "fora"), os.path.join(self.inst, "painel", "modulos", "fuga"))
+        try:  # Windows sem permissão de symlink: sem o atalho, o módulo "fuga" também não existe
+            os.symlink(os.path.join(self.tmp, "fora"), os.path.join(self.inst, "painel", "modulos", "fuga"))
+        except (OSError, NotImplementedError):
+            pass
         antigo = os.path.join(self.tmp, "cache", "meuplugin", "1")
         escrever(os.path.join(antigo, "painel", "modulos", "vendas", "modulo.py"), "raise RuntimeError('velho')\n")
         escrever(os.path.join(self.tmp, ".claude", "plugins", "installed_plugins.json"), json.dumps({

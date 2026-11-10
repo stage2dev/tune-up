@@ -12,6 +12,7 @@ The panel closes the token door, masks what it shows and lets modules act.
 - `modulos_de_plugins` in `painel.json`: extra screens from installed plugins, as `plugin@marketplace:modulo`.
 - New module blocks: `formulario`, `conversa` and `imagem`.
 - `painel/web/dist` rebuilt from these sources.
+
 ## 2.4.1
 
 Panel groundwork (Part 0 of the studio plan).

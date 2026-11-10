@@ -21,6 +21,7 @@ from catalogo import (ErroAcao, RE_ID_ACAO, carregar_catalogo, montar, nome_da_s
                       publica, texto_livre, validar_params)
 import mascara
 import modulos
+from estado_exec import GRACA, OCIOSO, mapear_estado  # noqa: F401
 from modelos import Modelos
 from trava import PRAZO_TRAVA, _TravaArquivo  # noqa: F401
 from travas import argv_travas
@@ -31,8 +32,6 @@ RE_SAIDA = re.compile(r"backgrounded\s*·\s*([0-9a-f]{6,16})\b")
 RE_ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 ATIVOS = ("rodando", "precisa_de_voce")
 RESPONDIVEIS = ("terminou", "parada")  # a sessão acabou a vez dela: dá para mandar outra mensagem
-OCIOSO = 180        # s sem escrita na conversa (nem nos subagentes) com o CLI em "idle": parou de trabalhar
-GRACA = 45          # s: sessão recém-disparada ainda pode não aparecer em `claude agents`
 TTL_AGENTES = 3
 MAX_REGISTRO = 200
 # s: no Windows, abrir/trocar execucoes.json dá PermissionError enquanto outro thread o lê; insiste até isto
@@ -107,39 +106,6 @@ class Registro:
                 if r["id"] == exec_id:
                     r.update(campos)
             self.gravar(lista)
-
-
-def mapear_estado(reg, agente, agora, ocioso_ha=None):
-    """Cruza o registro com uma linha de `claude agents --json --all`.
-
-    Medido no CLI 2.1.322: recém-disparada state=working (status some, depois busy);
-    pergunta pendente state=blocked + status=waiting; terminou state=done + status=idle
-    (processo vivo) ou só state=done (depois de stop); parada no meio state=stopped;
-    depois de `claude rm` a linha some.
-    """
-    if agente is None:
-        if reg.get("terminou_em"):  # já tinha terminado; depois foi apagada (`claude rm`)
-            return "terminou"
-        if reg.get("parada_pelo_painel"):
-            return "parada"
-        return "rodando" if agora - float(reg.get("iniciada_ts") or 0) < GRACA else "sumiu"
-    state = str(agente.get("state") or "").lower()
-    status = str(agente.get("status") or "").lower()
-    if state == "blocked" or status == "waiting":
-        return "precisa_de_voce"
-    if status == "busy":
-        return "rodando"
-    if state in ("working", "running", "busy", "active"):
-        # Medido no 2.1.322: o CLI deixa state=working + status=idle por minutos depois de a
-        # sessão responder. Sem escrita na conversa nem nos subagentes há OCIOSO s, parou.
-        if status == "idle" and ocioso_ha is not None and ocioso_ha > OCIOSO:
-            return "terminou"
-        return "rodando"
-    if state in ("done", "completed", "finished"):
-        return "terminou"
-    if state in ("stopped", "killed", "failed", "error", "exited"):
-        return "parada"
-    return "terminou" if status == "idle" else "rodando"
 
 
 def rodar_padrao(cmd, cwd, timeout):
