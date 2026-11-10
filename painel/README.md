@@ -119,13 +119,14 @@ Cruza o registro com `claude agents --json --all` (cache de 3 s). Medido no CLI 
 
 - Escuta só em `127.0.0.1`; `Host` precisa ser `127.0.0.1` ou `localhost` (421).
 - Todo POST exige: `X-Painel-Token` igual ao token (nasce a cada subida; comparação em tempo constante), `Origin` igual ao próprio endereço, `Sec-Fetch-Site` ausente ou `same-origin`, `Content-Type: application/json` e corpo até 16 KB (413).
+- `GET /api/sessao` (que entrega o token) exige `Sec-Fetch-Site: same-origin`: sem o cabeçalho (curl, outro programa local) ou vindo de outro site dá 403. Limite aceito: navegador que não manda `Sec-Fetch-Site` (Safari antes do 16.4) não consegue mais abrir o painel.
 - CSP: só `'self'` (estilo inline permitido).
 - Arquivos: `/assets/*` com cache longo, `index.html` sem cache, outra rota que não seja `/api` cai no `index.html`. Nada de `..`, ponto inicial, barra invertida, byte nulo ou atalho que saia de `web/dist`.
 - O leitor não segue atalho para fora do `plans_dir`, e nome de arquivo vindo do perfil (`goal`, `progress`, `later`) só vale se for nome simples.
 - Módulos e ações do pacote: só dentro do pacote, sem atalho para fora.
 - Timeout de conexão de 15 s; subprocessos com lista e timeout.
 
-**Modelo de ameaça:** o painel dispara sessões do Claude com as permissões normais do seu usuário e executa o código Python dos módulos do pacote. Quem consegue mandar POST com o token é tratado como você. Um site de fora não consegue (origem, `Sec-Fetch-Site` e token), mas um programa local que leia `/api/sessao` consegue. Quem escreve no pacote escreve código que o painel roda: trate o pacote como parte do projeto.
+**Modelo de ameaça:** o painel dispara sessões do Claude com as permissões normais do seu usuário e executa o código Python dos módulos do pacote. Quem consegue mandar POST com o token é tratado como você. Um site de fora não consegue (origem, `Sec-Fetch-Site` e token). Um programa local não recebe o token num pedido simples a `/api/sessao`, mas pode forjar o cabeçalho `Sec-Fetch-Site`: a barreira é contra pedido descuidado, não contra outro programa decidido a atacar rodando como você. Quem escreve no pacote escreve código que o painel roda: trate o pacote como parte do projeto.
 
 ## Rotas
 

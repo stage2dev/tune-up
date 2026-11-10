@@ -73,7 +73,7 @@ class TesteHTTP(unittest.TestCase):
 
     # ---- GET
     def test_sessao_e_listas(self):
-        st, cab, dados = self.pedir("GET", "/api/sessao")
+        st, cab, dados = self.pedir("GET", "/api/sessao", cab={"Sec-Fetch-Site": "same-origin"})
         d = json.loads(dados)
         self.assertEqual((st, d["token"], d["projeto"]["nome"]), (200, self.app.token, "Teste"))
         self.assertIn("script-src 'self'", cab["content-security-policy"])
@@ -94,6 +94,26 @@ class TesteHTTP(unittest.TestCase):
         nav = {"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"}
         self.assertEqual(self.pedir("GET", "/", cab=nav)[0], 200)  # abrir por link ou favorito
         self.assertEqual(self.pedir("GET", "/api/sessao", cab=nav)[0], 403)  # a API continua fechada
+
+    def test_sessao_so_para_o_proprio_painel(self):
+        # sem Sec-Fetch-Site (curl, outro programa local) o token não sai
+        st, _c, dados = self.pedir("GET", "/api/sessao")
+        self.assertEqual(st, 403)
+        self.assertNotIn(self.app.token.encode(), dados)
+        for valor in ("cross-site", "same-site", "none"):
+            st, _c, dados = self.pedir("GET", "/api/sessao", cab={"Sec-Fetch-Site": valor})
+            self.assertEqual(st, 403, valor)
+            self.assertNotIn(self.app.token.encode(), dados)
+        st, _c, dados = self.pedir("GET", "/api/sessao", cab={"Sec-Fetch-Site": "same-origin"})
+        self.assertEqual((st, json.loads(dados)["token"]), (200, self.app.token))
+        # a página e as outras rotas GET seguem como antes
+        self.assertEqual(self.pedir("GET", "/")[0], 200)
+        nav = {"Sec-Fetch-Site": "none", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"}
+        self.assertEqual(self.pedir("GET", "/", cab=nav)[0], 200)
+        for rota in ("/api/estado", "/api/acoes", "/api/execucoes"):
+            self.assertEqual(self.pedir("GET", rota)[0], 200, rota)
+            self.assertEqual(self.pedir("GET", rota, cab={"Sec-Fetch-Site": "none"})[0], 200, rota)
+            self.assertEqual(self.pedir("GET", rota, cab={"Sec-Fetch-Site": "cross-site"})[0], 403, rota)
 
     # ---- defesas do POST
     def disparos(self):

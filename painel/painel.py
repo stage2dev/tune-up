@@ -230,6 +230,10 @@ def fazer_handler(app):
 
         def _api_get(self, caminho, query):
             if caminho == "/api/sessao":
+                # O token só sai para o fetch do próprio painel: sem o cabeçalho
+                # (curl, outro programa local) ou de outro site, recusa.
+                if self.headers.get("Sec-Fetch-Site") != "same-origin":
+                    return self._erro(403, "Pedido de outro site recusado.")
                 return self._json(200, {"token": app.token, "projeto": {"nome": app.cfg["nome"]},
                                         "versao": app.cfg.get("versao", config.VERSAO)})
             if caminho == "/api/estado":

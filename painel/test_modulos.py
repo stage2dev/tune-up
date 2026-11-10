@@ -162,7 +162,7 @@ class TesteProjetoVazio(unittest.TestCase):
     def pedir(self, caminho):
         c = http.client.HTTPConnection("127.0.0.1", self.app.porta, timeout=20)
         try:
-            c.request("GET", caminho)
+            c.request("GET", caminho, headers={"Sec-Fetch-Site": "same-origin"})
             r = c.getresponse()
             return r.status, json.loads(r.read() or b"null")
         finally:
