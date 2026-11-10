@@ -7,6 +7,7 @@ import json  # noqa: E402
 import os  # noqa: E402
 import shutil  # noqa: E402
 import tempfile  # noqa: E402
+import time  # noqa: E402
 import unittest  # noqa: E402
 
 import transcricao as tr  # noqa: E402
@@ -216,6 +217,70 @@ class TesteTranscricao(unittest.TestCase):
         for vazou in ("abc123def456", "ana@", "99999-8888"):
             self.assertNotIn(vazou, textos)
         self.assertEqual(textos.count("***@exemplo.com"), 4)
+
+
+class TesteMascaraCorrecoes(unittest.TestCase):
+    def test_authorization_leva_esquema_e_credencial(self):
+        for t in ("Authorization: Basic YWRtaW46aHVudGVyMg==", "Authorization: Token abcdef1234567890",
+                  "Authorization:Basic YWRtaW46aHVudGVyMg==", "Proxy-Authorization: Bearer abc123",
+                  'Authorization: Digest username="ana", realm="r", nonce="n0nce", response="r3sp"'):
+            self.assertEqual(tr.mascarar(t), t.split(":")[0] + ":" + (" " if ": " in t else "") + "***", t)
+        self.assertEqual(tr.mascarar('curl -H "Authorization: Basic YWRtaW46aHVudGVyMg==" x'), 'curl -H "Authorization: ***" x')
+        self.assertEqual(tr.mascarar('{"Authorization": "Bearer abc123"}'), '{"Authorization": "***"}')
+
+    def test_valor_entre_aspas_ou_com_separador(self):
+        casos = {
+            'DB_PASSWORD="correct horse battery staple"': 'DB_PASSWORD="***"',
+            '{"password":"p@ss w0rd!"}': '{"password":"***"}',
+            'export FAL_KEY="ab cd"': 'export FAL_KEY="***"',
+            "API_KEY=a1,b2c3": "API_KEY=***",
+            "FAL_KEY='x y z' ok": "FAL_KEY='***' ok",
+        }
+        for entrada, esperado in casos.items():
+            self.assertEqual(tr.mascarar(entrada), esperado)
+
+    def test_telefone_so_com_espacos(self):
+        for t in ("19 99999 8888", "55 19 999998888", "19 3456 7890", "019 99999-8888", "+55 19 99999 8888"):
+            self.assertEqual(tr.mascarar("tel " + t + " fim"), "tel ***%s fim" % t[-4:], t)
+
+    def test_nao_mascara_numeros_comuns(self):
+        for t in ("em 10 11 2026 foi", "linha 12 34 56", "versao 3 13 0 ok", "id 123456789 e 1794272518847",
+                  "app.py:1234 e 2026-11-10T04:00:00Z", "uuid 0123abcd-1111-2222-3333-444455556666"):
+            self.assertEqual(tr.mascarar(t), t)
+
+    def test_urls_e_flags_extras(self):
+        casos = {
+            "curl -uadmin:pw1 x": "curl -u*** x",
+            "curl --user=admin:pw1 x": "curl --user=*** x",
+            "redis://:senha@host:6379": "redis://:***@host:6379",
+            "postgres://ana:segredo@db.local/x": "postgres://ana:***@db.local/x",
+        }
+        for entrada, esperado in casos.items():
+            self.assertEqual(tr.mascarar(entrada), esperado)
+        self.assertEqual(tr.mascarar("docker run -u1000:1000 img"), "docker run -u1000:1000 img")
+
+    def test_idempotente_em_casos_conhecidos(self):
+        for t in ("A1" * 20 + "--senha hunter2pass", "user:pass@host.comana@x.com.br"):
+            uma = tr.mascarar(t)
+            self.assertEqual(tr.mascarar(uma), uma, t)
+
+    def test_idempotente_fuzz(self):
+        import random
+        frag = ["FAL_KEY=abc123", "Authorization: Basic YWRt==", "19 99999 8888", "(19) 99999-8888", "ana@exemplo.com",
+                "-u admin:pw", "--password hunter2", "A1" * 20, "e" * 33, "commit " + "ab" * 20, "x:y@host.com",
+                "curl -uadmin:pw", "redis://:s3@h", "sk-abcdefghijklmnop12", "'a b'", '"c,d"', "token: v", " ", "\n",
+                "-p 'x'", "mysql -pabc", "docker run -u 1000:1000", "10 11 2026", "pass@a.com", "***", "Bearer abc123456"]
+        rnd = random.Random(7)
+        for _ in range(3000):
+            x = "".join(rnd.choice(frag) + rnd.choice(["", " ", "-"]) for _ in range(rnd.randint(1, 6)))
+            uma = tr.mascarar(x)
+            self.assertEqual(tr.mascarar(uma), uma, repr(x))
+
+    def test_linha_kebab_grande_e_rapida(self):
+        for t in ("a-" * 100000, "token-" * 33000, "foo-bar-baz-" * 17000):
+            ini = time.time()
+            tr.mascarar(t)
+            self.assertLess(time.time() - ini, 1.0, t[:12])
 
 
 if __name__ == "__main__":

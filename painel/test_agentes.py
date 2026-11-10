@@ -107,6 +107,17 @@ class TestAgentes(Base):
         self.assertEqual(a["tipo_agente"], "Explore")
         self.assertIsNotNone(a["iniciado_em"])
 
+    def test_descricao_e_nome_da_sessao_mascarados(self):
+        self.cli[0]["name"] = "Sessao FAL_KEY=abc123def456"
+        self.conversa()
+        self.agente("a1", {"agentType": "Explore", "description": "usar ana@exemplo.com e API_KEY=zzz999",
+                           "model": "haiku"}, linha_usuario() + blob())
+        r = self.montar()
+        d = self.todos_agentes(r)[0]["descricao"]
+        self.assertNotIn("ana@", d)
+        self.assertNotIn("zzz999", d)
+        self.assertNotIn("abc123def456", r["sessoes"][0]["nome"])
+
     def test_meta_sem_effort_nem_finished(self):
         self.conversa()
         self.agente("a2", {"agentType": "x", "description": "d", "spawnDepth": 1},
