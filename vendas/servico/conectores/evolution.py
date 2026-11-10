@@ -1,7 +1,8 @@
 """Conector da Evolution API v2 por urllib. URL e chave vêm de variáveis de ambiente lidas pelo serviço, nunca da
 árvore do projeto. Só cria instância, lê QR/estado, configura webhook e envia: nunca desconecta nem apaga a sessão.
 Erros: NaoEnviado (recusa de conexão, 3xx/4xx) e EnvioIncerto (timeout ou queda depois de escrever o pedido, 5xx,
-resposta sem id). Nenhuma mensagem de erro carrega a chave, o texto enviado ou o corpo da resposta."""
+resposta sem id). No envio, 400 é EnvioIncerto: a Evolution também devolve 400 quando a mensagem já saiu e o passo
+seguinte (gravar no banco, transcrever) falhou; só é NaoEnviado se o corpo provar número inexistente. Nenhuma mensagem de erro carrega a chave, o texto enviado ou o corpo da resposta."""
 import base64
 import http.client
 import json
@@ -58,7 +59,7 @@ class Evolution(base.Conector):
     def _caminho(self, *partes):
         return "/" + "/".join(urllib.parse.quote(p, safe="") for p in partes)
 
-    def _pedir(self, metodo, caminho, corpo=None):
+    def _pedir(self, metodo, caminho, corpo=None, envio=False):
         dados = None if corpo is None else json.dumps(corpo).encode("utf-8")
         pedido = urllib.request.Request(self.url + caminho, data=dados, method=metodo, headers={
             "apikey": self._chave, "Content-Type": "application/json", "Accept": "application/json"})
@@ -66,8 +67,11 @@ class Evolution(base.Conector):
             with self._abridor.open(pedido, timeout=self.tempo_limite) as resposta:
                 bruto = resposta.read()
         except urllib.error.HTTPError as erro:
+            recusa_provada = envio and erro.code == 400 and _numero_inexistente(erro)
             erro.close()
             classe = NaoEnviado if erro.code < 500 else EnvioIncerto
+            if envio and erro.code == 400 and not recusa_provada:
+                classe = EnvioIncerto
             raise classe("Evolution respondeu HTTP %d" % erro.code, erro.code)
         except urllib.error.URLError as erro:
             # urllib embrulha em URLError só o que falha ANTES da resposta: conectar ou escrever o pedido.
@@ -120,7 +124,7 @@ class Evolution(base.Conector):
     def enviar_texto(self, instancia, telefone, texto):
         base.validar_instancia(instancia)
         return _id_externo(self._pedir("POST", self._caminho("message", "sendText", instancia),
-                                       {"number": _numero(telefone), "text": texto}))
+                                       {"number": _numero(telefone), "text": texto}, envio=True))
 
     def enviar_audio(self, instancia, telefone, caminho_ogg):
         base.validar_instancia(instancia)
@@ -131,7 +135,7 @@ class Evolution(base.Conector):
         except OSError as erro:
             raise NaoEnviado("áudio ilegível (%s)" % type(erro).__name__)
         return _id_externo(self._pedir("POST", self._caminho("message", "sendWhatsAppAudio", instancia),
-                                       {"number": numero, "audio": audio}))
+                                       {"number": numero, "audio": audio}, envio=True))
 
     def traduzir_evento(self, corpo):
         return traduzir(corpo)
@@ -142,6 +146,17 @@ def _numero(telefone):
     if not 8 <= len(digitos) <= 15:
         raise NaoEnviado("telefone inválido")
     return digitos
+
+
+def _numero_inexistente(erro):
+    """400 do envio com `response.message` = [{"exists": false, ...}]: a checagem do número barrou antes de enviar."""
+    try:
+        dados = json.loads(erro.read(65536).decode("utf-8"))
+    except (OSError, ValueError, http.client.HTTPException):
+        return False
+    resposta = dados.get("response") if isinstance(dados, dict) else None
+    itens = resposta.get("message") if isinstance(resposta, dict) else None
+    return isinstance(itens, list) and any(isinstance(i, dict) and i.get("exists") is False for i in itens)
 
 
 def _id_externo(dados):

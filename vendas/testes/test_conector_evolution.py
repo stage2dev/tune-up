@@ -1,5 +1,5 @@
 """Conector Evolution contra um servidor falso em 127.0.0.1: criar com webhook e segredo, QR, estado, envio com id,
-4xx = NaoEnviado, conexão recusada = NaoEnviado, pedido lido e conexão fechada / timeout / 5xx = EnvioIncerto,
+4xx = NaoEnviado (no envio, 400 só com número inexistente provado), conexão recusada = NaoEnviado, pedido lido e conexão fechada / timeout / 5xx = EnvioIncerto,
 nenhuma URL com logout e nenhum DELETE; e o conector falso dos itens seguintes."""
 import sys
 
@@ -25,6 +25,11 @@ CHAVE = "chave-de-teste-123"
 SEGREDO = "segredo-de-teste-456"
 PNG = "data:image/png;base64,iVBORw0KGgo="
 FECHAR, DORMIR = "fechar", "dormir"
+# 400 da checagem do número (antes de enviar) e 400 do catch final (depois de enviar, ex.: erro do banco)
+NUMERO_INEXISTENTE = {"status": 400, "error": "Bad Request", "response": {"message": [
+    {"exists": False, "jid": "5511900000001@s.whatsapp.net", "number": "5511900000001"}]}}
+ERRO_DEPOIS_DE_ENVIAR = {"status": 400, "error": "Bad Request", "response": {"message": [
+    "PrismaClientKnownRequestError: Unique constraint failed on the fields: (`id`)"]}}
 
 
 class _Manipulador(BaseHTTPRequestHandler):
@@ -152,11 +157,32 @@ class TestEvolution(unittest.TestCase):
         self.assertEqual(self.pedidos, [])
 
     def test_4xx_e_nao_enviado(self):
-        self.resp[("POST", "/message/sendText/loja")] = (400, {"message": "número inexistente"})
+        self.resp[("POST", "/message/sendText/loja")] = (400, NUMERO_INEXISTENTE)
         with self.assertRaises(NaoEnviado) as ctx:
             self.con.enviar_texto("loja", "5511900000001", "oi")
         self.assertNotIsInstance(ctx.exception, EnvioIncerto)
         self.assertEqual(ctx.exception.status, 400)
+
+    def test_404_da_instancia_no_envio_e_nao_enviado(self):
+        self.resp[("POST", "/message/sendText/loja")] = (404, {"status": 404, "error": "Not Found"})
+        with self.assertRaises(NaoEnviado) as ctx:
+            self.con.enviar_texto("loja", "5511900000001", "oi")
+        self.assertNotIsInstance(ctx.exception, EnvioIncerto)
+
+    def test_400_depois_de_enviar_e_incerto(self):
+        # A Evolution entrega e depois cai no catch geral (ex.: erro do banco) e responde 400.
+        self.resp[("POST", "/message/sendText/loja")] = (400, ERRO_DEPOIS_DE_ENVIAR)
+        with self.assertRaises(EnvioIncerto) as ctx:
+            self.con.enviar_texto("loja", "5511900000001", "oi")
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_400_sem_corpo_legivel_no_audio_e_incerto(self):
+        self.resp[("POST", "/message/sendWhatsAppAudio/loja")] = (400, "não é o formato esperado")
+        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as arq:
+            arq.write(b"OggS")
+        self.addCleanup(os.remove, arq.name)
+        with self.assertRaises(EnvioIncerto):
+            self.con.enviar_audio("loja", "5511900000001", arq.name)
 
     def test_5xx_e_incerto(self):
         self.resp[("POST", "/message/sendText/loja")] = (500, {"message": "erro"})
@@ -180,7 +206,7 @@ class TestEvolution(unittest.TestCase):
             self.con.enviar_texto("loja", "5511900000001", "oi")
 
     def test_erro_nao_carrega_chave_nem_texto(self):
-        self.resp[("POST", "/message/sendText/loja")] = (400, {"message": "x"})
+        self.resp[("POST", "/message/sendText/loja")] = (400, NUMERO_INEXISTENTE)
         with self.assertRaises(NaoEnviado) as ctx:
             self.con.enviar_texto("loja", "5511900000001", "texto-pessoal")
         for proibido in (CHAVE, SEGREDO, "texto-pessoal"):
@@ -219,7 +245,7 @@ class TestSemServidor(unittest.TestCase):
         con = evolution.Evolution("http://127.0.0.1:9", CHAVE, "http://x", SEGREDO)
         urls = []
 
-        def pedir(metodo, caminho, corpo=None):
+        def pedir(metodo, caminho, corpo=None, envio=False):
             urls.append((metodo, con.url + caminho))
             if caminho == "/instance/create":
                 raise NaoEnviado("em uso", 403)
