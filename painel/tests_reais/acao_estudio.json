@@ -1,0 +1,32 @@
+{
+  "_sobre": "Ação-fixture do estúdio: o --settings de referência das ações com sandbox (provas C3, C4, 2.3b, 4.2). Não é ação de uso.",
+  "acoes": [
+    {
+      "id": "estudio.fixture",
+      "grupo": "estudio",
+      "titulo": "Ação-fixture do estúdio (provas do sandbox)",
+      "descricao": "Não é ação de uso: é o --settings de referência das ações do estúdio (C3, C4, 2.3b, 4.2).",
+      "risco": "rascunho",
+      "sandbox": true,
+      "env": {
+        "HYPERFRAMES_NO_TELEMETRY": "1",
+        "DO_NOT_TRACK": "1",
+        "GEMINI_API_KEY": "",
+        "GOOGLE_API_KEY": ""
+      },
+      "permitir": [
+        "Edit({trabalho}/**)"
+      ],
+      "prompt": "Pasta de trabalho: {trabalho}. {pedido}",
+      "params": [
+        {
+          "nome": "pedido",
+          "rotulo": "Pedido",
+          "tipo": "texto",
+          "obrigatorio": true,
+          "max": 2000
+        }
+      ]
+    }
+  ]
+}

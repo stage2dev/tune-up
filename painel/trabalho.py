@@ -1,8 +1,8 @@
 """Pasta de trabalho de uma execução: <dados>/trabalhos/<id>/, criada pelo servidor.
 
-Só existe para ação que cita `{trabalho}` (no prompt ou nas travas) ou tem parâmetro
-`texto_longo`. Dentro: `entrada.json` (ação e valores) e `entrada.md` (o texto longo; o
-prompt recebe o caminho, assim o argv nunca leva quebra de linha). O marcador `{trabalho}`
+Só existe para ação que cita `{trabalho}` (no prompt ou nas travas), tem parâmetro
+`texto_longo` ou liga `sandbox` (essa dispara com cwd = pasta de trabalho). Dentro:
+`entrada.json` (ação e valores) e `entrada.md` (o texto longo; o prompt recebe o caminho, assim o argv nunca leva quebra de linha). O marcador `{trabalho}`
 vira o caminho real (realpath): no prompt como está; em regra de permissão em texto com `//`
 na frente (caminho absoluto do Claude Code) e curinga escapado; em regex do gancho com
 re.escape. Python 3.9, só biblioteca padrão.
@@ -27,7 +27,7 @@ def _longos(acao):
 
 def usa(acao):
     trv = json.dumps(acao.get("_travas") or {}, ensure_ascii=False)
-    return MARCA in acao["_prompt"] or MARCA in trv or bool(_longos(acao))
+    return MARCA in acao["_prompt"] or MARCA in trv or bool(_longos(acao)) or bool(acao.get("sandbox"))
 
 
 def nova_pasta(dados_dir, acao):

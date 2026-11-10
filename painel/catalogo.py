@@ -9,6 +9,7 @@ import json
 import os
 import re
 
+import sandbox
 import teto
 from travas import validar_travas
 
@@ -123,6 +124,10 @@ def validar_acao(a):
     if esforco is not None and esforco not in ESFORCOS:
         raise ValueError("ação %s: esforco precisa ser um de %s" % (a["id"], ", ".join(ESFORCOS)))
     tetos = teto.validar(a)
+    try:
+        caixa = sandbox.validar(a)
+    except ValueError as e:
+        raise ValueError("ação %s: %s" % (a["id"], e))
     equipe = a.get("equipe") if isinstance(a.get("equipe"), str) else ""
     if RE_CONTROLE.search(equipe):
         raise ValueError("ação %s: equipe com caractere de controle" % a["id"])
@@ -132,7 +137,7 @@ def validar_acao(a):
             "confirmar": bool(a.get("confirmar")) or a["risco"] in ("codigo", "credito"),
             "params": params, "modelos": _modelos(a), "esforco": esforco, "equipe": equipe.strip()[:60],
             "_prompt": prompt.strip(), "_nome": nome_sessao, "_travas": trv, "_substitui": a.get("substitui") is True,
-            **tetos}
+            **tetos, **caixa}
 
 
 def _arquivos(pastas):

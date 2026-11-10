@@ -144,8 +144,8 @@ def _decodificar(texto):
     return conf
 
 
-def settings_da_sessao(acao, protegidos=(), liberados=(), python=None, este_arquivo=None):
-    """Texto JSON para `--settings`. Sem segredo: só regra e o caminho deste gancho."""
+def settings_da_sessao(acao, protegidos=(), liberados=(), python=None, este_arquivo=None, workspace="", dados=""):
+    """Texto JSON para `--settings`. Sem segredo: só regra, o caminho deste gancho e o bloco `sandbox`/`env`."""
     python = python or sys.executable or "python3"
     este_arquivo = este_arquivo or os.path.abspath(__file__)
     conf = config_gancho(acao, protegidos, liberados)
@@ -154,14 +154,17 @@ def settings_da_sessao(acao, protegidos=(), liberados=(), python=None, este_arqu
     cfg = {"hooks": {"PreToolUse": [{"matcher": "*", "hooks": [
         {"type": "command", "command": comando, "timeout": 15}]}]}}
     trv = acao.get("_travas") or {}
+    import sandbox  # aqui dentro: o gancho roda com -I e não importa nada do painel
+    topo, negar_sb, perm = sandbox.bloco(acao, workspace, dados)
     negar = (list(NEGAR_LEVE) if acao.get("risco") in RISCO_LEVE else []) + list(trv.get("negar") or [])
-    perm = {}
+    negar += [r for r in negar_sb if r not in negar]
     if negar:
         perm["deny"] = negar
     if trv.get("permitir"):
         perm["allow"] = list(trv["permitir"])
     if perm:
         cfg["permissions"] = perm
+    cfg.update(topo)
     return json.dumps(cfg, ensure_ascii=False, separators=(",", ":"))
 
 
@@ -170,7 +173,11 @@ def argv_travas(acao, cfg=None):
     cfg = cfg or {}
     protegidos = [cfg.get("painel_dir"), cfg.get("pacote_dir"), cfg.get("arquivo")]
     liberados = [os.path.join(cfg["pacote_dir"], "dados")] if cfg.get("pacote_dir") else []
-    return ["--settings", settings_da_sessao(acao, protegidos, liberados)]
+    dados = cfg.get("dados_dir") or ""  # estes saem da exceção `dados`: só o servidor grava
+    import sandbox
+    protegidos += [os.path.join(dados, x) for x in sandbox.DONO] if dados else []
+    return ["--settings", settings_da_sessao(acao, protegidos, liberados, workspace=cfg.get("workspace") or "",
+                                             dados=dados)]
 
 
 # ---------------------------------------------------------------- o gancho
@@ -206,9 +213,10 @@ def _protegido(texto, conf, forma=None, sem_lib=False):
     libs = [] if sem_lib else [forma(x) if forma else x for x in conf.get("lib") or []]
     for p in conf.get("prot") or []:
         p = forma(p) if forma else p
+        libs_p = [lib for lib in libs if not p.startswith(lib)]  # protegido dentro do liberado vale
         i = texto.find(p)
         while i >= 0:
-            if not _liberado(texto, i, libs):
+            if not _liberado(texto, i, libs_p):
                 return True
             i = texto.find(p, i + 1)
     return False

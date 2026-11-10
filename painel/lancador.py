@@ -178,7 +178,7 @@ class Lancador:
         if agente and sid:
             try:
                 import transcricao
-                ult = transcricao.ultima_atividade(self.cfg["projects_dir"], sid, self.cfg["workspace"])
+                ult = transcricao.ultima_atividade(self.cfg["projects_dir"], sid, reg.get("cwd") or self.cfg["workspace"])
                 ocioso = None if ult is None else time.time() - ult
             except Exception:
                 ocioso = None
@@ -206,8 +206,8 @@ class Lancador:
         out = {k: reg.get(k) for k in ("id", "nome", "acao", "titulo", "iniciada_em")}
         out["grupo"] = out["area"] = reg.get("grupo") or reg.get("area") or ""
         sid = reg.get("sessao_id") or ""
-        # Responder acorda a sessão guardada pelo CLI (com as travas dela): só vale se ela ainda está na lista.
-        responde = (estado in RESPONDIVEIS and bool(RE_SESSAO.match(sid))
+        # Responder acorda a sessão do CLI (com as travas dela) se está na lista; sandbox não (--resume sem --settings).
+        responde = (estado in RESPONDIVEIS and bool(RE_SESSAO.match(sid)) and not reg.get("sandbox")
                     and agentes is not None and agentes.get(reg["id"]) is not None
                     and self._regras_cabem(reg, {} if caixa is None else caixa))
         out.update(sessao_id=sid, params=reg.get("params") or {}, estado=estado,
@@ -299,6 +299,7 @@ class Lancador:
                 raise ErroAcao("Já tem %d rodando ao mesmo tempo. Espere uma acabar ou pare uma."
                                % len(ativas), 409, ativas[0]["id"])
             pasta = trabalho.nova_pasta(self.cfg["dados_dir"], acao)  # None: a ação não usa {trabalho}
+            cwd = pasta if acao.get("sandbox") else self.cfg["workspace"]  # sandbox: cwd = pasta de trabalho
             if pasta:  # o id do trabalho fica fora de `valores` (a checagem de duplicata acima não o vê)
                 prompt, acao = trabalho.montar_prompt(acao, valores, pasta), trabalho.resolver_travas(acao, pasta)
             # travas de verdade (deny + gancho) no argv; o prompt vai por último, nunca começa com '-'
@@ -312,7 +313,7 @@ class Lancador:
                    + argv_travas(acao, self.cfg) + [prompt])
             try:
                 trabalho.criar(pasta, acao, valores)
-                cod, out, err = self.rodar(cmd, self.cfg["workspace"], 60)
+                cod, out, err = self.rodar(cmd, cwd, 60)
             except BaseException:
                 trabalho.apagar(pasta)
                 raise
@@ -323,7 +324,7 @@ class Lancador:
             t = self.relogio()
             reg = {"id": m.group(1), "sessao_id": "", "nome": nome, "acao": acao_id, "grupo": acao["grupo"],
                    "titulo": acao["titulo"], "params": valores, "iniciada_em": agora_iso(t),
-                   "iniciada_ts": t, "cwd": self.cfg["workspace"], "risco": acao["risco"],
+                   "iniciada_ts": t, "cwd": cwd, "risco": acao["risco"], "sandbox": bool(acao.get("sandbox")),
                    "modelo": modelo, "esforco": esforco, "negar_modulos": sorted(extra),
                    "trabalho": os.path.basename(pasta) if pasta else "",
                    **{c: acao.get(c) for c in teto.CAMPOS}}
