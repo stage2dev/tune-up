@@ -1,8 +1,10 @@
 """Tests: `guarda.py info` (JSON profile for the skills). Run: python3 -m unittest discover -s tests -q"""
 import json
+import locale
 import os
 import subprocess
 import sys
+import tempfile
 import time
 import unittest
 
@@ -15,19 +17,22 @@ class TestInfo(Base):
     USER_JSON = None
 
     def info(self, cwd=None, timeout=5):
-        p = subprocess.Popen([sys.executable, SCRIPT, "info"], cwd=cwd or self.cwd, env=self.env,
-                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        try:
-            p.wait(timeout=timeout)  # stdin stays open: info must not read it
-            out = p.stdout.read()
-        finally:
-            p.stdin.close()
-            p.stdout.close()
-            p.stderr.close()
-            if p.poll() is None:
-                p.kill()
-        self.assertEqual(p.returncode, 0)
-        return json.loads(out)
+        # stdout goes to a file, not a pipe. A pipe holds about 4 KB on Windows (64 KB on Linux): a larger
+        # answer blocks the child on write while this test waits for it to exit, and the wait times out.
+        # stdin stays open on purpose: info must not read it.
+        with tempfile.TemporaryFile() as saida:
+            p = subprocess.Popen([sys.executable, SCRIPT, "info"], cwd=cwd or self.cwd, env=self.env,
+                                 stdin=subprocess.PIPE, stdout=saida, stderr=subprocess.DEVNULL)
+            try:
+                p.wait(timeout=timeout)
+            finally:
+                p.stdin.close()
+                if p.poll() is None:
+                    p.kill()
+                    p.wait()
+            self.assertEqual(p.returncode, 0)
+            saida.seek(0)
+            return json.loads(saida.read().decode(locale.getpreferredencoding(False), "replace"))
 
     def test_sem_user_json(self):
         i = self.info()
@@ -198,10 +203,8 @@ class TestInfo(Base):
         raiz = self.plugin("muitos", {"s%03d" % i: '---\nname: p%03d-pitfall\npaths: ["a"]\n---\n' % i
                                       for i in range(205)})
         self.instalados({"plugins": {"m@m": [{"installPath": raiz}]}})
-        # The panel calls `info` with 8 s (painel/leitor.py ler_info); the Windows CI time printed here
-        # (run with -v) decides the next step. Keep 30 s until it is measured.
         t0 = time.perf_counter()
-        achadas = self.info(timeout=30)["pitfall_skills"]
+        achadas = self.info()["pitfall_skills"]  # ~30 KB of JSON: more than a Windows pipe holds
         print("\ninfo with 205 skills: %.2f s" % (time.perf_counter() - t0), file=sys.stderr)
         self.assertEqual(len(achadas), 200)
 
