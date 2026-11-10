@@ -76,6 +76,12 @@ MIGRACOES = [
         "ALTER TABLE envios ADD COLUMN conteudo TEXT",
         "CREATE INDEX envios_criado_em ON envios(criado_em)",
     ],
+    # 3: os tetos contam a ÚLTIMA tentativa (reserva ou reenvio), não a criação da linha
+    [
+        "ALTER TABLE envios ADD COLUMN tentado_em TEXT",
+        "UPDATE envios SET tentado_em = criado_em WHERE tentado_em IS NULL",
+        "CREATE INDEX envios_tentado_em ON envios(tentado_em)",
+    ],
 ]
 VERSAO = len(MIGRACOES)
 PARECE_SEGREDO = re.compile(r"chave|senha|token|segredo|secret|key|password", re.I)
@@ -199,9 +205,9 @@ def registrar_envio(con, chave_dedupe, origem, estado="pendente", motivo=None, c
         raise ValueError("estado de envio inválido: %r" % estado)
     try:
         cur = con.execute("INSERT INTO envios (chave_dedupe, contato_id, estado, origem, motivo, telefone, tipo, "
-                          "conteudo, criado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                          "conteudo, criado_em, tentado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                           (chave_dedupe, contato_id, estado, origem, motivo, telefone, tipo, conteudo,
-                           quando or agora()))
+                           quando or agora(), quando or agora()))
     except sqlite3.IntegrityError as erro:
         if _unico(erro):
             return None

@@ -96,6 +96,18 @@ class TesteBanco(Base):
             con.close()
         self.con = banco.abrir(self.dados)
 
+    def test_migracao_3_preenche_tentado_em_das_linhas_que_ja_existem(self):
+        con = sqlite3.connect(":memory:", isolation_level=None)
+        for comando in banco.MIGRACOES[0] + banco.MIGRACOES[1]:
+            con.execute(comando)
+        con.execute("PRAGMA user_version = 2")
+        con.execute("INSERT INTO envios (chave_dedupe, estado, origem, criado_em) "
+                    "VALUES ('k', 'incerto', 'manual', '2026-11-10T10:00:00+00:00')")
+        for _ in range(2):   # rodar de novo não muda nada
+            banco.migrar(con)
+        self.assertEqual(con.execute("SELECT tentado_em FROM envios").fetchone()[0], "2026-11-10T10:00:00+00:00")
+        con.close()
+
     def test_versao_mais_nova_que_o_codigo_e_recusada(self):
         self.con.execute("PRAGMA user_version = %d" % (banco.VERSAO + 1))
         with self.assertRaisesRegex(RuntimeError, "só conhece"):

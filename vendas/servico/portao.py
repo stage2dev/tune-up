@@ -70,14 +70,14 @@ def fuso(con):
 
 def _contar(con, desde, extra="", args=(), ignorar=None):
     marcas = ",".join("?" * len(ATIVOS))
-    sql = "SELECT COUNT(*) FROM envios WHERE estado IN (%s) AND criado_em > ? AND id <> ? %s" % (marcas, extra)
+    sql = "SELECT COUNT(*) FROM envios WHERE estado IN (%s) AND tentado_em > ? AND id <> ? %s" % (marcas, extra)
     return con.execute(sql, ATIVOS + (desde, ignorar or 0) + tuple(args)).fetchone()[0]
 
 
 def contatos_novos_no_dia(con, inicio_dia):
     """Contador diário: contatos cujo PRIMEIRO envio ativo foi a partir de inicio_dia (iso UTC)."""
     marcas = ",".join("?" * len(ATIVOS))
-    return con.execute("SELECT COUNT(*) FROM (SELECT MIN(criado_em) AS primeiro FROM envios WHERE estado IN (%s) "
+    return con.execute("SELECT COUNT(*) FROM (SELECT MIN(tentado_em) AS primeiro FROM envios WHERE estado IN (%s) "
                        "AND contato_id IS NOT NULL GROUP BY contato_id) WHERE primeiro >= ?" % marcas,
                        ATIVOS + (inicio_dia,)).fetchone()[0]
 
@@ -294,8 +294,8 @@ def reenviar(con, conector, instancia, envio_id, confirmar_optout=False, agora=N
         motivo = _motivo(con, linha["origem"], linha["telefone"], linha["contato_id"], confirmar_optout, momento,
                          ignorar=envio_id)
         if motivo is None:
-            cur = con.execute("UPDATE envios SET estado = 'pendente', motivo = NULL WHERE id = ? "
-                              "AND estado IN ('incerto', 'falhou')", (envio_id,))
+            cur = con.execute("UPDATE envios SET estado = 'pendente', motivo = NULL, tentado_em = ? WHERE id = ? "
+                              "AND estado IN ('incerto', 'falhou')", (_iso(momento), envio_id))
             banco._exigir(cur)
         con.execute("COMMIT")
     except BaseException:

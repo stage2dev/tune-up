@@ -168,6 +168,29 @@ class TesteReenviar(Base):
         self.assertEqual(self.linha(envio_id)["estado"], "incerto")   # a linha não muda
         self.assertEqual(self.c.envios(), 1)
 
+    def incertos_de_2h_atras(self, n):
+        self.c.modo_envio = "timeout"
+        antes = AGORA - datetime.timedelta(hours=2)
+        ids = [self.mandar("manual", chave="v%d" % i, agora=antes + datetime.timedelta(minutes=i))["envio_id"]
+               for i in range(n)]
+        self.c.modo_envio = "ok"
+        return ids
+
+    def test_reenvio_conta_no_teto_do_minuto(self):
+        ids = self.incertos_de_2h_atras(9)
+        estados = [portao.reenviar(self.con, self.c, INST, i, agora=AGORA) for i in ids]
+        self.assertEqual([r["estado"] for r in estados], ["enviado"] * 8 + ["negado"])
+        self.assertEqual(estados[-1]["motivo"], "teto_minuto")
+        self.assertEqual(self.c.envios(), 9 + 8)
+
+    def test_reenvio_conta_para_os_envios_seguintes(self):
+        for i in self.incertos_de_2h_atras(8):
+            self.assertEqual(portao.reenviar(self.con, self.c, INST, i, agora=AGORA)["estado"], "enviado")
+        self.negado(self.mandar("manual", chave="novo", agora=AGORA), "teto_minuto", chamadas=8 + 8)
+        primeira = self.linha(1)   # criado_em segue sendo a criação; tentado_em é a última tentativa
+        self.assertEqual((primeira["criado_em"] < primeira["tentado_em"], primeira["tentado_em"]),
+                         (True, portao._iso(AGORA)))
+
 
 class TesteRota(Base):
     def setUp(self):
