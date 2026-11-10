@@ -9,6 +9,8 @@ export interface NovoAviso {
   texto?: string;
   /** milissegundos; 0 = fica ate fechar. Padrao 6000 (erro: 9000). */
   duracao?: number;
+  /** Botao opcional no aviso (ex.: "Abrir a conversa"); o aviso fecha ao clicar. */
+  acao?: { rotulo: string; aoClicar: () => void };
 }
 interface Aviso extends NovoAviso {
   id: number;
@@ -63,6 +65,18 @@ export function ProvedorAvisos({ children }: { children: ReactNode }) {
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium">{a.titulo}</p>
                 {a.texto && <p className="text-xs text-[var(--color-text-secondary)] break-words">{a.texto}</p>}
+                {a.acao && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      a.acao?.aoClicar();
+                      fechar(a.id);
+                    }}
+                    className="mt-1 text-xs font-medium underline text-[var(--color-accent)]"
+                  >
+                    {a.acao.rotulo}
+                  </button>
+                )}
               </div>
               <button
                 type="button"

@@ -10,10 +10,10 @@ export default function Inicio() {
   const estado = useEstado();
   const execucoes = useExecucoes();
 
-  if (estado.isPending) return <Pagina titulo="Início"><EsqueletoPagina cartoes={3} /></Pagina>;
-  if (estado.isError) return <Pagina titulo="Início"><Erro erro={estado.error} aoTentar={() => void estado.refetch()} /></Pagina>;
+  if (estado.isPending) return <Pagina titulo="Resumo"><EsqueletoPagina cartoes={3} /></Pagina>;
+  if (estado.isError) return <Pagina titulo="Resumo"><Erro erro={estado.error} aoTentar={() => void estado.refetch()} /></Pagina>;
   const { estado: e, erro } = lerEstado(estado.data);
-  if (!e) return <Pagina titulo="Início"><Erro erro={new Error(erro)} aoTentar={() => void estado.refetch()} /></Pagina>;
+  if (!e) return <Pagina titulo="Resumo"><Erro erro={new Error(erro)} aoTentar={() => void estado.refetch()} /></Pagina>;
 
   const r = e.resumo;
   const exec = execucoes.data; // pode ainda nao ter chegado: nesse caso nao afirmamos numero
@@ -22,7 +22,7 @@ export default function Inicio() {
   const prsAbertas = e.prs.filter((p) => p.estado === 'OPEN');
 
   return (
-    <Pagina titulo="Início" subtitulo="Um resumo do que está acontecendo agora.">
+    <Pagina titulo="Resumo" subtitulo="Um resumo do que está acontecendo agora.">
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5">
         <Metrica rotulo="Fases abertas" valor={r.fases_abertas} detalhe={`de ${r.fases_acompanhadas} acompanhadas`} />
         <Metrica rotulo="Partes fechadas" valor={`${r.partes_fechadas}/${r.partes_total}`} />

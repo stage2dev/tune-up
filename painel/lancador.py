@@ -19,8 +19,9 @@ import threading
 import time
 
 from catalogo import (ErroAcao, RE_ID_ACAO, carregar_catalogo, montar, nome_da_sessao,  # noqa: F401
-                      publica, validar_params)
+                      publica, texto_livre, validar_params)
 import modulos
+from modelos import Modelos
 from travas import argv_travas
 
 RE_ID_EXEC = re.compile(r"^[0-9a-f]{6,16}$")
@@ -28,6 +29,7 @@ RE_SESSAO = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
 RE_SAIDA = re.compile(r"backgrounded\s*·\s*([0-9a-f]{6,16})\b")
 RE_ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 ATIVOS = ("rodando", "precisa_de_voce")
+RESPONDIVEIS = ("terminou", "parada")  # a sessão acabou a vez dela: dá para mandar outra mensagem
 OCIOSO = 180        # s sem escrita na conversa (nem nos subagentes) com o CLI em "idle": parou de trabalhar
 GRACA = 45          # s: sessão recém-disparada ainda pode não aparecer em `claude agents`
 TTL_AGENTES = 3
@@ -152,11 +154,17 @@ class Lancador:
     def __init__(self, cfg, obter_estado, rodar=rodar_padrao, relogio=time.time, plataforma=None):
         self.cfg, self.obter_estado, self.rodar, self.relogio = cfg, obter_estado, rodar, relogio
         self.plataforma = plataforma or sys.platform
+        self.dormir = time.sleep  # trocado nos testes
         self.registro = Registro(cfg["dados_dir"])
         self._trava = threading.Lock()
         self._trava_agentes = threading.Lock()
         self._agentes = (0.0, None)
         self._ultimo = {}
+        self.modelos = Modelos(cfg, self.rodar, relogio)
+
+    def status_modelos(self):
+        """{apelido: sim|nao|verificando|nao_sei} dos modelos preferidos das ações (dispara a sonda)."""
+        return self.modelos.resumo(self.catalogo()[0])
 
     def catalogo(self):
         return carregar_catalogo([self.cfg["acoes_dir"], self.cfg.get("acoes_pacote_dir")])
@@ -200,7 +208,11 @@ class Lancador:
                 ocioso = None if ult is None else time.time() - ult
             except Exception:
                 ocioso = None
-        return mapear_estado(reg, agente, agora, ocioso)
+        estado = mapear_estado(reg, agente, agora, ocioso)
+        # Acabou de receber uma resposta: o CLI ainda pode mostrar a linha velha (done/idle) por alguns segundos.
+        if estado in RESPONDIVEIS and agora - float(reg.get("respondida_ts") or 0) < GRACA:
+            return "rodando"
+        return estado
 
     def _como_execucao(self, reg, agentes, agora):
         if agentes is None:  # CLI falhou: mantém o último estado visto
@@ -209,8 +221,13 @@ class Lancador:
             estado = self._ultimo[reg["id"]] = self._estado(reg, agentes.get(reg["id"]), agora)
         out = {k: reg.get(k) for k in ("id", "nome", "acao", "titulo", "iniciada_em")}
         out["grupo"] = out["area"] = reg.get("grupo") or reg.get("area") or ""
-        out.update(sessao_id=reg.get("sessao_id") or "", params=reg.get("params") or {}, estado=estado,
-                   comando_attach=self.comando_attach(reg["id"]))
+        sid = reg.get("sessao_id") or ""
+        # Responder acorda a sessão guardada pelo CLI (com as travas dela): só vale se ela ainda está na lista.
+        responde = (estado in RESPONDIVEIS and bool(RE_SESSAO.match(sid))
+                    and agentes is not None and agentes.get(reg["id"]) is not None)
+        out.update(sessao_id=sid, params=reg.get("params") or {}, estado=estado,
+                   comando_attach=self.comando_attach(reg["id"]), modelo=reg.get("modelo") or "",
+                   esforco=reg.get("esforco") or "", pode_responder=responde)
         for k in ("fase", "parte"):
             if reg.get(k):
                 out[k] = reg[k]
@@ -276,6 +293,9 @@ class Lancador:
             trv = acao.get("_travas") or {}
             negar = list(trv.get("negar") or [])
             acao = dict(acao, _travas=dict(trv, negar=negar + [r for r in extra if r not in negar]))
+        # Fora da trava: a primeira escolha pode sondar a licença (uns 10 s, uma vez por semana).
+        modelo, _fora = self.modelos.escolher(acao.get("modelos") or [])
+        esforco = acao.get("esforco") or ""
         with self._trava, self.registro.trava():
             ativas = [e for e in self.execucoes(forcar=True, travado=True) if e["estado"] in ATIVOS]
             igual = [e for e in ativas if e["acao"] == acao_id
@@ -289,7 +309,9 @@ class Lancador:
             # pular_permissoes: some so o pedido comum de permissao. Medido no CLI 2.1.322: regra de negar,
             # gancho que nega e gancho que pergunta continuam valendo com essa flag.
             pular = ["--dangerously-skip-permissions"] if self.cfg.get("pular_permissoes") else []
-            cmd = [self.cfg["claude_bin"], "--bg", "-n", nome] + pular + argv_travas(acao, self.cfg) + [prompt]
+            escolha = (["--model", modelo] if modelo else []) + (["--effort", esforco] if esforco else [])
+            cmd = ([self.cfg["claude_bin"], "--bg", "-n", nome] + escolha + pular
+                   + argv_travas(acao, self.cfg) + [prompt])
             cod, out, err = self.rodar(cmd, self.cfg["workspace"], 60)
             m = RE_SAIDA.search(RE_ANSI.sub("", out + "\n" + err))
             if cod != 0 or not m:
@@ -297,13 +319,90 @@ class Lancador:
             t = self.relogio()
             reg = {"id": m.group(1), "sessao_id": "", "nome": nome, "acao": acao_id, "grupo": acao["grupo"],
                    "titulo": acao["titulo"], "params": valores, "iniciada_em": agora_iso(t),
-                   "iniciada_ts": t, "cwd": self.cfg["workspace"], "risco": acao["risco"]}
+                   "iniciada_ts": t, "cwd": self.cfg["workspace"], "risco": acao["risco"],
+                   "modelo": modelo, "esforco": esforco}
             for p in acao["params"]:
                 if p["tipo"] in ("fase", "parte") and valores.get(p["nome"]):
                     reg[p["tipo"]] = valores[p["nome"]]
             self.registro.gravar([r for r in self.registro.ler() if r["id"] != reg["id"]] + [reg])
         self.esquecer_agentes()
         return self._como_execucao(reg, {}, t)
+
+    def responder(self, exec_id, texto):
+        """Manda outra mensagem para a MESMA sessão. Levanta ErroAcao.
+
+        Medido no CLI 2.1.322: `claude --bg --resume <sessionId> "texto"` SEM outras opções acorda a
+        sessão com as opções guardadas (nome, modelo, esforço, travas) e o mesmo id. Com o processo
+        antigo ainda vivo (terminou, mas ocioso) ou com qualquer opção a mais, o CLI abre uma CÓPIA
+        com outro id. Por isso: para o processo antigo antes e não passa opção nenhuma. Se mesmo
+        assim vier outro id, a cópia é parada e apagada (não há garantia de que leva as travas).
+        """
+        if self.achar(exec_id) is None:
+            raise ErroAcao("Não achei essa conversa.", 404)
+        texto = texto_livre(texto)
+        bin_, ws = self.cfg["claude_bin"], self.cfg["workspace"]
+        with self._trava:
+            todas = self.execucoes(forcar=True)
+            ex = next((e for e in todas if e["id"] == exec_id), None)
+            if ex is None or not ex["pode_responder"]:
+                estado = (ex or {}).get("estado")
+                if estado == "rodando":
+                    raise ErroAcao("O Claude ainda está trabalhando. Espere ele terminar para responder.", 409, exec_id)
+                if estado == "precisa_de_voce":
+                    raise ErroAcao("O Claude fez uma pergunta no terminal. Abra a sessão para responder lá.",
+                                   409, exec_id)
+                raise ErroAcao("Esta conversa não pode mais ser continuada. Comece uma nova.", 409, exec_id)
+            ativas = [e for e in todas if e["estado"] in ATIVOS]
+            if len(ativas) >= self.cfg["max_execucoes"]:
+                raise ErroAcao("Já tem %d rodando ao mesmo tempo. Espere uma acabar ou pare uma."
+                               % len(ativas), 409, ativas[0]["id"])
+            cod, out, err = self.rodar([bin_, "stop", exec_id], ws, 20)
+            if cod != 0 and "No job matching" not in err + out:
+                raise ErroAcao("Não consegui preparar a sessão para continuar.", 500)
+            for tentativa in (1, 2):
+                self._esperar_processo_sair(exec_id)
+                cod, out, err = self.rodar([bin_, "--bg", "--resume", ex["sessao_id"], texto], ws, 60)
+                m = RE_SAIDA.search(RE_ANSI.sub("", out + "\n" + err))
+                if cod != 0 or not m:
+                    raise ErroAcao("Não consegui continuar a conversa. Veja se o comando claude funciona.", 500)
+                if m.group(1) == exec_id:
+                    break
+                # Veio uma cópia (visto de verdade: o `stop` volta antes de o processo antigo sair).
+                # A cópia não fica: para, apaga e tenta mais uma vez.
+                parou = self.rodar([bin_, "stop", m.group(1)], ws, 20)[0] == 0
+                self.rodar([bin_, "rm", m.group(1)], ws, 20)
+                self.esquecer_agentes()
+                if not parou:  # a cópia pode seguir viva: entra no registro para aparecer na tela e contar no teto
+                    t = self.relogio()
+                    orfa = dict(self.achar(exec_id) or {}, id=m.group(1), sessao_id="", iniciada_em=agora_iso(t),
+                                iniciada_ts=t, nome="cópia de " + exec_id, titulo="Cópia que não parou",
+                                terminou_em="", parada_pelo_painel=False)
+                    with self.registro.trava():
+                        self.registro.gravar([r for r in self.registro.ler() if r["id"] != orfa["id"]] + [orfa])
+                    raise ErroAcao("O Claude abriu uma cópia desta conversa e eu não consegui parar. "
+                                   "Pare a cópia na tela Execuções.", 500, m.group(1))
+                if tentativa == 2:
+                    raise ErroAcao("Não consegui continuar esta conversa do jeito seguro. Tente de novo em "
+                                   "alguns segundos ou comece uma nova.", 500)
+                self.dormir(2)
+            t = self.relogio()
+            self.registro.atualizar(exec_id, respondida_ts=t, terminou_em="", parada_pelo_painel=False)
+        self.esquecer_agentes()
+        out = self._como_execucao(self.achar(exec_id), {}, t)
+        out["estado"] = self._ultimo[exec_id] = "rodando"  # acabou de acordar; a lista do CLI ainda não foi relida
+        return out
+
+    def _esperar_processo_sair(self, exec_id, vezes=12, pausa=0.5):
+        """Depois do `claude stop`: espera a linha da sessão ficar sem processo (sem pid e sem status).
+
+        Medido no CLI 2.1.322: sessão viva tem `pid` e `status`; parada fica só com `state`.
+        """
+        for _ in range(vezes):
+            linha = (self.agentes(forcar=True) or {}).get(exec_id)
+            if linha is None or (not linha.get("pid") and not linha.get("status")):
+                return True
+            self.dormir(pausa)
+        return False
 
     def parar(self, exec_id):
         if self.achar(exec_id) is None:

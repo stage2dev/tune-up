@@ -23,6 +23,10 @@ RE_GRUPO = re.compile(r"^[a-z0-9_-]{1,40}$")
 RISCOS = ("leitura", "rascunho", "codigo", "credito")
 TIPOS = ("fase", "parte", "texto", "escolha")
 TEXTO_MAX, TEXTO_PADRAO = 2000, 500
+TEXTO_LONGO_MAX = 6000  # texto com "linhas": pedido de chat, resposta numa conversa
+RE_MODELO = re.compile(r"^[a-z0-9][a-z0-9.\-]{0,60}$")  # apelido do CLI (fable, opus, sonnet...) ou nome inteiro
+ESFORCOS = ("low", "medium", "high", "xhigh", "max")
+GRUPO_CHAT = "chat"  # cada ação deste grupo é um nível do chat da tela inicial
 LIMITE_ACOES = 256 * 1024
 
 
@@ -48,12 +52,30 @@ def _validar_param(p):
             raise ValueError("parâmetro %s: opções inválidas" % p["nome"])
         out["opcoes"] = list(opcoes)
     if p["tipo"] == "texto":
+        linhas = p.get("linhas") is True
         mx = p.get("max")
-        ok = isinstance(mx, int) and not isinstance(mx, bool) and 1 <= mx <= TEXTO_MAX
+        ok = isinstance(mx, int) and not isinstance(mx, bool) and 1 <= mx <= (TEXTO_LONGO_MAX if linhas else TEXTO_MAX)
         out["max"] = mx if ok else TEXTO_PADRAO
+        if linhas:
+            out["linhas"] = True
     if isinstance(p.get("ajuda"), str) and p["ajuda"]:
         out["ajuda"] = p["ajuda"][:300]
     return out
+
+
+def _modelos(a):
+    """`modelos` do JSON (texto ou lista em ordem de preferência) -> lista limpa.
+
+    A chave é no plural porque "modelo" já é o nome antigo do modelo do prompt.
+    """
+    bruto = a.get("modelos")
+    if bruto is None:
+        return []
+    lista = [bruto] if isinstance(bruto, str) else bruto
+    if not isinstance(lista, list) or not 1 <= len(lista) <= 4 or len(set(map(str, lista))) != len(lista) \
+            or not all(isinstance(m, str) and RE_MODELO.match(m) for m in lista):
+        raise ValueError("ação %s: modelos inválido (apelido do CLI ou lista de até 4, sem repetir)" % a["id"])
+    return list(lista)
 
 
 def validar_acao(a):
@@ -82,24 +104,38 @@ def validar_acao(a):
     tipos = [p["tipo"] for p in params]
     if "parte" in tipos and "fase" not in tipos:
         raise ValueError("ação %s: parâmetro parte exige um parâmetro fase" % a["id"])
+    if grupo == GRUPO_CHAT and (nomes != ["pedido"] or tipos != ["texto"] or not params[0]["obrigatorio"]):
+        raise ValueError("ação %s: nível do chat precisa de um único parâmetro de texto obrigatório chamado pedido"
+                         % a["id"])
+    esforco = a.get("esforco")
+    if esforco is not None and esforco not in ESFORCOS:
+        raise ValueError("ação %s: esforco precisa ser um de %s" % (a["id"], ", ".join(ESFORCOS)))
+    equipe = a.get("equipe") if isinstance(a.get("equipe"), str) else ""
+    if RE_CONTROLE.search(equipe):
+        raise ValueError("ação %s: equipe com caractere de controle" % a["id"])
     return {"id": a["id"], "grupo": grupo, "area": grupo, "titulo": str(a.get("titulo") or a["id"])[:80],
             "descricao": str(a.get("descricao") or "")[:500], "risco": a["risco"],
             # código e crédito sempre pedem confirmação, diga o JSON o que disser
             "confirmar": bool(a.get("confirmar")) or a["risco"] in ("codigo", "credito"),
-            "params": params, "_prompt": prompt.strip(), "_nome": nome_sessao, "_travas": trv}
+            "params": params, "modelos": _modelos(a), "esforco": esforco, "equipe": equipe.strip()[:60],
+            "_prompt": prompt.strip(), "_nome": nome_sessao, "_travas": trv, "_substitui": a.get("substitui") is True}
 
 
 def _arquivos(pastas):
-    for pasta in [pastas] if isinstance(pastas, str) else pastas:
+    for i, pasta in enumerate([pastas] if isinstance(pastas, str) else pastas):
         if pasta and os.path.isdir(pasta):
             for arq in sorted(glob.glob(os.path.join(pasta, "*.json"))):
-                yield pasta, arq
+                yield i, pasta, arq
 
 
 def carregar_catalogo(pastas):
-    """Ações de cada pasta (núcleo primeiro, depois o pacote). Arquivo ou ação ruim vira aviso."""
-    acoes, avisos, vistos = [], [], set()
-    for pasta, arq in _arquivos(pastas):
+    """Ações de cada pasta (núcleo primeiro, depois o pacote). Arquivo ou ação ruim vira aviso.
+
+    Id repetido é ignorado, menos num caso: ação do pacote com "substitui": true troca a do
+    núcleo de mesmo id, no mesmo lugar da lista (ex.: um nível do chat com as travas do projeto).
+    """
+    acoes, avisos, vistos = [], [], {}
+    for origem, pasta, arq in _arquivos(pastas):
         nome = os.path.basename(arq)
         try:
             real = os.path.realpath(arq)
@@ -119,9 +155,13 @@ def carregar_catalogo(pastas):
                 avisos.append("%s: %s" % (nome, e))
                 continue
             if limpa["id"] in vistos:
-                avisos.append("%s: ação %s repetida; ignorei" % (nome, limpa["id"]))
+                if limpa["_substitui"] and origem > 0 and vistos[limpa["id"]] == 0:
+                    acoes[[x["id"] for x in acoes].index(limpa["id"])] = limpa
+                    vistos[limpa["id"]] = origem
+                else:
+                    avisos.append("%s: ação %s repetida; ignorei" % (nome, limpa["id"]))
                 continue
-            vistos.add(limpa["id"])
+            vistos[limpa["id"]] = origem
             acoes.append(limpa)
     return acoes, avisos
 
@@ -134,7 +174,9 @@ def publica(acao):
 def _erro_valor(p, v):
     """Texto do erro do valor `v` (já sem espaços nas pontas) ou None se está bom."""
     rot = p["rotulo"]
-    if RE_CONTROLE.search(v):
+    if p.get("linhas") and RE_CONTROLE.search(v.replace("\n", "")):
+        return "O campo \"%s\" tem um caractere que não pode." % rot
+    if not p.get("linhas") and RE_CONTROLE.search(v):
         return "O campo \"%s\" tem um caractere que não pode (como quebra de linha)." % rot
     if v.startswith("-"):
         return "O campo \"%s\" não pode começar com \"-\"." % rot
@@ -147,6 +189,24 @@ def _erro_valor(p, v):
     if p["tipo"] == "parte" and not RE_PARTE.match(v):
         return "Parte inválida."
     return None
+
+
+def arrumar_linhas(texto):
+    """Quebra de linha de qualquer sistema vira \\n; tab vira espaço; 3+ linhas vazias viram uma."""
+    texto = texto.replace("\r\n", "\n").replace("\r", "\n").replace("\t", " ")
+    return re.sub(r"\n{3,}", "\n\n", texto).strip()
+
+
+def texto_livre(valor, rotulo="mensagem", maximo=TEXTO_LONGO_MAX):
+    """Texto digitado fora de uma ação (resposta numa conversa). Devolve limpo ou levanta ErroAcao."""
+    if not isinstance(valor, str) or not valor.strip():
+        raise ErroAcao("Escreva a %s." % rotulo)
+    p = {"rotulo": rotulo, "tipo": "texto", "max": maximo, "linhas": True}
+    v = arrumar_linhas(valor)
+    erro = _erro_valor(p, v)
+    if erro:
+        raise ErroAcao(erro)
+    return v
 
 
 def validar_params(acao, params, estado):
@@ -169,6 +229,8 @@ def validar_params(acao, params, estado):
         if not isinstance(v, (str, int)) or isinstance(v, bool):
             raise ErroAcao("O campo \"%s\" precisa ser um texto." % p["rotulo"])
         v = str(v).strip()
+        if p.get("linhas"):
+            v = arrumar_linhas(v)
         erro = _erro_valor(p, v)
         if erro:
             raise ErroAcao(erro)

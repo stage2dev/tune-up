@@ -2,6 +2,33 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## 2.5.0
+
+The panel closes the token door, masks what it shows and lets modules act.
+
+- `GET /api/sessao` (the token) now answers only with `Sec-Fetch-Site: same-origin`. curl, other local programs and browsers that do not send `Sec-Fetch-Site` (Safari before 16.4) get 403 and can no longer run actions.
+- Phones, e-mails and keys are masked in everything the panel shows from a session: transcript events (`cortar()` in `transcricao.py` is the single funnel, rules in `painel/mascara.py`), agents, tracking, and the request text and names of executions (the chat list and the first balloon). The registry still keeps the raw text.
+- Module actions: `POST /api/modulos/{id}/acao` runs `agir` of an enabled module behind the same defenses as every POST; `dados` never goes to the log or to an error reply. `GET /api/modulos/{id}?fresco=1` skips the cache. A module's `INFO["negar"]` joins the deny rules of every session the panel starts, chat levels included. Fail-closed: an enabled module that does not load (or has an invalid `negar`) blocks every panel action with 409 until it is fixed or disabled in `painel.json`. Replies (`responder`) resume the session with the rules it was started with.
+- `modulos_de_plugins` in `painel.json`: extra screens from installed plugins, as `plugin@marketplace:modulo`.
+- New module blocks: `formulario`, `conversa` and `imagem`.
+- `painel/web/dist` rebuilt from these sources.
+
+## 2.4.0
+
+The panel's home screen is now a chat.
+
+- Home (`/`) is a chat: write the request, pick a level. The old home moved to `/resumo`. Each level is an action of group `chat` in `painel/acoes/chat.json`: ask only (sonnet, read-only), simple fix (opus, 1 reviewer, PR), moderate fix (opus high, executors + up to 2 reviewers, one PR), full change (fable, falling back to opus; `/tune-up:plan` with 2 Opus plan reviewers; no code), marketing (opus, drafts only).
+- Any action may now set `modelos` (one alias or a preference list), `esforco` and `equipe`. The session starts with the first model the license has; the last one is the fallback. The panel probes the license once with a minimal `claude -p` (about 900 tokens), cached 7 days in the project's `dados/modelos.json`; `modelos_disponiveis` in `painel.json` overrides it.
+- Reply in the same conversation: `POST /api/execucoes/{id}/responder`. It stops the idle process, waits for it to exit and runs `claude --bg --resume <sessionId> "text"` with no other option, which wakes the same session with its saved options, tool rules included (measured on CLI 2.1.322). If the CLI starts a copy instead, the copy is stopped and removed.
+- The read-only level is enforced by rules, not only by the prompt: Edit/Write denied, and in Bash file writes, state-changing git, PRs and outbound data. The full-change level denies commit, push, PR and merge.
+- A project package can replace a core level with the same id and `"substitui": true`, or add levels.
+- Text parameters accept line breaks with `"linhas": true` (up to 6000 chars). POST body limit is 32 KB. `eventos?inteiro=1` returns full messages for the chat.
+- `painel/web/dist` rebuilt from these sources.
+
+## 2.3.1
+
+- Panel: `painel/web/dist` (the prebuilt screens) is now in the repo. 2.3.0 said it was and it was not: an ignore rule left it out, so a fresh install only showed "run npm run build". CI now fails if the build is missing.
+
 ## 2.3.0
 
 The panel: a local dashboard to follow and run the work.

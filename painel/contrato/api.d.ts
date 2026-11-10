@@ -9,7 +9,7 @@
 //   citados abaixo. Códigos: 400 pedido inválido, 403 recusado (token/origem/site), 404 não achei,
 //   405 método errado, 409 já rodando ou teto, 411/413/415 corpo, 421 Host recusado, 500/503 falha.
 // - Todo POST precisa de: X-Painel-Token (de GET /api/sessao), Origin = endereço do próprio painel,
-//   Sec-Fetch-Site ausente ou "same-origin", Content-Type: application/json e corpo até 16 KB
+//   Sec-Fetch-Site ausente ou "same-origin", Content-Type: application/json e corpo até 32 KB
 //   (corpo vazio vale como {}).
 // - GET aceita Sec-Fetch-Site ausente, "same-origin" ou "none"; Host tem de ser 127.0.0.1 ou localhost.
 
@@ -148,9 +148,12 @@ export interface ParamAcao {
   tipo: 'fase' | 'parte' | 'texto' | 'escolha';
   obrigatorio: boolean;
   opcoes?: string[]; // só em 'escolha'
-  max?: number; // só em 'texto' (padrão 500, teto 2000)
+  max?: number; // só em 'texto' (padrão 500, teto 2000; com `linhas`, teto 6000)
+  linhas?: boolean; // só em 'texto': true aceita quebra de linha (caixa grande na tela)
   ajuda?: string;
 }
+
+export type Esforco = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export interface Acao {
   id: string;
@@ -161,6 +164,25 @@ export interface Acao {
   risco: Risco;
   confirmar: boolean; // sempre true quando risco é 'codigo' ou 'credito'
   params: ParamAcao[];
+  /** Modelos em ordem de preferência (apelidos do CLI: fable, opus, sonnet, haiku). [] = modelo padrão do CLI.
+   *  A sessão sai com o primeiro que a licença tem (GET /api/modelos); o último é a reserva e nunca é sondado. */
+  modelos: string[];
+  esforco: Esforco | null; // null = esforço padrão do CLI
+  equipe: string; // texto curto para a tela, ex. "1 a 2 agentes"; '' se a ação não disser
+}
+
+// ---------------------------------------------------------------- chat (tela inicial)
+// O chat não tem rota própria: cada NÍVEL é uma ação do grupo "chat" (acoes/chat.json do núcleo, mais as
+// do pacote) com um único parâmetro de texto chamado `pedido` (com `linhas`). Mandar = POST /api/execucoes
+// { acao: "chat.simples", params: { pedido } }. A conversa é a execução: GET .../eventos?inteiro=1 e
+// POST .../responder. O 1º evento 'usuario' da conversa é o prompt montado pelo servidor (receita do nível
+// + pedido): a tela mostra `execucao.params.pedido` no lugar dele.
+
+/** GET /api/modelos — o que a licença tem, para os modelos que aparecem como 1ª opção de alguma ação.
+ *  A 1ª chamada dispara a sonda em segundo plano (uns 10 s por modelo; fica guardada por 7 dias). */
+export type StatusModelo = 'sim' | 'nao' | 'verificando' | 'nao_sei';
+export interface RespModelos {
+  modelos: Record<string, StatusModelo>;
 }
 
 export interface RespAcoes {
@@ -185,6 +207,20 @@ export interface Execucao {
   comando_attach: string; // "claude attach <id>"
   fase?: string;
   parte?: string;
+  modelo: string; // apelido com que a sessão saiu; '' = padrão do CLI
+  esforco: string; // '' = padrão do CLI
+  /** true quando dá para mandar outra mensagem (estado terminou ou parada, com sessao_id conhecido). */
+  pode_responder: boolean;
+}
+
+/** POST /api/execucoes/{id}/responder — continua a MESMA sessão (mesmo id, mesmas travas, modelo e esforço).
+ *  200 { execucao }. 400 texto vazio/ruim (até 6000 letras, aceita quebra de linha); 404; 409 se a sessão
+ *  ainda trabalha ou espera resposta no terminal (precisa_de_voce: use /abrir); 500 se o CLI falhar. */
+export interface PedidoResposta {
+  texto: string;
+}
+export interface RespResposta {
+  execucao: Execucao;
 }
 
 /** POST /api/execucoes */
@@ -216,7 +252,8 @@ export interface Evento {
   erro?: boolean; // true em 'resultado' (só resultados com erro aparecem) e em 'sistema'
 }
 
-/** GET /api/execucoes/{id}/eventos?desde=N — comece com desde=0 e mande `proximo` na próxima. */
+/** GET /api/execucoes/{id}/eventos?desde=N[&inteiro=1] — comece com desde=0 e mande `proximo` na próxima.
+ *  Com inteiro=1 as falas ('usuario' e 'assistente') vêm com até 12000 letras (chat); o resto segue em 600. */
 export interface RespEventos {
   eventos: Evento[];
   proximo: number; // cursor (posição em bytes): igual a `desde` quando não há nada novo
@@ -392,6 +429,11 @@ export interface ArquivoAcoes {
       confirmar?: boolean;
       prompt: string; // modelo com {param}; aceita também a chave "modelo"; não pode começar com "-"
       nome_sessao?: string; // modelo do nome da sessão; sem ele usa o título
+      modelos?: string | string[]; // apelido(s) do CLI em ordem de preferência ("modelo" é o nome antigo de `prompt`)
+      esforco?: Esforco;
+      equipe?: string; // até 60 letras
+      // Só no pacote: true troca a ação do núcleo que tem o mesmo id (ex. chat.marketing com as travas do projeto).
+      substitui?: boolean;
       params?: Array<Omit<ParamAcao, 'obrigatorio'> & { obrigatorio?: boolean }>;
       // Travas da sessão (até 200 cada). Texto = regra de permissão do Claude Code (deny/allow);
       // objeto = regra do gancho PreToolUse. Toda ação tem a proteção fixa (.claude/settings, painel.json,

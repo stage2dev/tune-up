@@ -15,8 +15,12 @@ export interface ParamAcao {
   obrigatorio: boolean;
   opcoes?: string[];
   max?: number;
+  /** So em 'texto': true aceita quebra de linha (caixa grande). */
+  linhas?: boolean;
   ajuda?: string;
 }
+
+export type Esforco = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export interface Acao {
   id: string;
@@ -27,6 +31,16 @@ export interface Acao {
   risco: Risco;
   confirmar: boolean;
   params: ParamAcao[];
+  /** Modelos em ordem de preferencia; o ultimo e a reserva. [] = padrao do CLI. Opcional: servidor antigo nao manda. */
+  modelos?: string[];
+  esforco?: Esforco | null;
+  equipe?: string;
+}
+
+/** GET /api/modelos: o que a licenca tem. */
+export type StatusModelo = 'sim' | 'nao' | 'verificando' | 'nao_sei';
+export interface RespModelos {
+  modelos: Record<string, StatusModelo>;
 }
 
 export type EstadoExecucao = 'rodando' | 'precisa_de_voce' | 'terminou' | 'parada' | 'sumiu';
@@ -46,6 +60,11 @@ export interface Execucao {
   comando_attach: string;
   fase?: string;
   parte?: string;
+  /** Apelido com que a sessao saiu; '' = padrao do CLI. Opcional: servidor antigo nao manda. */
+  modelo?: string;
+  esforco?: string;
+  /** true quando da para mandar outra mensagem (POST /api/execucoes/{id}/responder). */
+  pode_responder?: boolean;
 }
 
 export type TipoEvento = 'usuario' | 'assistente' | 'ferramenta' | 'resultado' | 'subagente' | 'sistema';

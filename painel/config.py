@@ -13,7 +13,7 @@ import os
 import re
 
 PAINEL = os.path.dirname(os.path.abspath(__file__))
-VERSAO = "2.1.0"
+VERSAO = "2.3.0"
 ENV_PROJETO = "TUNEUP_PAINEL_PROJETO"
 PACOTE_PADRAO = "painel-projeto"
 
@@ -306,6 +306,12 @@ def carregar(raiz=None, arquivo=None, home=None):
         extras["projeto_mem"] = bruto["projeto_mem"]
     if _caminho(bruto.get("claude_mem_db"), raiz):
         extras["claude_mem_db"] = _caminho(bruto.get("claude_mem_db"), raiz)
+
+    disponiveis = bruto.get("modelos_disponiveis")
+    if disponiveis is not None and not isinstance(disponiveis, dict):
+        avisos.append("painel.json: modelos_disponiveis precisa ser um objeto {apelido: true|false}; ignorei")
+    extras["modelos_disponiveis"] = {k: v for k, v in (disponiveis.items() if isinstance(disponiveis, dict) else [])
+                                     if isinstance(k, str) and isinstance(v, bool)}
 
     return Config(
         extras,

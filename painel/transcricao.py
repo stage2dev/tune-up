@@ -16,6 +16,7 @@ from mascara import mascarar
 
 RE_SESSAO = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 CORTE = 600
+CORTE_INTEIRO = 12000  # falas do chat (?inteiro=1)
 CORTE_ALVO = 160
 LER_POR_VEZ = 4 * 1024 * 1024
 LINHA_MAX = 2 * 1024 * 1024
@@ -106,8 +107,8 @@ def _texto_resultado(conteudo):
     return conteudo if isinstance(conteudo, str) else ""
 
 
-def eventos_da_linha(obj):
-    """Uma linha do .jsonl -> lista de (tipo, texto, extras)."""
+def eventos_da_linha(obj, corte_fala=CORTE):
+    """Uma linha do .jsonl -> lista de (tipo, texto, extras). `corte_fala` vale só para as falas."""
     if not isinstance(obj, dict) or obj.get("isSidechain") or obj.get("isMeta"):
         return []
     tipo = obj.get("type")
@@ -122,13 +123,13 @@ def eventos_da_linha(obj):
                                 {"erro": True}))
         texto = _texto_usuario(conteudo)
         if texto:
-            out.append(("usuario", cortar(texto), {}))
+            out.append(("usuario", cortar(texto, corte_fala), {}))
     elif tipo == "assistant" and isinstance(conteudo, list):
         for b in conteudo:
             if not isinstance(b, dict):
                 continue
             if b.get("type") == "text" and str(b.get("text") or "").strip():
-                out.append(("assistente", cortar(b["text"]), {}))
+                out.append(("assistente", cortar(b["text"], corte_fala), {}))
             elif b.get("type") == "tool_use":
                 nome = str(b.get("name") or "?")[:60]
                 entrada = b.get("input") if isinstance(b.get("input"), dict) else {}
@@ -144,7 +145,7 @@ def eventos_da_linha(obj):
     return out
 
 
-def ler(caminho, desde=0, max_eventos=MAX_EVENTOS):
+def ler(caminho, desde=0, max_eventos=MAX_EVENTOS, corte_fala=CORTE):
     """{eventos, proximo}. Arquivo inexistente -> nada e o mesmo cursor. Linha quebrada é pulada."""
     try:
         desde = max(0, int(desde))
@@ -176,7 +177,7 @@ def ler(caminho, desde=0, max_eventos=MAX_EVENTOS):
         except ValueError:
             continue
         ts = str(obj.get("timestamp") or "") if isinstance(obj, dict) else ""
-        for k, (tipo, texto, extras) in enumerate(eventos_da_linha(obj)):
+        for k, (tipo, texto, extras) in enumerate(eventos_da_linha(obj, corte_fala)):
             ev = {"n": inicio + k, "ts": ts, "tipo": tipo, "texto": texto}
             ev.update(extras)
             eventos.append(ev)
