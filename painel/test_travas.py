@@ -123,6 +123,39 @@ class TesteDecisao(unittest.TestCase):
         self.assertEqual(decisao(cod, "Edit", {"file_path": "/p/.tune-up/painel/travas.py"}), "ask")
         self.assertIsNone(decisao(cod, MULTI, {"tools": [{"slug": "LOJA_CRIAR_POST"}]}))  # sem regra: livre
 
+    def test_protecao_fixa_com_caminho_do_windows(self):
+        win = conf(ACAO_LEITURA, prot=("C:\\p\\.tune-up\\painel", "C:\\p\\.tune-up\\pacote\\"),
+                   lib=("C:\\p\\.tune-up\\pacote\\dados",))
+        for c in (self.c, win):
+            for ferr, caminho in (("Write", "C:\\w\\.claude\\settings.local.json"),
+                                  ("Edit", "c:\\P\\.Tune-Up\\painel.json"),
+                                  ("Edit", "C:\\P\\.CLAUDE\\Hooks\\x.py"),
+                                  ("Edit", "C:\\p\\.tune-up\\painel\\travas.py"),
+                                  ("Edit", "C:\\p\\.tune-up\\pacote\\dados\\..\\acoes\\a.json"),
+                                  ("Edit", "C:/p\\.tune-up/pacote\\dados/..\\acoes/a.json"),
+                                  ("Write", "\\\\srv\\x\\.claude\\settings.json"),
+                                  ("Write", "C:.claude\\settings.json")):
+                self.assertEqual(decisao(c, ferr, {"file_path": caminho}), "deny", caminho)
+            self.assertIsNone(decisao(c, "Write", {"file_path": "C:\\p\\.tune-up\\pacote\\dados\\fotos\\x.json"}))
+            self.assertEqual(decisao(c, "Bash", {"command": "echo 1 > .claude\\settings.json"}), "deny")
+        self.assertEqual(decisao(win, "Edit", {"file_path": "C:\\p\\.tune-up\\pacote\\acoes\\a.json"}), "deny")
+        self.assertEqual(decisao(win, "Edit", {"file_path": "c:/P/.TUNE-UP/Pacote/acoes/a.json"}), "deny")
+        self.assertEqual(decisao(win, "Bash", {"command": "del C:\\P\\.tune-up\\Pacote\\acoes\\a.json > nul"}), "deny")
+        self.assertIsNone(decisao(win, "Bash", {"command": "type C:\\p\\.tune-up\\pacote\\dados\\x.json > out.txt"}))
+
+    def test_liberado_so_a_pasta_dados_e_sem_falso_positivo(self):
+        c = self.c
+        self.assertEqual(decisao(c, "Write", {"file_path": "/p/.tune-up/pacote/dadosx/a.json"}), "deny")
+        self.assertEqual(decisao(c, "Write", {"file_path": "/p/.tune-up/pacote/dados.json"}), "deny")
+        self.assertIsNone(decisao(c, "Write", {"file_path": "/p/.tune-up/pacote/dados"}))
+        self.assertIsNone(decisao(c, "Write", {"file_path": "/home/u/a\\b.txt"}))
+        self.assertIsNone(decisao(c, "Write", {"file_path": "/home/u/proj/README.md"}))
+        self.assertIsNone(decisao(c, "Bash", {"command": "printf 'a\\nb' > /tmp/x.txt"}))
+        # POSIX: `x\..\..` é nome de arquivo dentro do painel; a troca de barra não pode soltar isso
+        self.assertEqual(decisao(c, "Write", {"file_path": "/p/.tune-up/painel/x\\..\\..\\y"}), "deny")
+        self.assertEqual(travas.caminho_comparavel("C:\\A\\.\\b\\..\\c", True), "c:/a/c")
+        self.assertEqual(travas.caminho_comparavel("/A/b/../c", False), "/A/c")
+
 
 class TesteGancho(unittest.TestCase):
     def test_processo_responde_no_formato_do_claude(self):

@@ -2,6 +2,13 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## 2.4.3
+
+Panel on Windows, from the first real CI run of the panel tests there (24 of 160 failed).
+
+- Guard hook (`painel/travas.py`): the fixed protection of settings, the panel and the project package only understood `/`. Paths now go through one normaliser (backslash to slash, `.` and `..` resolved with `posixpath`, drive prefix, case-insensitive when the path looks like Windows or the system is Windows) on both sides of the comparison, added to the old checks, never replacing them. The allowed `dados` folder only counts when followed by a separator: `dadosx/` and `dados.json` are denied. Not yet proven on a real Windows session.
+- Dates: `agora_iso` and `iso_local` build timezone-aware datetimes; the naive form raised `OSError 22` on Windows for small timestamps. Same ISO text as before in 7 time zones.
+
 ## 2.4.2
 
 - Tests: `test_pitfall_skills_limite` hung on Windows, it was never slow. The test waited for `info` to exit before reading its stdout from a pipe; with 200 skills the answer is larger than a Windows pipe buffer (about 4 KB), so the child blocked on write and the wait timed out at any limit. stdout now goes to a temp file and the limit is back to 5 s. 2.4.1 raised the limit to 30 s on a wrong guess.

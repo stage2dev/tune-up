@@ -60,7 +60,7 @@ def iso_local(valor):
     """'2026-11-10T12:09:58.306Z' ou epoch -> ISO local com segundos; None se não der."""
     try:
         if isinstance(valor, (int, float)):
-            dt = datetime.datetime.fromtimestamp(valor).astimezone()
+            dt = datetime.datetime.fromtimestamp(valor, datetime.timezone.utc).astimezone()
         else:
             texto = str(valor).strip().replace("Z", "+00:00")
             m = re.match(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(\.\d+)?([+-]\d\d:\d\d)?$", texto)

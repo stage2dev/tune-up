@@ -24,6 +24,7 @@ Python 3.9, só biblioteca padrão; o gancho não importa nada do painel.
 import base64
 import json
 import os
+import posixpath
 import re
 import shlex
 import sys
@@ -42,6 +43,8 @@ CAMINHO_CONFIG = re.compile(r"(^|[/\s'\"=])\.claude/(settings[^/\s'\"]*\.json|ho
                             r"|(^|[/\s'\"=])\.tune-up/painel(\.json|[\w.-]*/(?!dados/))")
 BASH_ESCREVE = re.compile(r">|\btee\b|\bsed\s+-i|\bmv\b|\bcp\b|\brm\b|\bchmod\b|\bln\b|\btouch\b|\btruncate\b")
 FERR_ARQUIVO = ("Edit", "Write", "MultiEdit", "NotebookEdit")
+RE_UNIDADE = re.compile(r"^[A-Za-z]:")
+FIM_LIB = "/\\ \t\n'\""  # depois do liberado: separador, espaço, aspas ou fim (dadosx/ não é dados/)
 
 
 # ---------------------------------------------------------------- validação (usada pelo catálogo)
@@ -146,16 +149,52 @@ def argv_travas(acao, cfg=None):
 
 # ---------------------------------------------------------------- o gancho
 
-def _protegido(texto, conf):
+def _sem_caixa(texto):
+    """No Windows (ou com cara de caminho do Windows) o disco não diferencia maiúsculas."""
+    return os.name == "nt" or "\\" in texto or RE_UNIDADE.match(texto) is not None
+
+
+def _barra(texto, sem_caixa):
+    texto = texto.replace("\\", "/")
+    return texto.lower() if sem_caixa else texto
+
+
+def caminho_comparavel(caminho, sem_caixa):
+    """Forma única de comparar caminho (o da ferramenta e os protegidos/liberados): `\\` vira `/`,
+    `.` e `..` resolvidos sem o os.path da plataforma, minúsculas se o disco não diferencia."""
+    return posixpath.normpath(_barra(caminho, sem_caixa))
+
+
+def _liberado(texto, i, libs):
+    for lib in libs:
+        fim = i + len(lib)
+        if texto.startswith(lib, i) and (fim == len(texto) or texto[fim] in FIM_LIB):
+            return True
+    return False
+
+
+def _protegido(texto, conf, forma=None):
+    """`forma` (opcional) normaliza protegidos e liberados do mesmo jeito que o texto."""
     if CAMINHO_CONFIG.search(texto):
         return True
+    libs = [forma(x) if forma else x for x in conf.get("lib") or []]
     for p in conf.get("prot") or []:
+        p = forma(p) if forma else p
         i = texto.find(p)
         while i >= 0:
-            if not any(texto.startswith(lib, i) for lib in conf.get("lib") or []):
+            if not _liberado(texto, i, libs):
                 return True
             i = texto.find(p, i + 1)
     return False
+
+
+def _protegido_normal(texto, conf, comando):
+    """Mesma checagem com `\\` -> `/` (e `..` resolvido se for caminho). Só soma proteção."""
+    sc = _sem_caixa(texto)
+    norm = _barra(texto, sc) if comando else caminho_comparavel(texto, sc)
+    if _protegido(norm, conf, lambda p: caminho_comparavel(p, sc)):
+        return True
+    return not comando and CAMINHO_CONFIG.search(RE_UNIDADE.sub("", norm)) is not None
 
 
 def _casa(regra, ferramenta, entrada):
@@ -179,13 +218,14 @@ def decidir(conf, ferramenta, entrada):
     forte = conf.get("forte") if conf.get("forte") in DECISOES else "deny"
     if ferramenta in FERR_ARQUIVO:
         caminho = str(entrada.get("file_path") or entrada.get("notebook_path") or "")
-        if caminho and (_protegido(caminho, conf) or _protegido(os.path.normpath(caminho), conf)):
+        if caminho and (_protegido(caminho, conf) or _protegido(os.path.normpath(caminho), conf)
+                        or _protegido_normal(caminho, conf, False)):
             return forte, "mexer nas regras do Claude ou do painel"
     if ferramenta == "Bash":
         cmd = entrada.get("command")
         if not isinstance(cmd, str):
             return forte, "comando ilegível"
-        if _protegido(cmd, conf) and BASH_ESCREVE.search(cmd):
+        if (_protegido(cmd, conf) or _protegido_normal(cmd, conf, True)) and BASH_ESCREVE.search(cmd):
             return forte, "mexer nas regras do Claude ou do painel"
     for regra in conf.get("p") or []:
         if _casa(regra, ferramenta, entrada):
