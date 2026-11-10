@@ -1,0 +1,9 @@
+{
+  "name": "tune-up-vendas",
+  "version": "0.1.0",
+  "description": "WhatsApp sales screen for the tune-up panel, plus a local service that keeps the connection and the conversations on your machine.",
+  "license": "MIT",
+  "author": {
+    "name": "stage2dev"
+  }
+}
