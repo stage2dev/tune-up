@@ -2,7 +2,7 @@
 // (nunca isLoading) para mostrar esqueleto; so mostre "vazio" quando !isPending && !isError.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost } from './cliente';
-import type { Acao, Acompanhamento, DadosModulo, EstadoPainel, Eventos, Execucao, ListaModulos, Sessao } from './tipos';
+import type { Acao, Acompanhamento, DadosModulo, EstadoPainel, Eventos, Execucao, ListaModulos, ReqAcaoModulo, RespAcaoModulo, Sessao } from './tipos';
 import { obterSessao } from './cliente';
 import { buscarEventos, intervaloEventos, type EventosCache } from './eventos';
 
@@ -45,6 +45,24 @@ export const useModulo = (id: string | undefined) =>
     queryFn: () => apiGet<DadosModulo>(`/api/modulos/${encodeURIComponent(id ?? '')}`),
     refetchInterval: 15_000,
   });
+
+/** Chama uma acao do modulo (POST) e, se der certo, puxa o modulo de novo sem o cache do servidor. */
+export const postarAcao = (id: string, req: ReqAcaoModulo) =>
+  apiPost<RespAcaoModulo>(`/api/modulos/${encodeURIComponent(id)}/acao`, req);
+
+export function useAcaoModulo(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (req: ReqAcaoModulo) => postarAcao(id, req),
+    onSuccess: () => {
+      const chave = chaves.modulo(id);
+      void qc
+        .cancelQueries({ queryKey: chave })
+        .then(() => qc.fetchQuery({ queryKey: chave, staleTime: 0, queryFn: () => apiGet<DadosModulo>(`/api/modulos/${encodeURIComponent(id)}?fresco=1`) }))
+        .catch(() => undefined); // a acao deu certo; se a releitura falhar, a tela avisa "nao foi possivel atualizar"
+    },
+  });
+}
 
 export const useAcompanhamento = () =>
   useQuery({ queryKey: chaves.acompanhamento, queryFn: () => apiGet<Acompanhamento>('/api/acompanhamento'), refetchInterval: 10_000 });

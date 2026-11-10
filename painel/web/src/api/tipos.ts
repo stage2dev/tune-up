@@ -126,6 +126,16 @@ export interface Bloco {
   [campo: string]: unknown;
 }
 
+/** Corpo e resposta de POST /api/modulos/<id>/acao (blocos formulario e conversa). */
+export interface ReqAcaoModulo {
+  acao: string;
+  dados: Record<string, unknown>;
+}
+export interface RespAcaoModulo {
+  ok: true;
+  resultado: Record<string, unknown>;
+}
+
 export interface AbaModulo {
   id: string;
   titulo: string;

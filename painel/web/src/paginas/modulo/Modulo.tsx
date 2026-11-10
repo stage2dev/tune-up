@@ -41,15 +41,22 @@ export default function Modulo() {
   const [escolhida, setEscolhida] = useState<string | null>(null);
 
   if (q.isPending) return <Pagina titulo="Carregando…"><EsqueletoPagina cartoes={3} /></Pagina>;
-  if (q.isError) return <Pagina titulo="Módulo"><Erro erro={q.error} aoTentar={() => void q.refetch()} /></Pagina>;
+  if (q.isError && !q.data) return <Pagina titulo="Módulo"><Erro erro={q.error} aoTentar={() => void q.refetch()} /></Pagina>;
 
   const m = q.data;
+  if (!m) return null; // so alcancavel sem dados e sem erro (consulta desligada)
   const abas = Array.isArray(m.abas) ? m.abas : [];
   const ativa = abas.find((a) => a.id === escolhida) ?? abas[0];
   const avisos = Array.isArray(m.avisos) ? m.avisos : [];
 
   return (
     <Pagina titulo={m.titulo} subtitulo={m.gerado_em ? `Atualizado em ${dataHora(m.gerado_em)}.` : undefined}>
+      {q.isError && (
+        <p role="status" className="mb-3 text-xs text-[var(--color-attention)]">
+          Não foi possível atualizar. Mostrando o que já estava na tela.{' '}
+          <button type="button" className="underline" onClick={() => void q.refetch()}>Tentar de novo</button>
+        </p>
+      )}
       <Alertas alertas={m.alertas} />
       {avisos.length > 0 && (
         <Cartao titulo="Avisos" className="mb-4">
@@ -62,7 +69,7 @@ export default function Modulo() {
         <Cartao><EstadoVazio titulo="Este módulo não tem abas" texto="Ele está habilitado, mas ainda não trouxe nenhuma aba para mostrar." /></Cartao>
       ) : (
         <Abas abas={abas.map((a) => ({ id: a.id, rotulo: a.titulo }))} ativa={ativa.id} aoTrocar={setEscolhida}>
-          <Blocos blocos={ativa.blocos} />
+          <Blocos key={`${id}:${ativa.id}`} blocos={ativa.blocos} moduloId={id} />
         </Abas>
       )}
     </Pagina>
