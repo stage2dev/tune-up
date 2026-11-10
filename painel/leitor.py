@@ -10,6 +10,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import threading
 import time
 
@@ -123,7 +124,8 @@ def ler_info(cwd=None, timeout=8, guarda=None):
     guarda = guarda or cfg.get("guarda")
     if not guarda:
         return None, "plugin tune-up não encontrado: nomes de marcador padrão"
-    ok, out, motivo = rodar(["python3", guarda, "info"], cwd or cfg["workspace"], timeout)
+    python = sys.executable if os.name == "nt" else "python3"  # Windows: `python3` costuma ser o atalho da Loja
+    ok, out, motivo = rodar([python, guarda, "info"], cwd or cfg["workspace"], timeout)
     if not ok:
         return None, "guarda.py info falhou (%s)" % motivo
     try:

@@ -91,6 +91,15 @@ def frontmatter(texto):
     return {}  # no closing `---`
 
 
+def _real(arq, base, real_base):
+    """realpath(arq) without resolving the whole chain per file: only the skill folder and file can
+    be symlinks below the already-resolved `skills` folder; otherwise fall back to realpath."""
+    pasta = os.path.dirname(arq)
+    if os.path.islink(pasta) or os.path.islink(arq):
+        return os.path.realpath(arq)
+    return os.path.join(real_base, os.path.relpath(pasta, base), os.path.basename(arq))
+
+
 def pitfall_skills():
     """Installed pitfall skills (name or description says pitfall/armadilha, with `paths`):
     [{name, path, paths}] by name; same name twice: the newest install wins. [] on any problem."""
@@ -109,6 +118,8 @@ def pitfall_skills():
                      reverse=True)  # ISO dates; stable sort keeps file order on ties
     achadas, vistos = {}, 0
     for inst in instalacoes:
+        base = os.path.join(inst["installPath"], "skills")
+        real_base = os.path.realpath(base)  # once per plugin, not once per skill
         for arq in sorted(glob.glob(os.path.join(glob.escape(inst["installPath"]), "skills", "*", "SKILL.md"))):
             if vistos >= LIMITE_SKILLS:
                 return [achadas[n] for n in sorted(achadas)]
@@ -122,7 +133,7 @@ def pitfall_skills():
             if not isinstance(fm.get("paths"), list) or not fm["paths"] or nome in achadas or \
                     not RE_ARMADILHA.search("%s %s" % (fm.get("name") or "", fm.get("description") or "")):
                 continue
-            achadas[nome] = {"name": nome, "path": os.path.realpath(arq), "paths": fm["paths"]}
+            achadas[nome] = {"name": nome, "path": _real(arq, base, real_base), "paths": fm["paths"]}
     return [achadas[n] for n in sorted(achadas)]
 
 

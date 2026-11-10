@@ -23,6 +23,16 @@ Testes: `python3 -B -m unittest` (nesta pasta). Python 3.9, só biblioteca padr�
 A tela em React mora em `web/` (`npm run build` gera `web/dist`). Sem `web/dist`, a raiz mostra só um aviso pedindo a build.
 Em modo dev (Vite em 5173 com proxy para 8787), ponha `"origens_extras": ["http://127.0.0.1:5173"]` no `painel.json`, senão os POST dão 403.
 
+## Tela compilada
+
+`painel/web/dist` (a tela em Vite) vai commitada no repo. Toda PR que mexe em `painel/web/src` refaz o `dist` na mesma PR:
+
+```
+cd painel/web && npm ci && rm -rf dist && npm run build
+```
+
+Apague o `dist` antes: o Tailwind lê o `dist` antigo em busca de classes e, sem isso, o CSS sai diferente. O CI roda os testes, refaz o build e falha se o `dist` commitado estiver velho.
+
 ## `painel.json`
 
 Tipos em `contrato/api.d.ts` (`PainelJson`). Caminho relativo vale a partir da raiz. Valor ruim vira aviso e cai no padrão.

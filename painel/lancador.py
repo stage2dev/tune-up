@@ -7,7 +7,6 @@ sem shell e sem modo que pula permissão; guarda o registro em
 com `claude agents --json --all` para dizer o estado; para e abre no Terminal.
 """
 import datetime
-import fcntl
 import json
 import os
 import re
@@ -21,6 +20,7 @@ import time
 from catalogo import (ErroAcao, RE_ID_ACAO, carregar_catalogo, montar, nome_da_sessao,  # noqa: F401
                       publica, texto_livre, validar_params)
 from modelos import Modelos
+from trava import PRAZO_TRAVA, _TravaArquivo  # noqa: F401
 from travas import argv_travas
 
 RE_ID_EXEC = re.compile(r"^[0-9a-f]{6,16}$")
@@ -33,12 +33,26 @@ OCIOSO = 180        # s sem escrita na conversa (nem nos subagentes) com o CLI e
 GRACA = 45          # s: sessão recém-disparada ainda pode não aparecer em `claude agents`
 TTL_AGENTES = 3
 MAX_REGISTRO = 200
+# s: no Windows, abrir/trocar execucoes.json dá PermissionError enquanto outro thread o lê; insiste até isto
+PRAZO_OCUPADO = 2 if os.name == "nt" else 0
 SCRIPT_TERMINAL = ["on run argv", 'tell application "Terminal"', "activate",
                    "do script (item 1 of argv)", "end tell", "end run"]
 
 
 def agora_iso(t):
     return datetime.datetime.fromtimestamp(t).astimezone().isoformat(timespec="seconds")
+
+
+def _insistir(fazer):
+    """Roda `fazer`; em PermissionError tenta de novo até PRAZO_OCUPADO s e então sobe o erro."""
+    limite = time.monotonic() + PRAZO_OCUPADO
+    while True:
+        try:
+            return fazer()
+        except PermissionError:
+            if time.monotonic() >= limite:
+                raise
+            time.sleep(0.05)
 
 
 class Registro:
@@ -56,13 +70,20 @@ class Registro:
 
     def ler(self):
         try:
-            with open(self.arquivo, encoding="utf-8") as f:
-                dado = json.load(f)
+            dado = _insistir(self._ler_json)
+        except FileNotFoundError:
+            return []
+        except PermissionError:
+            raise  # Windows: aberto por outro além do prazo; lista vazia aqui apagaria o registro
         except (OSError, ValueError):
             return []
         if not isinstance(dado, list):
             return []
         return [x for x in dado if isinstance(x, dict) and RE_ID_EXEC.match(str(x.get("id", "")))]
+
+    def _ler_json(self):
+        with open(self.arquivo, encoding="utf-8") as f:
+            return json.load(f)
 
     def gravar(self, lista):
         """Chame com a trava na mão."""
@@ -71,7 +92,7 @@ class Registro:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump(lista[-MAX_REGISTRO:], f, ensure_ascii=False, indent=1)
             os.chmod(tmp, 0o600)
-            os.replace(tmp, self.arquivo)
+            _insistir(lambda: os.replace(tmp, self.arquivo))
         except BaseException:
             if os.path.exists(tmp):
                 os.unlink(tmp)
@@ -84,22 +105,6 @@ class Registro:
                 if r["id"] == exec_id:
                     r.update(campos)
             self.gravar(lista)
-
-
-class _TravaArquivo:
-    """flock exclusivo: vale entre threads (fd próprio) e entre processos."""
-
-    def __init__(self, caminho):
-        self.caminho = caminho
-
-    def __enter__(self):
-        self.fd = os.open(self.caminho, os.O_RDWR | os.O_CREAT, 0o600)
-        fcntl.flock(self.fd, fcntl.LOCK_EX)
-        return self
-
-    def __exit__(self, *_):
-        fcntl.flock(self.fd, fcntl.LOCK_UN)
-        os.close(self.fd)
 
 
 def mapear_estado(reg, agente, agora, ocioso_ha=None):
