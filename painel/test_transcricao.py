@@ -96,7 +96,7 @@ class TesteTranscricao(unittest.TestCase):
         self.assertEqual(tr.ler(self.arq, 10 ** 9)["proximo"], os.path.getsize(self.arq))  # cursor velho
 
     def test_corte(self):
-        self.escrever(linha("assistant", [{"type": "text", "text": "a" * 5000}]))
+        self.escrever(linha("assistant", [{"type": "text", "text": "x" * 5000}]))
         texto = tr.ler(self.arq, 0)["eventos"][0]["texto"]
         self.assertEqual(len(texto), tr.CORTE)
         self.assertTrue(texto.endswith("…"))
@@ -119,6 +119,103 @@ class TesteTranscricao(unittest.TestCase):
         sha = "a" * 20 + "0123456789abcdef0123"
         self.assertEqual(tr.mascarar("commit " + sha), "commit " + sha)  # hash hex fica
         self.assertEqual(tr.mascarar("/Users/fulano/projetos/loja"), "/Users/fulano/projetos/loja")
+
+    def test_mascara_telefone_br(self):
+        for t in ("+55 19 99999-8888", "5519999998888", "(19) 99999-8888", "19999998888", "(19) 3456-7890"):
+            m = tr.mascarar("ligar para %s agora" % t)
+            self.assertIn("***", m, t)
+            self.assertIn(t[-4:], m)
+            self.assertNotIn(t, m)
+        self.assertEqual(tr.mascarar("tel 19999998888"), "tel ***8888")
+
+    def test_telefone_nao_pega_falso_positivo(self):
+        for t in ("2026-11-10", "12345678", "123456789", "file.py:1234", "2026-11-10T15:06:37",
+                  "0123abcd-1111-2222-3333-444455556666", "3.13.0", "v1.20.300", "1731250000000",
+                  "1731250000", "commit 4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70"):
+            self.assertEqual(tr.mascarar(t), t, t)
+
+    def test_mascara_email(self):
+        self.assertEqual(tr.mascarar("fale com ana.silva+x@exemplo.com.br hoje"), "fale com ***@exemplo.com.br hoje")
+
+    def test_mascara_nome_terminado_em_key_token_secret_password(self):
+        casos = {
+            "FAL_KEY=abc123def456": "FAL_KEY=***",
+            "export SERVICO_TOKEN=abc123def456": "export SERVICO_TOKEN=***",
+            "APP_SECRET: abc123def456": "APP_SECRET: ***",
+            "DB_PASSWORD=abc123def456": "DB_PASSWORD=***",
+            '{"EVOLUTION_KEY": "abc123def456"}': '{"EVOLUTION_KEY": "***"}',
+            "apikey: abc123def456": "apikey: ***",
+            "API_KEY=abc123def456": "API_KEY=***",
+        }
+        for entrada, esperado in casos.items():
+            self.assertEqual(tr.mascarar(entrada), esperado)
+
+    def test_mascara_flags_de_senha(self):
+        self.assertEqual(tr.mascarar("curl -u admin:Hunter2pass http://x"), "curl -u *** http://x")
+        self.assertEqual(tr.mascarar("curl --user admin:Hunter2pass http://x"), "curl --user *** http://x")
+        self.assertEqual(tr.mascarar("tool --password Hunter2pass --ok"), "tool --password *** --ok")
+        self.assertEqual(tr.mascarar("tool -p 'S3nh@ forte' --ok"), "tool -p *** --ok")
+        self.assertEqual(tr.mascarar("mysql -h db -u root -pHunter2pass"), "mysql -h db -u root -p ***")
+        self.assertEqual(tr.mascarar("sshpass -p Hunter2pass ssh a@b.com"), "sshpass -p *** ssh ***@b.com")
+
+    def test_flag_p_de_versao_e_uid_ficam(self):
+        for t in ("uv run -p 3.13 script.py", "psql -p 5432 -h db", "docker run -u 1000:1000 img"):
+            self.assertEqual(tr.mascarar(t), t)
+
+    def test_mascara_hex_longo_menos_commit(self):
+        h = "429683C4C977415CAAFCCE10F7D57E11"
+        self.assertEqual(tr.mascarar("401 invalid header value " + h), "401 invalid header value ***")
+        sha = "4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70"
+        self.assertEqual(tr.mascarar("commit " + sha), "commit " + sha)
+        self.assertEqual(tr.mascarar("x " + sha), "x ***")
+        self.assertEqual(tr.mascarar("abc1234 curto"), "abc1234 curto")
+
+    def test_mascara_aws_secret_com_barra(self):
+        seg = "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY"
+        self.assertEqual(len(seg), 40)
+        for t in ("aws_secret_access_key = " + seg, "AWS_SECRET_ACCESS_KEY=" + seg,
+                  "aws_secret_access_key   " + seg):
+            m = tr.mascarar(t)
+            self.assertNotIn("wJalr", m, t)
+            self.assertIn("***", m)
+
+    def test_mascara_prefixos_conhecidos(self):
+        for t in ("sk-proj-abcdefghijklmnopqrst", "ghp_abcdefghijklmnopqrstuvwx", "sbp_" + "ab12cd34ef" * 4,
+                  "AKIAABCDEFGHIJKLMNOP", "EAAB" + "x1y2z3w4" * 3):
+            m = tr.mascarar("usei " + t + " ontem")
+            self.assertIn("***", m, t)
+            self.assertNotIn(t[6:], m)
+
+    def test_mascara_cabecalhos(self):
+        self.assertNotIn("abcDEF", tr.mascarar("Authorization: Bearer abcDEF123456789xyz"))
+        self.assertIn("***", tr.mascarar("Authorization: Bearer abcDEF123456789xyz"))
+        self.assertEqual(tr.mascarar("-H 'apikey: abc123def456'"), "-H 'apikey: ***'")
+
+    def test_mascara_idempotente_e_nunca_levanta(self):
+        amostra = ("FAL_KEY=abc123def456 curl -u a:bcdef +55 19 99999-8888 ana@exemplo.com Bearer abcdef123456 "
+                   "sk-abcdefghijklmnop1234 sbp_" + "ab12cd34ef" * 4 + " -p 'x y' mysql -pabc123 "
+                   + "A1" * 20 + " " + "e" * 33)
+        uma = tr.mascarar(amostra)
+        self.assertEqual(tr.mascarar(uma), uma)
+        self.assertEqual(tr.mascarar(None), "")
+        self.assertEqual(tr.mascarar(12345), "12345")
+
+        class Ruim(object):
+            def __str__(self):
+                raise ValueError("falha")
+        self.assertEqual(tr.mascarar(Ruim()), "[texto ocultado]")
+
+    def test_mascara_todos_os_campos_da_transcricao(self):
+        seg = "FAL_KEY=abc123def456 ana@exemplo.com (19) 99999-8888"
+        with open(self.arq, "w") as f:
+            f.write(linha("user", "usuario " + seg))
+            f.write(linha("assistant", [{"type": "text", "text": "assistente " + seg},
+                                        {"type": "tool_use", "name": "Bash", "input": {"command": "echo " + seg}}]))
+            f.write(linha("user", [{"type": "tool_result", "is_error": True, "content": "erro " + seg}]))
+        textos = " ".join(e["texto"] for e in tr.ler(self.arq, 0)["eventos"])
+        for vazou in ("abc123def456", "ana@", "99999-8888"):
+            self.assertNotIn(vazou, textos)
+        self.assertEqual(textos.count("***@exemplo.com"), 4)
 
 
 if __name__ == "__main__":
