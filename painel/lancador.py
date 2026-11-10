@@ -20,6 +20,7 @@ import time
 
 from catalogo import (ErroAcao, RE_ID_ACAO, carregar_catalogo, montar, nome_da_sessao,  # noqa: F401
                       publica, texto_livre, validar_params)
+import mascara
 import modulos
 from modelos import Modelos
 from travas import argv_travas
@@ -214,7 +215,15 @@ class Lancador:
             return "rodando"
         return estado
 
-    def _como_execucao(self, reg, agentes, agora):
+    def _regras_cabem(self, reg, caixa):  # negar dos módulos de agora já ia na sessão? erro ao ler = não
+        if "regras" not in caixa:
+            try:
+                caixa["regras"] = modulos.regras_de_negar(self.cfg, tempo=2.0)
+            except Exception:
+                caixa["regras"] = None
+        return caixa["regras"] is not None and set(caixa["regras"]) <= set(reg.get("negar_modulos") or [])
+
+    def _como_execucao(self, reg, agentes, agora, caixa=None):
         if agentes is None:  # CLI falhou: mantém o último estado visto
             estado = self._ultimo.get(reg["id"], "rodando")
         else:
@@ -224,7 +233,8 @@ class Lancador:
         sid = reg.get("sessao_id") or ""
         # Responder acorda a sessão guardada pelo CLI (com as travas dela): só vale se ela ainda está na lista.
         responde = (estado in RESPONDIVEIS and bool(RE_SESSAO.match(sid))
-                    and agentes is not None and agentes.get(reg["id"]) is not None)
+                    and agentes is not None and agentes.get(reg["id"]) is not None
+                    and self._regras_cabem(reg, {} if caixa is None else caixa))
         out.update(sessao_id=sid, params=reg.get("params") or {}, estado=estado,
                    comando_attach=self.comando_attach(reg["id"]), modelo=reg.get("modelo") or "",
                    esforco=reg.get("esforco") or "", pode_responder=responde)
@@ -260,7 +270,8 @@ class Lancador:
                             if not r.get(k):
                                 r[k] = v
                     self.registro.gravar(atual)
-        lista = [self._como_execucao(r, agentes, agora) for r in regs]
+        caixa = {}  # regras dos módulos: lidas no máximo uma vez por lista
+        lista = [self._como_execucao(r, agentes, agora, caixa) for r in regs]
         return sorted(lista, key=lambda e: e["iniciada_em"] or "", reverse=True)
 
     def achar(self, exec_id):
@@ -281,7 +292,8 @@ class Lancador:
             raise ErroAcao("Essa ação não existe.")
         precisa_estado = any(p["tipo"] in ("fase", "parte") for p in acao["params"])
         valores = validar_params(acao, params, self.obter_estado() if precisa_estado else {})
-        prompt, nome = montar(acao["_prompt"], valores), nome_da_sessao(acao, valores)
+        mascarados = {k: mascara.mascarar(v) if isinstance(v, str) else v for k, v in valores.items()}
+        prompt, nome = montar(acao["_prompt"], valores), nome_da_sessao(acao, mascarados)
         if not prompt or prompt.startswith("-"):
             raise ErroAcao("O pedido ficou vazio.")
         chave = json.dumps(valores, sort_keys=True, ensure_ascii=False)
@@ -320,7 +332,7 @@ class Lancador:
             reg = {"id": m.group(1), "sessao_id": "", "nome": nome, "acao": acao_id, "grupo": acao["grupo"],
                    "titulo": acao["titulo"], "params": valores, "iniciada_em": agora_iso(t),
                    "iniciada_ts": t, "cwd": self.cfg["workspace"], "risco": acao["risco"],
-                   "modelo": modelo, "esforco": esforco}
+                   "modelo": modelo, "esforco": esforco, "negar_modulos": sorted(extra)}
             for p in acao["params"]:
                 if p["tipo"] in ("fase", "parte") and valores.get(p["nome"]):
                     reg[p["tipo"]] = valores[p["nome"]]
@@ -337,9 +349,17 @@ class Lancador:
         com outro id. Por isso: para o processo antigo antes e não passa opção nenhuma. Se mesmo
         assim vier outro id, a cópia é parada e apagada (não há garantia de que leva as travas).
         """
-        if self.achar(exec_id) is None:
+        reg = self.achar(exec_id)
+        if reg is None:
             raise ErroAcao("Não achei essa conversa.", 404)
         texto = texto_livre(texto)
+        try:  # a sessão acorda com as travas de quando começou: regra de módulo nova não entraria nela
+            agora_negar = modulos.regras_de_negar(self.cfg)
+        except modulos.ErroModulo as e:
+            raise ErroAcao(e.mensagem, e.codigo)
+        if not set(agora_negar) <= set(reg.get("negar_modulos") or []):
+            raise ErroAcao("As regras das telas mudaram depois que esta conversa começou. "
+                           "Comece uma conversa nova.", 409, exec_id)
         bin_, ws = self.cfg["claude_bin"], self.cfg["workspace"]
         with self._trava:
             todas = self.execucoes(forcar=True)

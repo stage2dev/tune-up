@@ -62,5 +62,86 @@ class TesteMascaraDoChat(test_chat.Base):
         self.assertEqual(self.bg(), [])
 
 
+class TesteResponderComRegrasDosModulos(test_chat.Base):
+    """Responder acorda a sessão com as travas de quando ela COMEÇOU: regra de módulo nova ou módulo
+    quebrado recusa (409) sem parar nem acordar nada."""
+    _modulo = TesteMascaraDoChat._modulo
+
+    def comecar(self, lc):
+        i = lc.iniciar("chat.x", {"pedido": "oi"})["id"]
+        lc.execucoes(forcar=True)  # aprende o sessionId
+        for a in self.cli.agentes:
+            if a["id"] == i:
+                a.update(state="done", status="idle")
+        lc.esquecer_agentes()
+        return i
+
+    def nada_parado_nem_acordado(self, i):
+        chamadas = [c[0] for c in self.cli.chamadas]
+        self.assertNotIn(["claude", "stop", i], chamadas)
+        self.assertEqual([c for c in chamadas if "--resume" in c], [])
+
+    def recusa(self, lc, i):
+        with self.assertRaises(lancador.ErroAcao) as erro:
+            lc.responder(i, "e agora?")
+        self.assertEqual(erro.exception.codigo, 409)
+        self.nada_parado_nem_acordado(i)
+        return erro.exception.mensagem
+
+    def test_modulo_quebrado_recusa_responder(self):
+        i = self.comecar(self.lanc())
+        lc = self._modulo("resp_ruim", 'INFO = {"negar": "Bash(*)"}\ndef montar(ctx):\n    return {}\n')
+        self.assertIn("resp_ruim", self.recusa(lc, i))
+        self.assertFalse(lc.execucao(i)["pode_responder"])
+
+    def test_modulo_ligado_depois_recusa_responder(self):
+        i = self.comecar(self.lanc())
+        lc = self._modulo("resp_novo", 'INFO = {"negar": ["mcp__servico__apagar"]}\n')
+        self.assertFalse(lc.execucao(i)["pode_responder"])
+        self.assertIn("mudaram", self.recusa(lc, i))
+
+    def test_mesmas_regras_responde(self):
+        lc = self._modulo("resp_igual", 'INFO = {"negar": ["mcp__servico__apagar"]}\n')
+        i = self.comecar(lc)
+        self.assertEqual(lc.achar(i)["negar_modulos"], ["mcp__servico__apagar"])
+        self.assertTrue(lc.execucao(i)["pode_responder"])
+        self.assertEqual(lc.responder(i, "e agora?")["estado"], "rodando")
+        self.assertEqual(len([c for c in self.bg() if "--resume" in c]), 1)
+
+    def _sem_chave(self, lc, i):
+        with lc.registro.trava():
+            regs = lc.registro.ler()
+            for r in regs:
+                r.pop("negar_modulos", None)
+            lc.registro.gravar(regs)
+
+    def test_registro_antigo_sem_regras_responde(self):
+        lc = self.lanc()
+        i = self.comecar(lc)
+        self._sem_chave(lc, i)
+        self.assertTrue(lc.execucao(i)["pode_responder"])
+        self.assertEqual(lc.responder(i, "e agora?")["estado"], "rodando")
+
+    def test_registro_antigo_com_regra_nova_recusa(self):
+        lc = self.lanc()
+        i = self.comecar(lc)
+        self._sem_chave(lc, i)
+        lc = self._modulo("resp_antigo", 'INFO = {"negar": ["Bash(rm -rf *)"]}\n')
+        self.assertFalse(lc.execucao(i)["pode_responder"])
+        self.recusa(lc, i)
+
+    def test_nome_da_sessao_mascarado_antes_do_corte(self):
+        pedido = "ligue agora para o cliente no numero 11 98765-4321 e confirme"
+        lc = self.lanc()
+        ex = lc.iniciar("chat.x", {"pedido": pedido})
+        cmd = self.bg()[-1]
+        for nome in (cmd[cmd.index("-n") + 1], lc.achar(ex["id"])["nome"], ex["nome"]):
+            self.assertNotIn("98765", nome)
+        self.assertEqual(lc.achar(ex["id"])["params"]["pedido"], pedido)  # duplicata compara o cru
+        with self.assertRaises(lancador.ErroAcao) as erro:
+            lc.iniciar("chat.x", {"pedido": pedido})
+        self.assertEqual(erro.exception.codigo, 409)
+
+
 if __name__ == "__main__":
     unittest.main()
