@@ -68,10 +68,17 @@ def fuso(con):
         return None
 
 
-def _contar(con, desde, extra="", args=(), ignorar=None):
+def _contar(con, desde, extra="", args=()):
+    """Tentativas que podem ter saído desde 'desde'. Conta a tabela tentativas: o reenvio soma, nunca apaga."""
     marcas = ",".join("?" * len(ATIVOS))
-    sql = "SELECT COUNT(*) FROM envios WHERE estado IN (%s) AND tentado_em > ? AND id <> ? %s" % (marcas, extra)
-    return con.execute(sql, ATIVOS + (desde, ignorar or 0) + tuple(args)).fetchone()[0]
+    sql = "SELECT COUNT(*) FROM tentativas WHERE estado IN (%s) AND em > ? %s" % (marcas, extra)
+    return con.execute(sql, ATIVOS + (desde,) + tuple(args)).fetchone()[0]
+
+
+def _tentar(con, envio_id, origem, quando):
+    """Reenvio: nova tentativa 'pendente' na mesma transação (a 1ª vem de banco.registrar_envio)."""
+    banco._exigir(con.execute("INSERT INTO tentativas (envio_id, origem, estado, em) VALUES (?, ?, 'pendente', ?)",
+                              (envio_id, origem, quando)))
 
 
 def contatos_novos_no_dia(con, inicio_dia):
@@ -101,16 +108,15 @@ def _pausada(con, contato_id, agora):
 
 def _motivo_teto(con, origem, contato_id, agora, inicio_dia, ignorar):
     teto = REGRAS[origem]["teto"]
-    if "minuto" in teto and _contar(con, _iso(agora - datetime.timedelta(minutes=1)), ignorar=ignorar) >= TETO_MINUTO:
+    if "minuto" in teto and _contar(con, _iso(agora - datetime.timedelta(minutes=1))) >= TETO_MINUTO:
         return "teto_minuto"
-    if "hora" in teto and _contar(con, _iso(agora - datetime.timedelta(hours=1)), ignorar=ignorar) >= TETO_HORA:
+    if "hora" in teto and _contar(con, _iso(agora - datetime.timedelta(hours=1))) >= TETO_HORA:
         return "teto_hora"
-    if "teste_dia" in teto and _contar(con, inicio_dia, "AND origem = ?", ("teste_audio",),
-                                       ignorar) >= TETO_TESTE_AUDIO_DIA:
+    if "teste_dia" in teto and _contar(con, inicio_dia, "AND origem = ?", ("teste_audio",)) >= TETO_TESTE_AUDIO_DIA:
         return "teto_teste_audio_dia"
     if "audio_dia" in teto:
         limite = int(banco.ler_config(con, "teto_audio_dia", str(TETO_AUDIO_DIA)))
-        if _contar(con, inicio_dia, "AND origem = ?", ("audio_ia",), ignorar) >= limite:
+        if _contar(con, inicio_dia, "AND origem = ?", ("audio_ia",)) >= limite:
             return "teto_audio_dia"
     if "novos_dia" in teto:
         limite = teto_contatos_novos(con, inicio_dia)
@@ -202,10 +208,18 @@ def _reservar(con, origem, numero, tipo, conteudo, partes, confirmar_optout, ago
 
 
 def _fechar(con, envio_id, estado, motivo=None, id_externo=None):
-    cur = con.execute("UPDATE envios SET estado = ?, motivo = ?, id_externo = COALESCE(?, id_externo) "
-                      "WHERE id = ? AND estado = 'pendente'", (estado, motivo, id_externo, envio_id))
-    if cur.rowcount != 1:
-        raise banco.EscritaSemEfeito("envio %d não estava pendente ao fechar" % envio_id)
+    con.execute("BEGIN IMMEDIATE")   # linha e tentativa fecham juntas
+    try:
+        cur = con.execute("UPDATE envios SET estado = ?, motivo = ?, id_externo = COALESCE(?, id_externo) "
+                          "WHERE id = ? AND estado = 'pendente'", (estado, motivo, id_externo, envio_id))
+        if cur.rowcount != 1:
+            raise banco.EscritaSemEfeito("envio %d não estava pendente ao fechar" % envio_id)
+        banco._exigir(con.execute("UPDATE tentativas SET estado = ? WHERE id = (SELECT MAX(id) FROM tentativas "
+                                  "WHERE envio_id = ?) AND estado = 'pendente'", (estado, envio_id)))
+        con.execute("COMMIT")
+    except BaseException:
+        con.execute("ROLLBACK")
+        raise
     return _resultado(estado, envio_id, motivo, id_externo)
 
 
@@ -297,6 +311,7 @@ def reenviar(con, conector, instancia, envio_id, confirmar_optout=False, agora=N
             cur = con.execute("UPDATE envios SET estado = 'pendente', motivo = NULL, tentado_em = ? WHERE id = ? "
                               "AND estado IN ('incerto', 'falhou')", (_iso(momento), envio_id))
             banco._exigir(cur)
+            _tentar(con, envio_id, linha["origem"], _iso(momento))
         con.execute("COMMIT")
     except BaseException:
         con.execute("ROLLBACK")
@@ -308,5 +323,13 @@ def reenviar(con, conector, instancia, envio_id, confirmar_optout=False, agora=N
 
 def pendentes_para_incerto(con):
     """Subida do serviço: todo 'pendente' (processo caiu no meio) vira 'incerto'. Nada é reenviado."""
-    return con.execute("UPDATE envios SET estado = 'incerto', motivo = 'pendente_na_subida' "
-                       "WHERE estado = 'pendente'").rowcount
+    con.execute("BEGIN IMMEDIATE")
+    try:
+        n = con.execute("UPDATE envios SET estado = 'incerto', motivo = 'pendente_na_subida' "
+                        "WHERE estado = 'pendente'").rowcount
+        con.execute("UPDATE tentativas SET estado = 'incerto' WHERE estado = 'pendente'")
+        con.execute("COMMIT")
+    except BaseException:
+        con.execute("ROLLBACK")
+        raise
+    return n

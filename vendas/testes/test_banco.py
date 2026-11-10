@@ -108,6 +108,22 @@ class TesteBanco(Base):
         self.assertEqual(con.execute("SELECT tentado_em FROM envios").fetchone()[0], "2026-11-10T10:00:00+00:00")
         con.close()
 
+    def test_migracao_4_cria_1_tentativa_por_envio_que_ja_existe(self):
+        con = sqlite3.connect(":memory:", isolation_level=None)
+        for comando in banco.MIGRACOES[0] + banco.MIGRACOES[1] + banco.MIGRACOES[2]:
+            con.execute(comando)
+        con.execute("PRAGMA user_version = 3")
+        for chave, estado in (("a", "incerto"), ("b", "negado"), ("c", "enviado")):
+            con.execute("INSERT INTO envios (chave_dedupe, estado, origem, criado_em, tentado_em) "
+                        "VALUES (?, ?, 'manual', '2026-11-10T10:00:00+00:00', '2026-11-10T11:00:00+00:00')",
+                        (chave, estado))
+        for _ in range(2):   # rodar de novo não duplica
+            banco.migrar(con)
+        linhas = con.execute("SELECT envio_id, estado, em FROM tentativas ORDER BY envio_id").fetchall()
+        self.assertEqual(linhas, [(1, "incerto", "2026-11-10T11:00:00+00:00"),
+                                  (3, "enviado", "2026-11-10T11:00:00+00:00")])
+        con.close()
+
     def test_versao_mais_nova_que_o_codigo_e_recusada(self):
         self.con.execute("PRAGMA user_version = %d" % (banco.VERSAO + 1))
         with self.assertRaisesRegex(RuntimeError, "só conhece"):

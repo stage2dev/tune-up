@@ -82,6 +82,19 @@ MIGRACOES = [
         "UPDATE envios SET tentado_em = criado_em WHERE tentado_em IS NULL",
         "CREATE INDEX envios_tentado_em ON envios(tentado_em)",
     ],
+    # 4: uma linha por TENTATIVA (reserva ou reenvio): os tetos contam aqui, o reenvio não apaga a anterior
+    [
+        """CREATE TABLE tentativas (
+            id INTEGER PRIMARY KEY,
+            envio_id INTEGER NOT NULL REFERENCES envios(id),
+            origem TEXT NOT NULL,
+            estado TEXT NOT NULL CHECK (estado IN ('pendente', 'enviado', 'falhou', 'incerto')),
+            em TEXT NOT NULL)""",
+        "CREATE INDEX tentativas_em ON tentativas(em)",
+        "CREATE INDEX tentativas_envio ON tentativas(envio_id)",
+        "INSERT INTO tentativas (envio_id, origem, estado, em) "
+        "SELECT id, origem, estado, COALESCE(tentado_em, criado_em) FROM envios WHERE estado <> 'negado'",
+    ],
 ]
 VERSAO = len(MIGRACOES)
 PARECE_SEGREDO = re.compile(r"chave|senha|token|segredo|secret|key|password", re.I)
@@ -200,19 +213,30 @@ def registrar_mensagem(con, conversa_id, direcao, texto, id_externo=None, tipo="
 def registrar_envio(con, chave_dedupe, origem, estado="pendente", motivo=None, contato_id=None, telefone=None,
                     tipo=None, conteudo=None, quando=None):
     """Grava o envio. Devolve o id, ou None se a chave já está ocupada por um envio não negado.
-    Um 'negado' nunca ocupa a chave (índice único parcial)."""
+    Um 'negado' nunca ocupa a chave (índice único parcial). Fora 'negado', grava junto a 1ª tentativa."""
     if estado not in ESTADOS_ENVIO:
         raise ValueError("estado de envio inválido: %r" % estado)
+    quando = quando or agora()
+    con.execute("SAVEPOINT registrar_envio")   # envio e tentativa entram juntos, dentro ou fora de transação
     try:
         cur = con.execute("INSERT INTO envios (chave_dedupe, contato_id, estado, origem, motivo, telefone, tipo, "
                           "conteudo, criado_em, tentado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                          (chave_dedupe, contato_id, estado, origem, motivo, telefone, tipo, conteudo,
-                           quando or agora(), quando or agora()))
+                          (chave_dedupe, contato_id, estado, origem, motivo, telefone, tipo, conteudo, quando, quando))
+        _exigir(cur)
+        if estado != "negado":
+            _exigir(con.execute("INSERT INTO tentativas (envio_id, origem, estado, em) VALUES (?, ?, ?, ?)",
+                                (cur.lastrowid, origem, estado, quando)))
     except sqlite3.IntegrityError as erro:
+        con.execute("ROLLBACK TO registrar_envio")
+        con.execute("RELEASE registrar_envio")
         if _unico(erro):
             return None
         raise
-    _exigir(cur)
+    except BaseException:
+        con.execute("ROLLBACK TO registrar_envio")
+        con.execute("RELEASE registrar_envio")
+        raise
+    con.execute("RELEASE registrar_envio")
     return cur.lastrowid
 
 

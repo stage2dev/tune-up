@@ -111,6 +111,8 @@ class TesteEstados(Base):
         self.con = banco.abrir(self.pasta)
         linhas = [tuple(l) for l in self.con.execute("SELECT estado, motivo FROM envios")]
         self.assertEqual(linhas, [("incerto", "pendente_na_subida")])
+        self.assertEqual([tuple(l) for l in self.con.execute("SELECT envio_id, estado FROM tentativas")],
+                         [(1, "incerto")])   # a tentativa segue contando no teto
         self.assertEqual((self.c.envios(), len(self.c.entregues)), (1, 1))
         self.assertEqual(self.con.execute("SELECT COUNT(*) FROM envios WHERE estado='enviado' "
                                           "AND criado_em IS NULL").fetchone()[0], 0)
@@ -190,6 +192,26 @@ class TesteReenviar(Base):
         primeira = self.linha(1)   # criado_em segue sendo a criação; tentado_em é a última tentativa
         self.assertEqual((primeira["criado_em"] < primeira["tentado_em"], primeira["tentado_em"]),
                          (True, portao._iso(AGORA)))
+
+    def test_mesma_linha_reenviada_no_mesmo_minuto_nao_fura_o_teto(self):
+        self.c.modo_envio = "timeout"   # cada tentativa fica 'incerto': pode ter saído, conta no teto
+        envio_id = self.mandar("manual")["envio_id"]
+        estados = [portao.reenviar(self.con, self.c, INST, envio_id, agora=AGORA + datetime.timedelta(seconds=s))
+                   for s in range(1, 10)]
+        self.assertEqual([r["estado"] for r in estados], ["incerto"] * 7 + ["negado"] * 2)
+        self.assertEqual(estados[-1]["motivo"], "teto_minuto")
+        self.assertEqual(self.c.envios(), 8)
+
+    def test_reenviar_todos_no_mesmo_minuto_nao_dobra_o_teto(self):
+        self.c.modo_envio = "timeout"
+        ids = [self.mandar("manual", chave="t%d" % i)["envio_id"] for i in range(8)]
+        depois = AGORA + datetime.timedelta(seconds=10)
+        estados = [portao.reenviar(self.con, self.c, INST, i, agora=depois)["motivo"] for i in ids]
+        self.assertEqual(estados, ["teto_minuto"] * 8)
+        self.assertEqual(self.c.envios(), 8)
+        tarde = AGORA + datetime.timedelta(seconds=70)   # a janela andou: volta a sair
+        self.assertEqual(portao.reenviar(self.con, self.c, INST, ids[0], agora=tarde)["estado"], "incerto")
+        self.assertEqual(self.c.envios(), 9)
 
 
 class TesteRota(Base):
