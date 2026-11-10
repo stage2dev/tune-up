@@ -21,9 +21,11 @@ RE_CAMPO = re.compile(r"\{([a-z_][a-z0-9_]{0,30})\}")
 
 RE_GRUPO = re.compile(r"^[a-z0-9_-]{1,40}$")
 RISCOS = ("leitura", "rascunho", "codigo", "credito")
-TIPOS = ("fase", "parte", "texto", "escolha")
+TIPOS = ("fase", "parte", "texto", "escolha", "texto_longo")
 TEXTO_MAX, TEXTO_PADRAO = 2000, 500
 TEXTO_LONGO_MAX = 6000  # texto com "linhas": pedido de chat, resposta numa conversa
+ARQUIVO_MAX = 4000  # tipo texto_longo: vai para <trabalho>/entrada.md; o prompt leva só o caminho
+TRABALHO = "trabalho"  # {trabalho} no prompt e nas travas = pasta de trabalho da execução (trabalho.py)
 RE_MODELO = re.compile(r"^[a-z0-9][a-z0-9.\-]{0,60}$")  # apelido do CLI (fable, opus, sonnet...) ou nome inteiro
 ESFORCOS = ("low", "medium", "high", "xhigh", "max")
 GRUPO_CHAT = "chat"  # cada ação deste grupo é um nível do chat da tela inicial
@@ -41,6 +43,8 @@ class ErroAcao(Exception):
 def _validar_param(p):
     if not isinstance(p, dict) or not RE_NOME_PARAM.match(str(p.get("nome", ""))):
         raise ValueError("parâmetro sem nome válido")
+    if p["nome"] == TRABALHO:
+        raise ValueError("parâmetro não pode se chamar %s (marcador reservado)" % TRABALHO)
     if p.get("tipo") not in TIPOS:
         raise ValueError("parâmetro %s com tipo inválido" % p["nome"])
     out = {"nome": p["nome"], "rotulo": str(p.get("rotulo") or p["nome"])[:80], "tipo": p["tipo"],
@@ -58,6 +62,10 @@ def _validar_param(p):
         out["max"] = mx if ok else TEXTO_PADRAO
         if linhas:
             out["linhas"] = True
+    if p["tipo"] == "texto_longo":
+        mx = p.get("max")
+        out["max"] = mx if isinstance(mx, int) and not isinstance(mx, bool) and 1 <= mx <= ARQUIVO_MAX else ARQUIVO_MAX
+        out["linhas"] = True
     if isinstance(p.get("ajuda"), str) and p["ajuda"]:
         out["ajuda"] = p["ajuda"][:300]
     return out
@@ -98,10 +106,13 @@ def validar_acao(a):
     if len(set(nomes)) != len(nomes):
         raise ValueError("ação %s: parâmetro repetido" % a["id"])
     nome_sessao = a.get("nome_sessao") if isinstance(a.get("nome_sessao"), str) else None
-    for campo in RE_CAMPO.findall(prompt + (nome_sessao or "")):
-        if campo not in nomes:
-            raise ValueError("ação %s: {%s} no modelo sem parâmetro" % (a["id"], campo))
+    for texto, aceitos in ((prompt, nomes + [TRABALHO]), (nome_sessao or "", nomes)):
+        for campo in RE_CAMPO.findall(texto):
+            if campo not in aceitos:
+                raise ValueError("ação %s: {%s} no modelo sem parâmetro" % (a["id"], campo))
     tipos = [p["tipo"] for p in params]
+    if tipos.count("texto_longo") > 1:
+        raise ValueError("ação %s: no máximo um parâmetro texto_longo" % a["id"])
     if "parte" in tipos and "fase" not in tipos:
         raise ValueError("ação %s: parâmetro parte exige um parâmetro fase" % a["id"])
     if grupo == GRUPO_CHAT and (nomes != ["pedido"] or tipos != ["texto"] or not params[0]["obrigatorio"]):
@@ -178,9 +189,9 @@ def _erro_valor(p, v):
         return "O campo \"%s\" tem um caractere que não pode." % rot
     if not p.get("linhas") and RE_CONTROLE.search(v):
         return "O campo \"%s\" tem um caractere que não pode (como quebra de linha)." % rot
-    if v.startswith("-"):
+    if v.startswith("-") and p["tipo"] != "texto_longo":  # texto_longo vai para arquivo, nunca para o argv
         return "O campo \"%s\" não pode começar com \"-\"." % rot
-    if p["tipo"] == "texto" and len(v) > p.get("max", TEXTO_PADRAO):
+    if p["tipo"] in ("texto", "texto_longo") and len(v) > p.get("max", TEXTO_PADRAO):
         return "O campo \"%s\" passou de %d letras." % (rot, p.get("max", TEXTO_PADRAO))
     if p["tipo"] == "escolha" and v not in p["opcoes"]:
         return "Escolha uma das opções do campo \"%s\"." % rot

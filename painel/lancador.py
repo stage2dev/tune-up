@@ -21,6 +21,7 @@ from catalogo import (ErroAcao, RE_ID_ACAO, carregar_catalogo, montar, nome_da_s
                       publica, texto_livre, validar_params)
 import mascara
 import modulos
+import trabalho
 from estado_exec import GRACA, OCIOSO, mapear_estado  # noqa: F401
 from modelos import Modelos
 from trava import PRAZO_TRAVA, _TravaArquivo  # noqa: F401
@@ -264,7 +265,8 @@ class Lancador:
         precisa_estado = any(p["tipo"] in ("fase", "parte") for p in acao["params"])
         valores = validar_params(acao, params, self.obter_estado() if precisa_estado else {})
         mascarados = {k: mascara.mascarar(v) if isinstance(v, str) else v for k, v in valores.items()}
-        prompt, nome = montar(acao["_prompt"], valores), nome_da_sessao(acao, mascarados)
+        # "trabalho" só para conferir aqui; dentro da trava o prompt é refeito com a pasta de verdade
+        prompt, nome = trabalho.montar_prompt(acao, valores, "trabalho"), nome_da_sessao(acao, mascarados)
         if not prompt or prompt.startswith("-"):
             raise ErroAcao("O pedido ficou vazio.")
         chave = json.dumps(valores, sort_keys=True, ensure_ascii=False)
@@ -288,6 +290,9 @@ class Lancador:
             if len(ativas) >= self.cfg["max_execucoes"]:
                 raise ErroAcao("Já tem %d rodando ao mesmo tempo. Espere uma acabar ou pare uma."
                                % len(ativas), 409, ativas[0]["id"])
+            pasta = trabalho.nova_pasta(self.cfg["dados_dir"], acao)  # None: a ação não usa {trabalho}
+            if pasta:  # o id do trabalho fica fora de `valores` (a checagem de duplicata acima não o vê)
+                prompt, acao = trabalho.montar_prompt(acao, valores, pasta), trabalho.resolver_travas(acao, pasta)
             # travas de verdade (deny + gancho) no argv; o prompt vai por último, nunca começa com '-'
             # pular_permissoes: some so o pedido comum de permissao. Medido no CLI 2.1.322: regra de negar,
             # gancho que nega e gancho que pergunta continuam valendo com essa flag.
@@ -297,15 +302,22 @@ class Lancador:
             escolha = (["--model", modelo] if modelo else []) + (["--effort", esforco] if esforco else [])
             cmd = ([self.cfg["claude_bin"], "--bg", "-n", nome] + escolha + pular
                    + argv_travas(acao, self.cfg) + [prompt])
-            cod, out, err = self.rodar(cmd, self.cfg["workspace"], 60)
+            try:
+                trabalho.criar(pasta, acao, valores)
+                cod, out, err = self.rodar(cmd, self.cfg["workspace"], 60)
+            except BaseException:
+                trabalho.apagar(pasta)
+                raise
             m = RE_SAIDA.search(RE_ANSI.sub("", out + "\n" + err))
             if cod != 0 or not m:
+                trabalho.apagar(pasta)
                 raise ErroAcao("Não consegui começar a sessão do Claude. Veja se o comando claude funciona.", 500)
             t = self.relogio()
             reg = {"id": m.group(1), "sessao_id": "", "nome": nome, "acao": acao_id, "grupo": acao["grupo"],
                    "titulo": acao["titulo"], "params": valores, "iniciada_em": agora_iso(t),
                    "iniciada_ts": t, "cwd": self.cfg["workspace"], "risco": acao["risco"],
-                   "modelo": modelo, "esforco": esforco, "negar_modulos": sorted(extra)}
+                   "modelo": modelo, "esforco": esforco, "negar_modulos": sorted(extra),
+                   "trabalho": os.path.basename(pasta) if pasta else ""}
             for p in acao["params"]:
                 if p["tipo"] in ("fase", "parte") and valores.get(p["nome"]):
                     reg[p["tipo"]] = valores[p["nome"]]
