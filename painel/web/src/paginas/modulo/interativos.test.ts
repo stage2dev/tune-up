@@ -7,7 +7,7 @@ import { ErroApi, esquecerSessao } from '../../api/cliente';
 import { postarAcao } from '../../api/ganchos';
 import { RenderBloco } from './Blocos';
 import {
-  camposFaltando, dadosDaMensagem, dadosDoFormulario, estaNoFim, imagemSegura, lerCampos, mensagemDoErro, semSegredos, valorDoCampo,
+  camposFaltando, chaveDoBloco, chavesDosBlocos, copiaDoBotao, criarEnviador, dadosDaMensagem, dadosDoFormulario, estaNoFim, imagemSegura, lerCampos, mensagemDoErro, semSegredos, valorDoCampo,
 } from './interativos';
 
 const html = (b: Bloco, id = 'mod') =>
@@ -57,7 +57,7 @@ describe('formulario: tela', () => {
     const h = html(b);
     expect(h).toMatch(/<input[^>]*type="password"/);
     expect(h).not.toContain('nao-pode-aparecer');
-    expect(h).toMatch(/<input[^>]*type="password"[^>]*autoComplete="off"[^>]*value=""/); // React escreve autoComplete; no DOM vira autocomplete="off"
+    expect(h).toMatch(/<input[^>]*type="password"[^>]*autoComplete="off"[^>]*name="chave"\/>/); // nao controlado: sem atributo value // React escreve autoComplete; no DOM vira autocomplete="off"
     expect(h).toContain('value="Ana"');
     expect(h).toContain('<textarea');
     expect(h).toContain('Azul');
@@ -99,12 +99,10 @@ describe('conversa', () => {
   it('mensagens malformadas nao derrubam a tela', () => {
     expect(() => html({ tipo: 'conversa', mensagens: [null, 3, { de: 'zzz' }] as never })).not.toThrow();
   });
-  it('id_cliente novo a cada envio; dados_fixos entram; texto e id_cliente nao se perdem', () => {
+  it('dados_fixos entram; texto e id_cliente nao se perdem', () => {
     const a = dadosDaMensagem({ chat: 'c1', texto: 'fixo' }, 'oi');
-    const c = dadosDaMensagem({ chat: 'c1' }, 'oi');
     expect(a).toMatchObject({ chat: 'c1', texto: 'oi' });
     expect(typeof a.id_cliente).toBe('string');
-    expect(a.id_cliente).not.toBe(c.id_cliente);
     expect(dadosDaMensagem(undefined, 'a', () => 'fixo-1')).toEqual({ texto: 'a', id_cliente: 'fixo-1' });
   });
   it('fio so acompanha se a pessoa ja estava no fim', () => {
@@ -155,9 +153,70 @@ describe('POST da acao', () => {
     expect(e).toBeInstanceOf(ErroApi);
     expect(mensagemDoErro(e)).toBe('Já existe.');
   });
+  it('2xx sem { ok: true } nao e sucesso', async () => {
+    for (const corpo of [null, { ok: false }, {}]) {
+      vi.stubGlobal('fetch', vi.fn(async (url: string) => (url === '/api/sessao' ? resp(200, { token: 'T', projeto: { nome: 'p' }, versao: '1' }) : resp(200, corpo))));
+      expect(await postarAcao('m', { acao: 'a', dados: {} }).catch((x: unknown) => x)).toBeInstanceOf(ErroApi);
+    }
+  });
   it('mensagem de 403 sem texto do servidor fica clara', () => {
     expect(mensagemDoErro(new ErroApi('Algo deu errado (código 403).', 403))).toBe('Você não tem permissão para fazer isso.');
     expect(mensagemDoErro(new ErroApi('Sem acesso a isso.', 403))).toBe('Sem acesso a isso.');
     expect(mensagemDoErro('x')).toBe('Algo deu errado.');
+  });
+});
+
+describe('enviador de mensagem (id por mensagem)', () => {
+  const contador = () => { let n = 0; return () => `id${++n}`; };
+  it('duas chamadas com a primeira em voo enviam uma vez so', async () => {
+    let solta!: (v: boolean) => void;
+    const post = vi.fn(() => new Promise<boolean>((r) => { solta = r; }));
+    const envia = criarEnviador(post, contador());
+    const a = envia('oi');
+    expect(await envia('oi')).toBe(false);
+    expect(post).toHaveBeenCalledTimes(1);
+    solta(true);
+    expect(await a).toBe(true);
+  });
+  it('reenvio do mesmo texto apos falha ou erro reusa o id; texto novo e sucesso trocam', async () => {
+    const ids: string[] = [];
+    const respostas: (boolean | Error)[] = [new Error('503'), false, true, true, true];
+    const envia = criarEnviador(async (_t, id) => { ids.push(id); const r = respostas.shift()!; if (r instanceof Error) throw r; return r; }, contador());
+    expect(await envia('oi')).toBe(false); // rejeitou
+    expect(await envia('oi')).toBe(false); // falhou
+    expect(await envia('oi')).toBe(true);  // deu certo
+    expect(await envia('oi')).toBe(true);  // outra mensagem igual, depois do sucesso
+    expect(await envia('tchau')).toBe(true);
+    expect(ids).toEqual(['id1', 'id1', 'id1', 'id2', 'id3']);
+  });
+  it('texto alterado depois da falha ganha id novo', async () => {
+    const ids: string[] = [];
+    const envia = criarEnviador(async (_t, id) => { ids.push(id); return false; }, contador());
+    await envia('a'); await envia('b'); await envia('a');
+    expect(ids).toEqual(['id1', 'id2', 'id3']);
+  });
+});
+
+describe('confirmacao e chaves', () => {
+  it('copia do botao nao muda se a lista de origem mudar', () => {
+    const x = { acao: 'a.b', dados: { k: 1 }, confirmar: 'Certeza?', rotulo: 'Ir' };
+    const cp = copiaDoBotao(x);
+    x.acao = 'outra'; x.dados.k = 2;
+    expect(cp).toEqual({ acao: 'a.b', dados: { k: 1 }, confirmar: 'Certeza?', rotulo: 'Ir' });
+  });
+  it('chave do bloco nao depende da posicao nos blocos com estado', () => {
+    const f1 = { tipo: 'formulario', acao: 'x', dados_fixos: { c: 1 } };
+    const f2 = { tipo: 'formulario', acao: 'x', dados_fixos: { c: 2 } };
+    expect(chaveDoBloco(f1, 0)).toBe(chaveDoBloco(f1, 5));
+    expect(chaveDoBloco(f1, 0)).not.toBe(chaveDoBloco(f2, 0));
+    expect(chaveDoBloco({ tipo: 'conversa', enviar: { acao: 'e' } }, 0)).toBe(chaveDoBloco({ tipo: 'conversa', enviar: { acao: 'e' } }, 3));
+    expect(chaveDoBloco({ tipo: 'conversa', id: 'z' }, 0)).toBe('id:z');
+    expect(chaveDoBloco({ tipo: 'texto' }, 2)).toBe('i:2');
+    expect(chavesDosBlocos([f1, f1])[1]).not.toBe(chavesDosBlocos([f1, f1])[0]);
+    expect(chavesDosBlocos([f1, f2])).toEqual(chavesDosBlocos([f2, f1]).reverse());
+  });
+  it('escolha com valor fora das opcoes vira vazio', () => {
+    const [c] = lerCampos([{ id: 'c', tipo: 'escolha', valor: 'zzz', opcoes: [{ valor: 'a' }] }]);
+    expect(c.valor).toBe('');
   });
 });

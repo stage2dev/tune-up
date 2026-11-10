@@ -10,6 +10,7 @@ import { Conversa } from './Conversa';
 import { Formulario } from './Formulario';
 import { Imagem } from './Imagem';
 import { numero, SEM_DADO } from './formato';
+import { chavesDosBlocos } from './interativos';
 import { montarSeries, type SerieEntrada } from './series';
 
 const COR_TOM: Record<string, string> = {
@@ -216,9 +217,10 @@ export function Blocos({ blocos, moduloId }: { blocos: Bloco[]; moduloId?: strin
   if (!Array.isArray(blocos) || blocos.length === 0) {
     return <Cartao><EstadoVazio titulo="Esta aba está vazia" texto="O módulo ainda não trouxe nada para mostrar aqui." /></Cartao>;
   }
+  const chaves = chavesDosBlocos(blocos);
   return (
     <div className="grid gap-3 grid-cols-[minmax(0,1fr)]">
-      {blocos.map((b, i) => <RenderBloco key={i} bloco={b} moduloId={moduloId} />)}
+      {blocos.map((b, i) => <RenderBloco key={chaves[i]} bloco={b} moduloId={moduloId} />)}
     </div>
   );
 }

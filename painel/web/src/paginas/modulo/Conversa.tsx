@@ -4,7 +4,7 @@ import type { Bloco } from '../../api/tipos';
 import { Botao, Cartao, EstadoVazio } from '../../componentes';
 import { CLASSE_CAMPO } from './Formulario';
 import { dataHora } from './formato';
-import { dadosDaMensagem, dadosFixos, estaNoFim, itens, textoOuNada } from './interativos';
+import { copiaDoBotao, criarEnviador, dadosDaMensagem, estaNoFim, itens, textoOuNada, type BotaoCopia } from './interativos';
 import { AvisoEnvio, useEnvio } from './useEnvio';
 
 const QUEM = { contato: 'Contato', eu: 'Você', ia: 'IA' } as const;
@@ -22,10 +22,13 @@ export function Conversa({ b, moduloId }: { b: Bloco; moduloId?: string }) {
   const enviar = b.enviar && typeof b.enviar === 'object' ? (b.enviar as Record<string, unknown>) : null;
   const botoes = itens(b.botoes).filter((x) => typeof x.acao === 'string' && typeof x.rotulo === 'string');
   const [texto, setTexto] = useState('');
-  const [pedindo, setPedindo] = useState<number | null>(null);
+  const [pedindo, setPedindo] = useState<BotaoCopia | null>(null);
   const { enviar: chamar, enviando, ok, erro } = useEnvio(moduloId);
   const fio = useRef<HTMLDivElement>(null);
   const noFim = useRef(true);
+  const postar = useRef<(t: string, id: string) => Promise<boolean>>(async () => false);
+  postar.current = (t, id) => chamar(String(enviar?.acao), dadosDaMensagem(enviar?.dados_fixos, t, () => id));
+  const [mandarTexto] = useState(() => criarEnviador((t, id) => postar.current(t, id)));
 
   // Acompanha as mensagens novas so se a pessoa ja estava no fim (quem rolou para cima nao e puxado).
   useLayoutEffect(() => {
@@ -37,12 +40,11 @@ export function Conversa({ b, moduloId }: { b: Bloco; moduloId?: string }) {
     const t = texto.trim();
     const acao = textoOuNada(enviar?.acao);
     if (!t || !acao || enviando) return;
-    if (await chamar(acao, dadosDaMensagem(enviar?.dados_fixos, t))) setTexto('');
+    if (await mandarTexto(t)) setTexto((cur) => (cur.trim() === t ? '' : cur)); // nao apaga o que foi digitado durante o envio
   }
-  async function botao(i: number) {
-    const x = botoes[i];
+  async function botao(x: BotaoCopia) {
     setPedindo(null);
-    await chamar(String(x.acao), { ...dadosFixos(x.dados) });
+    await chamar(x.acao, x.dados);
   }
 
   return (
@@ -83,13 +85,13 @@ export function Conversa({ b, moduloId }: { b: Bloco; moduloId?: string }) {
       {botoes.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {botoes.map((x, i) => (
-            <Botao key={i} variante="secundario" disabled={enviando} onClick={() => (textoOuNada(x.confirmar) ? setPedindo(i) : void botao(i))}>{String(x.rotulo)}</Botao>
+            <Botao key={i} variante="secundario" disabled={enviando} onClick={() => { const cp = copiaDoBotao(x); if (cp.confirmar) setPedindo(cp); else void botao(cp); }}>{String(x.rotulo)}</Botao>
           ))}
         </div>
       )}
-      {pedindo !== null && botoes[pedindo] && (
+      {pedindo !== null && (
         <div role="alertdialog" aria-label="Confirmar" className="mt-2 rounded-lg border border-[var(--color-border)] p-3 grid gap-2">
-          <p className="text-sm break-words">{textoOuNada(botoes[pedindo].confirmar)}</p>
+          <p className="text-sm break-words">{pedindo.confirmar}</p>
           <div className="flex gap-2">
             <Botao enviando={enviando} onClick={() => void botao(pedindo)}>Confirmar</Botao>
             <Botao variante="fantasma" disabled={enviando} onClick={() => setPedindo(null)}>Cancelar</Botao>

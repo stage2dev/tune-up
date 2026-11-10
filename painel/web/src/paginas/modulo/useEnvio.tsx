@@ -23,6 +23,7 @@ export function useEnvio(moduloId: string | undefined) {
       return false;
     } finally {
       emVoo.current = false;
+      m.reset(); // nao deixa os dados enviados (ex.: segredo) no cache da mutacao
     }
   }
   return { enviar, enviando: m.isPending, ok, erro };

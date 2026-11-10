@@ -1,5 +1,5 @@
 // Bloco "formulario": campos declarados pelo modulo + um botao que chama uma acao do modulo.
-import { useState, type FormEvent } from 'react';
+import { useState, type ChangeEvent, type FormEvent } from 'react';
 import type { Bloco } from '../../api/tipos';
 import { Botao, Cartao } from '../../componentes';
 import { camposFaltando, dadosDoFormulario, lerCampos, semSegredos, textoOuNada, valorDoCampo, type CampoLido } from './interativos';
@@ -10,7 +10,8 @@ export const CLASSE_CAMPO =
 
 function Entrada({ c, idBase, valor, invalido, aoMudar }: { c: CampoLido; idBase: string; valor: string; invalido: boolean; aoMudar: (v: string) => void }) {
   const id = `${idBase}-${c.id}`;
-  const comum = { id, className: CLASSE_CAMPO, value: valor, 'aria-invalid': invalido || undefined, required: c.obrigatorio };
+  const secreto = c.tipo === 'segredo'; // nao controlado: o valor nao vai para o estado do React nem para o atributo value
+  const comum = { id, className: CLASSE_CAMPO, ...(secreto ? { name: c.id } : { value: valor }), 'aria-invalid': invalido || undefined, required: c.obrigatorio };
   return (
     <div className="grid gap-1">
       <label htmlFor={id} className="text-sm font-medium text-[var(--color-text)]">
@@ -25,7 +26,7 @@ function Entrada({ c, idBase, valor, invalido, aoMudar }: { c: CampoLido; idBase
       ) : c.tipo === 'texto_longo' ? (
         <textarea {...comum} rows={4} className={`${CLASSE_CAMPO} break-words`} autoComplete="off" onChange={(e) => aoMudar(e.target.value)} />
       ) : (
-        <input {...comum} type={c.tipo === 'segredo' ? 'password' : 'text'} autoComplete="off" onChange={(e) => aoMudar(e.target.value)} />
+        <input {...comum} type={secreto ? 'password' : 'text'} autoComplete="off" {...(secreto ? {} : { onChange: (e: ChangeEvent<HTMLInputElement>) => aoMudar(e.target.value) })} />
       )}
       {c.ajuda && <span className="text-xs text-[var(--color-text-tertiary)] break-words">{c.ajuda}</span>}
       {invalido && <span role="alert" className="text-xs text-[var(--color-error)]">Preencha este campo.</span>}
@@ -37,19 +38,24 @@ export function Formulario({ b, moduloId }: { b: Bloco; moduloId?: string }) {
   const campos = lerCampos(b.campos);
   const acao = textoOuNada(b.acao);
   const [editados, setEditados] = useState<Record<string, string>>({}); // so o que a pessoa mexeu: a releitura de 15 s nao apaga
-  const [tentou, setTentou] = useState(false);
+  const [invalidos, setInvalidos] = useState<string[]>([]); // campos que faltavam no ultimo envio
   const { enviar, enviando, ok, erro } = useEnvio(moduloId);
-  const faltando = camposFaltando(campos, editados);
+  const faltando = camposFaltando(campos, editados); // segredo nunca esta em `editados`: so e checado no envio
   const idBase = `form-${moduloId ?? 'm'}`;
 
   async function aoEnviar(e: FormEvent) {
     e.preventDefault();
     if (enviando || !acao) return;
-    setTentou(true);
-    if (faltando.length > 0) return;
-    if (await enviar(acao, dadosDoFormulario(b.dados_fixos, campos, editados))) {
+    const form = e.currentTarget as HTMLFormElement;
+    const lidos = { ...editados }; // segredos lidos do DOM so agora
+    for (const c of campos) if (c.tipo === 'segredo') lidos[c.id] = String(new FormData(form).get(c.id) ?? '');
+    const falta = camposFaltando(campos, lidos);
+    setInvalidos(falta);
+    if (falta.length > 0) return;
+    if (await enviar(acao, dadosDoFormulario(b.dados_fixos, campos, lidos))) {
       setEditados((v) => semSegredos(campos, v));
-      setTentou(false);
+      for (const c of campos) if (c.tipo === 'segredo') { const el = form.elements.namedItem(c.id); if (el instanceof HTMLInputElement) el.value = ''; }
+      setInvalidos([]);
     }
   }
 
@@ -59,7 +65,7 @@ export function Formulario({ b, moduloId }: { b: Bloco; moduloId?: string }) {
         {textoOuNada(b.descricao) && <p className="text-sm text-[var(--color-text-secondary)] break-words whitespace-pre-line">{textoOuNada(b.descricao)}</p>}
         {!acao && <p role="note" className="text-xs text-[var(--color-text-tertiary)]">Este formulário não diz qual ação chamar.</p>}
         {campos.map((c) => (
-          <Entrada key={c.id} c={c} idBase={idBase} valor={valorDoCampo(c, editados)} invalido={tentou && faltando.includes(c.id)} aoMudar={(v) => setEditados((x) => ({ ...x, [c.id]: v }))} />
+          <Entrada key={c.id} c={c} idBase={idBase} valor={valorDoCampo(c, editados)} invalido={invalidos.includes(c.id) && (c.tipo === 'segredo' || faltando.includes(c.id))} aoMudar={(v) => setEditados((x) => ({ ...x, [c.id]: v }))} />
         ))}
         <div className="flex flex-wrap items-center gap-3">
           <Botao type="submit" enviando={enviando} textoEnviando="Enviando…" disabled={!acao}>{textoOuNada(b.botao) ?? 'Enviar'}</Botao>

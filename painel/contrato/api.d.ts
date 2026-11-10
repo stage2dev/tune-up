@@ -361,6 +361,8 @@ export interface CampoFormulario {
 /** Envia { acao, dados: { ...dados_fixos, ...valores } }. Campo "segredo": senha, nunca preenchido. */
 export interface BlocoFormulario {
   tipo: 'formulario';
+  /** Opcional: chave estável do bloco (senão a tela usa tipo + ação + dados fixos). */
+  id?: string;
   titulo?: string;
   descricao?: string;
   acao: string;
@@ -376,9 +378,11 @@ export interface MensagemConversa {
   estado?: 'pendente' | 'enviado' | 'falhou' | 'incerto' | 'negado';
   nota?: string;
 }
-/** Enviar posta { acao, dados: { ...dados_fixos, texto, id_cliente } }; id_cliente novo a cada clique. */
+/** Enviar posta { acao, dados: { ...dados_fixos, texto, id_cliente } }; um id_cliente por mensagem, o mesmo nas tentativas de reenvio. */
 export interface BlocoConversa {
   tipo: 'conversa';
+  /** Opcional: chave estável do bloco. */
+  id?: string;
   titulo?: string;
   mensagens: MensagemConversa[];
   enviar?: { acao: string; dados_fixos?: Record<string, unknown>; rotulo?: string };

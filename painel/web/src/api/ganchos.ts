@@ -1,7 +1,7 @@
 // Ganchos de busca (TanStack Query v5). Regra de tela: enquanto carrega, use `isPending`
 // (nunca isLoading) para mostrar esqueleto; so mostre "vazio" quando !isPending && !isError.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost } from './cliente';
+import { apiGet, apiPost, ErroApi } from './cliente';
 import type { Acao, Acompanhamento, DadosModulo, EstadoPainel, Eventos, Execucao, ListaModulos, ReqAcaoModulo, RespAcaoModulo, Sessao } from './tipos';
 import { obterSessao } from './cliente';
 import { buscarEventos, intervaloEventos, type EventosCache } from './eventos';
@@ -47,8 +47,11 @@ export const useModulo = (id: string | undefined) =>
   });
 
 /** Chama uma acao do modulo (POST) e, se der certo, puxa o modulo de novo sem o cache do servidor. */
-export const postarAcao = (id: string, req: ReqAcaoModulo) =>
-  apiPost<RespAcaoModulo>(`/api/modulos/${encodeURIComponent(id)}/acao`, req);
+export async function postarAcao(id: string, req: ReqAcaoModulo): Promise<RespAcaoModulo> {
+  const r = await apiPost<RespAcaoModulo | null>(`/api/modulos/${encodeURIComponent(id)}/acao`, req);
+  if (r?.ok !== true) throw new ErroApi('O painel não confirmou que a ação foi feita.', 502); // 2xx sem { ok: true } nao e sucesso
+  return r;
+}
 
 export function useAcaoModulo(id: string) {
   const qc = useQueryClient();

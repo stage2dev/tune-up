@@ -24,7 +24,8 @@ export function lerCampos(v: unknown): CampoLido[] {
       valor: str(c.valor),
       obrigatorio: c.obrigatorio === true,
       ajuda: textoOuNada(c.ajuda),
-    }));
+    }))
+    .map((c) => (c.tipo === 'escolha' && !c.opcoes.some((o) => o.valor === c.valor) ? { ...c, valor: '' } : c)); // valor fora das opcoes = vazio
 }
 
 /** Valor mostrado: o que a pessoa digitou, senao o do servidor. Segredo nunca vem preenchido. */
@@ -49,9 +50,58 @@ export function semSegredos(campos: CampoLido[], editados: Record<string, string
   return out;
 }
 
-/** { ...dados_fixos, texto, id_cliente } com id_cliente novo a cada chamada (chave de deduplicacao no servidor). */
+/** { ...dados_fixos, texto, id_cliente } (id_cliente e a chave de deduplicacao no servidor: um por mensagem). */
 export function dadosDaMensagem(fixos: unknown, texto: string, novoId: () => string = () => crypto.randomUUID()): Record<string, unknown> {
   return { ...objeto(fixos), texto, id_cliente: novoId() };
+}
+
+/**
+ * Envio de mensagem sem React. O id pertence a MENSAGEM: muda so quando o texto muda ou depois de um sucesso;
+ * repetir o mesmo texto apos falha reusa o id (o servidor deduplica). Uma chamada em voo por vez.
+ * `post` devolve true quando deu certo; false ou erro = falha.
+ */
+export function criarEnviador(post: (texto: string, id: string) => Promise<boolean>, novoId: () => string = () => crypto.randomUUID()) {
+  let id: string | null = null;
+  let textoDoId = '';
+  let emVoo = false;
+  return async (texto: string): Promise<boolean> => {
+    if (emVoo) return false;
+    if (id === null || textoDoId !== texto) { id = novoId(); textoDoId = texto; }
+    emVoo = true;
+    try {
+      const ok = await post(texto, id);
+      if (ok) id = null;
+      return ok;
+    } catch {
+      return false;
+    } finally {
+      emVoo = false;
+    }
+  };
+}
+
+/** Copia do botao no momento do clique: a confirmacao executa exatamente isto, mesmo se a lista mudar depois. */
+export interface BotaoCopia { acao: string; dados: Record<string, unknown>; confirmar?: string; rotulo: string }
+export const copiaDoBotao = (x: Record<string, unknown>): BotaoCopia => ({
+  acao: String(x.acao), dados: { ...objeto(x.dados) }, confirmar: textoOuNada(x.confirmar), rotulo: String(x.rotulo),
+});
+
+const COM_ESTADO = ['formulario', 'conversa'];
+/** Chave estavel do bloco: o que ele digita nao migra para outro quando a lista reordena. Indice so para blocos sem estado. */
+export function chaveDoBloco(b: { tipo?: unknown; [k: string]: unknown }, i: number): string {
+  if (typeof b?.id === 'string' && b.id) return `id:${b.id}`;
+  if (!COM_ESTADO.includes(String(b?.tipo))) return `i:${i}`;
+  return `${String(b.tipo)}|${String(b.acao ?? '')}|${JSON.stringify(b.dados_fixos ?? b.enviar ?? '')}`;
+}
+/** Chaves de todos os blocos; iguais ganham sufixo para nao colidirem. */
+export function chavesDosBlocos(bs: { tipo?: unknown; [k: string]: unknown }[]): string[] {
+  const vistas = new Map<string, number>();
+  return bs.map((b, i) => {
+    const k = chaveDoBloco(b, i);
+    const n = vistas.get(k) ?? 0;
+    vistas.set(k, n + 1);
+    return n ? `${k}#${n}` : k;
+  });
 }
 
 /** So png e jpeg em base64 (svg pode levar script). */
