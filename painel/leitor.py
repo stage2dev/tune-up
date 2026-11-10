@@ -15,6 +15,7 @@ import threading
 import time
 
 import config  # noqa: E402  caminhos vêm de <raiz>/.tune-up/painel.json ou dos padrões
+import mascara  # noqa: E402
 from leitor_md import (  # noqa: E402,F401  parte pura (texto dos planos), reexportada aqui
     NOMES_PADRAO, analisar_progress, contar_depois, parte_da_branch, parte_da_sessao, parte_do_item,
     parte_do_titulo_pr, partes_de_titulos, partes_do_goal, titulo_goal)
@@ -220,7 +221,8 @@ def ler_sessoes(cwd=None, claude_bin=None):
         except (TypeError, ValueError, OverflowError, OSError):
             inicio_iso = None
         out_l.append({"id": str(s.get("id") or s.get("sessionId") or ""),
-                      "sessao_id": str(s.get("sessionId") or ""), "nome": str(s.get("name") or ""),
+                      "sessao_id": str(s.get("sessionId") or ""),
+                      "nome": mascara.mascarar(str(s.get("name") or "")),
                       "tipo": str(s.get("kind") or ""), "estado": estado, "cwd": str(s.get("cwd") or ""),
                       "inicio": inicio_iso, "ativa": estado not in FIM_SESSAO,
                       "rodando": estado in RODANDO_SESSAO})

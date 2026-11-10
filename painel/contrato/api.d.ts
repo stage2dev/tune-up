@@ -368,19 +368,8 @@ export interface RespModulos {
   avisos: string[];
 }
 
-export type Tom = 'neutro' | 'bom' | 'atencao' | 'ruim';
-
-export type Bloco =
-  | { tipo: 'kpis'; titulo?: string; itens: { rotulo: string; valor: string | number | null; detalhe?: string; tom?: Tom }[] }
-  | { tipo: 'tabela'; titulo?: string; colunas: { id: string; rotulo: string; alinhar?: 'esq' | 'dir' }[];
-      linhas: Record<string, string | number | null>[]; vazio?: string }
-  | { tipo: 'lista'; titulo?: string; itens: { titulo: string; detalhe?: string; selo?: { texto: string; tom: Tom } }[];
-      vazio?: string }
-  | { tipo: 'serie'; titulo?: string; unidade?: string;
-      series: { nome: string; pontos: { x: string; y: number | null }[] }[]; vazio?: string }
-  | { tipo: 'texto'; titulo?: string; texto: string }
-  | { tipo: 'acoes'; titulo?: string; grupo: string }
-  | { tipo: string; [k: string]: unknown }; // desconhecido: a tela mostra um aviso discreto
+import type { Bloco } from './blocos';
+export type { Tom, Bloco, CampoFormulario, BlocoFormulario, MensagemConversa, BlocoConversa, BlocoImagem, ReqAcaoModulo, RespAcaoModulo } from './blocos';
 
 /** 200. 404 { erro, avisos? } se o id não está habilitado; 500 { erro, avisos } se montar() quebra ou demora;
  *  503 { erro } se uma montagem anterior ainda está rodando. O servidor confere só a forma mínima
@@ -417,6 +406,7 @@ export interface PainelJson {
   origens_extras?: string[]; // ex. "http://127.0.0.1:5173" para o Vite em modo dev
   pacote?: string; // pasta dentro de .tune-up (padrão "painel-projeto"); atalho para fora é ignorado
   modulos?: string[]; // ids habilitados (padrão [])
+  modulos_de_plugins?: string[]; // "plugin@marketplace:modulo" de plugin instalado (padrão []); a API usa só o id curto
   areas_acompanhamento?: { id: string; titulo?: string; regex: string }[]; // sem isso tudo cai em "geral"
   claude_projects_dir?: string; // padrão ~/.claude/projects
   projeto_mem?: string; // projeto no claude-mem (padrão: nome da pasta raiz)

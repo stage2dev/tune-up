@@ -6,7 +6,11 @@ import type { Bloco } from '../../api/tipos';
 import { Cartao, EstadoVazio, Selo } from '../../componentes';
 import type { Tom } from '../../componentes/Selo';
 import { BotoesDoGrupo } from './BotaoAcao';
+import { Conversa } from './Conversa';
+import { Formulario } from './Formulario';
+import { Imagem } from './Imagem';
 import { numero, SEM_DADO } from './formato';
+import { chavesDosBlocos } from './interativos';
 import { montarSeries, type SerieEntrada } from './series';
 
 const COR_TOM: Record<string, string> = {
@@ -184,7 +188,7 @@ function Desconhecido({ tipo }: { tipo: string }) {
   );
 }
 
-export function RenderBloco({ bloco }: { bloco: Bloco }) {
+export function RenderBloco({ bloco, moduloId }: { bloco: Bloco; moduloId?: string }) {
   switch (bloco?.tipo) {
     case 'kpis':
       return <Kpis b={bloco} />;
@@ -198,18 +202,25 @@ export function RenderBloco({ bloco }: { bloco: Bloco }) {
       return <Texto b={bloco} />;
     case 'acoes':
       return <Acoes b={bloco} />;
+    case 'formulario':
+      return <Formulario b={bloco} moduloId={moduloId} />;
+    case 'conversa':
+      return <Conversa b={bloco} moduloId={moduloId} />;
+    case 'imagem':
+      return <Imagem b={bloco} desconhecido={() => <Desconhecido tipo="imagem" />} />;
     default:
       return <Desconhecido tipo={String(bloco?.tipo ?? '')} />;
   }
 }
 
-export function Blocos({ blocos }: { blocos: Bloco[] }) {
+export function Blocos({ blocos, moduloId }: { blocos: Bloco[]; moduloId?: string }) {
   if (!Array.isArray(blocos) || blocos.length === 0) {
     return <Cartao><EstadoVazio titulo="Esta aba está vazia" texto="O módulo ainda não trouxe nada para mostrar aqui." /></Cartao>;
   }
+  const chaves = chavesDosBlocos(blocos);
   return (
     <div className="grid gap-3 grid-cols-[minmax(0,1fr)]">
-      {blocos.map((b, i) => <RenderBloco key={i} bloco={b} />)}
+      {blocos.map((b, i) => <RenderBloco key={chaves[i]} bloco={b} moduloId={moduloId} />)}
     </div>
   );
 }

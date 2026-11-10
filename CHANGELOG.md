@@ -2,6 +2,17 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## 2.5.0
+
+The panel closes the token door, masks what it shows and lets modules act.
+
+- `GET /api/sessao` (the token) now answers only with `Sec-Fetch-Site: same-origin`. curl, other local programs and browsers that do not send `Sec-Fetch-Site` (Safari before 16.4) get 403 and can no longer run actions.
+- Phones, e-mails and keys are masked in everything the panel shows from a session: transcript events (`cortar()` in `transcricao.py` is the single funnel, rules in `painel/mascara.py`), agents, tracking, and the request text and names of executions (the chat list and the first balloon). The registry still keeps the raw text.
+- Module actions: `POST /api/modulos/{id}/acao` runs `agir` of an enabled module behind the same defenses as every POST; `dados` never goes to the log or to an error reply. `GET /api/modulos/{id}?fresco=1` skips the cache. A module's `INFO["negar"]` joins the deny rules of every session the panel starts, chat levels included. Fail-closed: an enabled module that does not load (or has an invalid `negar`) blocks every panel action with 409 until it is fixed or disabled in `painel.json`. Replies (`responder`) resume the session with the rules it was started with, so each session records the module deny rules it started with (`negar_modulos`) and a reply is refused with 409 before anything is stopped or resumed when an enabled module does not load or when the current module rules are not all among the recorded ones (a module enabled or changed after the session started); `pode_responder` is false in those cases (rules read with a 2 s limit, false on error). Entries recorded before this have no rules, so they can still be answered only while no module has deny rules. Session names are built from masked values (`-n`, registry) and `GET /api/estado` masks `sessoes[].nome`.
+- `modulos_de_plugins` in `painel.json`: extra screens from installed plugins, as `plugin@marketplace:modulo`.
+- New module blocks: `formulario`, `conversa` and `imagem`.
+- `painel/web/dist` rebuilt from these sources.
+
 ## 2.4.3
 
 Panel on Windows, from the first real CI run of the panel tests there (24 of 160 failed).

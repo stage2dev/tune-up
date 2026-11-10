@@ -26,6 +26,7 @@ import config  # noqa: E402
 import estaticos  # noqa: E402
 import lancador as lanc  # noqa: E402
 import leitor  # noqa: E402
+import mascara  # noqa: E402
 import modulos  # noqa: E402
 import transcricao  # noqa: E402
 
@@ -35,6 +36,7 @@ TTL_ESTADO = 3  # segundos: várias abas abertas não refazem a leitura toda hor
 CORPO_MAX = 32 * 1024  # uma mensagem do chat tem até 6000 letras (acento = 2 bytes)
 RE_ROTA_EXEC = re.compile(r"^/api/execucoes/([^/]{1,40})/(eventos|parar|abrir|responder)$")
 RE_ROTA_MODULO = re.compile(r"^/api/modulos/([^/]{1,80})$")
+RE_ROTA_MODULO_ACAO = re.compile(r"^/api/modulos/([^/]{1,80})/acao$")
 RE_SESSAO = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 CSP = ("default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
@@ -121,6 +123,14 @@ class App:
         if not isinstance(dado, dict):
             return 500, {"erro": "Esta parte do painel devolveu algo estranho.", "avisos": []}
         return 200, dado
+
+
+def para_tela(ex):
+    """Execução que sai pela API: nome, título e textos do pedido passam pela máscara (o registro guarda cru)."""
+    if not isinstance(ex, dict):
+        return ex
+    params = {k: mascara.mascarar(v) if isinstance(v, str) else v for k, v in (ex.get("params") or {}).items()}
+    return dict(ex, params=params, nome=mascara.mascarar(ex.get("nome")), titulo=mascara.mascarar(ex.get("titulo")))
 
 
 def fazer_handler(app):
@@ -230,6 +240,10 @@ def fazer_handler(app):
 
         def _api_get(self, caminho, query):
             if caminho == "/api/sessao":
+                # O token só sai para o fetch do próprio painel: sem o cabeçalho
+                # (curl, outro programa local) ou de outro site, recusa.
+                if self.headers.get("Sec-Fetch-Site") != "same-origin":
+                    return self._erro(403, "Pedido de outro site recusado.")
                 return self._json(200, {"token": app.token, "projeto": {"nome": app.cfg["nome"]},
                                         "versao": app.cfg.get("versao", config.VERSAO)})
             if caminho == "/api/estado":
@@ -238,7 +252,7 @@ def fazer_handler(app):
                 acoes, avisos = app.lancador.acoes()
                 return self._json(200, {"acoes": acoes, "avisos": avisos})
             if caminho == "/api/execucoes":
-                return self._json(200, {"execucoes": app.lancador.execucoes()})
+                return self._json(200, {"execucoes": [para_tela(e) for e in app.lancador.execucoes()]})
             if caminho == "/api/modelos":
                 return self._json(200, {"modelos": app.lancador.status_modelos()})
             if caminho == "/api/acompanhamento":
@@ -249,7 +263,8 @@ def fazer_handler(app):
                 return self._json(200, modulos.listar(app.cfg))
             m = RE_ROTA_MODULO.match(caminho)
             if m:
-                return self._json(*modulos.montar(app.cfg, urllib.parse.unquote(m.group(1))))
+                fresco = (query.get("fresco") or ["0"])[0] in ("1", "true")
+                return self._json(*modulos.montar(app.cfg, urllib.parse.unquote(m.group(1)), usar_cache=not fresco))
             m = RE_ROTA_EXEC.match(caminho)
             if m and m.group(2) == "eventos":
                 return self._eventos(m.group(1), query)
@@ -295,7 +310,7 @@ def fazer_handler(app):
                 if caminho == "/api/execucoes":
                     ex = app.lancador.iniciar(corpo.get("acao"), corpo.get("params"))
                     app.estado.invalidar()
-                    return self._json(201, {"execucao": ex})
+                    return self._json(201, {"execucao": para_tela(ex)})
                 m = RE_ROTA_EXEC.match(caminho)
                 if m and m.group(2) == "parar":
                     r = app.lancador.parar(m.group(1))
@@ -306,7 +321,11 @@ def fazer_handler(app):
                 if m and m.group(2) == "responder":
                     ex = app.lancador.responder(m.group(1), corpo.get("texto"))
                     app.estado.invalidar()
-                    return self._json(200, {"execucao": ex})
+                    return self._json(200, {"execucao": para_tela(ex)})
+                m = RE_ROTA_MODULO_ACAO.match(caminho)
+                if m:  # `dados` vai intacto para o módulo e nunca é registrado nem ecoado
+                    return self._json(*modulos.agir(app.cfg, urllib.parse.unquote(m.group(1)),
+                                                    corpo.get("acao"), corpo.get("dados")))
                 return self._erro(404, "Não encontrado.")
             except lanc.ErroAcao as e:
                 extra = {"execucao_id": e.execucao_id} if e.execucao_id else {}

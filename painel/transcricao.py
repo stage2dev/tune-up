@@ -12,6 +12,8 @@ import json
 import os
 import re
 
+from mascara import mascarar
+
 RE_SESSAO = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 CORTE = 600
 CORTE_INTEIRO = 12000  # falas do chat (?inteiro=1)
@@ -21,39 +23,11 @@ LINHA_MAX = 2 * 1024 * 1024
 MAX_EVENTOS = 300
 FERRAMENTAS_SUBAGENTE = ("Task", "Agent")
 
-# Ordem importa: os específicos antes do genérico "chave=valor".
-SEGREDOS = [
-    (re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=\-]{6,}"), "Bearer ***"),
-    (re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(-----END [A-Z ]*PRIVATE KEY-----|$)"), "***chave privada***"),
-    (re.compile(r"\bsk-[A-Za-z0-9_\-]{12,}"), "sk-***"),
-    (re.compile(r"\b(ghp|gho|ghs|ghu|github_pat)_[A-Za-z0-9_]{16,}"), r"\1_***"),
-    (re.compile(r"\bxox[abprs]-[A-Za-z0-9\-]{10,}"), "xox-***"),
-    (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "AKIA***"),
-    (re.compile(r"\bAIza[0-9A-Za-z_\-]{30,}"), "AIza***"),
-    (re.compile(r"\beyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{4,}"), "***jwt***"),
-    (re.compile(r"(?i)\b([a-z0-9_\-]*(?:senha|password|passwd|pwd|secret|segredo|token|api[_\-]?key|apikey"
-                r"|access[_\-]?key|chave|private[_\-]?key|client[_\-]?secret|authorization)[a-z0-9_\-]*)"
-                r"(\s*[\"']?\s*[=:]\s*[\"']?)([^\s\"',;&]{3,})"), r"\1\2***"),
-    (re.compile(r"(?i)(://[^/\s:@]+:)[^@\s/]+@"), r"\1***@"),
-]
-# Sequência longa com letra maiúscula, minúscula e dígito: cara de chave (hash hex puro fica).
-RE_LONGO = re.compile(r"[A-Za-z0-9_\-+/]{40,}")
 RE_LEMBRETE = re.compile(r"<system-reminder>[\s\S]*?(</system-reminder>|$)")
 RE_TAG = re.compile(r"<(command-name|command-args|command-message|local-command-stdout|local-command-stderr)>"
                     r"([\s\S]*?)</\1>")
 # Mensagem inteira dentro de uma tag (<browser_instruction>...</browser_instruction>): bloco do sistema.
 RE_BLOCO_INTEIRO = re.compile(r"^\s*<([A-Za-z_][\w\-]*)(\s[^>]*)?>[\s\S]*</\1>\s*$")
-
-
-def mascarar(texto):
-    for regex, troca in SEGREDOS:
-        texto = regex.sub(troca, texto)
-
-    def longo(m):
-        s = m.group(0)
-        tem = re.search(r"[A-Z]", s) and re.search(r"[a-z]", s) and re.search(r"\d", s)
-        return "***" if tem and "/" not in s.strip("/") else s
-    return RE_LONGO.sub(longo, texto)
 
 
 def cortar(texto, n=CORTE):

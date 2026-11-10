@@ -213,6 +213,18 @@ class TestCasamentos(unittest.TestCase):
         self.assertEqual(leitor.parte_da_sessao("Fase 900 Parte G1", "900", ["G", "G1"]), "G1")
         self.assertIsNone(leitor.parte_da_sessao("Grupo de onboarding", "900", ["A"]))
 
+    def test_nome_da_sessao_sai_mascarado(self):
+        import json
+        from unittest import mock
+        lista = [{"id": "ab12cd34", "name": "Chat: ligue para 11 98765-4321", "state": "done"},
+                 {"id": "ab12cd35", "name": "Fase 900 Parte G1", "state": "running"}]
+        with mock.patch.object(leitor, "rodar", return_value=(True, json.dumps(lista), "")):
+            sessoes, aviso = leitor.ler_sessoes(cwd=".", claude_bin="claude")
+        self.assertIsNone(aviso)
+        self.assertNotIn("98765", sessoes[0]["nome"])
+        self.assertTrue(sessoes[0]["nome"].startswith("Chat: ligue para"))
+        self.assertEqual(sessoes[1]["nome"], "Fase 900 Parte G1")  # nome de Parte segue casando
+
 
 class TestFaseNoDisco(unittest.TestCase):
     def setUp(self):

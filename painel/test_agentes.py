@@ -64,7 +64,7 @@ class Base(unittest.TestCase):
 
     def escrever(self, caminho, texto, idade=0):
         os.makedirs(os.path.dirname(caminho), exist_ok=True)
-        with open(caminho, "w") as f:
+        with open(caminho, "w", encoding="utf-8", newline="\n") as f:
             f.write(texto)
         t = self.agora - idade
         os.utime(caminho, (t, t))
@@ -108,6 +108,17 @@ class TestAgentes(Base):
         self.assertEqual((a["ferramentas"], a["ultima_acao"], a["profundidade"], a["pai_id"]), (1, "Read painel.py", 1, None))
         self.assertEqual(a["tipo_agente"], "Explore")
         self.assertIsNotNone(a["iniciado_em"])
+
+    def test_descricao_e_nome_da_sessao_mascarados(self):
+        self.cli[0]["name"] = "Sessao FAL_KEY=abc123def456"
+        self.conversa()
+        self.agente("a1", {"agentType": "Explore", "description": "usar ana@exemplo.com e API_KEY=zzz999",
+                           "model": "haiku"}, linha_usuario() + blob())
+        r = self.montar()
+        d = self.todos_agentes(r)[0]["descricao"]
+        self.assertNotIn("ana@", d)
+        self.assertNotIn("zzz999", d)
+        self.assertNotIn("abc123def456", r["sessoes"][0]["nome"])
 
     def test_meta_sem_effort_nem_finished(self):
         self.conversa()
@@ -166,6 +177,12 @@ class TestAgentes(Base):
         self.assertEqual((por["c1"]["ferramentas"], por["c1"]["modelo"], por["c1"]["tipo_agente"]), (0, None, "sub-agente"))
         self.assertEqual(por["c2"]["modelo"], "opus")
 
+    def symlink(self, alvo, caminho):
+        try:
+            os.symlink(alvo, caminho)
+        except (OSError, NotImplementedError):  # Windows sem permissão de symlink
+            self.skipTest("symlink não permitido neste sistema")
+
     def test_symlink_para_fora_e_ignorado(self):
         self.conversa()
         fora = os.path.join(self.tmp, "fora")
@@ -174,12 +191,12 @@ class TestAgentes(Base):
         self.escrever(alvo, linha_assistente())
         sub = os.path.join(self.pasta, SID, "subagents")
         os.makedirs(sub)
-        os.symlink(alvo, os.path.join(sub, "agent-s1.jsonl"))
-        os.symlink(fora, os.path.join(sub, "workflows"))
+        self.symlink(alvo, os.path.join(sub, "agent-s1.jsonl"))
+        self.symlink(fora, os.path.join(sub, "workflows"))
         self.assertEqual(self.todos_agentes(self.montar()), [])
         # conversa inteira apontando para fora: sem modelo, sem sub-agentes
         os.unlink(os.path.join(self.pasta, SID + ".jsonl"))
-        os.symlink(alvo, os.path.join(self.pasta, SID + ".jsonl"))
+        self.symlink(alvo, os.path.join(self.pasta, SID + ".jsonl"))
         agentes.esquecer()
         s = self.montar()["sessoes"][0]
         self.assertIsNone(s["modelo"])
@@ -189,7 +206,7 @@ class TestAgentes(Base):
         fora = os.path.join(self.tmp, "fora2")
         self.escrever(os.path.join(fora, "agent-z.jsonl"), linha_assistente())
         os.makedirs(os.path.join(self.pasta, SID))
-        os.symlink(fora, os.path.join(self.pasta, SID, "subagents"))
+        self.symlink(fora, os.path.join(self.pasta, SID, "subagents"))
         self.assertEqual(self.todos_agentes(self.montar()), [])
 
     def test_corte_de_200(self):
@@ -241,7 +258,7 @@ class TestAgentes(Base):
         self.conversa()
         dados = os.path.join(self.tmp, "dados")
         os.makedirs(dados)
-        with open(os.path.join(dados, "execucoes.json"), "w") as f:
+        with open(os.path.join(dados, "execucoes.json"), "w", encoding="utf-8", newline="\n") as f:
             json.dump([{"id": SID[:8], "nome": "x", "iniciada_em": "2026-11-10T00:00:00"}], f)
         cfg = dict(self.cfg(), dados_dir=dados)
         r = agentes.montar(cfg, rodar=self.rodar, agora=self.agora)
@@ -290,20 +307,20 @@ class TestDisco(unittest.TestCase):
 
     def test_contagem_incremental(self):
         p = os.path.join(self.tmp, "a.jsonl")
-        with open(p, "w") as f:
+        with open(p, "w", encoding="utf-8", newline="\n") as f:
             f.write(linha_assistente(ferramenta="Edit", tid="t1") + blob())
         self.assertEqual(disco.contar(p, os.path.getsize(p))[0], 1)
-        with open(p, "a") as f:
+        with open(p, "a", encoding="utf-8", newline="\n") as f:
             f.write(linha_assistente(ferramenta="Agent", tid="t2") + '{"type":"assistant","message":{"content":[{"type":"tool_')
         n, spawns = disco.contar(p, os.path.getsize(p))
         self.assertEqual((n, spawns), (2, ["t2"]))
-        with open(p, "a") as f:
+        with open(p, "a", encoding="utf-8", newline="\n") as f:
             f.write('use","name":"Read","id":"t3"}]}}\n')
         self.assertEqual(disco.contar(p, os.path.getsize(p))[0], 3)
 
     def test_cauda_le_so_o_fim(self):
         p = os.path.join(self.tmp, "b.jsonl")
-        with open(p, "w") as f:
+        with open(p, "w", encoding="utf-8", newline="\n") as f:
             f.write(linha_assistente("claude-haiku-5-5", "low"))
             f.write(json.dumps({"type": "user", "pad": "x" * (disco.CAUDA * 2)}) + "\n")
             f.write(linha_assistente("claude-opus-5-5", "high", "Write", {"file_path": "C:/a/b/c.txt"}))

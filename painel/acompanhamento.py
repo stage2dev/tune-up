@@ -18,6 +18,8 @@ import sqlite3
 import threading
 import time
 
+from mascara import mascarar
+
 TTL = 15
 TIMEOUT_DB = 2.0
 STATUS = ("todo", "doing", "done", "dropped")
@@ -34,7 +36,7 @@ _lock = threading.Lock()
 def _texto(v, maximo=MAX_TEXTO):
     if v is None:
         return ""
-    s = v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
+    s = mascarar(v if isinstance(v, str) else json.dumps(v, ensure_ascii=False))
     return s if len(s) <= maximo else s[: maximo - 1] + "…"
 
 

@@ -81,6 +81,19 @@ class TestAcompanhamento(unittest.TestCase):
         self.assertTrue(seo["aberta"])
         self.assertEqual(seo["area"], "vendas")
 
+    def test_texto_mascarado(self):
+        con = sqlite3.connect(self.db)
+        for i, campos in enumerate([{"task": "T", "status": "doing", "notas": "chave FAL_KEY=abc123def456 de ana@exemplo.com"},
+                                    {"proximo_passo": "ligar 19 99999 8888"}]):
+            con.execute("INSERT INTO work_state_entries (project, list_name, fields, created_at, created_at_epoch) "
+                        "VALUES (?,?,?,?,?)", ("Meu-Projeto", "lista-secreta", json.dumps(campos), "2026-12-01T10:00:00.000Z", 100 + i))
+        con.commit()
+        con.close()
+        d = self.lista(self.montar(), "lista-secreta")
+        saida = json.dumps(d)
+        for vazou in ("abc123def456", "ana@", "99999 8888"):
+            self.assertNotIn(vazou, saida)
+
     def test_status_produtos_e_extras(self):
         d = self.montar()
         fase = self.lista(d, "fase-187-parte-a")

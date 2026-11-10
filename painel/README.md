@@ -50,6 +50,7 @@ Tipos em `contrato/api.d.ts` (`PainelJson`). Caminho relativo vale a partir da r
 | `origens_extras` | nenhuma |
 | `pacote` | `painel-projeto` (nome simples de pasta dentro de `.tune-up`; atalho para fora é ignorado) |
 | `modulos` | `[]` (ids de telas extras do pacote que ficam ligadas) |
+| `modulos_de_plugins` | `[]` (telas extras de plugins instalados, no formato `plugin@marketplace:modulo`; ver Módulos) |
 | `modelos_disponiveis` | nada: o painel sonda a licença. `{"fable": false}` (ou `true`) vence a sonda |
 | `areas_acompanhamento` | nenhuma: toda lista cai em "geral" |
 | `projeto_mem` / `claude_mem_db` | nome da pasta raiz / `~/.claude-mem/claude-mem.db` |
@@ -84,8 +85,12 @@ Chave que o núcleo não conhece é ignorada, mas chega aos módulos em `ctx["co
 `modulo.py` expõe `INFO = {"id", "titulo", "icone"}` e `montar(ctx) -> dict`, com `ctx = {"raiz", "pacote", "dados", "config", "hoje"}`. A resposta tem `alertas` (`{nivel: info|atencao|critico, texto}`) e `abas` (`{id, titulo, blocos}`); cada bloco tem um `tipo`: `kpis`, `tabela`, `lista`, `serie`, `texto` ou `acoes` (botões das ações de um grupo). Tipos exatos em `contrato/api.d.ts`.
 
 - Só carrega ids listados em `modulos` (`^[a-z0-9_-]{1,40}$`), e só se o arquivo real fica dentro de `<pacote>/modulos/<id>/` (atalho para fora é recusado).
+- Módulos de plugin (opt-in): `"modulos_de_plugins": ["plugin@marketplace:vendas"]` carrega `<installPath>/painel/modulos/vendas/modulo.py` do plugin instalado (`installed_plugins.json`; com várias versões vale a de `lastUpdated` mais recente). Rotas, menu e API usam só o id curto (`vendas`). Mesma checagem de caminho real (dentro de `painel/modulos/<id>/`) e mesmo `ctx`. Entrada malformada, plugin não instalado, arquivo ausente, atalho para fora, id repetido ou igual a um módulo de `modulos` é recusada com aviso e o painel segue. **Segurança:** ligar um módulo de plugin roda o código Python desse plugin dentro do processo do painel; por isso só vale se o projeto nomeia o plugin e o marketplace exatos.
 - O módulo pode importar arquivos irmãos (`import util`). O import é isolado: cada módulo vê os seus irmãos, mesmo com nome igual a um arquivo do núcleo (`config.py`) ou de outro módulo, e nada fica no `sys.path` do servidor. Faça esses imports no topo do arquivo; import dentro de função não acha os irmãos.
-- `montar()` roda com tempo limite de 20 s; exceção ou demora vira 500 só daquele módulo. Resultado fica 30 s em cache.
+- `montar()` roda com tempo limite de 20 s; exceção ou demora vira 500 só daquele módulo. Resultado fica 30 s em cache. `GET /api/modulos/{id}?fresco=1` monta de novo sem olhar o cache.
+- Ações do módulo (opcional): `INFO["acoes"]` lista os nomes aceitos e `agir(ctx, acao, dados) -> dict` faz a ação; a tela chama `POST /api/modulos/{id}/acao` com `{"acao": texto, "dados": objeto}` e recebe `{"ok": true, "resultado": {...}}`. `dados` chega intacto ao módulo (pode levar um código de uso único digitado na tela) e o painel nunca registra esse conteúdo nem o devolve por conta própria; o `resultado` de `agir` volta como veio, então `agir` não pode ecoar segredo. Respostas: 400 se `acao` não está em `INFO["acoes"]`, falta ou `dados` não é objeto; 404 se o módulo não existe, não está ligado ou não tem `agir`; 500 se `agir` quebra (sem o texto da exceção, só o tipo); 200 com `resultado: {}` e um aviso se `agir` voltou sem erro mas com algo que não é objeto JSON (a ação já aconteceu); 504 se passa de 20 s, com o texto "A ação ainda está rodando. Não repita; atualize a tela para ver o resultado." (a ação segue rodando; quando termina, apaga o cache da tela); 409 se outra ação do mesmo módulo ainda roda. A trava das ações é separada da de `montar()` (uma tela montando não barra uma ação). Ação que volta sem erro apaga o cache da tela, e um `montar()` que já estava rodando não grava o resultado velho.
+- `agir` tem de ser idempotente para um id que o cliente manda em `dados` (o bloco de conversa manda `id_cliente`, um por mensagem, o mesmo nas novas tentativas): o mesmo id não pode fazer o efeito duas vezes. `agir` tem de ter tempo limite próprio em toda chamada de rede: o painel não consegue parar a thread, e um `agir` que nunca volta deixa o módulo em 409 até o painel reiniciar.
+- Regras de negar do módulo (opcional): `INFO["negar"]` é uma lista de textos no formato do `negar` de uma ação (regra de permissão, ex. `"mcp__servico__apagar"`). O núcleo junta as regras de todos os módulos ligados no `permissions.deny` de **toda** sessão que o painel dispara. Só o `INFO` é lido (`montar()` não roda nem precisa existir), antes das travas do lançador e com tempo limite de 20 s. Fecha na dúvida: se um módulo ligado (do projeto ou de plugin) não carrega, passa do tempo no import, some do disco ou tem `INFO["negar"]` inválido (uma entrada ruim basta), **nenhuma** ação dispara: `POST /api/execucoes` responde 409 "A tela <id> não carregou; corrija ou desligue-a em painel.json antes de rodar ações." e `GET /api/acoes` mostra o aviso. Módulo sem a chave `negar` não muda nada.
 - O servidor confere a forma mínima (alerta fora do formato, aba sem `id`/`blocos` e bloco sem `tipo` saem com aviso); o resto do bloco passa como veio.
 
 ## Chat (tela inicial)
@@ -108,7 +113,7 @@ O pacote do projeto pode acrescentar níveis (ações com `grupo: "chat"`) ou tr
 
 **Licença.** `GET /api/modelos` diz, para cada modelo preferido, `sim`, `nao`, `verificando` ou `nao_sei`. A sonda é um `claude -p --safe-mode --tools "" --system-prompt ok --model <apelido>` (uns 900 tokens e 10 s, medido no CLI 2.1.322), guardada em `<pacote>/dados/modelos.json`: "tem" vale 7 dias, "não tem" 1 dia, falha de rede não é guardada (tenta de novo depois de 10 min e, enquanto isso, a sessão sai com a reserva).
 
-**Continuar a conversa.** `POST /api/execucoes/{id}/responder {texto}` manda outra mensagem para a mesma sessão quando ela terminou a vez dela. Medido no CLI 2.1.322: `claude --bg --resume <sessionId> "texto"` sem nenhuma outra opção acorda a sessão com as opções guardadas (nome, modelo, esforço, `--settings` das travas) e o mesmo id; com o processo antigo ainda vivo, ou com qualquer opção a mais, o CLI abre uma cópia com outro id. Por isso o painel roda `claude stop <id>` antes, não passa opção e, se mesmo assim vier outro id, para e apaga a cópia e devolve erro. Sessão esperando pergunta no terminal (`precisa_de_voce`) não aceita resposta pela tela: use "Abrir".
+**Continuar a conversa.** `POST /api/execucoes/{id}/responder {texto}` manda outra mensagem para a mesma sessão quando ela terminou a vez dela. Medido no CLI 2.1.322: `claude --bg --resume <sessionId> "texto"` sem nenhuma outra opção acorda a sessão com as opções guardadas (nome, modelo, esforço, `--settings` das travas) e o mesmo id; com o processo antigo ainda vivo, ou com qualquer opção a mais, o CLI abre uma cópia com outro id. Por isso o painel roda `claude stop <id>` antes, não passa opção e, se mesmo assim vier outro id, para e apaga a cópia e devolve erro. Sessão esperando pergunta no terminal (`precisa_de_voce`) não aceita resposta pela tela: use "Abrir". Como a sessão acorda com as travas de quando começou, o painel guarda no registro as regras de negar dos módulos daquele momento (`negar_modulos`) e recusa a resposta com 409, sem parar nem acordar nada, se um módulo ligado não carrega ou se há regra de módulo que a sessão não levou ("As regras das telas mudaram depois que esta conversa começou. Comece uma conversa nova."); nesses casos `pode_responder` vem `false`.
 
 ## Botões (ações)
 
@@ -152,13 +157,15 @@ Cruza o registro com `claude agents --json --all` (cache de 3 s). Medido no CLI 
 
 - Escuta só em `127.0.0.1`; `Host` precisa ser `127.0.0.1` ou `localhost` (421).
 - Todo POST exige: `X-Painel-Token` igual ao token (nasce a cada subida; comparação em tempo constante), `Origin` igual ao próprio endereço, `Sec-Fetch-Site` ausente ou `same-origin`, `Content-Type: application/json` e corpo até 32 KB (413).
+- `GET /api/sessao` (que entrega o token) exige `Sec-Fetch-Site: same-origin`: sem o cabeçalho (curl, outro programa local) ou vindo de outro site dá 403. Limite aceito: navegador que não manda `Sec-Fetch-Site` (Safari antes do 16.4) não consegue mais abrir o painel.
 - CSP: só `'self'` (estilo inline permitido).
 - Arquivos: `/assets/*` com cache longo, `index.html` sem cache, outra rota que não seja `/api` cai no `index.html`. Nada de `..`, ponto inicial, barra invertida, byte nulo ou atalho que saia de `web/dist`.
 - O leitor não segue atalho para fora do `plans_dir`, e nome de arquivo vindo do perfil (`goal`, `progress`, `later`) só vale se for nome simples.
 - Módulos e ações do pacote: só dentro do pacote, sem atalho para fora.
+- `POST /api/modulos/{id}/acao` passa pelas mesmas defesas de todo POST; o corpo e os `dados` nunca vão para o log nem para a resposta de erro.
 - Timeout de conexão de 15 s; subprocessos com lista e timeout.
 
-**Modelo de ameaça:** o painel dispara sessões do Claude com as permissões normais do seu usuário e executa o código Python dos módulos do pacote. Quem consegue mandar POST com o token é tratado como você. Um site de fora não consegue (origem, `Sec-Fetch-Site` e token), mas um programa local que leia `/api/sessao` consegue. Quem escreve no pacote escreve código que o painel roda: trate o pacote como parte do projeto.
+**Modelo de ameaça:** o painel dispara sessões do Claude com as permissões normais do seu usuário e executa o código Python dos módulos do pacote. Quem consegue mandar POST com o token é tratado como você. Um site de fora não consegue (origem, `Sec-Fetch-Site` e token). Um programa local não recebe o token num pedido simples a `/api/sessao`, mas pode forjar o cabeçalho `Sec-Fetch-Site`: a barreira é contra pedido descuidado, não contra outro programa decidido a atacar rodando como você. Quem escreve no pacote escreve código que o painel roda: trate o pacote como parte do projeto.
 
 ## Rotas
 
@@ -179,7 +186,8 @@ Tipos exatos em `contrato/api.d.ts`.
 | `POST /api/execucoes/{id}/abrir` | Terminal em `claude attach` |
 | `GET /api/acompanhamento` | listas do claude-mem separadas por área |
 | `GET /api/modulos` | telas extras ligadas e quantos alertas cada uma tem |
-| `GET /api/modulos/{id}` | conteúdo de uma tela extra |
+| `GET /api/modulos/{id}[?fresco=1]` | conteúdo de uma tela extra (`fresco=1` ignora o cache de 30 s) |
+| `POST /api/modulos/{id}/acao` | ação de uma tela extra (`agir`): 200, 400, 404, 409, 500, 503 |
 
 ## De onde vêm os dados de `/api/estado`
 

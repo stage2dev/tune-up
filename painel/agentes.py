@@ -20,6 +20,7 @@ import threading
 import time
 
 import agentes_disco as disco
+from mascara import mascarar
 
 try:  # mesmo mapeamento de estado do lançador (regra dos 180 s sem escrita)
     from lancador import mapear_estado as _mapear_estado
@@ -253,7 +254,7 @@ def _agente(cru, wfs, estado, agora, pais):
     return {
         "id": cru["id"],
         "tipo_agente": _texto(meta.get("agentType"), 60) or "sub-agente",
-        "descricao": _texto(meta.get("description"), 120),
+        "descricao": _texto(mascarar(meta.get("description")), 120),
         "fase": fase,
         "modelo": disco.modelo_curto(modelo_id),
         "modelo_id": modelo_id,
@@ -344,7 +345,7 @@ def _sessao(linha, op, registro, agora, todos, avisos):
         escolhidos = [c for c in crus if estados[c["id"]] == "rodando" or agora - c["st"].st_mtime <= TTL_TERMINADOS]
     escolhidos.sort(key=lambda c: (estados[c["id"]] != "rodando", -c["st"].st_mtime))
     teto = MAX_TODOS if todos else MAX_AGENTES
-    nome = _texto(linha.get("name"), 80) or _texto(reg.get("nome"), 80) or sess_id
+    nome = _texto(mascarar(linha.get("name")), 80) or _texto(mascarar(reg.get("nome")), 80) or sess_id
     if len(escolhidos) > teto:
         avisos.append("Sessão %s: mostrando %d de %d sub-agentes." % (nome, teto, len(escolhidos)))
         escolhidos = escolhidos[:teto]
