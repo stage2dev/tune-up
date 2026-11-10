@@ -292,6 +292,8 @@ class Lancador:
             # pular_permissoes: some so o pedido comum de permissao. Medido no CLI 2.1.322: regra de negar,
             # gancho que nega e gancho que pergunta continuam valendo com essa flag.
             pular = ["--dangerously-skip-permissions"] if self.cfg.get("pular_permissoes") else []
+            # --effort aceita max (claude --help); a chave de esforço do --settings vai só até xhigh (não
+            # medido aqui), então uma reserva pelo --settings não cobriria max. Esforço vai só pela opção.
             escolha = (["--model", modelo] if modelo else []) + (["--effort", esforco] if esforco else [])
             cmd = ([self.cfg["claude_bin"], "--bg", "-n", nome] + escolha + pular
                    + argv_travas(acao, self.cfg) + [prompt])
