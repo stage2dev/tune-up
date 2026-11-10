@@ -248,6 +248,19 @@ class TestH2aContratos(PromptBase):
         with open(os.path.join(self.dados, "erros.log"), encoding="utf-8") as f:
             self.assertGreaterEqual(f.read().count("plans_dir invalid"), len(hostis))
 
+    def test_plans_dir_com_espaco(self):
+        aceitos = ("My Project/.planning", "a b/c d", "./x y")
+        recusados = (" a", "a ", "a  b", "a /b", "a/ b", " ", "a\tb", "a\nb", "../a b", "a b/../..",
+                     "/a b", "a b; rm x")
+        for i, pd in enumerate(aceitos + recusados):
+            with self.subTest(plans_dir=pd):
+                d = self.projeto("e%d" % i, {"plans_dir": pd})
+                esperado = pd if pd in aceitos else ".planning"
+                self.assertEqual(self.dump(d)["plans_dir"], esperado)
+                r = subprocess.run([sys.executable, SCRIPT, "info"], cwd=d, env=self.env, timeout=20,
+                                   capture_output=True, text=True, stdin=subprocess.DEVNULL)
+                self.assertEqual(json.loads(r.stdout)["plans_dir"], os.path.normpath(os.path.join(d, esperado)))
+
     def test_plans_dir_ancorado_na_raiz_do_projeto(self):
         self.cwd = self.projeto("proj2", {"plans_dir": "docs"})
         self.sessao(modo_pesquisa=True)

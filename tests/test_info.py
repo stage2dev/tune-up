@@ -147,5 +147,57 @@ class TestInfo(Base):
                 self.env["TUNEUP_USER_JSON"] = p
                 self.assertFalse(self.info()["setup_done"])
 
+    def plugin(self, nome, skills):
+        """Plugin in the temp HOME with skills {dir: SKILL.md text}; returns its install path."""
+        raiz = os.path.join(self.tmp, "cache", nome)
+        for d, texto in skills.items():
+            os.makedirs(os.path.join(raiz, "skills", d))
+            with open(os.path.join(raiz, "skills", d, "SKILL.md"), "w", encoding="utf-8") as f:
+                f.write(texto)
+        return raiz
+
+    def instalados(self, dados):
+        p = os.path.join(self.tmp, ".claude", "plugins", "installed_plugins.json")
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(dados if isinstance(dados, str) else json.dumps(dados))
+
+    def test_pitfall_skills(self):
+        self.assertEqual(self.info()["pitfall_skills"], [])  # no installed_plugins.json
+        velho = self.plugin("velho", {"armadilhas-back": '---\nname: armadilhas-back\ndescription: "velha"\n'
+                                      'paths: ["old/**"]\n---\n'})
+        novo = self.plugin("novo", {
+            "armadilhas-back": '---\nname: armadilhas-back\ndescription: "Armadilhas do back"\n'
+                               'paths: ["**/backend/**", "*.py"]\n---\nbody\n',
+            "front": "---\nname: front-pitfalls\ndescription: >\n  UI traps\npaths:\n  - \"src/**\"\n"
+                     "  - 'app/*.tsx'\n---\n",
+            "sem-paths": "---\nname: x-pitfall\ndescription: d\n---\n",
+            "paths-texto": "---\nname: y-pitfall\npaths: src/**\n---\n",
+            "nao-e": '---\nname: plano\ndescription: plans\npaths: ["a/**"]\n---\n',
+            "sem-fim": '---\nname: z-pitfall\npaths: ["a/**"]\n',
+            "corpo": '# Pitfall in the body only\npaths: ["a/**"]\n'})
+        self.instalados({"version": 2, "plugins": {
+            "velho@m": [{"installPath": velho, "lastUpdated": "2026-01-01T00:00:00.000Z"}],
+            "novo@m": [{"installPath": novo, "lastUpdated": "2026-10-01T00:00:00.000Z"}],
+            "lixo@m": ["x", {"installPath": 5}, {"installPath": os.path.join(self.tmp, "nao-existe")}]}})
+        ps = self.info()["pitfall_skills"]
+        self.assertEqual([p["name"] for p in ps], ["armadilhas-back", "front-pitfalls"])
+        self.assertEqual(ps[0], {"name": "armadilhas-back", "paths": ["**/backend/**", "*.py"],
+                                 "path": os.path.realpath(os.path.join(novo, "skills", "armadilhas-back", "SKILL.md"))})
+        self.assertEqual(ps[1]["paths"], ["src/**", "app/*.tsx"])
+        self.assertTrue(all(os.path.isabs(p["path"]) for p in ps))
+
+    def test_pitfall_skills_arquivo_ruim(self):
+        for bruto in ("{quebrado", "[1, 2]", '{"plugins": 5}', '{"plugins": {"a": 5}}', ""):
+            with self.subTest(bruto=bruto):
+                self.instalados(bruto)
+                self.assertEqual(self.info()["pitfall_skills"], [])
+
+    def test_pitfall_skills_limite(self):
+        raiz = self.plugin("muitos", {"s%03d" % i: '---\nname: p%03d-pitfall\npaths: ["a"]\n---\n' % i
+                                      for i in range(205)})
+        self.instalados({"plugins": {"m@m": [{"installPath": raiz}]}})
+        self.assertEqual(len(self.info()["pitfall_skills"]), 200)
+
 if __name__ == "__main__":
     unittest.main()

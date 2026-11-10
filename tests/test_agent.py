@@ -147,7 +147,8 @@ class TestH2bVolta1Modelos(AgentBase):
         s = self.agent({"subagent_type": "tune-up:mapper", "prompt": "x"},
                        {"transcript_path": self.transcript("claude-fable-5-1")})
         self.assertEqual(s["hookSpecificOutput"]["updatedInput"]["model"], "sonnet")
-        s = self.agent({"subagent_type": "tune-up:writer", "prompt": "x"},
+        self.user_json({"language": "pt-BR", "models": {"sem-arquivo": {"model": "Fable"}}})
+        s = self.agent({"subagent_type": "tune-up:sem-arquivo", "prompt": "x"},
                        {"transcript_path": self.transcript("claude-fable-5-1")})
         self.assertEqual(self.decisao(s), "bloquear")
 
@@ -177,6 +178,105 @@ class TestH2bVolta1Modelos(AgentBase):
         novo = self.agent({"subagent_type": "tune-up:writer", "prompt": "x"},
                           {"transcript_path": self.transcript("claude-opus-5-5")})["hookSpecificOutput"]["updatedInput"]
         self.assertEqual((novo["model"], novo["effort"]), ("sonnet", "medium"))
+
+
+class TestWorkflowEFrontmatter(AgentBase):
+    def wf(self, ti, modelo="claude-opus-5-5"):
+        return self.decisao(self.rodar("agent", {"tool_name": "Workflow", "tool_input": ti,
+                                                 "transcript_path": self.transcript(modelo)}))
+
+    def test_prosa_passa(self):
+        sc = ("// fable is forbidden here, don't use Fable\n/* fable\n prose */\n"
+              "agent({model: 'sonnet', prompt: 'do not run on affable rules'})")
+        self.assertIsNone(self.wf({"script": sc}))
+        # prose (3+ words) inside a string passes; short strings and the value of model: do not
+        self.assertIsNone(self.wf({"script": "agent({model: 'sonnet', prompt: 'never run on fable here'})"}))
+        self.assertEqual(self.wf({"script": "agent({model: 'sonnet', label: 'fable'})"}), "bloquear")
+        self.assertEqual(self.wf({"script": "agent({model: 'a b fable c', prompt: 'x'})"}), "bloquear")
+        self.assertEqual(self.wf({"script": "agent({model : `a b fable c`})"}), "bloquear")
+
+    def test_literal_de_modelo_bloqueia(self):
+        for sc in ["const m = 'claude-fable-5-2'; agent({model: m})", 'const m = "fable"; agent({model: m})',
+                   "agent({model: pick(`x/fable:latest`)})"]:
+            with self.subTest(sc=sc):
+                self.assertEqual(self.wf({"script": sc}), "bloquear")
+
+    def test_literal_qualquer_forma_bloqueia(self):
+        arn = "arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-fable-5-2-v1:0"
+        for sc in ['const M = "claude-fable-5-2[1m]";\nawait agent({prompt:"x", model: M})',
+                   'const M = "%s"; agent({prompt:"x", model: M})' % arn,
+                   'const M = "fable 5"; agent({prompt:"x", model: M})',
+                   'agent({prompt:"x", model: `${""}fable`})']:
+            with self.subTest(sc=sc):
+                self.assertEqual(self.wf({"script": sc}), "bloquear")
+
+    def script_em_arquivo(self, texto, nome="wf.js"):
+        with open(os.path.join(self.cwd, nome), "w", encoding="utf-8") as f:
+            f.write(texto)
+        return nome
+
+    def test_script_path(self):
+        self.assertEqual(self.wf({"scriptPath": self.script_em_arquivo("agent({model: 'fable'})")}), "bloquear")
+        self.assertEqual(self.wf({"scriptPath": os.path.join(self.cwd, "wf.js")}), "bloquear")
+        p = self.script_em_arquivo("// fable prose\nagent({model: 'sonnet', prompt: 'x'})", "b.js")
+        self.assertIsNone(self.wf({"scriptPath": p}, "claude-fable-5"))
+        p = self.script_em_arquivo("agent({prompt: 'x'})", "c.js")
+        self.assertEqual(self.wf({"scriptPath": p}, "claude-fable-5"), "bloquear")
+        self.assertIsNone(self.wf({"scriptPath": p}))
+
+    def test_script_path_ilegivel(self):
+        self.assertEqual(self.wf({"scriptPath": "nao-existe.js"}, "claude-fable-5"), "bloquear")
+        self.assertIsNone(self.wf({"scriptPath": "nao-existe.js"}))
+
+    def definir(self, pasta, tipo, modelo):
+        d = os.path.join(pasta, ".claude", "agents")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, tipo + ".md"), "w", encoding="utf-8") as f:
+            f.write("---\nname: %s\nmodel: %s\neffort: medium\n---\ncorpo\n" % (tipo, modelo))
+
+    def sessao_fable(self, tipo, cwd=None):
+        extra = {"transcript_path": self.transcript("claude-fable-5-1")}
+        if cwd:
+            extra["cwd"] = cwd
+        return self.agent({"subagent_type": tipo, "prompt": "x"}, extra)
+
+    def test_frontmatter_subindo_do_cwd(self):
+        sub = os.path.join(self.cwd, "a", "b")
+        os.makedirs(sub)
+        self.definir(self.cwd, "meu-agente", "sonnet")
+        s = self.sessao_fable("meu-agente", sub)
+        self.assertEqual(self.decisao(s), "corrigir")
+        self.assertEqual(s["hookSpecificOutput"]["updatedInput"]["model"], "sonnet")
+        self.assertEqual(self.decisao(self.sessao_fable("outro-agente", sub)), "bloquear")
+
+    def test_frontmatter_ambiguo_bloqueia(self):
+        d = os.path.join(self.cwd, ".claude", "agents")
+        os.makedirs(d, exist_ok=True)
+        for fm in ["model: >-\n  fable\n", "description: |\n  model: sonnet\n", "meta:\n  model: sonnet\n",
+                   "model: sonnet\nmodel: fable\n", "model: [sonnet]\n", "model: !tag sonnet\n"]:
+            with self.subTest(fm=fm):
+                with open(os.path.join(d, "amb.md"), "w", encoding="utf-8") as f:
+                    f.write("---\nname: amb\n" + fm + "---\ncorpo\n")
+                self.assertEqual(self.decisao(self.sessao_fable("amb")), "bloquear")
+
+    def test_frontmatter_proibido_ou_inherit_nao_conta(self):
+        for m in ["claude-fable-5", "inherit", "default", "\"\""]:
+            with self.subTest(m=m):
+                self.definir(self.cwd, "x-agente", m)
+                self.assertEqual(self.decisao(self.sessao_fable("x-agente")), "bloquear")
+
+    def test_frontmatter_no_home_e_no_plugin(self):
+        self.definir(self.tmp, "do-home", "haiku")  # HOME = self.tmp nos testes
+        self.assertNotEqual(self.decisao(self.sessao_fable("do-home")), "bloquear")
+        s = self.sessao_fable("tune-up:writer")  # agents/writer.md do plugin: model sonnet
+        self.assertNotEqual(self.decisao(s), "bloquear")
+        self.assertEqual(self.decisao(self.sessao_fable("tune-up:../writer")), "bloquear")
+
+    def test_precedencia_papel_vence_frontmatter(self):
+        self.definir(self.cwd, "meu-agente", "sonnet")
+        self.user_json({"language": "pt-BR", "models": {"meu-agente": {"model": "haiku"}}})
+        s = self.sessao_fable("meu-agente")
+        self.assertEqual(s["hookSpecificOutput"]["updatedInput"]["model"], "haiku")
 
 
 if __name__ == "__main__":

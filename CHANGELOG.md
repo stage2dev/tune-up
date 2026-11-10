@@ -2,6 +2,31 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## 2.2.0
+
+Fewer HIGH findings on the first pass, more work in parallel. From an audit of 10 measured Parts.
+
+- `info`: new `pitfall_skills` (name, absolute SKILL.md path, `paths`) from installed modules. `part` always lists the matching ones under "Skills to read" and hands the same paths to the reviewers; no catalog needed.
+- `part`: independent agents go in ONE message, in background (all mappers, all reviewers of an item, one checker per touched side). Read-only production aggregates (never personal values) go into the order as REAL DATA for items that read, filter or delete existing data. All CRITICAL/HIGH of all reviewers become ONE fix round that carries the original order and the cumulative diff; the re-review marks each previous finding closed or reopened. Progress is filled from the handoff json.
+- Work order: new REAL DATA and UI STATES sections; TESTS asks for lint, types and related tests of the touched files plus the profile's sentinel tests.
+- Executors: "Before handoff" self-check of failure paths, red -> green test per finding on a fix round, json block at the end. Reviewers: read the pitfalls after their own pass, json block before `Verdict:`.
+- Guard (`agent`): a Workflow script is no longer denied for prose (3+ words) that mentions a forbidden model; short string literals and `model:` values still deny. `scriptPath` is now checked like `script` (unreadable or over 512 KB denies when the session model is forbidden). An Agent without `model` uses the `model:` of its definition file before being denied.
+- Config: `plans_dir` accepts single spaces inside a segment.
+
+## 2.1.2
+
+Planning always lives in the local folder.
+
+- `part`: goal, progress, later, research and handoff are read and written in the local `plans_dir` (main checkout), never only in the worktree. At close they are copied into the Part branch, so the PR carries them; the local copy stays the source. A sibling Part closed in the local progress counts as done even before its merge.
+- `status`: reads the local progress, and cross-checks it with `git grep` over the phase branches. A closed line that exists only on a branch is reported as "local progress behind". A closed Part with no PR becomes "push/PR depends on the owner". An untracked phase folder in the checkout is not reported as odd.
+
+## 2.1.1
+
+Pitfalls grow from review findings.
+
+- `part`: progress records per item the pitfall skills read and CRITICAL/HIGH per round (`HIGH 2->0`).
+- `part` close: each CRITICAL/HIGH that can repeat becomes a drafted line for the matching pitfall skill (or a sharper existing line); the owner approves in one question and `/tune-up:learn` records it.
+
 ## 2.1.0
 
 Windows support (native, with Git for Windows).

@@ -18,16 +18,96 @@ def proibidos():
     return [m.strip().lower() for m in ler_usuario()[0]["forbidden_subagent_models"] if m.strip()]
 
 
-RE_WF_MODELO = re.compile(r"[\"']?model[\"']?\s*[:=]\s*[`'\"]([^`'\"]*)", re.I)
+# comments are skipped; every string literal (any length, any character) is checked whole
+RE_WF_TOKEN = re.compile(r"//[^\n]*|/\*.*?\*/|'(?:\\.|[^'\\\n])*'|\"(?:\\.|[^\"\\\n])*\"|`(?:\\.|[^`\\])*`", re.S)
+LIMITE_SCRIPT = 512 * 1024
+
+
+RE_WF_ANTES = re.compile(r"model[\"']?\s*[:=]\s*$", re.I)
 
 
 def workflow_proibido(script, lista):
-    """Forbidden name in a `model:` value or anywhere in the script text (token boundary)."""
-    for m in RE_WF_MODELO.finditer(script):
-        f = modelo_proibido(m.group(1), lista)
+    """Forbidden name (token boundary) in a string literal. Passes: comments, and prose
+    (3+ words: no model id has spaces) that is not the value of `model:`."""
+    for m in RE_WF_TOKEN.finditer(script):
+        t = m.group(0)
+        if t.startswith("/"):
+            continue
+        if len(t[1:-1].split()) >= 3 and not RE_WF_ANTES.search(script[max(0, m.start() - 40):m.start()]):
+            continue
+        f = modelo_proibido(t[1:-1], lista)
         if f:
             return f
-    return modelo_proibido(script, lista)
+    return None
+
+
+def ler_script(caminho, cwd):
+    """Text of a Workflow `scriptPath` (relative to the hook cwd), capped; None if unreadable."""
+    try:
+        p = os.path.join(cwd or "", os.path.expanduser(caminho))
+        with open(p, "rb") as f:
+            dados = f.read(LIMITE_SCRIPT + 1)
+        return None if len(dados) > LIMITE_SCRIPT else dados.decode("utf-8", "ignore")  # too big = unreadable
+    except (OSError, ValueError):
+        return None
+
+
+RE_TIPO = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+RAIZ_PLUGIN = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def modelo_frontmatter(caminho):
+    try:
+        with open(caminho, encoding="utf-8", errors="ignore") as f:
+            linhas = f.read(8192).splitlines()
+    except OSError:
+        return None
+    if not linhas or linhas[0].strip() != "---":
+        return None
+    achados = []
+    for linha in linhas[1:]:
+        if linha.strip() == "---":
+            # only a top-level `model:` (column 0) counts; repeated, block/flow/tag/anchor values = no model
+            if len(achados) != 1 or achados[0][:1] in tuple(">|[{&*!"):
+                return None
+            m = re.match(r"[\"']?([^\"'#\s]*)", achados[0])
+            return m.group(1) or None
+        m = re.match(r"model\s*:(.*)$", linha)
+        if m:
+            achados.append(m.group(1).strip())
+    return None
+
+
+def candidatos_agente(tipo, cwd):
+    """Definition files of an agent type: .claude/agents walking up from cwd, ~/.claude/agents, plugin agents."""
+    t = str(tipo or "").strip()
+    plugin, _, nome = t.rpartition(":")
+    if not RE_TIPO.match(nome) or (plugin and not RE_TIPO.match(plugin)):
+        return []
+    if plugin:
+        try:
+            with open(os.path.join(RAIZ_PLUGIN, ".claude-plugin", "plugin.json"), encoding="utf-8") as f:
+                proprio = json.load(f).get("name")
+        except (OSError, ValueError, AttributeError):
+            proprio = None
+        raiz = RAIZ_PLUGIN if plugin == proprio else os.path.join(os.path.dirname(RAIZ_PLUGIN), plugin)
+        return [os.path.join(raiz, "agents", nome + ".md")]
+    saida, d = [], os.path.abspath(cwd) if cwd else None
+    while d:
+        saida.append(os.path.join(d, ".claude", "agents", nome + ".md"))
+        pai = os.path.dirname(d)
+        d = pai if pai != d else None
+    saida.append(os.path.join(os.path.expanduser("~"), ".claude", "agents", nome + ".md"))
+    return saida
+
+
+def modelo_do_agente(tipo, cwd, lista):
+    """Frontmatter `model:` of the first definition found; forbidden or inherit/default does not count."""
+    for c in candidatos_agente(tipo, cwd):
+        if os.path.isfile(c):
+            m = modelo_frontmatter(c)
+            return None if sem_modelo(m) or modelo_proibido(m, lista) else m
+    return None
 
 
 def papel_de(subagent_type):
@@ -82,7 +162,18 @@ def ev_agent(d, cfg):
     if nome == "Workflow":
         script = ti.get("script")
         if not isinstance(script, str):
-            return None
+            caminho = ti.get("scriptPath")
+            if not isinstance(caminho, str) or not caminho.strip():
+                return None
+            script = ler_script(caminho, d.get("cwd"))
+            if script is None:
+                sm = modelo_da_sessao(d.get("transcript_path"))
+                f = modelo_proibido(sm, lista) if sm else None
+                if f:
+                    return decisao_pre("bloquear", msg("modelo_proibido_sessao", f) +
+                                       " scriptPath unreadable: pass the script inline or write a literal "
+                                       "model on every agent() call.")
+                return None
         f = workflow_proibido(script, lista)
         if f:
             return decisao_pre("bloquear", msg("modelo_proibido", f))
@@ -109,11 +200,15 @@ def ev_agent(d, cfg):
     if sem_modelo(m_papel) or modelo_proibido(m_papel, lista):
         m_papel = None
     sem_modelo_lido = False
+    m_fm = None
     if not modelo:
         sm = modelo_da_sessao(d.get("transcript_path"))
         f = modelo_proibido(sm, lista) if sm else None
-        if f and not m_papel and not revisor:  # an allowed role model (or opus for reviewers) replaces it
-            return decisao_pre("bloquear", msg("modelo_proibido_sessao", f))
+        if f and not m_papel and not revisor:
+            # an allowed role model, opus for reviewers or an allowed frontmatter model replaces it
+            m_fm = modelo_do_agente(ti.get("subagent_type"), d.get("cwd"), lista)
+            if not m_fm:
+                return decisao_pre("bloquear", msg("modelo_proibido_sessao", f))
         if not sm:
             sem_modelo_lido = True
             log_erro("agent", "session model not read (transcript %r)" % (d.get("transcript_path"),))
@@ -125,6 +220,9 @@ def ev_agent(d, cfg):
     elif not modelo and revisor:
         novo["model"] = "opus"
         feitos.append("model=opus")
+    elif m_fm:  # pin the validated frontmatter model so the run uses exactly it
+        novo["model"] = m_fm
+        feitos.append("model=" + m_fm)
     elif sem_modelo_lido and not revisor:  # revisor recebe model=opus acima
         avisos.append(msg("modelo_nao_lido"))
     if revisor and modelo and ("haiku" in modelo_l or "sonnet" in modelo_l):
