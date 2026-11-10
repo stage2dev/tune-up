@@ -2,6 +2,10 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## 2.4.2
+
+- Tests: `test_pitfall_skills_limite` hung on Windows, it was never slow. The test waited for `info` to exit before reading its stdout from a pipe; with 200 skills the answer is larger than a Windows pipe buffer (about 4 KB), so the child blocked on write and the wait timed out at any limit. stdout now goes to a temp file and the limit is back to 5 s. 2.4.1 raised the limit to 30 s on a wrong guess.
+
 ## 2.4.1
 
 Panel groundwork (Part 0 of the studio plan).
