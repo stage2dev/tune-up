@@ -317,10 +317,10 @@ class Lancador:
             except BaseException:
                 trabalho.apagar(pasta)
                 raise
-            m = RE_SAIDA.search(RE_ANSI.sub("", out + "\n" + err))
-            if cod != 0 or not m:
+            if cod != 0 or not (m := RE_SAIDA.search(RE_ANSI.sub("", out + "\n" + err))):
                 trabalho.apagar(pasta)
-                raise ErroAcao("Não consegui começar a sessão do Claude. Veja se o comando claude funciona.", 500)
+                raise ErroAcao("Não consegui começar a sessão do Claude (%s). Veja se o comando claude funciona."
+                               % mascara.primeira_linha(err + "\n" + out), 500)  # causa: workspace sem confiança...
             t = self.relogio()
             reg = {"id": m.group(1), "sessao_id": "", "nome": nome, "acao": acao_id, "grupo": acao["grupo"],
                    "titulo": acao["titulo"], "params": valores, "iniciada_em": agora_iso(t),

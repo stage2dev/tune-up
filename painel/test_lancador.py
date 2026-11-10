@@ -45,7 +45,7 @@ class CLIFalso:
         self.chamadas.append((list(cmd), cwd))
         if cmd[1:2] == ["--bg"]:
             if self.falhar_bg:
-                return 1, "", "erro"
+                return 1, "", "\x1b[31mWorkspace not trusted. tok " + "a" * 45 + "\x1b[0m\nsegunda"
             self.n += 1
             i = "%08x" % (0xabc00000 + self.n)
             self.agentes.append({"id": i, "sessionId": i + "-1111-2222-3333-444455556666", "name": cmd[3],
@@ -250,6 +250,7 @@ class TesteLancador(unittest.TestCase):
         with self.assertRaises(lancador.ErroAcao) as ctx:
             self.l.iniciar("t.leve", {})
         self.assertEqual(ctx.exception.codigo, 500)
+        self.assertIn("(Workspace not trusted. tok ***)", ctx.exception.mensagem)  # causa, mascarada e sem cor
         self.assertEqual(self.l.registro.ler(), [])
 
     def test_parar_abrir_e_sumir(self):

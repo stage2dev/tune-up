@@ -79,6 +79,8 @@ def criar(pasta, acao, valores):
     if pasta is None:
         return
     os.makedirs(os.path.dirname(pasta), mode=0o700, exist_ok=True)
+    if os.path.realpath(os.path.dirname(pasta)) != os.path.dirname(pasta):  # `trabalhos` virou link: recusa
+        raise ErroAcao("A pasta de trabalhos do painel aponta para outro lugar (link). Apague o link e tente de novo.", 500)
     os.mkdir(pasta, 0o700)  # id novo: se já existir, falha em vez de misturar
     longos = _longos(acao)
     if longos:

@@ -42,9 +42,12 @@ RE_CAMPO = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,40}$")
 RE_CONTROLE = re.compile(r"[\x00-\x1f\x7f]")
 NEGAR_LEVE = ["Edit(**/.claude/settings*.json)", "Write(**/.claude/settings*.json)",
               "MultiEdit(**/.claude/settings*.json)"]
-CAMINHO_CONFIG = re.compile(r"(?i)(^|[/\s'\"=])\.claude/(settings[^/\s'\"]*\.json|(hooks|skills|plugins)\b)"
-                            r"|(^|[/\s'\"=])(claude(\.local)?\.md|\.mcp\.json)($|[/\s'\";|&)<>])"
-                            r"|(^|[/\s'\"=])\.tune-up/painel(\.json|[\w.-]*/(?!dados/))")
+_CONFIG = (r"(?i)(^|[/\s'\"=])\.claude/(settings[^/\s'\"]*\.json|(hooks|skills|plugins)\b)"
+           r"|(^|[/\s'\"=])(claude(\.local)?\.md|\.mcp\.json)($|[/\s'\";|&)<>])"
+           r"|(^|[/\s'\"=])\.tune-up/painel(\.json|[\w.-]*/%s)")
+# <pacote>/dados/ fica de fora, menos o que é do dono; com `..` no Bash, a exceção `dados/` não vale
+CAMINHO_CONFIG = re.compile(_CONFIG % r"((?!dados/)|dados/(estudio-dono\.json|aprovados)\b)")
+CAMINHO_CONFIG_PP = re.compile(_CONFIG % "")
 BASH_ESCREVE = re.compile(r">|\btee\b|\bsed\s+-i|\bmv\b|\bcp\b|\brm\b|\bchmod\b|\bln\b|\btouch\b|\btruncate\b")
 # Bash por texto: o que mais escreve (verbo no início do comando, heredoc, find -delete...).
 BASH_ESCREVE_MAIS = re.compile(r"(?i)<<|\s-(delete|exec|execdir|ok)\b|\bsort\b[^;|&]*\s-o|\b(perl|ruby)\b[^;|&]*\s-\w*i")
@@ -208,7 +211,7 @@ def _liberado(texto, i, libs):
 
 def _protegido(texto, conf, forma=None, sem_lib=False):
     """`forma` (opcional) normaliza protegidos e liberados do mesmo jeito que o texto."""
-    if CAMINHO_CONFIG.search(texto):
+    if (CAMINHO_CONFIG_PP if sem_lib else CAMINHO_CONFIG).search(texto):
         return True
     libs = [] if sem_lib else [forma(x) if forma else x for x in conf.get("lib") or []]
     for p in conf.get("prot") or []:
@@ -222,9 +225,11 @@ def _protegido(texto, conf, forma=None, sem_lib=False):
     return False
 
 
-def _bash_comparavel(cmd, sc):
-    """Comando com aspas tiradas ("/a"'b' = /ab), `\\` -> `/`, `/./` e `//` no meio da palavra colapsados."""
-    t = _barra(re.sub(r"[\"']", "", cmd), sc)
+def _bash_comparavel(cmd, sc, escape=False):
+    """Comando com aspas tiradas ("/a"'b' = /ab), `\\` -> `/` (escape=True: `\\x` -> `x`, como o shell POSIX lê),
+    `/./` e `//` no meio da palavra colapsados."""
+    t = re.sub(r"[\"']", "", cmd)
+    t = _barra(re.sub(r"\\(.)", r"\1", t) if escape else t, sc)
     t = re.sub(r"/\.(?=/)", "", t)
     return re.sub(r"(?<=[^\s=<>;|&(])/{2,}", "/", t)
 
@@ -247,17 +252,28 @@ def _disfarcado(norm, conf, forma):
     return False
 
 
-def _protegido_normal(texto, conf, comando):
+def _resolvidos(norm, cwd, sc):
+    """Cada palavra relativa resolvida contra o cwd da sessão (`../../x` a partir de {trabalho})."""
+    base = caminho_comparavel(cwd, sc)
+    return " ".join(posixpath.normpath(posixpath.join(base, tok)) for tok in re.split(r"[\s=<>;|&()]+", norm)
+                    if tok and not tok.startswith(("/", "-", "~", "$")) and not RE_UNIDADE.match(tok))
+
+
+def _protegido_normal(texto, conf, comando, cwd=""):
     """Mesma checagem com `\\` -> `/` (e `..` resolvido se for caminho). Só soma proteção.
-    No Bash: aspas, `//`, `/./` e curinga/variável não disfarçam; com `..` a exceção `dados` não vale."""
-    sc = _sem_caixa(texto)
+    No Bash: aspas, `//`, `/./`, escape `\\x` e curinga/variável não disfarçam; com `..` a exceção `dados`
+    não vale; palavra relativa também é conferida resolvida contra o cwd da sessão (se veio)."""
+    sc = _sem_caixa(texto) or _sem_caixa(cwd)
     forma = lambda p: caminho_comparavel(p, sc)  # noqa: E731
-    norm = _bash_comparavel(texto, sc) if comando else caminho_comparavel(texto, sc)
-    if _protegido(norm, conf, forma, sem_lib=comando and PONTO_PONTO.search(norm) is not None):
-        return True
-    if comando:
-        return _disfarcado(norm, conf, forma)
-    return CAMINHO_CONFIG.search(RE_UNIDADE.sub("", norm)) is not None
+    if not comando:
+        norm = caminho_comparavel(texto, sc)
+        return _protegido(norm, conf, forma) or CAMINHO_CONFIG.search(RE_UNIDADE.sub("", norm)) is not None
+    for norm in {_bash_comparavel(texto, sc), _bash_comparavel(texto, sc, escape=True)}:
+        pp = PONTO_PONTO.search(norm) is not None
+        if (_protegido(norm, conf, forma, sem_lib=pp) or _disfarcado(norm, conf, forma) or cwd and _protegido(
+                _resolvidos(norm, cwd, sc), conf, forma, sem_lib=pp and re.search(r"\b(cd|pushd)\b", norm))):
+            return True
+    return False
 
 
 def _verbos(cmd):
@@ -302,8 +318,8 @@ def _casa(regra, ferramenta, entrada):
     return re.search(regra["entrada"], texto) is not None
 
 
-def decidir(conf, ferramenta, entrada):
-    """(decisão, motivo) ou None quando a trava não tem nada a dizer."""
+def decidir(conf, ferramenta, entrada, cwd=""):
+    """(decisão, motivo) ou None quando a trava não tem nada a dizer. `cwd`: o da sessão (entrada do gancho)."""
     entrada = entrada if isinstance(entrada, dict) else {}
     forte = conf.get("forte") if conf.get("forte") in DECISOES else "deny"
     if ferramenta in FERR_ARQUIVO:
@@ -317,7 +333,7 @@ def decidir(conf, ferramenta, entrada):
             return forte, "comando ilegível"
         verbos = _verbos(cmd)
         # leitura/rascunho: só verbo de leitura conhecido pode citar árvore protegida
-        if (_protegido(cmd, conf) or _protegido_normal(cmd, conf, True)) and (
+        if (_protegido(cmd, conf) or _protegido_normal(cmd, conf, True, cwd if isinstance(cwd, str) else "")) and (
                 _escreve(cmd, verbos) or conf.get("leve") and any(v not in VERBOS_LEITURA for _, v in verbos)):
             return forte, "mexer nas regras do Claude ou do painel"
         if conf.get("bash") and _composto_ou_script(cmd, verbos):  # antes do `permitir`: nada o cala
@@ -337,7 +353,8 @@ def principal(argv, stdin, stdout):
         conf = _decodificar(argv[1] if len(argv) > 1 else "")
         falha = conf.get("falha") if conf.get("falha") in DECISOES else "deny"
         dados = json.load(stdin)
-        resposta = decidir(conf, str(dados.get("tool_name") or ""), dados.get("tool_input") or {})
+        resposta = decidir(conf, str(dados.get("tool_name") or ""), dados.get("tool_input") or {},
+                           dados.get("cwd") or "")
     except Exception as erro:  # nunca libera no escuro
         resposta = falha, "a trava do painel falhou: " + type(erro).__name__
     if resposta:

@@ -11,7 +11,7 @@ import unittest  # noqa: E402
 from unittest import mock  # noqa: E402
 
 import travas  # noqa: E402
-from test_travas import ACAO_CODIGO, ACAO_LEITURA, conf, decisao  # noqa: E402
+from test_travas import ACAO_CODIGO, ACAO_LEITURA, conf, decisao, rodar_gancho  # noqa: E402
 
 PAINEL = "/p/.tune-up/painel"
 ACOES = "/p/.tune-up/pacote/acoes/a.json"
@@ -29,6 +29,56 @@ class TesteDadosPontoPonto(unittest.TestCase):
                         "cp a /p/.tune-up/pacote/dados/x/../../acoes/a.json"):
                 self.assertEqual(bash(c, cmd), esperado, cmd)
             self.assertIsNone(bash(c, "echo x > /p/.tune-up/pacote/dados/fotos/a.json"))
+
+
+class TesteCaminhoRelativo(unittest.TestCase):
+    """Revisão da Parte 1: com caminho relativo, `dados/../` e as coisas do dono passavam."""
+    DADOS = "/p/.tune-up/pacote/dados"
+
+    def _conf(self, acao):
+        return conf(acao, prot=("/p/.tune-up/painel", "/p/.tune-up/pacote", self.DADOS + "/estudio-dono.json",
+                                self.DADOS + "/aprovados"))
+
+    def test_relativo_sai_de_dados_ou_mexe_no_que_e_do_dono(self):
+        for acao, esperado in ((ACAO_LEITURA, "deny"), (ACAO_CODIGO, "ask")):
+            c = self._conf(acao)
+            for cmd in ("echo x > .tune-up/pacote/dados/../acoes/a.json",
+                        "cp /tmp/a .tune-up/pacote/dados/x/../../acoes/a.json",
+                        "cd .tune-up/pacote/dados/ && echo x > ../acoes/a.json",
+                        "echo x > .tune-up/pacote/dados/estudio-dono.json",
+                        "mkdir -p .tune-up/pacote/dados/aprovados/1"):
+                self.assertEqual(travas.decidir(c, "Bash", {"command": cmd}, "/p")[0], esperado, cmd)
+            trab = self.DADOS + "/trabalhos/ab12"
+            self.assertEqual(travas.decidir(c, "Bash", {"command": "echo x > ../../estudio-dono.json"}, trab)[0],
+                             esperado)
+            self.assertIsNone(travas.decidir(c, "Bash", {"command": "echo x > saida/ok.txt"}, trab))
+            self.assertIsNone(travas.decidir(c, "Bash", {"command": "echo x > .tune-up/pacote/dados/fotos/a"}, "/p"))
+
+    def test_layout_padrao_sem_cwd_pega_pelo_nome(self):
+        c = conf(ACAO_LEITURA)
+        for cmd in ("echo x > .tune-up/painel-projeto/dados/../acoes/a.json",
+                    "cd .tune-up/painel-projeto/dados/ && echo x > ../acoes/a.json",
+                    "echo x > .tune-up/painel-projeto/dados/estudio-dono.json",
+                    "mkdir -p .tune-up/painel-projeto/dados/aprovados/1"):
+            self.assertEqual(bash(c, cmd), "deny", cmd)
+        self.assertIsNone(bash(c, "echo x > .tune-up/painel-projeto/dados/fotos/a.json"))
+
+    def test_gancho_le_o_cwd_da_entrada(self):
+        c = self._conf(ACAO_LEITURA)
+        rc, out = rodar_gancho(travas._codificar(c), {"tool_name": "Bash", "cwd": self.DADOS + "/trabalhos/ab12",
+                                                       "tool_input": {"command": "echo x > ../../estudio-dono.json"}})
+        self.assertEqual((rc, out["permissionDecision"]), (0, "deny"))
+
+
+@unittest.skipIf(os.name == "nt", "barra invertida como escape é do shell POSIX")
+class TesteBarraInvertida(unittest.TestCase):
+    def test_escape_nao_disfarca_caminho(self):
+        for acao, esperado in ((ACAO_LEITURA, "deny"), (ACAO_CODIGO, "ask")):
+            c = conf(acao)
+            for cmd in ("echo '{}' > .cla\\ude/settings.json", "echo x > .claude/settings.js\\on",
+                        "echo x > CLAU\\DE.md", "ln -s ~/.cla\\ude/skills x", "echo x > .tune-up/pai\\nel/a.json",
+                        "cp /tmp/e /p/.tune-up/pa\\cote/acoes/a.json"):
+                self.assertEqual(bash(c, cmd), esperado, cmd)
 
 
 class TesteCaixaNoMac(unittest.TestCase):

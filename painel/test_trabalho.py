@@ -118,6 +118,16 @@ class TestePastaDeTrabalho(test_chat.Base):
         self.assertEqual(self.pastas(), [])
         self.assertEqual(lc.execucoes(), [])
 
+    @unittest.skipIf(os.name == "nt", "symlink no Windows pede privilégio")
+    def test_trabalhos_como_link_e_recusado(self):
+        alvo = os.path.join(self.tmp, "alvo")
+        os.makedirs(alvo)
+        os.makedirs(self.dados)
+        os.symlink(alvo, os.path.join(self.dados, "trabalhos"))  # plantado por uma sessão sem sandbox
+        with self.assertRaises(catalogo.ErroAcao) as c:
+            self.lanc().iniciar("estudio.post", {"briefing": TEXTO, "formato": "post"})
+        self.assertEqual((c.exception.codigo, os.listdir(alvo), self.bg()), (500, [], []))
+
     def test_acao_sem_marcador_nao_cria_pasta(self):
         lc = self.lanc()
         ex = lc.iniciar("dev.simples", {"t": "oi"})
