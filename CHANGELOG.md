@@ -2,6 +2,14 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## 2.4.1
+
+Panel groundwork (Part 0 of the studio plan).
+
+- Panel on Windows: the run-registry lock moved to `painel/trava.py` and uses `msvcrt.locking` there (`fcntl.flock` elsewhere), same interface. Reading and replacing `execucoes.json` retry on `PermissionError` (Windows refuses to replace a file another thread has open); a persistent read error now raises instead of looking like an empty list. Panel tests run on all three systems in CI. Not yet proven on a real Windows machine: CI is the proof.
+- CI: new `panel-web` job (Ubuntu) installs, tests and rebuilds the screens from an empty `dist` and fails when the committed build is stale. A rebuild must start from an empty `dist` (the CSS scanner reads the old bundle otherwise); `painel/README.md` says so.
+- `info`: `pitfall_skills` does one `realpath` per plugin instead of one per file. `test_pitfall_skills_limite` went past 5 s on Windows runners; the cause was not measured, so the test now prints the time and waits up to 30 s (other tests keep 5 s).
+
 ## 2.4.0
 
 The panel's home screen is now a chat.

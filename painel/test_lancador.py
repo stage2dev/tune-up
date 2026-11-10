@@ -196,8 +196,9 @@ class TesteLancador(unittest.TestCase):
         self.assertEqual(cwd, self.tmp)
         self.assertFalse(any(x.startswith("--") and ("skip" in x or "permission" in x) for x in cmd))
         arq = os.path.join(self.tmp, "dados", "execucoes.json")
-        self.assertEqual(stat.S_IMODE(os.stat(arq).st_mode), 0o600)
-        self.assertEqual(stat.S_IMODE(os.stat(os.path.join(self.tmp, "dados")).st_mode), 0o700)
+        if os.name != "nt":  # Windows não tem modo 0600/0700
+            self.assertEqual(stat.S_IMODE(os.stat(arq).st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE(os.stat(os.path.join(self.tmp, "dados")).st_mode), 0o700)
         regs = ler_json(arq)
         self.assertEqual(regs[0]["id"], ex["id"])
         lista = self.l.execucoes(forcar=True)
@@ -429,8 +430,9 @@ class TesteMigrarRegistro(unittest.TestCase):
         self.assertIn(aviso, self.cfg["avisos"])
         reg = lancador.Registro(self.cfg["dados_dir"])
         self.assertEqual([r["id"] for r in reg.ler()], ["9ea4b68b"])
-        self.assertEqual(stat.S_IMODE(os.stat(self.cfg["dados_dir"]).st_mode), 0o700)
-        self.assertEqual(stat.S_IMODE(os.stat(reg.arquivo).st_mode), 0o600)
+        if os.name != "nt":  # Windows não tem modo 0600/0700
+            self.assertEqual(stat.S_IMODE(os.stat(self.cfg["dados_dir"]).st_mode), 0o700)
+            self.assertEqual(stat.S_IMODE(os.stat(reg.arquivo).st_mode), 0o600)
         self.assertTrue(os.path.isfile(os.path.join(self.antiga, "execucoes.json")))  # painel antigo segue lendo
         reg.gravar([])  # o novo já existe: não volta a copiar por cima
         self.assertIsNone(config.migrar_registro_antigo(self.cfg, self.antiga))

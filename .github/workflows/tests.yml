@@ -49,10 +49,45 @@ jobs:
           ls painel/web/dist/assets/*.js
 
       - name: Panel tests
-        if: runner.os != 'Windows'
         working-directory: painel
         run: python -B -m unittest -v
 
       - name: Hook entrypoint smoke test
         run: |
           echo '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git status"},"cwd":"."}' | python scripts/guarda.py bash
+
+  panel-web:
+    name: panel screens (vitest + build + dist is fresh)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: painel/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+
+      - run: node --version
+
+      - run: npm ci
+
+      - run: npm test -- --run
+
+      - name: Build from a clean dist
+        # Tailwind scans dist/ for class names, so a build on top of an old dist
+        # emits extra CSS and different hashes. Build from scratch, like the committed one.
+        run: |
+          rm -rf dist
+          npm run build
+
+      - name: Check dist is committed and fresh
+        working-directory: .
+        run: |
+          git add -N painel/web/dist
+          if ! git diff --exit-code -- painel/web/dist; then
+            echo "::error::painel/web/dist is stale: run npm run build in painel/web and commit"
+            exit 1
+          fi

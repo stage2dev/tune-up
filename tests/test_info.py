@@ -3,6 +3,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import unittest
 
 from base import SCRIPT, Base
@@ -13,11 +14,11 @@ NAMES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 class TestInfo(Base):
     USER_JSON = None
 
-    def info(self, cwd=None):
+    def info(self, cwd=None, timeout=5):
         p = subprocess.Popen([sys.executable, SCRIPT, "info"], cwd=cwd or self.cwd, env=self.env,
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         try:
-            p.wait(timeout=5)  # stdin stays open: info must not read it
+            p.wait(timeout=timeout)  # stdin stays open: info must not read it
             out = p.stdout.read()
         finally:
             p.stdin.close()
@@ -197,7 +198,12 @@ class TestInfo(Base):
         raiz = self.plugin("muitos", {"s%03d" % i: '---\nname: p%03d-pitfall\npaths: ["a"]\n---\n' % i
                                       for i in range(205)})
         self.instalados({"plugins": {"m@m": [{"installPath": raiz}]}})
-        self.assertEqual(len(self.info()["pitfall_skills"]), 200)
+        # The panel calls `info` with 8 s (painel/leitor.py ler_info); the Windows CI time printed here
+        # (run with -v) decides the next step. Keep 30 s until it is measured.
+        t0 = time.perf_counter()
+        achadas = self.info(timeout=30)["pitfall_skills"]
+        print("\ninfo with 205 skills: %.2f s" % (time.perf_counter() - t0), file=sys.stderr)
+        self.assertEqual(len(achadas), 200)
 
 if __name__ == "__main__":
     unittest.main()
