@@ -9,7 +9,7 @@
       "name": "tune-up",
       "source": "./",
       "description": "A disciplined Claude Code workflow: research that changes nothing, written plans, one Part per conversation, model and effort per role, and guards for git, production databases and file size.",
-      "version": "2.3.0"
+      "version": "2.3.1"
     }
   ]
 }
