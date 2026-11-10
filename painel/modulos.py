@@ -6,6 +6,8 @@ ficar dentro de <pacote>/modulos/<id>/ (atalho para fora é recusado). O módulo
 expõe INFO = {"id","titulo","icone"} e montar(ctx) -> dict; ctx = {"raiz",
 "pacote","dados","config","hoje"}. montar() roda com tempo limite, exceção vira
 erro só daquele módulo e a resposta passa por uma conferência mínima de forma.
+Opcional: INFO["acoes"] (lista de nomes) + agir(ctx, acao, dados) -> dict, e INFO["negar"]
+(regras de permissão negadas em toda sessão que o painel dispara).
 Os arquivos irmãos do módulo são importados isolados (ver _importar): nome igual a\num do núcleo ou de outro módulo não vaza.
 Python 3.9, só biblioteca padrão.
 """
@@ -17,6 +19,8 @@ import re
 import sys
 import threading
 import time
+
+import travas
 
 RE_ID = re.compile(r"^[a-z0-9_-]{1,40}$")
 NIVEIS = ("info", "atencao", "critico")
@@ -31,6 +35,8 @@ _lock_import = threading.Lock()  # um import de módulo por vez (mexe em sys.pat
 _carregados = {}   # caminho -> (mtime, módulo)
 _cache = {}        # id -> (quando, código, dado)
 _rodando = {}      # id -> thread
+_lock_agir = threading.Lock()  # trava das ações, separada da de montar
+_agindo = {}       # id -> thread de agir()
 
 
 class ErroModulo(Exception):
@@ -254,6 +260,91 @@ def listar(cfg, tempo=TEMPO_LIMITE):
             avisos.append("%s: %s" % (item["titulo"], corpo.get("erro")))
         saida.append(item)
     return {"modulos": saida, "avisos": avisos}
+
+
+def _rodar_agir(mod, ctx, mid, acao, dados, tempo):
+    """agir() numa thread com tempo limite. Trava própria: montar rodando não bloqueia uma ação,
+    mas duas ações do mesmo módulo ao mesmo tempo dão 409. O texto da exceção não sai (pode
+    trazer o que foi digitado em `dados`); só o nome do tipo."""
+    caixa = {}
+
+    def alvo():
+        try:
+            caixa["dado"] = mod.agir(ctx, acao, dados)
+        except BaseException as e:  # noqa: B902 - um módulo quebrado não derruba o painel
+            caixa["erro"] = e
+
+    with _lock_agir:
+        t = _agindo.get(mid)
+        if t is not None and t.is_alive():
+            raise ErroModulo(409, "Esta tela ainda está fazendo a ação anterior. Espere terminar.")
+        t = threading.Thread(target=alvo, name="modulo-agir-%s" % mid, daemon=True)
+        _agindo[mid] = t
+    t.start()
+    t.join(tempo)
+    if t.is_alive():
+        raise ErroModulo(503, "Esta ação demorou demais.", ["agir() de %s passou de %d s" % (mid, int(tempo))])
+    with _lock_agir:
+        _agindo.pop(mid, None)
+    if "erro" in caixa:
+        raise ErroModulo(500, "Não consegui fazer esta ação.",
+                         ["%s.agir quebrou: %s" % (mid, type(caixa["erro"]).__name__)])
+    return caixa.get("dado")
+
+
+def agir(cfg, mid, acao, dados, tempo=TEMPO_LIMITE):
+    """(código, corpo) de POST /api/modulos/<id>/acao. `dados` vai intacto para agir()."""
+    try:
+        mod = carregar(cfg, mid)
+        if not callable(getattr(mod, "agir", None)):
+            raise ErroModulo(404, "Esta tela não tem ações.")
+        i = getattr(mod, "INFO", None)
+        acoes = i.get("acoes") if isinstance(i, dict) else None
+        acoes = [a for a in acoes if isinstance(a, str)] if isinstance(acoes, list) else []
+        if not isinstance(acao, str) or acao not in acoes:
+            raise ErroModulo(400, "Esta tela não tem essa ação.")
+        if not isinstance(dados, dict):
+            raise ErroModulo(400, "Os dados da ação precisam ser um objeto.")
+        resultado = _rodar_agir(mod, contexto(cfg), mid, acao, dados, tempo)
+        if not isinstance(resultado, dict):
+            raise ErroModulo(500, "Esta ação devolveu algo estranho.", ["agir() não devolveu um objeto"])
+        try:
+            json.dumps(resultado, ensure_ascii=False, allow_nan=False)
+        except (TypeError, ValueError):
+            raise ErroModulo(500, "Esta ação devolveu algo estranho.", ["resposta de agir() não vira JSON"])
+    except ErroModulo as e:
+        return e.codigo, e.corpo()
+    with _lock:
+        _cache.pop(mid, None)  # a próxima leitura já mostra o efeito da ação
+    return 200, {"ok": True, "resultado": resultado}
+
+
+def negar_dos_modulos(cfg):
+    """(regras, avisos): INFO["negar"] de todos os módulos habilitados, para toda sessão disparada.
+
+    Só importa o módulo e lê INFO (montar() não roda). Lista de textos no formato do "negar" das
+    ações; forma errada é ignorada com aviso. O núcleo só junta os textos declarados.
+    """
+    regras, avisos = [], []
+    for mid in cfg.get("modulos") or []:
+        try:
+            mod = carregar(cfg, mid)
+        except ErroModulo as e:
+            avisos.append("módulo %s não carregou; as regras de negar dele não valem: %s"
+                          % (mid, "; ".join(e.avisos) or e.mensagem))
+            continue
+        i = getattr(mod, "INFO", None)
+        if not isinstance(i, dict) or "negar" not in i:
+            continue
+        try:
+            trv = travas.validar_travas({"negar": i["negar"]})
+            if trv["regras_negar"]:
+                raise ValueError("só regras de permissão em texto")
+        except ValueError as e:
+            avisos.append("módulo %s: INFO['negar'] ignorado (%s)" % (mid, e))
+            continue
+        regras += [r for r in trv["negar"] if r not in regras]
+    return regras, avisos
 
 
 def esquecer():

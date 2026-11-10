@@ -11,6 +11,7 @@ import tempfile  # noqa: E402
 import threading  # noqa: E402
 import types  # noqa: E402
 import unittest  # noqa: E402
+from unittest import mock  # noqa: E402
 
 import lancador  # noqa: E402
 import painel  # noqa: E402
@@ -200,6 +201,79 @@ class TesteHTTP(unittest.TestCase):
         st, d = self.app.modulo("modulo_ruim_xyz")
         self.assertEqual(st, 500)
         self.assertIn("quebrou", d["avisos"][0])
+
+
+class TesteHTTPAcaoDeModulo(unittest.TestCase):
+    """POST /api/modulos/<id>/acao e GET ?fresco=1 no servidor de verdade, módulo falso num pacote temporário."""
+
+    @classmethod
+    def setUpClass(cls):
+        import modulos
+        from test_modulos import pacote_loja
+        cls.modulos = modulos
+        cls.tmp = os.path.realpath(tempfile.mkdtemp())
+        cls.cfg = pacote_loja(cls.tmp)
+        cls.app = painel.App(cls.cfg, rodar_externos=False)
+        cls.app.log = False
+        cls.srv = painel.criar_servidor(cls.app, 0)
+        cls.porta = cls.app.porta
+        threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.shutdown()
+        cls.srv.server_close()
+        shutil.rmtree(cls.tmp)
+
+    pedir, cab_post, post = TesteHTTP.pedir, TesteHTTP.cab_post, TesteHTTP.post
+
+    def setUp(self):
+        self.modulos.esquecer()
+        self.addCleanup(self.modulos.esquecer)
+
+    def test_acao_valida_e_erros(self):
+        rota = "/api/modulos/loja/acao"
+        st, d = self.post(rota, {"acao": "salvar", "dados": {"codigo": "987654"}})
+        self.assertEqual((st, d["ok"], d["resultado"]["recebi"]), (200, True, {"codigo": "987654"}))
+        self.assertEqual(self.post(rota, {"acao": "apagar", "dados": {}})[0], 400)
+        self.assertEqual(self.post(rota, {"dados": {}})[0], 400)
+        self.assertEqual(self.post(rota, {"acao": "salvar", "dados": "x"})[0], 400)
+        self.assertEqual(self.post("/api/modulos/sumido/acao", {"acao": "salvar", "dados": {}})[0], 404)
+        self.assertEqual(self.post("/api/modulos/desligado/acao", {"acao": "salvar", "dados": {}})[0], 404)
+        self.assertEqual(self.post("/api/modulos/so_tela/acao", {"acao": "salvar", "dados": {}})[0], 404)
+        ok = {"acao": "salvar", "dados": {}}
+        self.assertEqual(self.post(rota, ok, **{"X-Painel-Token": None})[0], 403)
+        self.assertEqual(self.post(rota, ok, **{"X-Painel-Token": "errado"})[0], 403)
+        self.assertEqual(self.post(rota, ok, Origin="http://evil.example")[0], 403)
+        self.assertEqual(self.post(rota, ok, **{"Sec-Fetch-Site": "same-site"})[0], 403)
+        self.assertEqual(self.post(rota, ok, **{"Content-Type": "text/plain"})[0], 415)
+
+    def test_quebra_e_demora_nao_ecoam_nem_derrubam(self):
+        st, d = self.post("/api/modulos/loja/acao", {"acao": "quebrar", "dados": {"senha": "segredo-abc"}})
+        self.assertEqual(st, 500)
+        self.assertNotIn("segredo-abc", json.dumps(d))
+        self.assertEqual(set(d), {"erro", "avisos"})
+        curto = mock.patch.object(self.modulos.agir, "__defaults__", (0.2,))  # tempo limite de 0,2 s
+        curto.start()
+        self.addCleanup(curto.stop)
+        st, d = self.post("/api/modulos/loja/acao", {"acao": "demorar", "dados": {"senha": "segredo-abc"}})
+        self.assertEqual(st, 503, d)
+        self.assertNotIn("segredo-abc", json.dumps(d))
+        self.assertEqual(self.post("/api/modulos/loja/acao", {"acao": "salvar", "dados": {}})[0], 409)
+        for t in list(self.modulos._agindo.values()):
+            t.join(5)
+        self.assertEqual(self.pedir("GET", "/api/modulos")[0], 200)  # servidor continua de pé
+
+    def test_get_fresco_ignora_cache(self):
+        def contagem(rota):
+            st, _c, dados = self.pedir("GET", rota)
+            self.assertEqual(st, 200)
+            return json.loads(dados)["abas"][0]["blocos"][0]["texto"]
+        primeiro = contagem("/api/modulos/loja")
+        self.assertEqual(contagem("/api/modulos/loja"), primeiro)  # cache de 30 s
+        fresco = contagem("/api/modulos/loja?fresco=1")
+        self.assertEqual(int(fresco), int(primeiro) + 1)
+        self.assertEqual(contagem("/api/modulos/loja"), fresco)
 
 
 class TesteSemBuild(unittest.TestCase):

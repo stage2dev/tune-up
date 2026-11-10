@@ -74,7 +74,9 @@ Chave que o núcleo não conhece é ignorada, mas chega aos módulos em `ctx["co
 
 - Só carrega ids listados em `modulos` (`^[a-z0-9_-]{1,40}$`), e só se o arquivo real fica dentro de `<pacote>/modulos/<id>/` (atalho para fora é recusado).
 - O módulo pode importar arquivos irmãos (`import util`). O import é isolado: cada módulo vê os seus irmãos, mesmo com nome igual a um arquivo do núcleo (`config.py`) ou de outro módulo, e nada fica no `sys.path` do servidor. Faça esses imports no topo do arquivo; import dentro de função não acha os irmãos.
-- `montar()` roda com tempo limite de 20 s; exceção ou demora vira 500 só daquele módulo. Resultado fica 30 s em cache.
+- `montar()` roda com tempo limite de 20 s; exceção ou demora vira 500 só daquele módulo. Resultado fica 30 s em cache. `GET /api/modulos/{id}?fresco=1` monta de novo sem olhar o cache.
+- Ações do módulo (opcional): `INFO["acoes"]` lista os nomes aceitos e `agir(ctx, acao, dados) -> dict` faz a ação; a tela chama `POST /api/modulos/{id}/acao` com `{"acao": texto, "dados": objeto}` e recebe `{"ok": true, "resultado": {...}}`. `dados` chega intacto ao módulo (pode levar um código de uso único digitado na tela) e o painel nunca registra nem devolve esse conteúdo. Respostas: 400 se `acao` não está em `INFO["acoes"]`, falta ou `dados` não é objeto; 404 se o módulo não existe, não está ligado ou não tem `agir`; 500 se `agir` quebra ou não devolve objeto (sem o texto da exceção, só o tipo); 503 se passa de 20 s; 409 se outra ação do mesmo módulo ainda roda. A trava das ações é separada da de `montar()` (uma tela montando não barra uma ação). Ação que dá certo apaga o cache da tela.
+- Regras de negar do módulo (opcional): `INFO["negar"]` é uma lista de textos no formato do `negar` de uma ação (regra de permissão, ex. `"mcp__servico__apagar"`). O núcleo junta as regras de todos os módulos ligados no `permissions.deny` de **toda** sessão que o painel dispara. Só o `INFO` é lido (`montar()` não roda). Forma errada ou módulo que não carrega: as regras dele não valem e sai aviso em `GET /api/acoes`.
 - O servidor confere a forma mínima (alerta fora do formato, aba sem `id`/`blocos` e bloco sem `tipo` saem com aviso); o resto do bloco passa como veio.
 
 ## Botões (ações)
@@ -124,6 +126,7 @@ Cruza o registro com `claude agents --json --all` (cache de 3 s). Medido no CLI 
 - Arquivos: `/assets/*` com cache longo, `index.html` sem cache, outra rota que não seja `/api` cai no `index.html`. Nada de `..`, ponto inicial, barra invertida, byte nulo ou atalho que saia de `web/dist`.
 - O leitor não segue atalho para fora do `plans_dir`, e nome de arquivo vindo do perfil (`goal`, `progress`, `later`) só vale se for nome simples.
 - Módulos e ações do pacote: só dentro do pacote, sem atalho para fora.
+- `POST /api/modulos/{id}/acao` passa pelas mesmas defesas de todo POST; o corpo e os `dados` nunca vão para o log nem para a resposta de erro.
 - Timeout de conexão de 15 s; subprocessos com lista e timeout.
 
 **Modelo de ameaça:** o painel dispara sessões do Claude com as permissões normais do seu usuário e executa o código Python dos módulos do pacote. Quem consegue mandar POST com o token é tratado como você. Um site de fora não consegue (origem, `Sec-Fetch-Site` e token). Um programa local não recebe o token num pedido simples a `/api/sessao`, mas pode forjar o cabeçalho `Sec-Fetch-Site`: a barreira é contra pedido descuidado, não contra outro programa decidido a atacar rodando como você. Quem escreve no pacote escreve código que o painel roda: trate o pacote como parte do projeto.
@@ -145,7 +148,8 @@ Tipos exatos em `contrato/api.d.ts`.
 | `POST /api/execucoes/{id}/abrir` | Terminal em `claude attach` |
 | `GET /api/acompanhamento` | listas do claude-mem separadas por área |
 | `GET /api/modulos` | telas extras ligadas e quantos alertas cada uma tem |
-| `GET /api/modulos/{id}` | conteúdo de uma tela extra |
+| `GET /api/modulos/{id}[?fresco=1]` | conteúdo de uma tela extra (`fresco=1` ignora o cache de 30 s) |
+| `POST /api/modulos/{id}/acao` | ação de uma tela extra (`agir`): 200, 400, 404, 409, 500, 503 |
 
 ## De onde vêm os dados de `/api/estado`
 

@@ -20,6 +20,7 @@ import time
 
 from catalogo import (ErroAcao, RE_ID_ACAO, carregar_catalogo, montar, nome_da_sessao,  # noqa: F401
                       publica, validar_params)
+import modulos
 from travas import argv_travas
 
 RE_ID_EXEC = re.compile(r"^[0-9a-f]{6,16}$")
@@ -162,7 +163,7 @@ class Lancador:
 
     def acoes(self):
         acoes, avisos = self.catalogo()
-        return [publica(a) for a in acoes], avisos
+        return [publica(a) for a in acoes], avisos + modulos.negar_dos_modulos(self.cfg)[1]
 
     def agentes(self, forcar=False):
         """{id: linha} de `claude agents --json --all` (cache curto) ou None se o CLI falhar."""
@@ -280,6 +281,11 @@ class Lancador:
             # pular_permissoes: some so o pedido comum de permissao. Medido no CLI 2.1.322: regra de negar,
             # gancho que nega e gancho que pergunta continuam valendo com essa flag.
             pular = ["--dangerously-skip-permissions"] if self.cfg.get("pular_permissoes") else []
+            extra = modulos.negar_dos_modulos(self.cfg)[0]  # INFO["negar"] dos módulos vale em toda ação
+            if extra:
+                trv = acao.get("_travas") or {}
+                negar = list(trv.get("negar") or [])
+                acao = dict(acao, _travas=dict(trv, negar=negar + [r for r in extra if r not in negar]))
             cmd = [self.cfg["claude_bin"], "--bg", "-n", nome] + pular + argv_travas(acao, self.cfg) + [prompt]
             cod, out, err = self.rodar(cmd, self.cfg["workspace"], 60)
             m = RE_SAIDA.search(RE_ANSI.sub("", out + "\n" + err))

@@ -35,6 +35,7 @@ TTL_ESTADO = 3  # segundos: várias abas abertas não refazem a leitura toda hor
 CORPO_MAX = 16 * 1024
 RE_ROTA_EXEC = re.compile(r"^/api/execucoes/([^/]{1,40})/(eventos|parar|abrir)$")
 RE_ROTA_MODULO = re.compile(r"^/api/modulos/([^/]{1,80})$")
+RE_ROTA_MODULO_ACAO = re.compile(r"^/api/modulos/([^/]{1,80})/acao$")
 RE_SESSAO = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 CSP = ("default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
@@ -251,7 +252,8 @@ def fazer_handler(app):
                 return self._json(200, modulos.listar(app.cfg))
             m = RE_ROTA_MODULO.match(caminho)
             if m:
-                return self._json(*modulos.montar(app.cfg, urllib.parse.unquote(m.group(1))))
+                fresco = (query.get("fresco") or ["0"])[0] in ("1", "true")
+                return self._json(*modulos.montar(app.cfg, urllib.parse.unquote(m.group(1)), usar_cache=not fresco))
             m = RE_ROTA_EXEC.match(caminho)
             if m and m.group(2) == "eventos":
                 return self._eventos(m.group(1), query)
@@ -303,6 +305,10 @@ def fazer_handler(app):
                     return self._json(200, r)
                 if m and m.group(2) == "abrir":
                     return self._json(200, app.lancador.abrir(m.group(1)))
+                m = RE_ROTA_MODULO_ACAO.match(caminho)
+                if m:  # `dados` vai intacto para o módulo e nunca é registrado nem ecoado
+                    return self._json(*modulos.agir(app.cfg, urllib.parse.unquote(m.group(1)),
+                                                    corpo.get("acao"), corpo.get("dados")))
                 return self._erro(404, "Não encontrado.")
             except lanc.ErroAcao as e:
                 extra = {"execucao_id": e.execucao_id} if e.execucao_id else {}
