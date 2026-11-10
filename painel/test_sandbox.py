@@ -66,6 +66,8 @@ class TesteSettings(unittest.TestCase):
                            "denyWrite": [DADOS + "/estudio-dono.json", DADOS + "/aprovados"]}})
         self.assertEqual(conf["worktree"], {"bgIsolation": "none"})
         self.assertEqual(conf["env"], {"HYPERFRAMES_NO_TELEMETRY": "1", "DO_NOT_TRACK": "1",
+                                       "HYPERFRAMES_NO_UPDATE_CHECK": "1", "HYPERFRAMES_NO_AUTO_INSTALL": "1",
+                                       "HYPERFRAMES_SKIP_SKILLS": "1",
                                        "GEMINI_API_KEY": "", "GOOGLE_API_KEY": ""})
         perm = conf["permissions"]
         self.assertIs(perm["blockWritesOutsideWorkingDirectories"], True)

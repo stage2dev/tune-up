@@ -2,6 +2,17 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## 2.6.0
+
+Studio plan, Part 1: mechanisms in the panel core, proven with real background sessions.
+
+- Actions can declare a `sandbox` block, a work folder (`{trabalho}`, created by the server before launch; the session runs with that folder as cwd), a long text parameter saved to a file, `env`, and time limits (`max_minutos`, `max_bloqueado_min`: the panel stops the session and frees the slot).
+- Guard hook: relative paths in Bash are resolved against the session cwd; `dados/../` no longer escapes; backslash escapes (`.cla\ude`) are read the way a POSIX shell reads them; the owner approval file and `aprovados/` are never writable by a session.
+- Measured on CLI 2.1.32x with a fixture action, `pular_permissoes` on and off: network (curl, ffmpeg over https, WebFetch, MCP) denied; writes outside the work folder denied by Bash and by Write; `.env` unreadable; one write inside the work folder accepted; headless Chrome renders a frame inside the sandbox with no extra flag; model and effort reach the session.
+- `claude --bg` refuses a folder that is not trusted, and inside a git repository trust is checked at the git root. The launch error now shows the cause.
+- `tune-up-studio/node/`: HyperFrames pinned to 0.9.6 with a lockfile (newest stable release at least 7 days old on 2026-11-10); install with `npm ci --ignore-scripts`, then `npm audit signatures`. Known: `npm audit` reports undici 7.25.0 (pinned by HyperFrames, also in its latest release).
+- Not proven: the effect of `worktree.bgIsolation` inside a git project.
+
 ## 2.5.0
 
 The panel closes the token door, masks what it shows and lets modules act.
