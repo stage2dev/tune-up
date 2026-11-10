@@ -216,7 +216,7 @@ class TesteAcoesDeModulo(unittest.TestCase):
 
     def test_tempo_limite_409_e_trava_separada_de_montar(self):
         cod, d = modulos.agir(self.cfg, "loja", "demorar", {}, tempo=0.2)
-        self.assertEqual(cod, 503, d)
+        self.assertEqual(cod, 504, d)
         cod, d = modulos.agir(self.cfg, "loja", "salvar", {})  # a anterior ainda roda
         self.assertEqual(cod, 409, d)
         self.assertEqual(modulos.montar(self.cfg, "loja", usar_cache=False)[0], 200)  # montar não espera ação
@@ -254,6 +254,12 @@ class TesteAcoesDeModulo(unittest.TestCase):
         cli = CLIFalso()
         lanc = lancador.Lancador(self.cfg, lambda: ESTADO, rodar=cli, plataforma="darwin")
         self.assertTrue(any("negar_ruim" in a for a in lanc.acoes()[1]))
+        with self.assertRaises(lancador.ErroAcao) as erro:  # negar ruim num módulo ligado: não dispara
+            lanc.iniciar("t.leve", {})
+        self.assertEqual(erro.exception.codigo, 409)
+        self.assertIn("A tela negar_ruim não carregou", erro.exception.mensagem)
+        self.assertEqual([c for c, _ in cli.chamadas if c[1:2] == ["--bg"]], [])
+        self.cfg["modulos"] = ["loja", "so_tela"]
         for acao, params in (("t.leve", {}), ("t.parte", {"fase": "187", "parte": "C"})):
             lanc.iniciar(acao, params)
             cmd = [c for c, _ in cli.chamadas if c[1:2] == ["--bg"]][-1]

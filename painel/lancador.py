@@ -268,6 +268,14 @@ class Lancador:
         if not prompt or prompt.startswith("-"):
             raise ErroAcao("O pedido ficou vazio.")
         chave = json.dumps(valores, sort_keys=True, ensure_ascii=False)
+        try:  # INFO["negar"] dos módulos vale em toda ação; lido antes das travas, com tempo limite
+            extra = modulos.regras_de_negar(self.cfg)
+        except modulos.ErroModulo as e:  # módulo que não carrega: fecha, não dispara sem as regras
+            raise ErroAcao(e.mensagem, e.codigo)
+        if extra:
+            trv = acao.get("_travas") or {}
+            negar = list(trv.get("negar") or [])
+            acao = dict(acao, _travas=dict(trv, negar=negar + [r for r in extra if r not in negar]))
         with self._trava, self.registro.trava():
             ativas = [e for e in self.execucoes(forcar=True, travado=True) if e["estado"] in ATIVOS]
             igual = [e for e in ativas if e["acao"] == acao_id
@@ -281,11 +289,6 @@ class Lancador:
             # pular_permissoes: some so o pedido comum de permissao. Medido no CLI 2.1.322: regra de negar,
             # gancho que nega e gancho que pergunta continuam valendo com essa flag.
             pular = ["--dangerously-skip-permissions"] if self.cfg.get("pular_permissoes") else []
-            extra = modulos.negar_dos_modulos(self.cfg)[0]  # INFO["negar"] dos módulos vale em toda ação
-            if extra:
-                trv = acao.get("_travas") or {}
-                negar = list(trv.get("negar") or [])
-                acao = dict(acao, _travas=dict(trv, negar=negar + [r for r in extra if r not in negar]))
             cmd = [self.cfg["claude_bin"], "--bg", "-n", nome] + pular + argv_travas(acao, self.cfg) + [prompt]
             cod, out, err = self.rodar(cmd, self.cfg["workspace"], 60)
             m = RE_SAIDA.search(RE_ANSI.sub("", out + "\n" + err))

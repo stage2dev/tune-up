@@ -257,7 +257,8 @@ class TesteHTTPAcaoDeModulo(unittest.TestCase):
         curto.start()
         self.addCleanup(curto.stop)
         st, d = self.post("/api/modulos/loja/acao", {"acao": "demorar", "dados": {"senha": "segredo-abc"}})
-        self.assertEqual(st, 503, d)
+        self.assertEqual(st, 504, d)
+        self.assertIn("ainda está rodando", d["erro"])
         self.assertNotIn("segredo-abc", json.dumps(d))
         self.assertEqual(self.post("/api/modulos/loja/acao", {"acao": "salvar", "dados": {}})[0], 409)
         for t in list(self.modulos._agindo.values()):

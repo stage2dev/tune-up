@@ -38,6 +38,7 @@ _cache = {}        # id -> (quando, código, dado)
 _rodando = {}      # id -> thread
 _lock_agir = threading.Lock()  # trava das ações, separada da de montar
 _agindo = {}       # id -> thread de agir()
+_geracao = {}      # id -> sobe a cada agir() que volta; montar() em voo não grava cache velho
 
 
 class ErroModulo(Exception):
@@ -230,6 +231,8 @@ def _rodar_montar(mod, ctx, mid, tempo):
 def montar(cfg, mid, usar_cache=True, tempo=TEMPO_LIMITE):
     """(código, corpo) de GET /api/modulos/<id>."""
     agora = time.monotonic()
+    with _lock:
+        geracao = _geracao.get(mid, 0)
     if usar_cache:
         with _lock:
             item = _cache.get(mid)
@@ -243,7 +246,8 @@ def montar(cfg, mid, usar_cache=True, tempo=TEMPO_LIMITE):
         codigo, corpo = e.codigo, e.corpo()
     if codigo in (200, 500):
         with _lock:
-            _cache[mid] = (time.monotonic(), codigo, corpo)
+            if _geracao.get(mid, 0) == geracao:  # uma ação no meio deixou este resultado velho
+                _cache[mid] = (time.monotonic(), codigo, corpo)
     return codigo, corpo
 
 
@@ -281,22 +285,30 @@ def _rodar_agir(mod, ctx, mid, acao, dados, tempo):
 
     def alvo():
         try:
-            caixa["dado"] = mod.agir(ctx, acao, dados)
+            r = mod.agir(ctx, acao, dados)
         except BaseException as e:  # noqa: B902 - um módulo quebrado não derruba o painel
             caixa["erro"] = e
+        else:
+            caixa["dado"] = r
+            with _lock:  # vale também quando agir() volta depois do tempo limite
+                _geracao[mid] = _geracao.get(mid, 0) + 1
+                _cache.pop(mid, None)
+        finally:
+            with _lock_agir:
+                if _agindo.get(mid) is threading.current_thread():
+                    del _agindo[mid]
 
-    with _lock_agir:
+    with _lock_agir:  # reserva e começa dentro da trava: dois cliques não passam juntos
         t = _agindo.get(mid)
         if t is not None and t.is_alive():
             raise ErroModulo(409, "Esta tela ainda está fazendo a ação anterior. Espere terminar.")
         t = threading.Thread(target=alvo, name="modulo-agir-%s" % mid, daemon=True)
         _agindo[mid] = t
-    t.start()
+        t.start()
     t.join(tempo)
     if t.is_alive():
-        raise ErroModulo(503, "Esta ação demorou demais.", ["agir() de %s passou de %d s" % (mid, int(tempo))])
-    with _lock_agir:
-        _agindo.pop(mid, None)
+        raise ErroModulo(504, "A ação ainda está rodando. Não repita; atualize a tela para ver o resultado.",
+                         ["agir() de %s passou de %d s e segue rodando" % (mid, int(tempo))])
     if "erro" in caixa:
         raise ErroModulo(500, "Não consegui fazer esta ação.",
                          ["%s.agir quebrou: %s" % (mid, type(caixa["erro"]).__name__)])
@@ -316,47 +328,78 @@ def agir(cfg, mid, acao, dados, tempo=TEMPO_LIMITE):
             raise ErroModulo(400, "Esta tela não tem essa ação.")
         if not isinstance(dados, dict):
             raise ErroModulo(400, "Os dados da ação precisam ser um objeto.")
-        resultado = _rodar_agir(mod, contexto(cfg), mid, acao, dados, tempo)
-        if not isinstance(resultado, dict):
-            raise ErroModulo(500, "Esta ação devolveu algo estranho.", ["agir() não devolveu um objeto"])
-        try:
-            json.dumps(resultado, ensure_ascii=False, allow_nan=False)
-        except (TypeError, ValueError):
-            raise ErroModulo(500, "Esta ação devolveu algo estranho.", ["resposta de agir() não vira JSON"])
+        resultado = _rodar_agir(mod, contexto(cfg), mid, acao, dados, tempo)  # já apagou o cache
     except ErroModulo as e:
         return e.codigo, e.corpo()
-    with _lock:
-        _cache.pop(mid, None)  # a próxima leitura já mostra o efeito da ação
+    try:  # a ação já aconteceu: resposta estranha vira 200 com aviso, para ninguém repetir
+        if not isinstance(resultado, dict):
+            raise TypeError
+        json.dumps(resultado, ensure_ascii=False, allow_nan=False)
+    except (TypeError, ValueError):
+        return 200, {"ok": True, "resultado": {},
+                     "avisos": ["A ação foi feita, mas a tela devolveu uma resposta inesperada."]}
     return 200, {"ok": True, "resultado": resultado}
 
 
-def negar_dos_modulos(cfg):
-    """(regras, avisos): INFO["negar"] de todos os módulos habilitados, para toda sessão disparada.
+def _ler_negar(cfg, mid):
+    """INFO["negar"] de um módulo (lista vazia se não tem). Não exige montar(). ErroModulo se o
+    módulo não carrega ou se a lista é inválida (uma entrada ruim derruba a lista toda)."""
+    caminho = caminho_do_modulo(cfg, mid)
+    try:
+        mod = _importar(caminho, mid)
+    except Exception as e:
+        raise ErroModulo(500, "Não consegui abrir esta tela.",
+                         ["modulo %s não carregou: %s: %s" % (mid, type(e).__name__, str(e)[:200])])
+    i = getattr(mod, "INFO", None)
+    if not isinstance(i, dict) or "negar" not in i:
+        return []
+    try:
+        trv = travas.validar_travas({"negar": i["negar"]})
+        if trv["regras_negar"]:
+            raise ValueError("só regras de permissão em texto")
+    except ValueError as e:
+        raise ErroModulo(500, "Esta tela está incompleta.", ["INFO['negar'] inválido (%s)" % e])
+    return trv["negar"]
 
-    Só importa o módulo e lê INFO (montar() não roda). Lista de textos no formato do "negar" das
-    ações; forma errada é ignorada com aviso. O núcleo só junta os textos declarados.
-    """
+
+def negar_dos_modulos(cfg):
+    """(regras, avisos) para GET /api/acoes: módulo com problema vira aviso (o disparo recusa)."""
     regras = []
     de_plugins, avisos = modulos_plugin.ligados(cfg)
     for mid in list(cfg.get("modulos") or []) + list(de_plugins):
         try:
-            mod = carregar(cfg, mid)
+            regras += [r for r in _ler_negar(cfg, mid) if r not in regras]
         except ErroModulo as e:
-            avisos.append("módulo %s não carregou; as regras de negar dele não valem: %s"
+            avisos.append("módulo %s com problema; nenhuma ação roda até corrigir ou desligar: %s"
                           % (mid, "; ".join(e.avisos) or e.mensagem))
-            continue
-        i = getattr(mod, "INFO", None)
-        if not isinstance(i, dict) or "negar" not in i:
-            continue
-        try:
-            trv = travas.validar_travas({"negar": i["negar"]})
-            if trv["regras_negar"]:
-                raise ValueError("só regras de permissão em texto")
-        except ValueError as e:
-            avisos.append("módulo %s: INFO['negar'] ignorado (%s)" % (mid, e))
-            continue
-        regras += [r for r in trv["negar"] if r not in regras]
     return regras, avisos
+
+
+def regras_de_negar(cfg, tempo=None):
+    """INFO["negar"] de todos os módulos ligados, para toda sessão disparada. Fecha na dúvida:
+    módulo que não carrega, com "negar" inválido ou que passa do tempo no import levanta
+    ErroModulo(409) com o id dele, e a sessão não sai sem as regras. Só importa e lê INFO."""
+    ids = list(cfg.get("modulos") or []) + list(modulos_plugin.ligados(cfg)[0])
+    caixa = {"atual": None}
+
+    def alvo():
+        regras = []
+        try:
+            for mid in ids:
+                caixa["atual"] = mid
+                regras += [r for r in _ler_negar(cfg, mid) if r not in regras]
+        except BaseException:  # noqa: B902 - qualquer falha deixa a caixa sem "fim": recusa
+            return
+        caixa["fim"] = regras
+
+    t = threading.Thread(target=alvo, name="modulos-negar", daemon=True)
+    t.start()
+    t.join(TEMPO_LIMITE if tempo is None else tempo)
+    regras, atual = caixa.get("fim"), caixa["atual"]
+    if regras is None:
+        raise ErroModulo(409, "A tela %s não carregou; corrija ou desligue-a em painel.json antes de rodar "
+                              "ações." % atual)
+    return regras
 
 
 def esquecer():
