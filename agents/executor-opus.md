@@ -35,6 +35,19 @@ House rules:
 - Money, auth and external sending: test the failure path and the repeat path (retry, timeout, duplicate call), not just the happy path. Never send a real message or use a real customer in a test.
 - A write that can be blocked silently (RLS, constraint): check affected rows, not just the absence of an error.
 
+Before handoff:
+- Re-read your own diff against the base and check each failure path. Answer under "## Failure paths checked" as "checked: file:line" or "n/a: reason":
+  - swallowed error or masking fallback
+  - write that does not check affected rows / returned rows
+  - partial failure in the middle of a multi-step write
+  - UI: state during loading and on read error
+  - double submit / concurrency
+  - data that already exists at deploy
+  - a test that only passes because of a mock or fake that accepts anything
+  - a central registry or catalog that lists things like the one you added (routes, jobs, send paths, allowlists, tours) left without the new entry
+- Run the touched-files checks and sentinel tests the order lists under TESTS before the handoff; a missing dependency is reported, never installed.
+- Fix round (the order carries findings): for each CRITICAL/HIGH in backend, database or sending code, first write a test that fails on the current code (paste the failing assertion line), then the fix; report red -> green. UI findings may say "n/a: reason". Re-run the original order's tests to avoid regressing it.
+
 Always finish with this handoff, in the language of the request:
 
 ## What I built
@@ -46,6 +59,9 @@ Always finish with this handoff, in the language of the request:
 ## Spec conformance
 - Met / Partial / Deviations
 
+## Failure paths checked
+- one line per path above: "checked: file:line" or "n/a: reason"
+
 ## Flags for the judge
 - risks, under-specified spots, what to look at hard
 
@@ -53,3 +69,5 @@ Always finish with this handoff, in the language of the request:
 - high / medium / low, and why
 
 Your final message IS the report the planner reads. Write for a skeptic, not to reassure.
+
+Last, a fenced json block: {"item","commit","files":[],"tests":[{"cmd","pass","fail"}],"skills_read":[paths actually read],"steps":real tool-call count}

@@ -1,6 +1,8 @@
 """tune-up: `guarda.py info` — resolved profile as JSON for the skills (never reads stdin)."""
+import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 
@@ -43,6 +45,87 @@ def repo_git(caminho):
     return real if os.path.exists(os.path.join(real, ".git")) else None
 
 
+LIMITE_SKILLS = 200  # runs at every skill invocation: bounded work
+LIMITE_BYTES = 64 * 1024
+RE_ARMADILHA = re.compile(r"pitfall|armadilha", re.I)
+
+
+def _valor(v):
+    v = v.strip()
+    return v[1:-1] if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'" else v
+
+
+def _lista(v):
+    """`paths` value on the key line: "" (dash list follows), inline list, or None (scalar)."""
+    if not v:
+        return []
+    if not v.startswith("["):
+        return None
+    try:
+        lista = json.loads(v)
+    except (ValueError, RecursionError):
+        lista = [_valor(x) for x in v.strip("[]").split(",")]
+    return [x for x in lista if isinstance(x, str) and x] if isinstance(lista, list) else None
+
+
+def frontmatter(texto):
+    """Top-level keys of the `---` frontmatter, tolerant, without yaml. `paths` becomes a list."""
+    linhas = texto.splitlines()
+    if not linhas or linhas[0].strip() != "---":
+        return {}
+    out, chave = {}, None
+    for linha in linhas[1:]:
+        if linha.strip() == "---":
+            return out
+        if linha[:1] in (" ", "\t", "-"):  # continuation: dash item or folded text
+            item = linha.strip()
+            if chave == "paths" and isinstance(out.get("paths"), list) and item.startswith("-"):
+                if _valor(item[1:]):
+                    out["paths"].append(_valor(item[1:]))
+            elif isinstance(out.get(chave), str):
+                out[chave] = (out[chave] + " " + item).strip()
+            continue
+        chave, _, v = linha.partition(":")
+        chave, v = chave.strip(), v.strip()
+        out[chave] = _lista(v) if chave == "paths" else ("" if v in (">", "|", ">-", "|-") else _valor(v))
+    return {}  # no closing `---`
+
+
+def pitfall_skills():
+    """Installed pitfall skills (name or description says pitfall/armadilha, with `paths`):
+    [{name, path, paths}] by name; same name twice: the newest install wins. [] on any problem."""
+    caminho = os.path.join(os.path.expanduser("~"), ".claude", "plugins", "installed_plugins.json")
+    try:
+        with open(caminho, encoding="utf-8") as f:
+            plugins = json.load(f).get("plugins")
+        instalacoes = [x for v in plugins.values() for x in (v if isinstance(v, list) else [v])
+                       if isinstance(x, dict) and isinstance(x.get("installPath"), str)]
+    except FileNotFoundError:
+        return []
+    except Exception as e:
+        log_erro("info", "installed_plugins.json unreadable: %r" % (e,))
+        return []
+    instalacoes.sort(key=lambda x: str(x.get("lastUpdated") or x.get("installedAt") or ""),
+                     reverse=True)  # ISO dates; stable sort keeps file order on ties
+    achadas, vistos = {}, 0
+    for inst in instalacoes:
+        for arq in sorted(glob.glob(os.path.join(glob.escape(inst["installPath"]), "skills", "*", "SKILL.md"))):
+            if vistos >= LIMITE_SKILLS:
+                return [achadas[n] for n in sorted(achadas)]
+            vistos += 1
+            try:
+                with open(arq, encoding="utf-8", errors="replace") as f:
+                    fm = frontmatter(f.read(LIMITE_BYTES))
+            except OSError:
+                continue
+            nome = fm.get("name") or os.path.basename(os.path.dirname(arq))
+            if not isinstance(fm.get("paths"), list) or not fm["paths"] or nome in achadas or \
+                    not RE_ARMADILHA.search("%s %s" % (fm.get("name") or "", fm.get("description") or "")):
+                continue
+            achadas[nome] = {"name": nome, "path": os.path.realpath(arq), "paths": fm["paths"]}
+    return [achadas[n] for n in sorted(achadas)]
+
+
 def montar_info(cwd=None):
     cwd = os.path.realpath(cwd or os.getcwd())
     usuario, existe = ler_usuario()
@@ -67,6 +150,7 @@ def montar_info(cwd=None):
         "tools": tools,
         "plugin_source": repo_git(usuario["plugin_source"]),
         "catalog_path": os.path.realpath(catalogo) if os.path.isfile(catalogo) else None,
+        "pitfall_skills": pitfall_skills(),
     }
 
 

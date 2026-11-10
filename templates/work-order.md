@@ -21,12 +21,19 @@ Edit only these paths (and new files the item needs).
 WHAT TO DO
 <action with concrete names: table, column, function, route>. Mirror: <file:line of an existing pattern>.
 
+REAL DATA (optional; "none" when not applicable)
+<aggregates and shapes from read-only production queries: counts, NULLs, lengths, min/max dates; never raw personal values>
+
+UI STATES (front items only)
+loading, read error, empty, retry, unmount on success, same-route navigation does not remount, refetch overwriting optimistic data, double click, no permission, flag off: each one "handled at file:line" or "n/a: reason".
+
 SKILLS TO READ (paths; read before coding)
 - <absolute path to SKILL.md> - <why, 1 line>
 (Empty: write "none".)
 
 TESTS
 - While working, focused tests only: <command> | tail -40
+- Before the handoff run lint, types and related tests of the TOUCHED files only, with the commands of the profile "Definition of done" (types filtered to touched files), plus the profile's "Sentinel tests" for the side touched. A missing dependency in the worktree is reported as "did not run: dependency", never installed.
 - Not the full suite; the checker runs it at the gate.
 - Database item: prove on a local database; never on production.
 
@@ -41,9 +48,9 @@ RULES
 - Before declaring done, recheck with grep that the edit is on disk.
 
 DELIVERY
-Handoff, with these headings: What I built / How I verified (command and observed output) / Spec conformance (criterion C) / Flags for the judge / Confidence.
+Handoff, with these headings: What I built / How I verified (command and observed output) / Spec conformance (criterion C) / Failure paths checked / Flags for the judge / Confidence. End with a fenced json block: {"item","commit","files":[],"tests":[{"cmd","pass","fail"}],"skills_read":[],"steps"}.
 ```
 
 Coordinator notes:
 - The `tune-up:mapper` map is pasted in; the executor does not re-explore what the order already located.
-- Fix round: a NEW order with only the CRITICAL/HIGH findings + the current diff, for a new executor.
+- Fix round: a NEW order for a new executor: the ORIGINAL order (goal, files owned, skills) + all CRITICAL/HIGH findings from all reviewers + the item's cumulative diff. ONE fix round for all reviewers together.

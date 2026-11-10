@@ -239,12 +239,15 @@ def ler_config_projeto(perfil):
     return proj, None, True if h == sha256(dados) else ("sem_hash" if h is None else "mudou")
 
 
-RE_PLANS = re.compile(r"[A-Za-z0-9._/-]{1,%d}" % LIMITE_TEXTO)
+RE_PLANS = re.compile(r"[A-Za-z0-9._/ -]{1,%d}" % LIMITE_TEXTO)
 
 
 def plans_relativo(p):
-    """Valid `plans_dir`: relative, only [A-Za-z0-9._/-], no `..` segment, not the repo root."""
+    """Valid `plans_dir`: relative, only [A-Za-z0-9._/ -], single spaces inside a segment only
+    ("CRM - App/.planning"), no `..` segment, not the repo root."""
     if not isinstance(p, str) or not RE_PLANS.fullmatch(p) or p.startswith("/"):
+        return False
+    if any(x != x.strip(" ") or "  " in x for x in p.split("/")):
         return False
     partes = [x for x in p.split("/") if x not in ("", ".")]
     return bool(partes) and ".." not in partes
