@@ -28,6 +28,7 @@ import lancador as lanc  # noqa: E402
 import leitor  # noqa: E402
 import mascara  # noqa: E402
 import modulos  # noqa: E402
+import teto  # noqa: E402
 import transcricao  # noqa: E402
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
@@ -370,6 +371,7 @@ def main(argv=None):
         print("painel: aviso: %s" % aviso, file=sys.stderr)
     app = App(cfg, args.plans_dir)
     servidor = criar_servidor(app, args.port or cfg["porta"])
+    teto.iniciar_vigia(app.lancador)  # max_minutos/max_bloqueado_min valem mesmo com a tela fechada
     print("painel: http://127.0.0.1:%d/  (Ctrl+C para sair)" % app.porta, flush=True)
     try:
         servidor.serve_forever()

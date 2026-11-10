@@ -21,6 +21,7 @@ from catalogo import (ErroAcao, RE_ID_ACAO, carregar_catalogo, montar, nome_da_s
                       publica, texto_livre, validar_params)
 import mascara
 import modulos
+import teto
 import trabalho
 from estado_exec import GRACA, OCIOSO, mapear_estado  # noqa: F401
 from modelos import Modelos
@@ -182,6 +183,8 @@ class Lancador:
             except Exception:
                 ocioso = None
         estado = mapear_estado(reg, agente, agora, ocioso)
+        if reg.get("falha") and estado in ATIVOS:  # o painel já rodou `claude stop`; o CLI pode demorar a mostrar
+            return "parada"
         # Acabou de receber uma resposta: o CLI ainda pode mostrar a linha velha (done/idle) por alguns segundos.
         if estado in RESPONDIVEIS and agora - float(reg.get("respondida_ts") or 0) < GRACA:
             return "rodando"
@@ -210,7 +213,7 @@ class Lancador:
         out.update(sessao_id=sid, params=reg.get("params") or {}, estado=estado,
                    comando_attach=self.comando_attach(reg["id"]), modelo=reg.get("modelo") or "",
                    esforco=reg.get("esforco") or "", pode_responder=responde)
-        for k in ("fase", "parte"):
+        for k in ("fase", "parte", "falha"):
             if reg.get(k):
                 out[k] = reg[k]
         return out
@@ -231,6 +234,11 @@ class Lancador:
                 r["sessao_id"] = novos.setdefault(r["id"], {})["sessao_id"] = sid
             if a and not r.get("terminou_em") and self._estado(r, a, agora) == "terminou":
                 r["terminou_em"] = novos.setdefault(r["id"], {})["terminou_em"] = agora_iso(agora)
+            if agentes is not None and teto.tem_teto(r):  # passou do tempo: `claude stop` e marca falha
+                campos = teto.conferir(r, self._estado(r, agentes.get(r["id"]), agora), agora, self._parar_cli)
+                if campos:
+                    r.update(campos)
+                    novos.setdefault(r["id"], {}).update(campos)
         if novos:
             if travado:
                 self.registro.gravar(regs)
@@ -239,7 +247,7 @@ class Lancador:
                     atual = self.registro.ler()
                     for r in atual:
                         for k, v in novos.get(r["id"], {}).items():
-                            if not r.get(k):
+                            if not r.get(k) or k in teto.SEMPRE:
                                 r[k] = v
                     self.registro.gravar(atual)
         caixa = {}  # regras dos módulos: lidas no máximo uma vez por lista
@@ -317,7 +325,8 @@ class Lancador:
                    "titulo": acao["titulo"], "params": valores, "iniciada_em": agora_iso(t),
                    "iniciada_ts": t, "cwd": self.cfg["workspace"], "risco": acao["risco"],
                    "modelo": modelo, "esforco": esforco, "negar_modulos": sorted(extra),
-                   "trabalho": os.path.basename(pasta) if pasta else ""}
+                   "trabalho": os.path.basename(pasta) if pasta else "",
+                   **{c: acao.get(c) for c in teto.CAMPOS}}
             for p in acao["params"]:
                 if p["tipo"] in ("fase", "parte") and valores.get(p["nome"]):
                     reg[p["tipo"]] = valores[p["nome"]]
@@ -391,7 +400,8 @@ class Lancador:
                                    "alguns segundos ou comece uma nova.", 500)
                 self.dormir(2)
             t = self.relogio()
-            self.registro.atualizar(exec_id, respondida_ts=t, terminou_em="", parada_pelo_painel=False)
+            self.registro.atualizar(exec_id, respondida_ts=t, terminou_em="", parada_pelo_painel=False,
+                                    falha="", bloqueada_ts=0)
         self.esquecer_agentes()
         out = self._como_execucao(self.achar(exec_id), {}, t)
         out["estado"] = self._ultimo[exec_id] = "rodando"  # acabou de acordar; a lista do CLI ainda não foi relida
@@ -408,6 +418,10 @@ class Lancador:
                 return True
             self.dormir(pausa)
         return False
+
+    def _parar_cli(self, exec_id):
+        cod, out, err = self.rodar([self.cfg["claude_bin"], "stop", exec_id], self.cfg["workspace"], 20)
+        return cod == 0 or "No job matching" in err + out
 
     def parar(self, exec_id):
         if self.achar(exec_id) is None:

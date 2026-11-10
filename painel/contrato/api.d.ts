@@ -168,6 +168,9 @@ export interface Acao {
    *  A sessão sai com o primeiro que a licença tem (GET /api/modelos); o último é a reserva e nunca é sondado. */
   modelos: string[];
   esforco: Esforco | null; // null = esforço padrão do CLI
+  /** Teto de tempo (1 a 1440). Passou: o painel roda `claude stop` e marca `falha` na execução. null = sem teto. */
+  max_minutos: number | null; // desde que começou ou desde a última resposta
+  max_bloqueado_min: number | null; // tempo em precisa_de_voce
   equipe: string; // texto curto para a tela, ex. "1 a 2 agentes"; '' se a ação não disser
 }
 
@@ -209,6 +212,7 @@ export interface Execucao {
   parte?: string;
   modelo: string; // apelido com que a sessão saiu; '' = padrão do CLI
   esforco: string; // '' = padrão do CLI
+  falha?: 'max_minutos' | 'max_bloqueado_min'; // parada pelo painel ao passar do teto (estado 'parada')
   /** true quando dá para mandar outra mensagem (estado terminou ou parada, com sessao_id conhecido). */
   pode_responder: boolean;
 }

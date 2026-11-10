@@ -9,6 +9,7 @@ import json
 import os
 import re
 
+import teto
 from travas import validar_travas
 
 RE_ID_ACAO = re.compile(r"^[a-z0-9][a-z0-9.\-]{1,60}$")
@@ -121,6 +122,7 @@ def validar_acao(a):
     esforco = a.get("esforco")
     if esforco is not None and esforco not in ESFORCOS:
         raise ValueError("ação %s: esforco precisa ser um de %s" % (a["id"], ", ".join(ESFORCOS)))
+    tetos = teto.validar(a)
     equipe = a.get("equipe") if isinstance(a.get("equipe"), str) else ""
     if RE_CONTROLE.search(equipe):
         raise ValueError("ação %s: equipe com caractere de controle" % a["id"])
@@ -129,7 +131,8 @@ def validar_acao(a):
             # código e crédito sempre pedem confirmação, diga o JSON o que disser
             "confirmar": bool(a.get("confirmar")) or a["risco"] in ("codigo", "credito"),
             "params": params, "modelos": _modelos(a), "esforco": esforco, "equipe": equipe.strip()[:60],
-            "_prompt": prompt.strip(), "_nome": nome_sessao, "_travas": trv, "_substitui": a.get("substitui") is True}
+            "_prompt": prompt.strip(), "_nome": nome_sessao, "_travas": trv, "_substitui": a.get("substitui") is True,
+            **tetos}
 
 
 def _arquivos(pastas):
