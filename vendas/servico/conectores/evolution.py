@@ -1,0 +1,237 @@
+"""Conector da Evolution API v2 por urllib. URL e chave vêm de variáveis de ambiente lidas pelo serviço, nunca da
+árvore do projeto. Só cria instância, lê QR/estado, configura webhook e envia: nunca desconecta nem apaga a sessão.
+Erros: NaoEnviado (recusa de conexão, 3xx/4xx) e EnvioIncerto (timeout ou queda depois de escrever o pedido, 5xx,
+resposta sem id). Nenhuma mensagem de erro carrega a chave, o texto enviado ou o corpo da resposta."""
+import base64
+import http.client
+import json
+import re
+import socket
+import urllib.error
+import urllib.parse
+import urllib.request
+
+from servico.conectores import base
+from servico.conectores.base import EnvioIncerto, NaoEnviado
+from servico.rotas import CAB_SEGREDO
+
+VAR_URL = "VENDAS_EVOLUTION_URL"
+VAR_CHAVE = "VENDAS_EVOLUTION_CHAVE"
+TEMPO_LIMITE_S = 15
+EVENTOS_WEBHOOK = ["MESSAGES_UPSERT", "SEND_MESSAGE", "CONNECTION_UPDATE", "QRCODE_UPDATED"]
+ESTADO_EVOLUTION = {"open": "conectado", "connecting": "aguardando_qr"}  # close, refused e o resto: desconectado
+PREFIXO_PNG = "data:image/png;base64,"
+JA_EXISTE = (400, 403, 409)  # nome em uso; 401 (chave errada) e o resto sobem como erro
+
+
+class _SemRedirecionar(urllib.request.HTTPRedirectHandler):
+    """Redirecionamento levaria a chave (header apikey) para outro destino: vira erro 3xx."""
+
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+class Evolution(base.Conector):
+    def __init__(self, url, chave, base_webhook, segredo, tempo_limite=TEMPO_LIMITE_S):
+        if not isinstance(url, str) or not re.match(r"^https?://[^/\s]+", url):
+            raise ValueError("URL da Evolution inválida (http:// ou https://)")
+        if not chave:
+            raise ValueError("chave da Evolution ausente")
+        self.url = url.rstrip("/")
+        self._chave = chave
+        self.base_webhook = base_webhook.rstrip("/")
+        self._segredo = segredo
+        self.tempo_limite = tempo_limite
+        self._abridor = urllib.request.build_opener(urllib.request.ProxyHandler({}), _SemRedirecionar())
+
+    @classmethod
+    def do_ambiente(cls, base_webhook, segredo, ambiente, tempo_limite=TEMPO_LIMITE_S):
+        """`ambiente` = os.environ (ou um dict nos testes)."""
+        url, chave = ambiente.get(VAR_URL, ""), ambiente.get(VAR_CHAVE, "")
+        if not url or not chave:
+            raise ValueError("defina %s e %s no ambiente do serviço" % (VAR_URL, VAR_CHAVE))
+        return cls(url, chave, base_webhook, segredo, tempo_limite)
+
+    def __repr__(self):
+        return "Evolution(url=%r)" % self.url
+
+    def _caminho(self, *partes):
+        return "/" + "/".join(urllib.parse.quote(p, safe="") for p in partes)
+
+    def _pedir(self, metodo, caminho, corpo=None):
+        dados = None if corpo is None else json.dumps(corpo).encode("utf-8")
+        pedido = urllib.request.Request(self.url + caminho, data=dados, method=metodo, headers={
+            "apikey": self._chave, "Content-Type": "application/json", "Accept": "application/json"})
+        try:
+            with self._abridor.open(pedido, timeout=self.tempo_limite) as resposta:
+                bruto = resposta.read()
+        except urllib.error.HTTPError as erro:
+            erro.close()
+            classe = NaoEnviado if erro.code < 500 else EnvioIncerto
+            raise classe("Evolution respondeu HTTP %d" % erro.code, erro.code)
+        except urllib.error.URLError as erro:
+            # urllib embrulha em URLError só o que falha ANTES da resposta: conectar ou escrever o pedido.
+            # Pedido sem corpo inteiro não é processado do outro lado.
+            raise NaoEnviado("Evolution inalcançável (%s)" % type(erro.reason).__name__)
+        except (socket.timeout, TimeoutError, http.client.HTTPException, OSError) as erro:
+            # Pedido já escrito; a resposta não veio inteira.
+            raise EnvioIncerto("Evolution não respondeu (%s)" % type(erro).__name__)
+        try:
+            return json.loads(bruto.decode("utf-8")) if bruto else {}
+        except ValueError:
+            raise EnvioIncerto("Evolution respondeu algo que não é JSON")
+
+    def _webhook(self, instancia):
+        return {"url": "%s/webhook/%s" % (self.base_webhook, instancia), "byEvents": False, "base64": False,
+                "headers": {CAB_SEGREDO: self._segredo, "Content-Type": "application/json"},
+                "events": list(EVENTOS_WEBHOOK)}
+
+    def criar(self, instancia):
+        """Cria a instância com o webhook (URL + header do segredo). Já existindo (4xx), só regrava o webhook."""
+        base.validar_instancia(instancia)
+        try:
+            self._pedir("POST", "/instance/create", {
+                "instanceName": instancia, "integration": "WHATSAPP-BAILEYS", "qrcode": True,
+                "webhook": self._webhook(instancia)})
+        except NaoEnviado as erro:
+            if erro.status not in JA_EXISTE:
+                raise
+            webhook = dict(self._webhook(instancia), enabled=True)
+            self._pedir("POST", self._caminho("webhook", "set", instancia), {"webhook": webhook})
+
+    def qr(self, instancia):
+        base.validar_instancia(instancia)
+        dados = self._pedir("GET", self._caminho("instance", "connect", instancia))
+        if not isinstance(dados, dict) or dados.get("error"):
+            raise NaoEnviado("Evolution não devolveu o QR")
+        return _data_uri(dados.get("base64"))
+
+    def estado(self, instancia):
+        base.validar_instancia(instancia)
+        try:
+            dados = self._pedir("GET", self._caminho("instance", "connectionState", instancia))
+        except NaoEnviado as erro:
+            if erro.status == 404:
+                return "desconectado"
+            raise
+        info = dados.get("instance") if isinstance(dados, dict) else None
+        return ESTADO_EVOLUTION.get((info or {}).get("state"), "desconectado")
+
+    def enviar_texto(self, instancia, telefone, texto):
+        base.validar_instancia(instancia)
+        return _id_externo(self._pedir("POST", self._caminho("message", "sendText", instancia),
+                                       {"number": _numero(telefone), "text": texto}))
+
+    def enviar_audio(self, instancia, telefone, caminho_ogg):
+        base.validar_instancia(instancia)
+        numero = _numero(telefone)
+        try:
+            with open(caminho_ogg, "rb") as arquivo:
+                audio = base64.b64encode(arquivo.read()).decode("ascii")
+        except OSError as erro:
+            raise NaoEnviado("áudio ilegível (%s)" % type(erro).__name__)
+        return _id_externo(self._pedir("POST", self._caminho("message", "sendWhatsAppAudio", instancia),
+                                       {"number": numero, "audio": audio}))
+
+    def traduzir_evento(self, corpo):
+        return traduzir(corpo)
+
+
+def _numero(telefone):
+    digitos = re.sub(r"\D", "", telefone or "")
+    if not 8 <= len(digitos) <= 15:
+        raise NaoEnviado("telefone inválido")
+    return digitos
+
+
+def _id_externo(dados):
+    chave = dados.get("key") if isinstance(dados, dict) else None
+    ident = chave.get("id") if isinstance(chave, dict) else None
+    if not ident:
+        raise EnvioIncerto("Evolution aceitou mas não devolveu o id da mensagem")
+    return str(ident)
+
+
+def _data_uri(valor):
+    if not isinstance(valor, str) or not valor:
+        return None
+    return valor if valor.startswith(PREFIXO_PNG) else PREFIXO_PNG + valor.split(",")[-1]
+
+
+# --- tradução do webhook (corpo já decodificado de JSON) ---
+
+def _digitos_jid(jid):
+    if not isinstance(jid, str) or "@" not in jid:
+        return None
+    usuario = jid.split("@", 1)[0].split(":", 1)[0]
+    return usuario if usuario.isdigit() else None
+
+
+def _conteudo(mensagem):
+    """(tipo, texto) a partir do objeto `message` do Baileys."""
+    if not isinstance(mensagem, dict):
+        return "outro", None
+    for envoltorio in ("ephemeralMessage", "viewOnceMessage", "viewOnceMessageV2", "documentWithCaptionMessage"):
+        dentro = mensagem.get(envoltorio)
+        if isinstance(dentro, dict) and isinstance(dentro.get("message"), dict):
+            mensagem = dentro["message"]
+    if isinstance(mensagem.get("conversation"), str):
+        return "texto", mensagem["conversation"]
+    estendida = mensagem.get("extendedTextMessage")
+    if isinstance(estendida, dict) and isinstance(estendida.get("text"), str):
+        return "texto", estendida["text"]
+    for campo, tipo in (("audioMessage", "audio"), ("imageMessage", "imagem"), ("documentMessage", "documento")):
+        if isinstance(mensagem.get(campo), dict):
+            legenda = mensagem[campo].get("caption")
+            return tipo, legenda if isinstance(legenda, str) else None
+    return "outro", None
+
+
+def _mensagem(dados, enviada):
+    chave = dados.get("key") if isinstance(dados, dict) else None
+    if not isinstance(chave, dict) or not chave.get("id"):
+        return None
+    jid = chave.get("remoteJid") or ""
+    from_me = bool(chave.get("fromMe")) or enviada
+    grupo = jid.endswith("@g.us")
+    lid = alternativa = None
+    if grupo:
+        quem = chave.get("participant") or dados.get("participant") or ""
+        if quem.endswith("@lid"):
+            lid, alternativa = quem, chave.get("participantAlt") or chave.get("participantPn")
+            remetente = _digitos_jid(alternativa)
+        else:
+            remetente = _digitos_jid(quem)
+    elif jid.endswith("@lid"):
+        lid = jid
+        alternativa = chave.get("remoteJidAlt") or chave.get("senderPn") or dados.get("senderPn") or None
+        remetente = _digitos_jid(alternativa)
+    else:
+        remetente = _digitos_jid(jid)
+    tipo, texto = _conteudo(dados.get("message"))
+    try:
+        momento = int(dados.get("messageTimestamp"))
+    except (TypeError, ValueError):
+        momento = None
+    return {"tipo_evento": "mensagem", "direcao": "enviada" if from_me else "recebida",
+            "id_externo": str(chave["id"]), "remetente": remetente, "fromMe": from_me, "grupo": grupo,
+            "tipo": tipo, "texto": texto, "timestamp": momento, "lid": lid, "alternativa": alternativa}
+
+
+def traduzir(corpo):
+    """Corpo do webhook -> lista de eventos normalizados (ver base.Conector). Desconhecido ou malformado -> []."""
+    if not isinstance(corpo, dict):
+        return []
+    nome = str(corpo.get("event") or "").lower().replace("_", ".")
+    dados = corpo.get("data")
+    if nome in ("messages.upsert", "send.message"):
+        lista = dados if isinstance(dados, list) else (dados.get("messages") if isinstance(dados, dict)
+                                                         and isinstance(dados.get("messages"), list) else [dados])
+        eventos = [_mensagem(item, nome == "send.message") for item in lista]
+        return [e for e in eventos if e]
+    if nome == "connection.update" and isinstance(dados, dict):
+        return [{"tipo_evento": "estado", "estado": ESTADO_EVOLUTION.get(dados.get("state"), "desconectado")}]
+    if nome == "qrcode.updated" and isinstance(dados, dict):
+        qr = _data_uri((dados.get("qrcode") or {}).get("base64") if isinstance(dados.get("qrcode"), dict) else None)
+        return [{"tipo_evento": "qr", "qr": qr}] if qr else []
+    return []
