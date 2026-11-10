@@ -43,6 +43,11 @@ jobs:
       - name: Design skill tests
         run: python -m unittest discover -s skills/design/scripts -v
 
+      - name: Panel tests
+        if: runner.os != 'Windows'
+        working-directory: painel
+        run: python -B -m unittest -v
+
       - name: Hook entrypoint smoke test
         run: |
           echo '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git status"},"cwd":"."}' | python scripts/guarda.py bash

@@ -2,6 +2,16 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## 2.3.0
+
+The panel: a local dashboard to follow and run the work.
+
+- New `painel/` (Python stdlib server on 127.0.0.1 + prebuilt React screens) and `/tune-up:panel` to start it. Generic: it finds the project from the folder, works with no configuration, and holds no project names.
+- Screens: phases and Parts read from the plans folder; Claude sessions with their sub-agents and workflows (model, effort, time, tools); live runs; follow-up lists.
+- Buttons launch `claude --bg` from a closed list of actions; tool rules (deny / allow / hook) come from each action's JSON. `pular_permissoes` in `.tune-up/painel.json` (default off) adds `--dangerously-skip-permissions`; measured on CLI 2.1.322, deny rules and hook deny/ask still apply.
+- A project adds screens (declarative blocks) and actions in `.tune-up/painel-projeto/`.
+- UI and panel README are in Portuguese. macOS and Linux only for now. Panel tests run in CI on those two.
+
 ## 2.2.0
 
 Fewer HIGH findings on the first pass, more work in parallel. From an audit of 10 measured Parts.
