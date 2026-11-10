@@ -331,83 +331,8 @@ export interface RespModulos {
   avisos: string[];
 }
 
-export type Tom = 'neutro' | 'bom' | 'atencao' | 'ruim';
-
-export type Bloco =
-  | { tipo: 'kpis'; titulo?: string; itens: { rotulo: string; valor: string | number | null; detalhe?: string; tom?: Tom }[] }
-  | { tipo: 'tabela'; titulo?: string; colunas: { id: string; rotulo: string; alinhar?: 'esq' | 'dir' }[];
-      linhas: Record<string, string | number | null>[]; vazio?: string }
-  | { tipo: 'lista'; titulo?: string; itens: { titulo: string; detalhe?: string; selo?: { texto: string; tom: Tom } }[];
-      vazio?: string }
-  | { tipo: 'serie'; titulo?: string; unidade?: string;
-      series: { nome: string; pontos: { x: string; y: number | null }[] }[]; vazio?: string }
-  | { tipo: 'texto'; titulo?: string; texto: string }
-  | { tipo: 'acoes'; titulo?: string; grupo: string }
-  | BlocoFormulario
-  | BlocoConversa
-  | BlocoImagem
-  | { tipo: string; [k: string]: unknown }; // desconhecido: a tela mostra um aviso discreto
-
-/** Blocos interativos. O envio chama POST /api/modulos/<id>/acao (ver ReqAcaoModulo). */
-export interface CampoFormulario {
-  id: string;
-  rotulo: string;
-  tipo: 'texto' | 'texto_longo' | 'escolha' | 'segredo';
-  opcoes?: { valor: string; rotulo: string }[];
-  valor?: string;
-  obrigatorio?: boolean;
-  ajuda?: string;
-}
-/** Envia { acao, dados: { ...dados_fixos, ...valores } }. Campo "segredo": senha, nunca preenchido. */
-export interface BlocoFormulario {
-  tipo: 'formulario';
-  /** Opcional: chave estável do bloco (senão a tela usa tipo + ação + dados fixos). */
-  id?: string;
-  titulo?: string;
-  descricao?: string;
-  acao: string;
-  botao: string;
-  campos: CampoFormulario[];
-  dados_fixos?: Record<string, unknown>;
-}
-export interface MensagemConversa {
-  id: string;
-  de: 'contato' | 'eu' | 'ia';
-  texto: string;
-  quando: string;
-  estado?: 'pendente' | 'enviado' | 'falhou' | 'incerto' | 'negado';
-  nota?: string;
-}
-/** Enviar posta { acao, dados: { ...dados_fixos, texto, id_cliente } }; um id_cliente por mensagem, o mesmo nas tentativas de reenvio. */
-export interface BlocoConversa {
-  tipo: 'conversa';
-  /** Opcional: chave estável do bloco. */
-  id?: string;
-  titulo?: string;
-  mensagens: MensagemConversa[];
-  enviar?: { acao: string; dados_fixos?: Record<string, unknown>; rotulo?: string };
-  botoes?: { rotulo: string; acao: string; dados?: Record<string, unknown>; confirmar?: string }[];
-  vazio?: string;
-}
-/** Só data:image/png;base64 e data:image/jpeg;base64 (svg pode carregar script). */
-export interface BlocoImagem {
-  tipo: 'imagem';
-  titulo?: string;
-  data_uri: string;
-  alt: string;
-  legenda?: string;
-}
-
-/** POST /api/modulos/<id>/acao. 200 { ok: true, resultado }; erros { erro } com 400/403/404/409/500/503.
- *  GET /api/modulos/<id>?fresco=1 devolve o módulo sem o cache do servidor. */
-export interface ReqAcaoModulo {
-  acao: string;
-  dados: Record<string, unknown>;
-}
-export interface RespAcaoModulo {
-  ok: true;
-  resultado: Record<string, unknown>;
-}
+import type { Bloco } from './blocos';
+export type { Tom, Bloco, CampoFormulario, BlocoFormulario, MensagemConversa, BlocoConversa, BlocoImagem, ReqAcaoModulo, RespAcaoModulo } from './blocos';
 
 /** 200. 404 { erro, avisos? } se o id não está habilitado; 500 { erro, avisos } se montar() quebra ou demora;
  *  503 { erro } se uma montagem anterior ainda está rodando. O servidor confere só a forma mínima
