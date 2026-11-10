@@ -2,6 +2,10 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## 2.3.1
+
+- Panel: `painel/web/dist` (the prebuilt screens) is now in the repo. 2.3.0 said it was and it was not: an ignore rule left it out, so a fresh install only showed "run npm run build". CI now fails if the build is missing.
+
 ## 2.3.0
 
 The panel: a local dashboard to follow and run the work.

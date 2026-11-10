@@ -43,6 +43,11 @@ jobs:
       - name: Design skill tests
         run: python -m unittest discover -s skills/design/scripts -v
 
+      - name: Panel screens are prebuilt
+        run: |
+          test -f painel/web/dist/index.html
+          ls painel/web/dist/assets/*.js
+
       - name: Panel tests
         if: runner.os != 'Windows'
         working-directory: painel
