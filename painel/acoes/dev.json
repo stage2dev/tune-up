@@ -1,0 +1,55 @@
+{
+  "acoes": [
+    {
+      "id": "dev.rodar-parte",
+      "grupo": "dev",
+      "titulo": "Rodar uma Parte",
+      "descricao": "Faz uma Parte de uma fase já planejada, item por item, com revisão. Para no fim da Parte e abre a PR para você ver.",
+      "risco": "codigo",
+      "confirmar": true,
+      "prompt": "/tune-up:part {fase} {parte}",
+      "nome_sessao": "Fase {fase} Parte {parte}",
+      "params": [
+        {"nome": "fase", "rotulo": "Fase", "tipo": "fase", "obrigatorio": true, "ajuda": "Só aparecem fases que ainda têm Parte aberta."},
+        {"nome": "parte", "rotulo": "Parte", "tipo": "parte", "obrigatorio": true, "ajuda": "Partes já fechadas não podem ser escolhidas."}
+      ]
+    },
+    {
+      "id": "dev.planejar-fase",
+      "grupo": "dev",
+      "titulo": "Planejar uma fase",
+      "descricao": "Transforma uma ideia num plano de fase com Partes, pesquisa e revisão do plano. Não mexe em código.",
+      "risco": "rascunho",
+      "confirmar": false,
+      "prompt": "/tune-up:plan {ideia}",
+      "nome_sessao": "Plano: {ideia}",
+      "params": [
+        {"nome": "ideia", "rotulo": "O que você quer fazer?", "tipo": "texto", "obrigatorio": true, "max": 1500, "ajuda": "Conte a ideia com suas palavras, numa linha."}
+      ]
+    },
+    {
+      "id": "dev.investigar",
+      "grupo": "dev",
+      "titulo": "Investigar um problema",
+      "descricao": "Descobre por que algo deu errado. Começa só lendo e traz a causa com prova e a menor correção.",
+      "risco": "leitura",
+      "confirmar": false,
+      "prompt": "/tune-up:investigate {descricao}",
+      "nome_sessao": "Investigar: {descricao}",
+      "params": [
+        {"nome": "descricao", "rotulo": "O que aconteceu?", "tipo": "texto", "obrigatorio": true, "max": 1500, "ajuda": "Ex.: a IA não respondeu o cliente que termina em 1234."}
+      ]
+    },
+    {
+      "id": "dev.status",
+      "grupo": "dev",
+      "titulo": "Ver como está o trabalho",
+      "descricao": "Mostra em poucas linhas onde o trabalho está: Git, PRs e quantas Partes faltam.",
+      "risco": "leitura",
+      "confirmar": false,
+      "prompt": "/tune-up:status",
+      "nome_sessao": "Status do trabalho",
+      "params": []
+    }
+  ]
+}

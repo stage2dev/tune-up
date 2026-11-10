@@ -1,0 +1,46 @@
+/* Linhas da arvore de agentes e o pulso do "rodando". So tokens de cor. */
+.ag-arvore { list-style: none; }
+
+.ag-ramo { position: relative; padding-left: 20px; }
+.ag-ramo::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--color-border);
+}
+.ag-ramo:last-child::before { bottom: auto; height: 20px; }
+.ag-ramo::after {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 20px;
+  width: 11px;
+  border-top: 1px solid var(--color-border);
+}
+
+/* Ponto que pulsa com um anel quando o agente esta rodando. */
+.ag-ponto { position: relative; display: inline-block; width: 10px; height: 10px; border-radius: 9999px; flex-shrink: 0; }
+.ag-ponto.ag-vivo::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 9999px;
+  border: 2px solid currentColor;
+  opacity: 0;
+  animation: ag-anel 1.6s ease-out infinite;
+}
+@keyframes ag-anel {
+  0% { transform: scale(0.6); opacity: 0.7; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+.ag-colunas { display: grid; gap: 0.75rem; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) {
+  .ag-colunas { grid-auto-flow: column; grid-auto-columns: minmax(260px, 1fr); grid-template-columns: none; overflow-x: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ag-ponto.ag-vivo::after { animation: none; opacity: 0.5; transform: none; }
+}

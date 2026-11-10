@@ -144,6 +144,18 @@ All commands are `/tune-up:<name>`.
 
 You can override models and effort per role in the `models` key of `user.json`.
 
+## Panel (local dashboard)
+
+`/tune-up:panel` starts a local web page (only on `127.0.0.1`) for the current project:
+
+- **Phases**: Parts with status, findings per round, linked PR, and a button that runs the Part in a background Claude session.
+- **Agents**: every Claude session of the project and, under it, its sub-agents and workflows by phase, each with model, effort, elapsed time and tool count. Refreshes every 2 s.
+- **Runs**: live view of each session launched from the panel, with "open in terminal" and "stop".
+- **Follow-up**: open work lists.
+- **Project modules**: a project can add its own screens (declarative blocks) and actions in `.tune-up/painel-projeto/`, without touching the panel code.
+
+Buttons only launch actions from a closed list; each action carries its own tool rules. Details, configuration (`.tune-up/painel.json`) and the module contract: [`painel/README.md`](painel/README.md) (Portuguese). macOS and Linux; Python 3.9+; no install step.
+
 ## Guards (hooks)
 
 Hooks run as Python scripts through a small launcher (`scripts/py`) that finds `python3`, `python` or `py -3` (3.9 or newer) on its own. They block outright, or ask you to confirm; a project can add its own rules.

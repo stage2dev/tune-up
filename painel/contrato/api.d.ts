@@ -1,0 +1,413 @@
+// Contrato da API do painel tune-up v2 (servidor Python, 127.0.0.1, porta padrão 8787).
+// Núcleo genérico (servidor e lançador). Tipos exatos de toda resposta de painel.py.
+// O que é de um projeto vem de <raiz>/.tune-up/painel.json e do pacote do projeto
+// (<raiz>/.tune-up/<pacote>/acoes/*.json, modulos/<id>/modulo.py, dados/).
+// /api/agentes: tipos detalhados em contrato/agentes.d.ts (quando existir) e no resumo abaixo.
+//
+// Regras gerais
+// - Erro é sempre { erro: string } (texto simples, pronto para a tela), às vezes com campos extras
+//   citados abaixo. Códigos: 400 pedido inválido, 403 recusado (token/origem/site), 404 não achei,
+//   405 método errado, 409 já rodando ou teto, 411/413/415 corpo, 421 Host recusado, 500/503 falha.
+// - Todo POST precisa de: X-Painel-Token (de GET /api/sessao), Origin = endereço do próprio painel,
+//   Sec-Fetch-Site ausente ou "same-origin", Content-Type: application/json e corpo até 16 KB
+//   (corpo vazio vale como {}).
+// - GET aceita Sec-Fetch-Site ausente, "same-origin" ou "none"; Host tem de ser 127.0.0.1 ou localhost.
+
+export interface Erro {
+  erro: string;
+}
+
+// ---------------------------------------------------------------- GET /api/sessao
+/** O token nasce a cada subida do servidor: em 403 de token, peça a sessão de novo. */
+export interface RespSessao {
+  token: string;
+  projeto: { nome: string };
+  versao: string; // ex. "2.0.0"
+}
+
+// ---------------------------------------------------------------- GET /api/estado
+export type StatusParte = 'fechada' | 'precisa_de_voce' | 'rodando' | 'pendente';
+
+export interface PR {
+  numero: number;
+  titulo: string;
+  estado: 'OPEN' | 'MERGED' | 'CLOSED' | '?' | string; // '?' = PR só citada no PROGRESS
+  branch: string;
+  url: string; // '' quando não é https
+  atualizada: string;
+}
+
+export interface Volta {
+  volta: number | null;
+  critico: number;
+  alto: number;
+}
+
+export interface ItemRevisado {
+  id: string;
+  voltas: Volta[];
+  teve_achado: boolean;
+}
+
+export interface Parte {
+  id: string;
+  itens_plano: string | null;
+  prerequisito: string | null;
+  comando_plano: string | null;
+  status: StatusParte;
+  origem: string; // texto livre explicando o status; não interprete
+  parcial: boolean;
+  pr: PR | null;
+  itens: ItemRevisado[];
+  comando_copiar: string; // 'claude --bg "/tune-up:part N X"'
+}
+
+export interface Pergunta {
+  linha: number;
+  texto: string;
+}
+
+export interface Fase {
+  numero: string;
+  slug: string;
+  pasta: string;
+  titulo: string | null;
+  arquivos: { goal: boolean; progress: boolean; depois: boolean };
+  acompanhada: boolean; // false = sem PROGRESS: partes = [] e fica fora dos contadores
+  partes: Parte[];
+  partes_fonte: string | null;
+  depois_abertos: number | null;
+  depois_formato: 'caixas' | 'sem_caixas' | 'sem_arquivo' | null;
+  perguntas_abertas: Pergunta[];
+  precisa: { parte: string | null; linha: number; texto: string }[];
+  completa: boolean;
+}
+
+/** Sessão do `claude agents` (só as ativas e do workspace). */
+export interface SessaoClaude {
+  id: string; // id curto do bg (8 letras) ou o sessionId inteiro de uma interativa; nunca cortado
+  sessao_id: string; // sessionId completo (UUID); '' se o CLI não deu
+  nome: string;
+  tipo: 'background' | 'interactive' | string;
+  estado: string; // minúsculo: working | blocked | done | busy | idle | waiting | ...
+  inicio: string | null; // ISO, minutos
+  ativa: boolean;
+  rodando: boolean;
+}
+
+export interface Pendencia {
+  fase: string;
+  parte: string | null;
+  tipo: 'marcador' | 'pergunta';
+  texto: string;
+  origem: string;
+}
+
+export interface Estado {
+  gerado_em: string;
+  projeto: { nome: string };
+  plans_dir: string;
+  plans_origem: '--plans-dir' | 'painel.json' | 'guarda.py info' | 'padrão';
+  repo: string | null;
+  nomes: { goal: string; progress: string; later: string; need_you: string; part_closed: string };
+  resumo: {
+    fases_total: number;
+    fases_acompanhadas: number;
+    fases_abertas: number;
+    partes_fechadas: number;
+    partes_total: number;
+    pendencias_dono: number;
+    prs_abertas: number;
+    sessoes_rodando: number;
+    sessoes_ativas: number;
+  };
+  precisa_de_voce: Pendencia[];
+  fases: Fase[];
+  prs: PR[];
+  sessoes: SessaoClaude[];
+  avisos: string[];
+}
+
+/** Se a montagem quebrar, o servidor devolve 200 com só estes campos. */
+export interface EstadoComErro {
+  erro: string;
+  projeto: { nome: string };
+  avisos: string[];
+}
+
+export type RespEstado = Estado | EstadoComErro;
+
+// ---------------------------------------------------------------- GET /api/acoes
+/** Grupo da ação: id livre ^[a-z0-9_-]{1,40}$. O núcleo só traz "dev"; o pacote traz os outros. */
+export type Grupo = string;
+export type Risco = 'leitura' | 'rascunho' | 'codigo' | 'credito';
+
+export interface ParamAcao {
+  nome: string; // [a-z_][a-z0-9_]*
+  rotulo: string;
+  tipo: 'fase' | 'parte' | 'texto' | 'escolha';
+  obrigatorio: boolean;
+  opcoes?: string[]; // só em 'escolha'
+  max?: number; // só em 'texto' (padrão 500, teto 2000)
+  ajuda?: string;
+}
+
+export interface Acao {
+  id: string;
+  grupo: Grupo;
+  area: Grupo; // nome antigo de `grupo`, mesmo valor
+  titulo: string;
+  descricao: string;
+  risco: Risco;
+  confirmar: boolean; // sempre true quando risco é 'codigo' ou 'credito'
+  params: ParamAcao[];
+}
+
+export interface RespAcoes {
+  acoes: Acao[];
+  avisos: string[]; // arquivo ou ação do catálogo que foi ignorada
+}
+
+// ---------------------------------------------------------------- execuções
+export type EstadoExecucao = 'rodando' | 'precisa_de_voce' | 'terminou' | 'parada' | 'sumiu';
+
+export interface Execucao {
+  id: string; // id curto do `claude --bg` (hex)
+  sessao_id: string; // UUID completo; '' até a sessão aparecer em `claude agents`
+  nome: string; // nome da sessão; Parte = "Fase N Parte X"
+  acao: string;
+  grupo: Grupo;
+  area: Grupo; // nome antigo de `grupo`, mesmo valor
+  titulo: string;
+  params: Record<string, string>;
+  iniciada_em: string; // ISO com fuso
+  estado: EstadoExecucao;
+  comando_attach: string; // "claude attach <id>"
+  fase?: string;
+  parte?: string;
+}
+
+/** POST /api/execucoes */
+export interface PedidoExecucao {
+  acao: string;
+  params: Record<string, string>;
+}
+export interface RespExecucaoCriada {
+  execucao: Execucao; // 201
+}
+/** 409: mesma ação com os mesmos params rodando, ou teto de execuções simultâneas. */
+export interface Erro409 extends Erro {
+  execucao_id: string;
+}
+
+/** GET /api/execucoes (mais novas primeiro) */
+export interface RespExecucoes {
+  execucoes: Execucao[];
+}
+
+export type TipoEvento = 'usuario' | 'assistente' | 'ferramenta' | 'resultado' | 'subagente' | 'sistema';
+
+export interface Evento {
+  n: number; // único e crescente dentro da execução
+  ts: string; // ISO (UTC) da linha da conversa; '' se não houver
+  tipo: TipoEvento;
+  texto: string; // até 600 letras, segredos mascarados com ***
+  ferramenta?: string; // em 'ferramenta' e 'subagente'
+  erro?: boolean; // true em 'resultado' (só resultados com erro aparecem) e em 'sistema'
+}
+
+/** GET /api/execucoes/{id}/eventos?desde=N — comece com desde=0 e mande `proximo` na próxima. */
+export interface RespEventos {
+  eventos: Evento[];
+  proximo: number; // cursor (posição em bytes): igual a `desde` quando não há nada novo
+  estado: EstadoExecucao;
+}
+
+/** POST /api/execucoes/{id}/parar */
+export interface RespParar {
+  ok: true;
+}
+
+/** POST /api/execucoes/{id}/abrir — ok=false fora do macOS: mostre o comando para copiar. */
+export interface RespAbrir {
+  ok: boolean;
+  comando: string;
+}
+
+// ---------------------------------------------------------------- GET /api/acompanhamento
+export type StatusItem = 'todo' | 'doing' | 'done' | 'dropped';
+
+export interface ItemLista {
+  tarefa: string;
+  status: StatusItem;
+  notas: string;
+  produtos: { titulo: string; url: string }[];
+  atualizado_em: string;
+}
+
+export interface ListaAcompanhamento {
+  nome: string;
+  area: string; // id de uma das `areas` (a 1ª regex de painel.json que casa) ou "geral"
+  atualizado_em: string;
+  aberta: boolean;
+  itens: ItemLista[];
+  estado: Record<string, string>;
+}
+
+export interface AreaAcompanhamento {
+  id: string;
+  titulo: string;
+}
+
+export interface RespAcompanhamento {
+  areas: AreaAcompanhamento[]; // as de painel.json, na ordem, mais "geral" quando alguma lista caiu nela
+  listas: ListaAcompanhamento[];
+  avisos: string[];
+}
+
+// ---------------------------------------------------------------- GET /api/agentes[?sessao=<id>&todos=1]
+// Montado por agentes.montar(cfg, sessao, todos) (módulo do núcleo). 503 { erro, avisos } se faltar;
+// 400 se `sessao` não casar ^[A-Za-z0-9_-]{1,64}$.
+export interface AgenteFilho {
+  id: string;
+  tipo_agente: string;
+  descricao: string;
+  fase: string | null;
+  modelo: string; // curto: opus | sonnet | haiku | ...
+  modelo_id: string;
+  esforco: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null;
+  estado: 'rodando' | 'terminou';
+  profundidade: number;
+  pai_id: string | null;
+  iniciado_em: string | null;
+  ultima_atividade: string | null;
+  duracao_s: number | null;
+  ferramentas: number;
+  ultima_acao: string; // só nome da ferramenta + nome de arquivo, até 120 letras
+}
+
+export interface GrupoAgentes {
+  tipo: 'direto' | 'workflow';
+  id: string;
+  nome: string;
+  fases: string[];
+  agentes: AgenteFilho[];
+}
+
+export interface SessaoAgentes {
+  id: string;
+  sessao_id: string;
+  nome: string;
+  tipo: 'interativa' | 'segundo_plano';
+  estado: 'rodando' | 'precisa_de_voce' | 'ocioso' | 'terminou' | 'parada';
+  modelo: string;
+  esforco: string | null;
+  iniciado_em: string | null;
+  ultima_atividade: string | null;
+  execucao_id: string | null; // quando foi o painel que disparou
+  agentes_ativos: number;
+  agentes_total: number;
+  grupos: GrupoAgentes[];
+}
+
+export interface RespAgentes {
+  gerado_em: string;
+  sessoes: SessaoAgentes[];
+  avisos: string[];
+}
+
+// ---------------------------------------------------------------- GET /api/modulos e /api/modulos/<id>
+// Telas extras do pacote: <pacote>/modulos/<id>/modulo.py com INFO = {id, titulo, icone} e montar(ctx).
+// Só ids listados em painel.json "modulos" (^[a-z0-9_-]{1,40}$). montar() tem 20 s; resultado fica 30 s em cache.
+export interface ResumoModulo {
+  id: string;
+  titulo: string;
+  icone: string;
+  alertas: number;
+}
+
+export interface RespModulos {
+  modulos: ResumoModulo[];
+  avisos: string[];
+}
+
+export type Tom = 'neutro' | 'bom' | 'atencao' | 'ruim';
+
+export type Bloco =
+  | { tipo: 'kpis'; titulo?: string; itens: { rotulo: string; valor: string | number | null; detalhe?: string; tom?: Tom }[] }
+  | { tipo: 'tabela'; titulo?: string; colunas: { id: string; rotulo: string; alinhar?: 'esq' | 'dir' }[];
+      linhas: Record<string, string | number | null>[]; vazio?: string }
+  | { tipo: 'lista'; titulo?: string; itens: { titulo: string; detalhe?: string; selo?: { texto: string; tom: Tom } }[];
+      vazio?: string }
+  | { tipo: 'serie'; titulo?: string; unidade?: string;
+      series: { nome: string; pontos: { x: string; y: number | null }[] }[]; vazio?: string }
+  | { tipo: 'texto'; titulo?: string; texto: string }
+  | { tipo: 'acoes'; titulo?: string; grupo: string }
+  | { tipo: string; [k: string]: unknown }; // desconhecido: a tela mostra um aviso discreto
+
+/** 200. 404 { erro, avisos? } se o id não está habilitado; 500 { erro, avisos } se montar() quebra ou demora;
+ *  503 { erro } se uma montagem anterior ainda está rodando. O servidor confere só a forma mínima
+ *  (alertas com nivel/texto, abas com id e blocos com tipo); o resto do bloco passa como veio. */
+export interface RespModulo {
+  id: string;
+  titulo: string;
+  gerado_em: string;
+  alertas: { nivel: 'info' | 'atencao' | 'critico'; texto: string }[];
+  abas: { id: string; titulo: string; blocos: Bloco[] }[];
+  avisos: string[];
+}
+
+// ---------------------------------------------------------------- módulos do núcleo que faltam ou quebram
+/** /api/acompanhamento e /api/agentes quando o módulo falta (503) ou quebra (500). */
+export interface ErroModulo extends Erro {
+  avisos: string[];
+}
+
+// ---------------------------------------------------------------- arquivos de configuração (não são HTTP)
+/** <raiz>/.tune-up/painel.json — todos os campos são opcionais. Caminhos relativos = à raiz do projeto.
+ *  Raiz: --projeto, senão $TUNEUP_PAINEL_PROJETO, senão a 1ª pasta com .tune-up/ subindo do cwd,
+ *  senão dois níveis acima da pasta do painel. Chave desconhecida é ignorada pelo núcleo
+ *  (mas chega aos módulos em ctx.config). */
+export interface PainelJson {
+  nome?: string; // padrão: nome da pasta raiz
+  repo?: string;
+  plans_dir?: string;
+  claude_bin?: string; // padrão "claude"
+  max_execucoes?: number; // 1..10, padrão 3
+  pular_permissoes?: boolean; // padrão false; true dispara com --dangerously-skip-permissions (as travas da ação continuam valendo)
+  porta?: number; // padrão 8787
+  guarda?: string; // guarda.py do tune-up (padrão: plugin achado em ~/.claude/plugins/installed_plugins.json)
+  origens_extras?: string[]; // ex. "http://127.0.0.1:5173" para o Vite em modo dev
+  pacote?: string; // pasta dentro de .tune-up (padrão "painel-projeto"); atalho para fora é ignorado
+  modulos?: string[]; // ids habilitados (padrão [])
+  areas_acompanhamento?: { id: string; titulo?: string; regex: string }[]; // sem isso tudo cai em "geral"
+  claude_projects_dir?: string; // padrão ~/.claude/projects
+  projeto_mem?: string; // projeto no claude-mem (padrão: nome da pasta raiz)
+  claude_mem_db?: string;
+}
+
+/** Regra do gancho de trava (objeto dentro de negar/permitir). */
+export interface RegraTrava {
+  ferramenta: string; // regex que casa o nome inteiro da ferramenta (ex. "mcp__servico__.*", "Bash")
+  campo?: string; // campo da entrada da ferramenta (ex. "command", "file_path")
+  entrada?: string; // regex procurada no campo (ou na entrada inteira em JSON)
+  decisao?: 'deny' | 'ask'; // padrão deny (só em negar)
+  motivo?: string;
+}
+
+/** acoes/*.json (núcleo) e <pacote>/acoes/*.json — `prompt`, `nome_sessao`, `negar` e `permitir` nunca saem na API. */
+export interface ArquivoAcoes {
+  acoes: Array<
+    Omit<Acao, 'confirmar' | 'params' | 'area'> & {
+      confirmar?: boolean;
+      prompt: string; // modelo com {param}; aceita também a chave "modelo"; não pode começar com "-"
+      nome_sessao?: string; // modelo do nome da sessão; sem ele usa o título
+      params?: Array<Omit<ParamAcao, 'obrigatorio'> & { obrigatorio?: boolean }>;
+      // Travas da sessão (até 200 cada). Texto = regra de permissão do Claude Code (deny/allow);
+      // objeto = regra do gancho PreToolUse. Toda ação tem a proteção fixa (.claude/settings, painel.json,
+      // núcleo e pacote fora de dados/): nega em leitura/rascunho, pergunta em código/crédito.
+      negar?: Array<string | RegraTrava>;
+      permitir?: Array<string | RegraTrava>;
+    }
+  >;
+}
