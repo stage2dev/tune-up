@@ -144,6 +144,17 @@ class TesteBanco(Base):
         self.assertEqual(banco.salvar_contato(self.con, "11 98000-0002"),
                          banco.buscar_contato(self.con, "551180000002")["id"])
 
+    def test_celular_e_fixo_parecidos_sao_dois_contatos(self):
+        for cel, fixo in (("11 93333-4444", "11 3333-4444"), ("+55 11 92333-4444", "+55 11 2333-4444")):
+            a = banco.salvar_contato(self.con, fixo, nome="Padaria")
+            b = banco.salvar_contato(self.con, cel, nome="Joao")
+            self.assertNotEqual(a, b, cel)
+            self.assertEqual(banco.buscar_contato(self.con, cel)["nome"], "Joao")
+            self.assertEqual(banco.buscar_contato(self.con, fixo)["nome"], "Padaria")
+            banco.marcar_optout(self.con, cel)
+            self.assertTrue(banco.em_optout(self.con, cel))
+            self.assertFalse(banco.em_optout(self.con, fixo), fixo)
+
     def test_config_recusa_segredo(self):
         banco.gravar_config(self.con, "janela_inicio", "09:00")
         banco.gravar_config(self.con, "janela_inicio", "10:00")
@@ -168,7 +179,11 @@ class TesteTelefone(unittest.TestCase):
         self.assertEqual(telefone.normalizar("1132000000"), "551132000000")  # fixo
 
     def test_variantes(self):
-        self.assertEqual(telefone.variantes("11 90000-0001"), ["5511900000001", "551100000001"])
+        self.assertEqual(telefone.variantes("11 98000-0001"), ["5511980000001", "551180000001"])
+        # 9 seguido de 0 a 5 não tem forma antiga de 8 dígitos: sem o 9 seria um fixo de outra pessoa
+        for cel in ("11 90000-0001", "11 92333-4444", "11 93333-4444", "11 95000-0001"):
+            self.assertEqual(len(telefone.variantes(cel)), 1, cel)
+        self.assertEqual(telefone.variantes("11 3333-4444"), ["551133334444"])
         self.assertEqual(telefone.variantes("1132000000"), ["551132000000"])
         self.assertEqual(telefone.variantes("+1 650 555 0000"), ["16505550000"])
 

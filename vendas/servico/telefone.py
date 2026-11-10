@@ -37,8 +37,11 @@ def normalizar(valor):
 
 
 def variantes(valor):
-    """[canônico, sem o 9º dígito] para celular brasileiro; [canônico] para o resto."""
+    """[canônico, sem o 9º dígito] para celular brasileiro; [canônico] para o resto.
+
+    Só gera a forma sem o 9 quando o dígito seguinte é 6 a 9 (celular antigo de 8 dígitos).
+    Com 0 a 5, tirar o 9 daria o número de um fixo de outra pessoa."""
     canonico = normalizar(valor)
-    if canonico.startswith(PAIS) and len(canonico) == 13 and canonico[4] == "9":
+    if canonico.startswith(PAIS) and len(canonico) == 13 and canonico[4] == "9" and canonico[5] in "6789":
         return [canonico, canonico[:4] + canonico[5:]]
     return [canonico]
