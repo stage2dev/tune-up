@@ -19,6 +19,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from qa_imagem import (  # noqa: E402
     GSAP_RE, LAYOUT_ALLOW_RE, NETWORK_PATTERNS, check_strict_json, result, scan)
+from reserva_slides import MARK  # noqa: E402
 
 BLACK_FILTER = "blackdetect=d=0.5:pix_th=0.10"
 FREEZE_FILTER = "freezedetect=n=-60dB:d=2"
@@ -133,9 +134,17 @@ def check_freeze(video, ffmpeg):
     return result("freezedetect", not found, found or ["no still span >= 2 s"])
 
 
-def run(source, video, check_json, width, height, duration, fps, ffmpeg, ffprobe):
+def check_reserve_tag(data):
+    """Reserve videos have no HyperFrames composition to check; they must carry the reserve tag."""
+    tag = ((data.get("format") or {}).get("tags") or {}).get("comment")
+    return result("engine_reserve", tag == MARK, ["comment=%r (expected %r)" % (tag, MARK)])
+
+
+def run(source, video, check_json, width, height, duration, fps, ffmpeg, ffprobe, engine="hyperframes"):
+    data = {}
     try:
-        checks = stream_checks(probe(video, ffprobe), video, width, height, duration, fps)
+        data = probe(video, ffprobe)
+        checks = stream_checks(data, video, width, height, duration, fps)
     except (ValueError, OSError) as exc:
         checks = [result("probe", False, [str(exc)])]
     else:
@@ -149,7 +158,7 @@ def run(source, video, check_json, width, height, duration, fps, ffmpeg, ffprobe
         checks.append(result("no_gsap", not gsap, gsap or ["ok"]))
         net = scan(source, NETWORK_PATTERNS, strip_xmlns=True)
         checks.append(result("network_lint", not net, net or ["ok"]))
-    checks.append(check_strict_json(check_json))
+    checks.append(check_reserve_tag(data) if engine == "reserve" else check_strict_json(check_json))
     return {"ok": all(c["ok"] for c in checks), "checks": checks}
 
 
@@ -157,7 +166,9 @@ def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--source", required=True, help="composition folder (fonte/)")
     p.add_argument("--video", required=True, help="rendered MP4")
-    p.add_argument("--check-json", required=True, help="output of check --json --strict")
+    p.add_argument("--check-json", help="output of check --json --strict (required unless --engine reserve)")
+    p.add_argument("--engine", choices=("hyperframes", "reserve"), default="hyperframes",
+                   help="reserve: slide video from reserva_slides.py, checked by its tag instead of check JSON")
     p.add_argument("--width", type=int, default=1080)
     p.add_argument("--height", type=int, default=1920)
     p.add_argument("--duration", type=float, default=10.0)
@@ -166,8 +177,10 @@ def main(argv=None):
     p.add_argument("--ffprobe", default=shutil.which("ffprobe") or "ffprobe")
     p.add_argument("--out", help="also write the report to this file")
     args = p.parse_args(argv)
+    if args.engine == "hyperframes" and not args.check_json:
+        p.error("--check-json is required with --engine hyperframes")
     report = run(args.source, args.video, args.check_json, args.width, args.height,
-                 args.duration, args.fps, args.ffmpeg, args.ffprobe)
+                 args.duration, args.fps, args.ffmpeg, args.ffprobe, args.engine)
     text = json.dumps(report, ensure_ascii=False, indent=2)
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:

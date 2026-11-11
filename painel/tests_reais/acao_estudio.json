@@ -17,6 +17,44 @@
         "GEMINI_API_KEY": "",
         "GOOGLE_API_KEY": ""
       },
+      "negar": [
+        {
+          "ferramenta": "Bash",
+          "campo": "command",
+          "entrada": "^(?!(?:ffmpeg|ffprobe|python3)(?: |\\Z)|/)",
+          "motivo": "Bash do estúdio: só ffmpeg, ffprobe, python3 com script do estúdio ou o hyperframes fixado"
+        },
+        {
+          "ferramenta": "Bash",
+          "campo": "command",
+          "entrada": "\\.\\.|//|/\\./|--(?:describe|docker)\\b",
+          "motivo": "Bash do estúdio: sem '..', '//', snapshot --describe nem render --docker"
+        },
+        {
+          "ferramenta": "Bash",
+          "campo": "command",
+          "entrada": "^(?=/)(?!(?!(?i:{trabalho}))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/node/node_modules/\\.bin/hyperframes +(?:render|check|lint|validate|inspect|snapshot|info|compositions)(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
+          "motivo": "hyperframes: só render, check, lint, validate, inspect, snapshot, info e compositions, saída em {trabalho}"
+        },
+        {
+          "ferramenta": "Bash",
+          "campo": "command",
+          "entrada": "^ffmpeg(?= |\\Z)(?!(?: +(?:-protocol_whitelist +file,pipe +-i +(?:(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?)|(?!-i(?: |\\Z)|-protocol_whitelist(?: |\\Z))(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?)))* *\\Z)",
+          "motivo": "ffmpeg: cada -i precedido de -protocol_whitelist file,pipe, sem ':' nem caminho fora de {trabalho}, grafo em arquivo"
+        },
+        {
+          "ferramenta": "Bash",
+          "campo": "command",
+          "entrada": "^ffprobe(?= |\\Z)(?!(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
+          "motivo": "ffprobe: sem ':' nem caminho fora de {trabalho}"
+        },
+        {
+          "ferramenta": "Bash",
+          "campo": "command",
+          "entrada": "^python3(?= |\\Z)(?! +-I(?: +-B)? +(?!(?i:{trabalho}))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/scripts/(?:qa_video|qa_imagem|reserva_slides|video_ou_reserva)\\.py(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
+          "motivo": "python3: só os scripts do estúdio (com -I), sem '-c' nem script gravado em {trabalho}"
+        }
+      ],
       "permitir": [
         "Edit({trabalho}/**)"
       ],

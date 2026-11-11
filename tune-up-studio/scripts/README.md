@@ -121,3 +121,54 @@ settings, `hyperframes render` fails with `listen EPERM: operation not
 permitted 127.0.0.1`: render serves the composition on loopback and the
 sandbox network block forbids the bind. `Skill(hyperframes)` in `deny` blocks
 the skill ("Skill execution blocked by permission rules").
+
+## reserva_slides.py and video_ou_reserva.py: FFmpeg fallback
+
+When HyperFrames is missing or its render fails, the reel is built from slide
+PNGs whose text is already drawn (the local ffmpeg 8.1 build has no
+`drawtext`). Each slide gets a slow zoom (`zoompan` on a 2x upscale) and a
+`xfade` crossfade; the graph goes to `<out>.graph.txt` and is passed with
+`-filter_complex_script`, so the command line has no `;`. Every `-i` is
+preceded by `-protocol_whitelist file,pipe`. The MP4 carries
+`comment=tune-up-studio reserve`. Filters used, all listed by
+`ffmpeg -filters` here: `scale`, `crop`, `zoompan`, `setsar`, `format`,
+`xfade`, `trim`.
+
+```sh
+# HyperFrames first; reserve if the binary is missing or the render fails
+STUDIO_HYPERFRAMES_BIN=/path/that/does/not/exist \
+  python3 scripts/video_ou_reserva.py --source <fonte> --slides <png dir> --out <OUT>/video.mp4
+# -> <OUT>/video.mp4 and <OUT>/video.mp4.engine.json {"engine": "reserve", ...}
+python3 scripts/qa_video.py --engine reserve --source <slide sources> --video <OUT>/video.mp4
+```
+
+`--engine reserve` replaces the HyperFrames check JSON (there is no
+composition) with a check of the reserve tag. The example slides are in
+`exemplos/forno-miudo/reserva-9x16/fonte/`; they were turned into PNGs with
+headless Chrome (`--screenshot --window-size=1080,1920`,
+`--host-resolver-rules="MAP * ~NOTFOUND"`). Measured on macOS: 3 slides, 10 s,
+1.7 s wall time, QA all green.
+
+## Bash positive list for studio actions (`regras/bash-estudio.json`)
+
+Six `negar` hook rules (lookahead regexes on `command`) that every studio
+action copies; the fixture `painel/tests_reais/acao_estudio.json` carries the
+same list (checked by `tests/test_regras_bash.py`). Allowed, nothing else:
+
+- `<abs path>/tune-up-studio[/<version>]/node/node_modules/.bin/hyperframes`
+  with `render`, `check`, `lint`, `validate`, `inspect`, `snapshot`, `info`,
+  `compositions` (no `--describe`, no `--docker`); the binary must not be
+  under `{trabalho}`, so a script the session wrote cannot pass as it.
+- `ffmpeg` where every `-i` comes right after `-protocol_whitelist file,pipe`.
+- `ffprobe`.
+- `python3 -I <abs path>/tune-up-studio[/<version>]/scripts/` with
+  `qa_video.py`, `qa_imagem.py`, `reserva_slides.py` or `video_ou_reserva.py`.
+
+Every argument is either an option without `/`, a relative path without `:`,
+or a path inside `{trabalho}`. No `..`, `//`, `~`, quotes, `$`, `;`, `&`,
+`|`, redirects or newlines. Limits: `npx` and a bare `hyperframes` are refused
+(both can resolve a binary planted in `{trabalho}`); the content of the filter
+graph file is not inspected (a `movie=` source there is stopped only by the
+sandbox network block); an action that puts `Bash` in `permitir` turns on the
+core's compound/script lock, which refuses `python3` and absolute-path
+binaries, so studio actions must not do that.
