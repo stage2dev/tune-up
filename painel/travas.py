@@ -202,9 +202,12 @@ def caminho_comparavel(caminho, sem_caixa):
 
 
 def _liberado(texto, i, libs):
+    """No Windows `\\` e `/` são o mesmo separador e o disco não diferencia caixa: o liberado vem de
+    os.path.join (`...\\dados`) e o caminho da ferramenta pode vir com `/` (ou o contrário)."""
     for lib in libs:
         fim = i + len(lib)
-        if texto.startswith(lib, i) and (fim == len(texto) or texto[fim] in FIM_LIB):
+        igual = texto.startswith(lib, i) or os.name == "nt" and _barra(texto[i:fim], True) == _barra(lib, True)
+        if igual and (fim == len(texto) or texto[fim] in FIM_LIB):
             return True
     return False
 

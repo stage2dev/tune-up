@@ -110,6 +110,24 @@ class TesteSettings(unittest.TestCase):
         livre = DADOS + "/trabalhos/abc/saida.png"  # o resto de <dados> segue liberado
         self.assertIsNone(travas.decidir(g, "Write", {"file_path": livre}))
 
+    def test_windows_separador_misto_no_liberado(self):
+        """No Windows o liberado sai de os.path.join (`painel\\dados`) e o caminho pode vir com `/`."""
+        import ntpath
+        import types
+        real = travas.os
+        travas.os = types.SimpleNamespace(name="nt", path=ntpath, sep="\\")
+        try:
+            g = gancho(settings(fixture()))
+            self.assertIn(PACOTE + "\\dados", g["lib"])
+            for livre in (DADOS + "/trabalhos/abc/saida.png", (DADOS + "/trabalhos/abc/saida.png").replace("/", "\\"),
+                          PACOTE + "\\DADOS/trabalhos/abc/saida.png"):
+                self.assertIsNone(travas.decidir(g, "Write", {"file_path": livre}), livre)
+            for alvo in (DADOS + "/estudio-dono.json", DADOS + "\\aprovados\\x\\m.json", PACOTE + "/acoes/x.json",
+                         PACOTE + "\\dadosx\\y.json", WS + "/.claude/settings.json"):
+                self.assertEqual(travas.decidir(g, "Write", {"file_path": alvo})[0], "deny", alvo)
+        finally:
+            travas.os = real
+
 
 class TesteLancadorSandbox(test_chat.Base):
     def setUp(self):
