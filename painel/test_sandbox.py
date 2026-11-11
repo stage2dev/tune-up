@@ -131,6 +131,45 @@ class TesteSettings(unittest.TestCase):
             travas.os = real
 
 
+class TesteHyperframes(unittest.TestCase):
+    """O QA confia nos relatórios em `<fonte>/.hyperframes/`: com sandbox, Write/Edit não grava lá; o Bash grava."""
+    TRAB = DADOS + "/trabalhos/abc"
+
+    def test_ferramenta_de_arquivo_negada_com_sandbox(self):
+        g = gancho(settings(fixture()))
+        alvos = (self.TRAB + "/q1/.hyperframes/check.json", ".hyperframes/lint.json", "q1/.HyperFrames/x.json",
+                 self.TRAB + "\\q1\\.hyperframes\\x.json", self.TRAB + "/q1/.hyperframes",
+                 self.TRAB + "/q1/x/../.hyperframes/y.json", self.TRAB + "/q1/.hyperframes./y.json")
+        for ferr in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
+            for alvo in alvos:
+                chave = "notebook_path" if ferr == "NotebookEdit" else "file_path"
+                self.assertEqual(travas.decidir(g, ferr, {chave: alvo}, self.TRAB), ("deny", travas.MOTIVO_HF),
+                                 (ferr, alvo))
+        for livre in (self.TRAB + "/q1/.hyperframes_history/x", self.TRAB + "/q1/x.hyperframes/y",
+                      self.TRAB + "/q1/.hyperframes/../saida.png"):
+            self.assertIsNone(travas.decidir(g, "Write", {"file_path": livre}, self.TRAB), livre)
+
+    def test_bash_e_leitura_seguem(self):
+        g = gancho(settings(catalogo.validar_acao(dict(SIMPLES, sandbox=True)), pasta=None))
+        self.assertIsNone(travas.decidir(g, "Bash", {"command": "echo {} > .hyperframes/check.json"}))
+        self.assertIsNone(travas.decidir(g, "Read", {"file_path": ".hyperframes/check.json"}))
+
+    def test_sem_sandbox_nada_muda(self):
+        g = gancho(settings(catalogo.validar_acao(SIMPLES), pasta=None))
+        self.assertIsNone(travas.decidir(g, "Write", {"file_path": "/w/.hyperframes/check.json"}))
+
+    @unittest.skipIf(os.name == "nt", "link simbólico pede privilégio no Windows")
+    def test_link_para_dentro_de_hyperframes(self):
+        import tempfile
+        g = gancho(settings(fixture()))
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, ".hyperframes"))
+            os.symlink(os.path.join(tmp, ".hyperframes"), os.path.join(tmp, "atalho"))
+            for alvo in ("atalho/check.json", os.path.join(tmp, "atalho", "check.json")):
+                self.assertEqual(travas.decidir(g, "Write", {"file_path": alvo}, tmp)[0], "deny", alvo)
+            self.assertIsNone(travas.decidir(g, "Write", {"file_path": "outro/check.json"}, tmp))
+
+
 class TesteLancadorSandbox(test_chat.Base):
     def setUp(self):
         test_chat.Base.setUp(self)

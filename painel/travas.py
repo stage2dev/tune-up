@@ -73,6 +73,12 @@ PONTO_PONTO = re.compile(r"(^|[/\s'\"=])\.\.($|[/\s'\";|&)<>])")
 FERR_ARQUIVO = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 RE_UNIDADE = re.compile(r"^[A-Za-z]:")
 FIM_LIB = "/\\ \t\n'\""  # depois do liberado: separador, espaço, aspas ou fim (dadosx/ não é dados/)
+# com sandbox o QA confia nos relatórios que o hyperframes grava em <fonte>/.hyperframes/: Write/Edit não
+# grava lá (o Bash do hyperframes grava). `.hyperframes.` e `.hyperframes ` são a mesma pasta no Windows.
+# Pelo gancho, não por regra: `Write(**/.hyperframes/**)` não barrou o Write numa sessão real; `Edit(...)`
+# barra, mas o Claude Code soma regra Edit de deny ao denyWrite do sandbox e calaria o próprio hyperframes.
+RE_HF = re.compile(r"(^|/)\.hyperframes[. ]*(/|$)")
+MOTIVO_HF = "relatório do hyperframes (.hyperframes/) só o próprio hyperframes grava"
 
 
 # ---------------------------------------------------------------- validação (usada pelo catálogo)
@@ -133,7 +139,7 @@ def config_gancho(acao, protegidos=(), liberados=()):
     bash = (any(re.match(r"Bash(\(|$)", r) for r in trv.get("permitir") or [])
             or any(re.fullmatch(r["ferramenta"], "Bash") for r in trv.get("regras_permitir") or []))
     return {"v": 1, "falha": "deny" if leve else "ask", "forte": "deny" if leve else "ask",
-            "leve": leve, "bash": bash,
+            "leve": leve, "bash": bash, "sb": bool(acao.get("sandbox")),
             "prot": [p for p in protegidos if p], "lib": [p for p in liberados if p],
             "n": trv.get("regras_negar") or [], "p": trv.get("regras_permitir") or []}
 
@@ -327,12 +333,24 @@ def _casa(regra, ferramenta, entrada):
     return re.search(regra["entrada"], texto) is not None
 
 
+def _em_hyperframes(caminho, cwd):
+    """Pelo texto (`..` resolvido, sem caixa) e pelo caminho real (link simbólico para dentro também vale)."""
+    alvos = [caminho]
+    try:
+        alvos.append(os.path.realpath(os.path.join(cwd if isinstance(cwd, str) else "", caminho)))
+    except (OSError, ValueError):
+        pass
+    return any(RE_HF.search(caminho_comparavel(a, True)) for a in alvos)
+
+
 def decidir(conf, ferramenta, entrada, cwd=""):
     """(decisão, motivo) ou None quando a trava não tem nada a dizer. `cwd`: o da sessão (entrada do gancho)."""
     entrada = entrada if isinstance(entrada, dict) else {}
     forte = conf.get("forte") if conf.get("forte") in DECISOES else "deny"
     if ferramenta in FERR_ARQUIVO:
         caminho = str(entrada.get("file_path") or entrada.get("notebook_path") or "")
+        if caminho and conf.get("sb") and _em_hyperframes(caminho, cwd):
+            return "deny", MOTIVO_HF  # nem "ask": o dono não deve aprovar relatório forjado
         if caminho and (_protegido(caminho, conf) or _protegido(os.path.normpath(caminho), conf)
                         or _protegido_normal(caminho, conf, False)):
             return forte, "mexer nas regras do Claude ou do painel"
