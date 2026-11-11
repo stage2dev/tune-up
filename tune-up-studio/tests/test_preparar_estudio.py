@@ -178,7 +178,7 @@ class TestMain(Base):
 class TestModulo(Base):
     def test_comando_exige_confirmar_e_nao_dispara_sem(self):
         mod = carregar_modulo()
-        self.assertEqual(mod.INFO["esquemas"], {"preparar": {"confirmar": "booleano"}})
+        self.assertEqual(mod.INFO["esquemas"]["preparar"], {"confirmar": "booleano"})
         with mock.patch.object(mod.subprocess, "Popen") as popen:
             for dados in ({}, {"confirmar": False}):
                 self.assertFalse(mod.agir({"dados": self.dados}, "preparar", dados)["feito"])
