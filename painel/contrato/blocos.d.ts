@@ -67,7 +67,8 @@ export interface BlocoImagem {
   legenda?: string;
 }
 
-/** POST /api/modulos/<id>/acao. 200 { ok: true, resultado }; erros { erro } com 400/403/404/409/500/503.
+/** POST /api/modulos/<id>/acao. 200 { ok: true, resultado }; erros { erro } com 400/403/404/409/422/500/503
+ *  (422: agir devolveu { ok: false, mensagem }; erro = mensagem).
  *  GET /api/modulos/<id>?fresco=1 devolve o módulo sem o cache do servidor. */
 export interface ReqAcaoModulo {
   acao: string;

@@ -338,6 +338,9 @@ def agir(cfg, mid, acao, dados, tempo=TEMPO_LIMITE):
     except (TypeError, ValueError):
         return 200, {"ok": True, "resultado": {},
                      "avisos": ["A ação foi feita, mas a tela devolveu uma resposta inesperada."]}
+    if resultado.get("ok") is False:  # o módulo diz que não deu certo: a tela mostra erro, nunca "Feito."
+        msg = resultado.get("mensagem")
+        return 422, {"erro": msg if isinstance(msg, str) and msg else "A ação não foi feita.", "avisos": []}
     return 200, {"ok": True, "resultado": resultado}
 
 

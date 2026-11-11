@@ -368,6 +368,7 @@ def fazer_handler(app):
                 try:
                     r = portao.enviar_manual(con, app.conector, instancia, numero, texto, id_tela,
                                              confirmar_optout=confirmar, conversa_id=conversa_id)
+                    r = conversas.depois_de_duplicado(app, con, instancia, r, confirmar)
                 except telefone.TelefoneInvalido:
                     return self._erro(400, "Telefone inválido.")
             finally:

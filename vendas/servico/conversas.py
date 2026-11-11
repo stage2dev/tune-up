@@ -154,6 +154,23 @@ def dados_do_envio(con, conversa_id):
     return None if c is None else (c["telefone"], c["id"])
 
 
+def depois_de_duplicado(app, con, instancia, r, confirmar):
+    """Envio manual com a chave já ocupada: vale o estado real da linha. 'falhou' (não saiu) é o dono tentando de
+    novo com o mesmo id da tela: sai outra vez na MESMA linha pelo reenviar do portão (sem chave nova). 'incerto'
+    continua incerto (o dono decide em Envios incertos). Só 'enviado'/'pendente' são clique repetido."""
+    if r["estado"] != "duplicado":
+        return r
+    linha = con.execute("SELECT estado, motivo FROM envios WHERE id = ?", (r["envio_id"],)).fetchone()
+    if linha["estado"] == "falhou":
+        novo = portao.reenviar(con, app.conector, instancia, r["envio_id"], confirmar_optout=confirmar)
+        if novo["motivo"] != "nao_reenviavel":
+            return novo
+        linha = novo   # outro pedido reenviou antes: o estado de agora decide
+    if linha["estado"] == "incerto":
+        return {"estado": "incerto", "motivo": linha["motivo"], "envio_id": r["envio_id"]}
+    return r
+
+
 def _corpo_id(corpo, chave="conversa_id"):
     valor = corpo.get(chave)
     return valor if isinstance(valor, int) and not isinstance(valor, bool) and valor > 0 else None

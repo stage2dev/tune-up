@@ -120,6 +120,18 @@ class TesteConcorrencia(Base):
             modulos.montar(self.cfg, "loja")
             self.assertEqual(self.mod.MONTAR[0], volta)
 
+    def test_ok_false_do_modulo_vira_422_com_a_mensagem(self):
+        modulos.montar(self.cfg, "loja")
+        for volta, (r, erro) in enumerate((({"ok": False, "mensagem": "Não saiu."}, "Não saiu."),
+                                           ({"ok": False}, "A ação não foi feita."),
+                                           ({"ok": False, "mensagem": 3}, "A ação não foi feita.")), start=2):
+            self.mod.agir = lambda ctx, acao, dados, r=r: r
+            self.assertEqual(modulos.agir(self.cfg, "loja", "salvar", {}), (422, {"erro": erro, "avisos": []}))
+            modulos.montar(self.cfg, "loja")
+            self.assertEqual(self.mod.MONTAR[0], volta)  # a ação rodou: o cache da tela foi apagado
+        self.mod.agir = lambda ctx, acao, dados: {"ok": True, "mensagem": "Feito."}
+        self.assertEqual(modulos.agir(self.cfg, "loja", "salvar", {})[0], 200)
+
 
 class TesteNegarFechado(Base):
     """Achados 3 e 4: módulo ligado com problema barra o disparo, com o id dele no texto."""
