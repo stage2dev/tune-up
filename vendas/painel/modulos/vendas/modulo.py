@@ -34,6 +34,10 @@ _spec = importlib.util.spec_from_file_location("tune_up_vendas_leads", os.path.j
     os.path.abspath(__file__)), "abas", "leads.py"))
 leads = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(leads)
+_spec = importlib.util.spec_from_file_location("tune_up_vendas_disparos", os.path.join(os.path.dirname(
+    os.path.abspath(__file__)), "abas", "disparos.py"))
+disparos = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(disparos)
 pasta = cliente.pasta
 VIVO_S = cliente.VIVO_S
 porta_do_painel = cliente.porta_do_painel
@@ -49,7 +53,7 @@ INFO = {
     "icone": "pessoas",
     "acoes": ["modo_webhook", "conectar_instancia", "abrir_conversa", "enviar_mensagem", "assumir_conversa",
               "devolver_ia", "liberar_saida", "reenviar_envio", "descartar_envio"] + list(conversas.ACOES_RASCUNHO)
-             + ["ia_automatico_conversa", "ia_rascunho_conversa"] + list(ia.ACOES) + list(leads.ACOES),
+             + ["ia_automatico_conversa", "ia_rascunho_conversa"] + list(ia.ACOES) + list(leads.ACOES) + list(disparos.ACOES),
     "negar": [
         "Bash(*127.0.0.1:%d*)" % PORTA,
         "Bash(*localhost:%d*)" % PORTA,
@@ -109,6 +113,8 @@ def agir(ctx, acao, dados, base=None):
         return ia.agir(ctx, cliente, acao, dados, base)
     if acao in leads.ACOES:
         return leads.agir(ctx, cliente, acao, dados, base)
+    if acao in disparos.ACOES:
+        return disparos.agir(ctx, cliente, acao, dados, base)
     if acao != "modo_webhook":
         return {"ok": False, "mensagem": "Ação desconhecida."}
     modo = (dados or {}).get("modo")
@@ -168,6 +174,7 @@ def montar(ctx, base=None):
     if rodando:
         aba, aba_ia = conversas.blocos(ctx, cliente, base), ia.blocos(*ia.ler(ctx, cliente, base))
         aba_leads = leads.blocos(ctx, *leads.ler(ctx, cliente, base))
+        aba_disparos = disparos.blocos(ctx, *disparos.ler(ctx, cliente, base))
     else:
         aba = [{"tipo": "texto", "titulo": "Serviço parado", "texto": "Ligue o serviço (veja a aba Conexão) para "
                                                                       "ver e responder as conversas."}]
@@ -175,7 +182,10 @@ def montar(ctx, base=None):
                                                                          "configurar a IA."}]
         aba_leads = [{"tipo": "texto", "titulo": "Serviço parado", "texto": "Ligue o serviço (veja a aba Conexão) "
                                                                             "para ver e importar os leads."}]
+        aba_disparos = [{"tipo": "texto", "titulo": "Serviço parado", "texto": "Ligue o serviço (veja a aba Conexão) "
+                                                                               "para ver e criar os disparos."}]
     return {"avisos": avisos, "abas": [{"id": "conexao", "titulo": "Conexão", "blocos": blocos},
                                        {"id": "conversas", "titulo": "Conversas", "blocos": aba},
                                        {"id": "ia", "titulo": "IA", "blocos": aba_ia},
-                                       {"id": "leads", "titulo": "Leads", "blocos": aba_leads}]}
+                                       {"id": "leads", "titulo": "Leads", "blocos": aba_leads},
+                                       {"id": "disparos", "titulo": "Disparos", "blocos": aba_disparos}]}
