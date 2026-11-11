@@ -135,7 +135,8 @@ class TesteAgir(Aba):
             "ia_apagar_chave", "ia_modo", "aprovar_rascunho", "editar_rascunho", "descartar_rascunho",
             "ia_automatico_conversa", "ia_rascunho_conversa", "leads_filtrar", "leads_importar", "disparos_empresa", "disparos_previa", "disparos_criar",
             "disparos_ativar", "disparos_pausar", "disparos_retomar",
-            "importar_candidatos", "candidato_filtrar", "candidato_aprovar", "candidato_descartar"]))
+            "importar_candidatos", "candidato_filtrar", "candidato_aprovar", "candidato_descartar",
+            "places_chave", "places_apagar_chave", "places_teto", "places_buscar", "places_guardar"]))
         self.assertEqual(self.falso.chamadas, [])
 
     def test_servico_de_outro_projeto_recusado(self):

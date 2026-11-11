@@ -18,8 +18,8 @@ import secrets  # noqa: E402
 import signal  # noqa: E402
 import threading  # noqa: E402
 
-from servico import (agendador, banco, candidatos, cerebro, evolution_local, openai_cliente, pasta, portao, rascunhos, revisao,  # noqa: E402
-                     recebimento, rotas, travas)
+from servico import (agendador, banco, candidatos, cerebro, evolution_local, openai_cliente, pasta, places, portao, rascunhos,  # noqa: E402
+                     revisao, recebimento, rotas, travas)
 from servico.atendente import Atendente  # noqa: E402
 from servico.conectores import evolution  # noqa: E402
 
@@ -39,6 +39,8 @@ def argumentos(argv):
     p.add_argument("--base", default=None, help="pasta base dos dados (só para testes)")
     p.add_argument("--openai-url", default=os.environ.get(openai_cliente.VAR_URL) or openai_cliente.URL_PADRAO,
                    help="URL base da OpenAI (só para testes; padrão %s)" % openai_cliente.URL_PADRAO)
+    p.add_argument("--places-url", default=os.environ.get(places.VAR_URL) or places.URL_PADRAO,
+                   help="URL base do Google Places (só para testes; padrão %s)" % places.URL_PADRAO)
     return p.parse_args(argv)
 
 
@@ -101,6 +103,7 @@ def rodar(args, avisar=print):
         app = rotas.App(pasta_dados, args.porta, painel, token, segredo)
         app.despachar = recebimento.Recebimento(lambda: app.conector)
         app.openai_url = args.openai_url
+        app.places_url = args.places_url
         app.raiz = raiz
         try:
             servidor = rotas.criar_servidor(app, args.porta)

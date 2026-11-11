@@ -46,6 +46,10 @@ _spec = importlib.util.spec_from_file_location("tune_up_vendas_buscador", os.pat
     os.path.abspath(__file__)), "abas", "buscador.py"))
 buscador = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(buscador)
+_spec = importlib.util.spec_from_file_location("tune_up_vendas_places", os.path.join(os.path.dirname(
+    os.path.abspath(__file__)), "abas", "places.py"))
+places = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(places)
 pasta = cliente.pasta
 VIVO_S = cliente.VIVO_S
 porta_do_painel = cliente.porta_do_painel
@@ -66,7 +70,7 @@ INFO = {
     "acoes": ["modo_webhook", "conectar_instancia", "abrir_conversa", "enviar_mensagem", "assumir_conversa",
               "devolver_ia", "liberar_saida", "reenviar_envio", "descartar_envio"] + list(conversas.ACOES_RASCUNHO)
              + ["ia_automatico_conversa", "ia_rascunho_conversa"] + list(ia.ACOES) + list(leads.ACOES) + list(disparos.ACOES)
-             + list(candidatos.ACOES) + list(buscador.ACOES),
+             + list(candidatos.ACOES) + list(buscador.ACOES) + list(places.ACOES),
     "negar": [
         "Bash(*127.0.0.1:%d*)" % PORTA,
         "Bash(*localhost:%d*)" % PORTA,
@@ -132,6 +136,8 @@ def agir(ctx, acao, dados, base=None):
         return candidatos.agir(ctx, cliente, acao, dados, base)
     if acao in buscador.ACOES:
         return buscador.agir(ctx, cliente, acao, dados, base)
+    if acao in places.ACOES:
+        return places.agir(ctx, cliente, acao, dados, base)
     if acao != "modo_webhook":
         return {"ok": False, "mensagem": "Ação desconhecida."}
     modo = (dados or {}).get("modo")
@@ -192,7 +198,8 @@ def montar(ctx, base=None):
         aba, aba_ia = conversas.blocos(ctx, cliente, base), ia.blocos(*ia.ler(ctx, cliente, base))
         aba_leads = leads.blocos(ctx, *leads.ler(ctx, cliente, base))
         aba_disparos = disparos.blocos(ctx, *disparos.ler(ctx, cliente, base))
-        aba_buscador = buscador.blocos(ctx, *buscador.ler(ctx, cliente, base), FORM_IMPORTAR)
+        aba_buscador = (buscador.blocos(ctx, *buscador.ler(ctx, cliente, base), FORM_IMPORTAR)
+                        + places.blocos(*places.ler(ctx, cliente, base), buscador.endereco))
     else:
         aba = [{"tipo": "texto", "titulo": "Serviço parado", "texto": "Ligue o serviço (veja a aba Conexão) para "
                                                                       "ver e responder as conversas."}]

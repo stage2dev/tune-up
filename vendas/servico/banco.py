@@ -185,6 +185,16 @@ MIGRACOES = [
         "ALTER TABLE candidatos ADD COLUMN site_host TEXT",
         "CREATE INDEX candidatos_site_host ON candidatos(site_host) WHERE site_host IS NOT NULL",
     ],
+    # 14: Google Places (termos do Google): só o place_id (+ nicho e cidade da busca) é guardado; nada de nome, telefone
+    # ou endereço. places_uso conta as buscas do dia (teto diário aplicado aqui, no banco).
+    [
+        """CREATE TABLE places_guardados (
+            place_id TEXT PRIMARY KEY,
+            nicho TEXT NOT NULL,
+            cidade TEXT NOT NULL,
+            criado_em TEXT NOT NULL)""",
+        "CREATE TABLE places_uso (dia TEXT PRIMARY KEY, n INTEGER NOT NULL)",
+    ],
 ]
 VERSAO = len(MIGRACOES)
 PARECE_SEGREDO = re.compile(r"chave|senha|token|segredo|secret|key|password", re.I)
