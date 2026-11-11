@@ -79,15 +79,21 @@ def _chave(con, chave):
     return None if linha is None else dict(linha)
 
 
-def _falar(app, con, numero, fala, mandar):
-    """voz._gerar_e_enviar com o arquivo pelo portão. Exceção inesperada vira estado 'erro' (o texto sai)."""
+def _falar(app, con, numero, fala, mandar, chave):
+    """voz._gerar_e_enviar com o arquivo pelo portão. Exceção inesperada: se a linha do áudio no portão já existe
+    (pendente, enviado ou incerto) o áudio pode ter saído = 'incerto' (sem texto de reserva); sem linha = 'erro' (o
+    texto sai)."""
     try:
         return voz._gerar_e_enviar(app, con, "audio_ia", numero, fala, mandar)
     except Exception as e:
         if con.in_transaction:
             con.execute("ROLLBACK")
         print("vendas: áudio da IA: falhou: %s" % type(e).__name__, file=sys.stderr)
-        return {"estado": "erro", "codigo": "erro_interno:%s" % type(e).__name__}
+        codigo = "erro_interno:%s" % type(e).__name__
+        linha = _chave(con, chave)
+        if linha is not None and linha["estado"] in ("pendente", "enviado", "incerto"):
+            return {"estado": "incerto", "motivo": codigo, "envio_id": linha["id"]}
+        return {"estado": "erro", "codigo": codigo}
 
 
 def _so_texto(con, conector, instancia, numero, conversa_id, id_gatilho, pronto, permitidos, segredos, motivo):
@@ -113,7 +119,8 @@ def entregar(app, con, conector, instancia, numero, conversa_id, id_gatilho, tex
         return _so_texto(con, conector, instancia, numero, conversa_id, id_gatilho, pronto, permitidos, segredos,
                          "fala_vazia" if not fala else "link_na_fala")
     r = _falar(app, con, numero, fala, lambda conector_, inst, ogg: portao.enviar_audio_ia(
-        con, conector_, inst, numero, ogg, conversa_id, id_gatilho, 1))
+        con, conector_, inst, numero, ogg, conversa_id, id_gatilho, 1), "audio_ia:%s:%s:1:audio" % (conversa_id,
+                                                                                                 id_gatilho))
     if r["estado"] in SAIU:
         res = {"estado": r["estado"], "motivo": r.get("motivo"), "audio": r, "baloes": []}
         if r["estado"] == "incerto":
@@ -130,9 +137,11 @@ def entregar(app, con, conector, instancia, numero, conversa_id, id_gatilho, tex
 def aprovar(app, con, instancia, numero, final, rascunho_id):
     """Rascunho 'enviar como áudio' aprovado. (resultado do áudio ou None, texto a mandar como rascunho_aprovado ou
     None). Áudio saiu = só os links vão em texto; falha da voz = o texto inteiro vai; opt-out/pausa = nada."""
-    antes = _chave(con, "audio_ia:rascunho:%d" % rascunho_id)
+    chave = "audio_ia:rascunho:%d" % rascunho_id
+    antes = _chave(con, chave)
     if antes is not None and antes["estado"] != "falhou":   # já saiu (ou pode ter saído): nada é gerado de novo
-        return {"estado": "duplicado", "motivo": "chave_ocupada", "envio_id": antes["id"]}, None
+        links = separar(final)[1] if antes["estado"] == "enviado" else []   # links que falharam/caíram: de novo
+        return {"estado": "duplicado", "motivo": "chave_ocupada", "envio_id": antes["id"]}, "\n".join(links) or None
     if antes is not None or _chave(con, "rascunho_aprovado:%d" % rascunho_id):   # já foi como texto: segue texto
         return None, final
     fala, links, cortou = separar(final)
@@ -140,7 +149,7 @@ def aprovar(app, con, instancia, numero, final, rascunho_id):
         _virou_texto(con, None, "rascunho_nao_cabe_no_audio", rascunho_id)
         return None, final
     r = _falar(app, con, numero, fala, lambda conector, inst, ogg: portao.enviar_audio_rascunho(
-        con, conector, inst, numero, ogg, rascunho_id))
+        con, conector, inst, numero, ogg, rascunho_id), chave)
     if r["estado"] in SAIU:
         return r, ("\n".join(links) if links and r["estado"] == "enviado" else None)
     if r["estado"] == "negado" and r.get("motivo") == "optout":

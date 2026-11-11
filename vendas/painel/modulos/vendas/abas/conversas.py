@@ -38,6 +38,7 @@ MOTIVOS = {
     "teto_audio_dia": "Acabou o limite de áudios da IA de hoje.",
     "teto_audio_contato_dia": "Acabou o limite de áudios da IA para este contato hoje; a resposta foi em texto.",
     "audio_incerto": "O áudio da IA pode não ter chegado; confira no celular e responda você.",
+    "rascunho_links_nao_sairam": "O áudio saiu, mas o texto com os links não. Aprove de novo para mandar só os links.",
     "teto_contatos_novos_dia": "Aquecimento: acabou o limite de contatos novos de hoje para este número.",
     "teto_diario": "A IA atingiu o teto de gasto do dia; responda você.",
     "sem_chave": "A IA está sem chave da OpenAI; configure na aba IA.",

@@ -5,14 +5,15 @@ sobre o padrão do projeto (config ia_modo_padrao, 'rascunho' se faltar). Um ras
 conversa; passa de 24 h e deixa de poder ser aprovado; opt-out depois do rascunho = negado no portão.
 Rascunho 'enviar como áudio' (como_audio, a IA usou responder_em_audio): nada é gerado antes da aprovação; aprovar
 gera e manda o áudio (origem audio_ia, chave audio_ia:rascunho:<id>) e os links em texto (rascunho_aprovado); falha
-da voz = o texto inteiro sai como rascunho_aprovado (servico/audio_ia.py)."""
+da voz = o texto inteiro sai como rascunho_aprovado (servico/audio_ia.py). Links que não saíram depois do áudio =
+estado 'parcial', evento e "precisa de você"; aprovar de novo manda só os links (o áudio não é gerado de novo)."""
 import datetime
 import json
 import logging
 import re
 import sqlite3
 
-from servico import audio_ia, banco, conversas, portao, saida
+from servico import audio_ia, banco, cerebro, conversas, portao, saida
 
 UTC = datetime.timezone.utc
 MODOS_IA = ("rascunho", "automatico")
@@ -21,6 +22,7 @@ VALIDADE = datetime.timedelta(hours=24)
 TEXTO_MAX = saida.CARACTERES_MAX
 OCUPADO = "Este rascunho está sendo enviado agora. Aguarde e atualize a conversa."
 LOG = logging.getLogger(__name__)
+OK = ("enviado", "incerto", "enviando", "duplicado")   # saiu, pode ter saído ou já tinha saído
 ROTA = re.compile(r"^/(?:rascunhos/(\d{1,12})/(aprovar|descartar)|conversas/(\d{1,12})/modo-ia)$")
 
 
@@ -136,8 +138,9 @@ def aprovar(app, con, rascunho_id, texto=None, agora=None):
     quando a mensagem saiu (ou pode ter saído); recusa passageira (teto) devolve a pendente, opt-out o encerra.
     Tentativa anterior com outro texto (falhou) não é reenviada com o texto velho: 409."""
     agora = agora or datetime.datetime.now(UTC)
-    r = con.execute("SELECT d.id, d.estado, d.texto, d.criado_em, d.como_audio, k.telefone FROM rascunhos d JOIN conversas c ON "
-                    "c.id = d.conversa_id JOIN contatos k ON k.id = c.contato_id WHERE d.id = ?",
+    r = con.execute("SELECT d.id, d.conversa_id, d.estado, d.texto, d.criado_em, d.como_audio, k.telefone FROM "
+                    "rascunhos d JOIN conversas c ON c.id = d.conversa_id JOIN contatos k ON k.id = c.contato_id "
+                    "WHERE d.id = ?",
                     (rascunho_id,)).fetchone()
     if r is None:
         return 404, {"erro": "Rascunho não encontrado."}
@@ -169,19 +172,35 @@ def aprovar(app, con, rascunho_id, texto=None, agora=None):
         if texto_envio:   # o texto, ou só os links depois do áudio
             res_texto = portao.enviar_rascunho_aprovado(con, app.conector, instancia, r["telefone"], texto_envio,
                                                         rascunho_id, agora=agora)
-            res = res or conversas.depois_de_duplicado(app, con, instancia, res_texto, False)
+            res_texto = conversas.depois_de_duplicado(app, con, instancia, res_texto, False)
+            if res is None:
+                res = res_texto
+            elif res_texto["estado"] not in OK:   # o áudio saiu (ou já tinha saído) e os links não
+                res = _links_perdidos(con, r["conversa_id"], rascunho_id, res_texto)
+            elif res["estado"] == "duplicado":   # áudio de antes: vale o que os links fizeram agora
+                res = res_texto
     except BaseException:
         if travou:
             _decidir(con, rascunho_id, "pendente")
         raise
     if travou:
-        if res["estado"] in ("enviado", "incerto", "enviando", "duplicado"):
+        if res["estado"] in OK + ("parcial",):
             _decidir(con, rascunho_id, "aprovado")
         elif res["estado"] == "negado" and res["motivo"] == "optout":
             _decidir(con, rascunho_id, "negado")
         else:
             _decidir(con, rascunho_id, "pendente")
     return 200, {"estado": res["estado"], "motivo": res["motivo"], "envio_id": res.get("envio_id")}
+
+
+def _links_perdidos(con, conversa_id, rascunho_id, res_texto):
+    """O áudio saiu e o balão de links não: o dono fica sabendo (evento e "precisa de você"); aprovar de novo reenvia
+    os links na mesma linha do portão."""
+    banco.registrar_evento(con, "rascunho_links_nao_sairam", json.dumps(
+        {"conversa_id": conversa_id, "rascunho_id": rascunho_id, "estado": res_texto["estado"],
+         "motivo": res_texto.get("motivo")}))
+    cerebro.marcar_precisa_de_voce(con, conversa_id, "rascunho_links_nao_sairam")
+    return {"estado": "parcial", "motivo": "rascunho_links_nao_sairam", "envio_id": res_texto.get("envio_id")}
 
 
 def destravar_na_subida(con):
