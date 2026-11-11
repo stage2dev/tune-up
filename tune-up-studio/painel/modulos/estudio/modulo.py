@@ -1,11 +1,13 @@
 """Módulo `estudio` do painel (vem do plugin tune-up-studio; ligue com
 "modulos_de_plugins": ["tune-up-studio@<marketplace>:estudio"]).
 
-Por enquanto só o comando `preparar`: roda scripts/preparar_estudio.py em segundo plano (npm ci
+Comandos: `preparar` e, para a marca, `marca.aprovar` / `marca.editar`. A aprovação da marca é gravada
+aqui (ctx["gravar_dono"] -> estudio-dono.json); as skills de marca só leem. `preparar`: roda scripts/preparar_estudio.py em segundo plano (npm ci
 leva mais que os 20 s de agir) e a tela mostra o <dados>/ambiente.json. O comando exige
 {"confirmar": true}: é o único passo do estúdio com rede (risco `codigo`).
 Python 3.9, só biblioteca padrão.
 """
+import hashlib
 import json
 import os
 import subprocess
@@ -16,8 +18,9 @@ try:
 except ImportError:
     fcntl = None
 
-INFO = {"id": "estudio", "titulo": "Estúdio", "icone": "clapperboard", "acoes": ["preparar"],
-        "esquemas": {"preparar": {"confirmar": "booleano"}}}
+INFO = {"id": "estudio", "titulo": "Estúdio", "icone": "clapperboard", "acoes": ["preparar", "marca.aprovar", "marca.editar"],
+        "esquemas": {"preparar": {"confirmar": "booleano"}, "marca.aprovar": {"confirmar": "booleano"},
+                     "marca.editar": {"campo": "texto", "valor": "texto"}}}
 SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.realpath(__file__))))), "scripts", "preparar_estudio.py")
 
@@ -72,7 +75,65 @@ def _travar(dados):
     return f
 
 
+def _marca(ctx):
+    """(caminho, texto, objeto) of <raiz>/.tune-up/estudio/marca/marca.json, or None."""
+    if not ctx.get("raiz"):
+        return None
+    caminho = os.path.join(ctx["raiz"], ".tune-up", "estudio", "marca", "marca.json")
+    try:
+        if os.path.islink(caminho):
+            return None
+        with open(caminho, "rb") as f:
+            bruto = f.read()
+        obj = json.loads(bruto.decode("utf-8"))
+    except (OSError, ValueError):
+        return None
+    return (caminho, bruto, obj) if isinstance(obj, dict) and isinstance(obj.get("campos"), dict) else None
+
+
+def _marca_aprovar(ctx, dados):
+    if dados.get("confirmar") is not True:
+        return {"feito": False, "mensagem": "Confirme que a marca mostrada está certa."}
+    m = _marca(ctx)
+    if m is None:
+        return {"feito": False, "mensagem": "Ainda não há marca descoberta. Rode a skill de marca antes."}
+    ctx["gravar_dono"]("marca", {"aprovado": True, "sha256": hashlib.sha256(m[1]).hexdigest()})
+    return {"feito": True, "mensagem": "Marca aprovada."}
+
+
+def _marca_editar(ctx, dados):
+    sys.path.insert(0, os.path.dirname(SCRIPT))
+    try:
+        import cores
+        import marca_leitores as ml
+    finally:
+        sys.path.remove(os.path.dirname(SCRIPT))
+    campo, valor = dados.get("campo"), (dados.get("valor") or "").strip()
+    if campo not in ml.CAMPOS or not valor or len(valor) > 200 or "\n" in valor:
+        return {"feito": False, "mensagem": "Campo ou valor inválido."}
+    if campo.startswith("cores."):
+        valor = cores.para_hex(valor)
+        if valor is None:
+            return {"feito": False, "mensagem": "Não entendi essa cor. Use um valor como #1A2B3C."}
+    m = _marca(ctx)
+    if m is None:
+        return {"feito": False, "mensagem": "Ainda não há marca descoberta. Rode a skill de marca antes."}
+    caminho, _, obj = m
+    obj["campos"][campo] = {"valor": valor, "fonte": "dono", "confianca": "alta", "travado": True}
+    tmp = caminho + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        f.write(json.dumps(obj, ensure_ascii=False, indent=2) + "\n")
+    os.replace(tmp, caminho)
+    # a marca mudou: a aprovação anterior deixa de valer até o dono aprovar de novo
+    ctx["gravar_dono"]("marca", {"aprovado": False})
+    return {"feito": True, "mensagem": "Campo %s salvo e travado. Aprove a marca de novo." % campo}
+
+
 def agir(ctx, acao, dados):
+    if acao == "marca.aprovar":
+        return _marca_aprovar(ctx, dados)
+    if acao == "marca.editar":
+        return _marca_editar(ctx, dados)
     if acao != "preparar":
         return {"feito": False, "mensagem": "Ação desconhecida."}
     if dados.get("confirmar") is not True:
