@@ -77,6 +77,42 @@ class TesteForjado(Base):
         self.assertEqual(self.c.entregues, [])
 
 
+def outro(ident, mensagem):
+    c = corpo(ident, "x")
+    c["data"]["message"] = mensagem
+    return c
+
+
+class TesteOutroNoMeio(Base):
+    """Reação, figurinha ou vídeo logo depois do texto (tipo 'outro': sem gancho nem marca) não cala o texto."""
+
+    def _texto_e_depois(self, mensagem):
+        self.falsa.fila = [resposta_texto("Custa 10")]
+        self.chegar("t1", "quanto custa?")
+        time.sleep(0.05)
+        recebimento.executar_depois(self.con, self.c, recebimento.gravar(self.con, evolution.traduzir(
+            outro("o1", mensagem))))
+        self.assertEqual(self.con.execute("SELECT tipo FROM mensagens WHERE id_externo = 'o1'").fetchone()[0],
+                         "outro" if "audioMessage" not in mensagem else "audio")
+
+    def test_reacao_depois_do_texto_ainda_responde(self):
+        self._texto_e_depois({"reactionMessage": {"key": {"id": "t1"}, "text": "\U0001F44D"}})
+        self.assertTrue(self.esperar(lambda: len(self.c.entregues) == 1), "o texto ficou sem resposta")
+        self.assertEqual([e["conteudo"] for e in self.c.entregues], ["Custa 10"])
+        chave = self.con.execute("SELECT chave_dedupe FROM envios").fetchone()[0]
+        self.assertTrue(chave.endswith(":t1:1"), chave)
+
+    def test_figurinha_depois_do_texto_ainda_responde(self):
+        self._texto_e_depois({"stickerMessage": {"mimetype": "image/webp"}})
+        self.assertTrue(self.esperar(lambda: len(self.c.entregues) == 1), "o texto ficou sem resposta")
+
+    def test_audio_depois_do_texto_segue_com_o_dono(self):
+        self._texto_e_depois({"audioMessage": {"seconds": 3}})
+        time.sleep(self.ESPERA * 3)
+        self.assertEqual(self.c.entregues, [])
+        self.assertEqual(self.conversa()["precisa_de_voce"], 1)
+
+
 class TesteMigracao(unittest.TestCase):
     def test_coluna_confiavel_existe_com_padrao_1(self):
         con = banco.sqlite3.connect(":memory:", isolation_level=None)

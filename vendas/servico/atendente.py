@@ -64,9 +64,11 @@ def _pausada(conversa, agora):
 
 def contexto(con, conversa_id, gatilho_id, limite=CONTEXTO):
     """(mensagens para o cérebro, linha do gatilho, suspeitas). Só linhas confiáveis até gatilho_id. Gatilho None
-    (nada a responder) se gatilho_id não é texto confiável do lead ou se já há entrada confiável mais nova."""
+    (nada a responder) se gatilho_id não é texto confiável do lead ou se já há entrada confiável mais nova que tem
+    rodada própria (texto) ou já marcou 'precisa de você' (mídia). Tipo 'outro' (reação, figurinha, vídeo) não cala."""
     if gatilho_id is None or con.execute("SELECT 1 FROM mensagens WHERE conversa_id = ? AND id > ? AND confiavel = 1 "
-                                         "AND direcao = 'entrada'", (conversa_id, gatilho_id)).fetchone():
+                                         "AND direcao = 'entrada' AND tipo IN ('texto', 'audio', 'imagem', "
+                                         "'documento')", (conversa_id, gatilho_id)).fetchone():
         return [], None, []
     linhas = con.execute("SELECT id, id_externo, direcao, tipo, texto FROM mensagens WHERE conversa_id = ? "
                          "AND id <= ? AND confiavel = 1 ORDER BY id DESC LIMIT ?",
