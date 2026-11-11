@@ -68,6 +68,9 @@ function Kpis({ b }: { b: BlocoCru }) {
   );
 }
 
+// Coluna 'secundaria' some no celular (menos de 640 px): a tabela cabe sem rolagem lateral.
+const SO_TELA_LARGA = 'hidden sm:table-cell';
+
 function Tabela({ b }: { b: BlocoCru }) {
   const colunas = lista(b.colunas).filter((c) => typeof c.id === 'string');
   const linhas = lista(b.linhas);
@@ -81,7 +84,7 @@ function Tabela({ b }: { b: BlocoCru }) {
             <thead>
               <tr className="text-left text-xs text-[var(--color-text-secondary)]">
                 {colunas.map((c) => (
-                  <th key={String(c.id)} scope="col" className={`py-1.5 px-2 font-medium ${c.alinhar === 'dir' ? 'text-right' : ''}`}>
+                  <th key={String(c.id)} scope="col" className={`py-1.5 px-2 font-medium ${c.alinhar === 'dir' ? 'text-right' : ''} ${c.secundaria === true ? SO_TELA_LARGA : ''}`}>
                     {mostrarValor(c.rotulo ?? c.id)}
                   </th>
                 ))}
@@ -91,7 +94,7 @@ function Tabela({ b }: { b: BlocoCru }) {
               {linhas.map((l, k) => (
                 <tr key={k} className="border-t border-[var(--color-border-subtle)]">
                   {colunas.map((c) => (
-                    <td key={String(c.id)} className={`py-1.5 px-2 break-words ${c.alinhar === 'dir' ? 'text-right tabular-nums' : ''}`}>
+                    <td key={String(c.id)} className={`py-1.5 px-2 break-words ${c.alinhar === 'dir' ? 'text-right tabular-nums' : ''} ${c.secundaria === true ? SO_TELA_LARGA : ''}`}>
                       {mostrarValor(l[String(c.id)])}
                     </td>
                   ))}

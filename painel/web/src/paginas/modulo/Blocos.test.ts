@@ -34,6 +34,11 @@ describe('renderizador de blocos', () => {
     expect(h).toContain('text-right');
     expect(h).toContain('sem dado');
   });
+  it('tabela: coluna secundaria some no celular, a principal fica', () => {
+    const h = html([{ tipo: 'tabela', colunas: [{ id: 'a', rotulo: 'Campo' }, { id: 'b', rotulo: 'De onde veio', secundaria: true }], linhas: [{ a: 'Cor', b: 'site' }] }]);
+    expect(h.match(/hidden sm:table-cell/g)?.length).toBe(2); // th e td da secundaria
+    expect(h).toMatch(/<th[^>]*class="(?![^"]*hidden)[^"]*"[^>]*>Campo/);
+  });
   it('tabela vazia explica com o texto do bloco', () => {
     expect(html([{ tipo: 'tabela', colunas: [{ id: 'a', rotulo: 'A' }], linhas: [], vazio: 'Nada cadastrado ainda.' }])).toContain('Nada cadastrado ainda.');
   });

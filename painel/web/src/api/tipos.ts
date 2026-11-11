@@ -142,7 +142,7 @@ export interface AlertaModulo {
 // Blocos: copiados de contrato/blocos.d.ts. Um bloco de tipo desconhecido (versao mais nova do pacote) cai em BlocoDesconhecido.
 export type Tom = TomBloco;
 export type BlocoKpis = { tipo: 'kpis'; titulo?: string; itens: { rotulo: string; valor: string | number | null; detalhe?: string; tom?: Tom }[] };
-export type BlocoTabela = { tipo: 'tabela'; titulo?: string; colunas: { id: string; rotulo: string; alinhar?: 'esq' | 'dir' }[];
+export type BlocoTabela = { tipo: 'tabela'; titulo?: string; colunas: { id: string; rotulo: string; alinhar?: 'esq' | 'dir'; secundaria?: boolean }[];
   linhas: Record<string, string | number | null>[]; vazio?: string };
 export type BlocoLista = { tipo: 'lista'; titulo?: string; itens: { titulo: string; detalhe?: string; selo?: { texto: string; tom: Tom } }[]; vazio?: string };
 export type BlocoSerie = { tipo: 'serie'; titulo?: string; unidade?: string; series: { nome: string; pontos: { x: string; y: number | null }[] }[]; vazio?: string };

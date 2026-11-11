@@ -298,10 +298,12 @@ def aprovar(ctx, dados):
         if selo.assinatura(p) != antes:  # algo mudou na pasta durante a cópia: não aprova o que não foi conferido
             raise OSError("a peça mudou durante a aprovação")
         params = e.get("params") or {}
+        copy = selo.legenda(p) if selo.tipo(e["acao"]) == "post" else None
         manifesto = {"versao": 1, "trabalho": tid, "acao": e["acao"], "plataforma": "instagram",
                      "formato": params.get("formato") if selo.tipo(e["acao"]) == "post"
                      else FORMATO_VIDEO % params.get("duracao"),
-                     "legenda": selo.legenda(p) if selo.tipo(e["acao"]) == "post" else None, "selo": s["linha"], "arquivos": arquivos, "aprovado_em": _agora()}
+                     "legenda": _so_a_legenda(copy) if copy else None, "copy": copy, "selo": _texto_selo(s),
+                     "arquivos": arquivos, "aprovado_em": _agora()}
         with open(os.path.join(tmp, "manifesto.json"), "x", encoding="utf-8") as f:  # por último
             json.dump(manifesto, f, ensure_ascii=False, indent=1)
         os.replace(tmp, destino)  # pasta com o mesmo nome já existe: falha (POSIX e Windows)

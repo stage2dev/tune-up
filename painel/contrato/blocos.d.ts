@@ -4,7 +4,7 @@ export type Tom = 'neutro' | 'bom' | 'atencao' | 'ruim';
 
 export type Bloco =
   | { tipo: 'kpis'; titulo?: string; itens: { rotulo: string; valor: string | number | null; detalhe?: string; tom?: Tom }[] }
-  | { tipo: 'tabela'; titulo?: string; colunas: { id: string; rotulo: string; alinhar?: 'esq' | 'dir' }[];
+  | { tipo: 'tabela'; titulo?: string; colunas: { id: string; rotulo: string; alinhar?: 'esq' | 'dir'; secundaria?: boolean }[];
       linhas: Record<string, string | number | null>[]; vazio?: string }
   | { tipo: 'lista'; titulo?: string; itens: { titulo: string; detalhe?: string; selo?: { texto: string; tom: Tom } }[];
       vazio?: string }

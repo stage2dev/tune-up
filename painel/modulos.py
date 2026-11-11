@@ -211,24 +211,26 @@ def _rodar_montar(mod, ctx, mid, tempo):
         except BaseException as e:  # noqa: B902 - um módulo quebrado não derruba o painel
             caixa["erro"] = e
 
-    with _lock:
+    with _lock:  # duas montagens juntas: a segunda espera a primeira e usa o resultado dela
         t = _rodando.get(mid)
-        if t is not None and t.is_alive():
-            raise ErroModulo(503, "Esta tela ainda está sendo montada. Tente de novo daqui a pouco.")
-        t = threading.Thread(target=alvo, name="modulo-%s" % mid, daemon=True)
-        _rodando[mid] = t
-    t.start()
+        dono = t is None or not t.is_alive()
+        if dono:
+            t = _rodando[mid] = threading.Thread(target=alvo, name="modulo-%s" % mid, daemon=True)
+            t.caixa = caixa
+            t.start()
     t.join(tempo)
     if t.is_alive():
-        raise ErroModulo(500, "Esta tela demorou demais para montar.",
-                         ["montar() de %s passou de %d s" % (mid, int(tempo))])
+        if not dono:  # a outra montagem passou do tempo
+            raise ErroModulo(503, "Esta tela ainda está sendo montada. Tente de novo daqui a pouco.")
+        raise ErroModulo(500, "Esta tela demorou demais para montar.", ["montar() de %s passou de %d s" % (mid, int(tempo))])
     with _lock:
-        _rodando.pop(mid, None)
-    if "erro" in caixa:
-        e = caixa["erro"]
+        if _rodando.get(mid) is t:
+            _rodando.pop(mid)
+    if "erro" in t.caixa:
+        e = t.caixa["erro"]
         raise ErroModulo(500, "Não consegui montar esta tela.",
                          ["%s.montar quebrou: %s: %s" % (mid, type(e).__name__, str(e)[:200])])
-    return caixa.get("dado")
+    return t.caixa.get("dado")
 
 
 def montar(cfg, mid, usar_cache=True, tempo=TEMPO_LIMITE, pulso=None):

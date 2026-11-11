@@ -125,12 +125,23 @@ class TestSegExecutoresEVerbos(PromptBase):
 
     def test_seis_mil_alvos_sem_demora(self):
         import time
+        try:
+            import resource
+        except ImportError:  # Windows
+            resource = None
+
+        def gasto():  # CPU of finished children: a busy machine does not inflate it like wall time
+            if resource is None:
+                return time.time()
+            r = resource.getrusage(resource.RUSAGE_CHILDREN)
+            return r.ru_utime + r.ru_stime
         cmd = "touch " + " ".join("/var/tmp/f%d" % i for i in range(6000)) + "; cp a ~/.config/tune-up/user.json"
-        t = time.time()
+        t = gasto()
         self.assertEqual(self.bash(cmd), "perguntar")
-        # was ~3 s (B2); measured ~0.33 s on macOS. Windows: realpath opens every path part
-        # (CreateFile per component) and the CI runner measured ~2-3 s; the hook has 15 s.
-        self.assertLess(time.time() - t, 5.0 if IS_WIN else 1.5)
+        # was ~3 s (B2); measured ~0.33 s on macOS. Wall time failed under load (2.5-3.7 s with 3 suites
+        # in parallel), so POSIX measures CPU. Windows: realpath opens every path part
+        # (CreateFile per component) and the CI runner measured ~2-3 s wall; the hook has 15 s.
+        self.assertLess(gasto() - t, 5.0 if IS_WIN else 1.5)
 
 
 class TestSegConversaArvore(PromptBase):

@@ -101,7 +101,8 @@ def aba_marca(m, sha, aprovada):
               | ({"ir_para": {"aba": "novo", "rotulo": "Ir para 3. Novo"}} if aprovada else {}),
               {"tipo": "tabela", "titulo": "Campos", "colunas": [
                   {"id": "campo", "rotulo": "Campo"}, {"id": "valor", "rotulo": "Valor"},
-                  {"id": "fonte", "rotulo": "De onde veio"}, {"id": "confianca", "rotulo": "Confiança"},
+                  {"id": "fonte", "rotulo": "De onde veio", "secundaria": True},
+                  {"id": "confianca", "rotulo": "Confiança", "secundaria": True},
                   {"id": "travado", "rotulo": "Travado"}], "linhas": linhas}]
     for k, v in sorted(campos.items()):
         uri = amostra(v.get("valor")) if k.startswith("cores.") and isinstance(v, dict) else None

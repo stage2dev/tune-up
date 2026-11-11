@@ -157,6 +157,18 @@ class TesteAprovar(BasePecas):
         cartao = [b for b in json.loads(self.abas()["aprovacao"])["blocos"] if b["tipo"] == "formulario"][0]
         self.assertEqual(cartao["descricao"], "Legenda que vai junto:\n\nPão saindo às 7h.")
 
+    def test_manifesto_legenda_so_a_secao_copy_inteiro_e_selo_em_palavras(self):
+        p = self.post()
+        copy = ("# Copy — post 4:5\n\n## Quadro 1\n- Título (32/40): X\n\n"
+                "## Legenda (17/125)\nPão saindo às 7h.\n\n## Chamada para ação\nReserve")
+        escrever(os.path.join(p, "copy.md"), copy)
+        cod, corpo = self.agir("peca.aprovar")
+        self.assertEqual((cod, corpo["resultado"]["feito"]), (200, True), corpo)
+        with open(os.path.join(self.dados, "aprovados", TID, "manifesto.json"), encoding="utf-8") as f:
+            m = json.load(f)
+        self.assertEqual((m["legenda"], m["copy"]), ("Pão saindo às 7h.", copy))
+        self.assertEqual(m["selo"], "Pronto para aprovar.")
+
     def test_aprovar_grava_manifesto_com_sha_do_servidor_e_segunda_vez_409(self):
         p = self.post()
         cartao = [b for b in json.loads(self.abas()["aprovacao"])["blocos"] if b["tipo"] == "formulario"]
