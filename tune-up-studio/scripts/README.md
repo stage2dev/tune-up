@@ -218,3 +218,37 @@ From the panel: module `estudio` (`painel/modulos/estudio/modulo.py`), command
 `preparar` with `{"confirmar": true}`; without it nothing runs. The command
 holds `<dados>/ambiente.lock` and passes it to the background run, so a second
 click while it runs is refused. Output goes to `<dados>/ambiente.log`.
+
+## descobrir_marca.py: brand kit discovery
+
+Deterministic, no network, no AI. Reads what the project already declares and
+writes `<raiz>/.tune-up/estudio/marca/`: `marca.json`, `MARCA.md` (pt-BR) and
+`assets/logo.<ext>` (a copy of the logo, when there is one).
+
+```sh
+python3 -I scripts/descobrir_marca.py --projeto <pasta> [--saida <pasta>]
+# exit 0 written; 2 refused (missing folder, unreadable marca.json: nothing overwritten)
+```
+
+Sources (readers in `marca_leitores.py`): custom properties in `:root` and
+`@theme` (also in `<style>` of `index.html`; `.dark` is skipped; one level of
+`var(--x)` is followed), `h1`/`body` `font-family` rules, `tailwind.config.*`
+(quoted colors, `DEFAULT`, font arrays), `index.html` (`<title>`, meta
+description/theme-color/og:site_name, an `<img>` with `logo` in src/class/id,
+icon links), web manifest, a file named `logo*`/`brand*`/`marca*`, and the
+name/description of `package.json`, `pyproject.toml`, `go.mod`, `Cargo.toml`,
+`composer.json`. Walk: depth 4, at most 4000 entries, skips `node_modules`,
+`dist`, `vendor`, `build`, `.git`, `.tune-up` and similar; no symlinks; an
+image outside the project, a URL or a `..` path is never taken as the logo.
+
+Fields: `nome`, `descricao`, `cores.bg|surface|primary|text|accent`,
+`fontes.heading|body`, `logo`. Each is `{valor, fonte, confianca, travado}`,
+with `fonte` as `arquivo:linha` (a logo found only by file name cites the
+file). `confianca`: `alta` (declared under a brand name), `media` (inferred),
+`baixa` (library default from a partial shadcn/Tailwind list, a package slug,
+an icon), `faltando` (`valor` and `fonte` null). A field with `"travado": true`
+is kept on the next run. No color, font or logo at `alta`/`media` gives
+`"modo": "sem_marca"` and a declared `paleta_neutra`, which fills no field.
+
+`cores.py` turns `#rgb[a]`, `#rrggbb[aa]`, `rgb()`, `hsl()`, a bare HSL trio
+(shadcn) and `oklch()` into `#RRGGBB`; anything else is `None`.
