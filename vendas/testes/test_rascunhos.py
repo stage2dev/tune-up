@@ -227,10 +227,28 @@ class TesteTela(Conversas):
         self.assertNotIn("aprovar_rascunho", [b["acao"] for b in bloco["botoes"]])   # a conversa não repete
         self.assertEqual(bloco_r["mensagens"][-1]["texto"], "Claro, o plano custa R$ 99.")
         self.assertIn("NÃO foi enviado", bloco_r["mensagens"][-1]["nota"])
-        form = [b for b in blocos if b["tipo"] == "formulario" and b.get("id") == "editar_rascunho"][0]
+        form = [b for b in blocos if b["tipo"] == "formulario" and b.get("id") == "editar_rascunho_%d" % rid][0]
         self.assertEqual((form["acao"], form["dados_fixos"], form["campos"][0]["valor"]),
                          ("editar_rascunho", {"rascunho_id": rid}, "Claro, o plano custa R$ 99."))
         self.assertEqual(self.falso.envios(), 0)
+
+    def test_trocar_de_conversa_troca_o_id_do_bloco_do_rascunho(self):
+        """O painel chaveia o formulário pelo id: id igual = texto digitado para A ficaria na tela de B."""
+        rid_maria = self.rascunho()
+        mid = self.con.execute("SELECT id FROM mensagens WHERE conversa_id = ?", (self.joao,)).fetchone()["id"]
+        rid_joao = rascunhos.guardar(self.con, self.joao, mid, "Bom dia! Como posso ajudar?")["rascunho_id"]
+        self.assertNotEqual(rid_maria, rid_joao)
+        ids = {}
+        for conversa, rid in ((self.maria, rid_maria), (self.joao, rid_joao)):
+            self.agir("abrir_conversa", conversa_id=conversa)
+            blocos = self.aba()
+            form = [b for b in blocos if b["tipo"] == "formulario" and b["acao"] == "editar_rascunho"][0]
+            bloco_r = [b for b in blocos if b["tipo"] == "conversa" and b.get("botoes")
+                       and b["botoes"][0]["acao"] == "aprovar_rascunho"][0]
+            self.assertEqual(form["dados_fixos"], {"rascunho_id": rid})
+            ids[conversa] = (form["id"], bloco_r["id"])
+        self.assertNotEqual(ids[self.maria][0], ids[self.joao][0])
+        self.assertNotEqual(ids[self.maria][1], ids[self.joao][1])
 
     def test_aprovar_pela_tela_envia_uma_vez_e_clique_repetido_nao_duplica(self):
         rid = self.rascunho()

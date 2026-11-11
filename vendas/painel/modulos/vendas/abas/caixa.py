@@ -147,16 +147,19 @@ def blocos_rascunho(rascunho):
              "quando": _quando(rascunho["criado_em"])}
     if rascunho["expirado"]:
         texto["nota"] = "Este rascunho tem mais de 24 horas: venceu e não pode mais ser enviado."
-        return [{"tipo": "conversa", "id": "rascunho", "titulo": "Rascunho da IA (venceu)", "mensagens": [texto]}]
+        return [{"tipo": "conversa", "id": "rascunho_%d" % rascunho["id"], "titulo": "Rascunho da IA (venceu)",
+                 "mensagens": [texto]}]
     texto["nota"] = "Ainda NÃO foi enviado." + (" Ao aprovar, vai como áudio (os links vão em texto, separados)."
                                                   if rascunho.get("como_audio") else "")
     dados = {"rascunho_id": rascunho["id"]}
-    return [{"tipo": "conversa", "id": "rascunho", "titulo": "A IA escreveu uma resposta. Você decide se envia",
+    return [{"tipo": "conversa", "id": "rascunho_%d" % rascunho["id"],
+             "titulo": "A IA escreveu uma resposta. Você decide se envia",
              "mensagens": [texto],
              "botoes": [{"rotulo": "Aprovar e enviar", "acao": "aprovar_rascunho", "dados": dados},
                         {"rotulo": "Descartar", "acao": "descartar_rascunho", "dados": dados,
                          "confirmar": "Descartar esta resposta? Nada será enviado."}]},
-            {"tipo": "formulario", "id": "editar_rascunho", "titulo": "Mudar o texto antes de enviar",
+            {"tipo": "formulario", "id": "editar_rascunho_%d" % rascunho["id"],
+             "titulo": "Mudar o texto antes de enviar",
              "acao": "editar_rascunho", "botao": "Editar e enviar", "dados_fixos": dados,
              "campos": [{"id": "texto", "rotulo": "Mensagem", "tipo": "texto_longo", "obrigatorio": True,
                          "valor": rascunho["texto"]}]}]
