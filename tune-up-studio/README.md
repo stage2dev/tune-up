@@ -1,7 +1,15 @@
 # tune-up-studio
 
-Status: work in progress (Part 2 proof). Not yet a plugin: there is no
-`.claude-plugin/plugin.json` here.
+Status: work in progress. A plugin of the `tune-up` marketplace that depends on
+`tune-up` (it adds a module to its panel):
+
+```
+/plugin install tune-up-studio --marketplace stage2dev/tune-up
+```
+
+Platforms: the studio runs on macOS, Linux and WSL2 only. Native Windows is not
+supported (the Claude Code sandbox it relies on does not run there); the
+`tune-up` panel itself still runs on Windows.
 
 ## What it is
 
@@ -21,7 +29,22 @@ text in the example is Brazilian Portuguese; code and docs are English.
 Measured on macOS (10 cores, 16 GB):
 Node v26.5.0, FFmpeg 8.1.2 (with `ffprobe`), Python 3.9+ (standard library
 only), headless Chrome in `~/.cache/hyperframes/chrome`. Linux and WSL2 are
-planned; they are not verified here.
+planned; they are not verified here. On Linux the sandbox also needs `bwrap`
+and `socat`.
+
+Check a machine (report in Brazilian Portuguese, exit 1 if something is
+missing or blocks):
+
+```sh
+python3 -I tune-up-studio/scripts/verificar_ambiente.py --projeto <project folder>
+```
+
+It checks the OS, Node >= 22, the pinned HyperFrames install, the
+chrome-headless-shell version HyperFrames 0.9.6 pins in its cache, ffmpeg and
+ffprobe with every filter and the encoder the scripts use, `bwrap`/`socat` on
+Linux, and the sandbox lists in the user, project and managed settings that
+merge into the studio's: `excludedCommands` and `network.allowedDomains` block,
+`filesystem.allowWrite` warns.
 
 ## Safe install
 
