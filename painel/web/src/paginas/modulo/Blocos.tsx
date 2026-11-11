@@ -1,4 +1,5 @@
-// Renderizador dos blocos do contrato de modulo (kpis, tabela, lista, serie, texto, acoes, formulario, conversa, imagem, galeria, midia).
+// Renderizador dos blocos do contrato de modulo (kpis, tabela, lista, serie, texto, acoes, formulario, conversa, imagem, galeria, midia,
+// cores, envio, previa, opcoes).
 // Cada bloco chega de um pacote de projeto e pode vir incompleto: tudo aqui e lido com cuidado.
 import type { ReactNode } from 'react';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -7,10 +8,15 @@ import { Botao, Cartao, EstadoVazio, Selo } from '../../componentes';
 import type { Tom } from '../../componentes/Selo';
 import { BotoesDoGrupo } from './BotaoAcao';
 import { Conversa } from './Conversa';
+import { Cores } from './Cores';
+import { Envio } from './Envio';
 import { Formulario } from './Formulario';
 import { Imagem } from './Imagem';
 import { Galeria, Midia } from './Midia';
 import { numero, SEM_DADO } from './formato';
+import { Opcoes } from './Opcoes';
+import { Previa } from './Previa';
+import { ProvedorRascunho } from './Rascunho';
 import { chavesDosBlocos, type BlocoCru } from './interativos';
 import { montarSeries, type SerieEntrada } from './series';
 
@@ -224,6 +230,14 @@ export function RenderBloco({ bloco, moduloId, aoIrAba }: { bloco: Bloco; modulo
       return <Galeria b={b} moduloId={moduloId} />;
     case 'midia':
       return <Midia b={b} moduloId={moduloId} />;
+    case 'cores':
+      return <Cores b={b} moduloId={moduloId} />;
+    case 'envio':
+      return <Envio b={b} moduloId={moduloId} />;
+    case 'previa':
+      return <Previa b={b} moduloId={moduloId} />;
+    case 'opcoes':
+      return <Opcoes b={b} moduloId={moduloId} />;
     default:
       return <Desconhecido tipo={String(b?.tipo ?? '')} />;
   }
@@ -235,8 +249,10 @@ export function Blocos({ blocos, moduloId, aoIrAba }: { blocos: Bloco[]; moduloI
   }
   const chaves = chavesDosBlocos(blocos as BlocoCru[]);
   return (
-    <div className="grid gap-3 grid-cols-[minmax(0,1fr)]">
-      {blocos.map((b, i) => <RenderBloco key={chaves[i]} bloco={b} moduloId={moduloId} aoIrAba={aoIrAba} />)}
-    </div>
+    <ProvedorRascunho>
+      <div className="grid gap-3 grid-cols-[minmax(0,1fr)]">
+        {blocos.map((b, i) => <RenderBloco key={chaves[i]} bloco={b} moduloId={moduloId} aoIrAba={aoIrAba} />)}
+      </div>
+    </ProvedorRascunho>
   );
 }

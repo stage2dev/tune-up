@@ -31,7 +31,7 @@ export function conteudoDaMidia({ tipo, url, rotulo, classe, miniatura, falhou, 
   return <img src={url} alt={rotulo ?? ''} {...(miniatura ? { loading: 'lazy' as const } : {})} className={classe} onError={aoFalhar} />;
 }
 
-function ArquivoDeMidia(p: PropsMidia) {
+export function ArquivoDeMidia(p: PropsMidia) {
   const [falhou, setFalhou] = useState(false);
   return conteudoDaMidia({ ...p, falhou, aoFalhar: () => setFalhou(true) });
 }

@@ -417,7 +417,7 @@ export interface RespModulos {
 }
 
 import type { Bloco } from './blocos';
-export type { Tom, Bloco, CampoFormulario, BlocoFormulario, MensagemConversa, BlocoConversa, BlocoImagem, BlocoGaleria, BlocoMidia, ReqAcaoModulo, RespAcaoModulo } from './blocos';
+export type { Tom, Bloco, CampoFormulario, BlocoFormulario, MensagemConversa, BlocoConversa, BlocoImagem, BlocoGaleria, BlocoMidia, BlocoCores, BlocoEnvio, BlocoPrevia, BlocoOpcoes, ReqAcaoModulo, RespAcaoModulo } from './blocos';
 
 /** 200. 404 { erro, avisos? } se o id não está habilitado; 500 { erro, avisos } se montar() quebra ou demora;
  *  503 { erro } se uma montagem anterior ainda está rodando. O servidor confere só a forma mínima

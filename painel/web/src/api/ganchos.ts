@@ -61,17 +61,20 @@ export async function postarAcao(id: string, req: ReqAcaoModulo): Promise<RespAc
   return r;
 }
 
+/** Rele o modulo sem o cache do servidor (depois de uma acao ou de um envio que deu certo). */
+export function relerModulo(qc: ReturnType<typeof useQueryClient>, id: string): void {
+  const chave = chaves.modulo(id);
+  void qc
+    .cancelQueries({ queryKey: chave })
+    .then(() => qc.fetchQuery({ queryKey: chave, staleTime: 0, queryFn: () => apiGet<DadosModulo>(`/api/modulos/${encodeURIComponent(id)}?fresco=1`) }))
+    .catch(() => undefined); // a acao deu certo; se a releitura falhar, a tela avisa "nao foi possivel atualizar"
+}
+
 export function useAcaoModulo(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (req: ReqAcaoModulo) => postarAcao(id, req),
-    onSuccess: () => {
-      const chave = chaves.modulo(id);
-      void qc
-        .cancelQueries({ queryKey: chave })
-        .then(() => qc.fetchQuery({ queryKey: chave, staleTime: 0, queryFn: () => apiGet<DadosModulo>(`/api/modulos/${encodeURIComponent(id)}?fresco=1`) }))
-        .catch(() => undefined); // a acao deu certo; se a releitura falhar, a tela avisa "nao foi possivel atualizar"
-    },
+    onSuccess: () => relerModulo(qc, id),
   });
 }
 

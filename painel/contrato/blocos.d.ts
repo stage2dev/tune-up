@@ -17,6 +17,10 @@ export type Bloco =
   | BlocoImagem
   | BlocoGaleria
   | BlocoMidia
+  | BlocoCores
+  | BlocoEnvio
+  | BlocoPrevia
+  | BlocoOpcoes
   | { tipo: string; [k: string]: unknown }; // desconhecido: a tela mostra um aviso discreto
 
 /** Blocos interativos. O envio chama POST /api/modulos/<id>/acao (ver ReqAcaoModulo). */
@@ -92,6 +96,75 @@ export interface BlocoMidia {
   arquivo: string;
   alt?: string;
   legenda?: string;
+}
+
+/** Blocos de marca. Todos chamam POST /api/modulos/<id>/acao com o comando do bloco e mostram "Salvando…" e o aviso de fim.
+ *  "cores" e "opcoes" (modo "um") escrevem num rascunho da aba: a "previa" da mesma aba muda na hora, antes do servidor responder;
+ *  se o comando falha, volta ao valor do servidor. */
+export interface BlocoCores {
+  tipo: 'cores';
+  id?: string;
+  titulo?: string;
+  descricao?: string;
+  /** Comando do módulo. Ao soltar o seletor, envia { campo: chave, valor: "#rrggbb" }. */
+  acao: string;
+  itens: { chave: string; rotulo: string; uso?: string; valor: string }[];
+  /** Pares de chaves conferidos na hora: contraste abaixo de 4,5:1 mostra `aviso` (ou um texto padrão). */
+  contraste?: { a: string; b: string; aviso?: string }[];
+  /** Botão opcional (ex.: "Pegar as cores da logo"): outro comando, com `dados`. */
+  botao?: { rotulo: string; acao: string; dados?: Record<string, unknown> };
+  vazio?: string;
+}
+/** Envio de imagem para POST /api/modulos/<id>/envio?destino=<destino> (INFO["envios"]). A tela confere tipo
+ *  (png, jpeg, webp) e tamanho (`max_bytes`, teto 8 MB) antes; o servidor confere de novo pelos bytes. */
+export interface BlocoEnvio {
+  tipo: 'envio';
+  id?: string;
+  titulo?: string;
+  descricao?: string;
+  destino: string;
+  /** "um" (padrão; ex.: logo) ou "grade" (várias fotos, uma de cada vez). */
+  variante?: 'um' | 'grade';
+  /** "um": imagem atual, caminho para GET /api/modulos/<id>/arquivo?c=. */
+  atual?: string;
+  alt?: string;
+  /** "grade": fotos atuais (mesma rota). */
+  itens?: { arquivo: string; rotulo?: string }[];
+  /** "grade": botão Remover em cada foto; com confirmação, envia { destino, arquivo }. */
+  remover?: { acao: string; confirmar?: string };
+  max_bytes?: number;
+  botao?: string;
+  vazio?: string;
+}
+/** Post de exemplo desenhado pela tela (HTML e CSS), 4:5. `campos` liga um papel ao campo de um bloco "cores"
+ *  (chave) ou "opcoes" (campo; papel "letras", usa as `fontes` da opção) da mesma aba. */
+export interface BlocoPrevia {
+  tipo: 'previa';
+  titulo?: string;
+  nome: string;
+  /** Caminho para GET /api/modulos/<id>/arquivo?c= (png, jpg, webp). */
+  logo?: string;
+  cores: { fundo: string; texto: string; principal: string; destaque: string; superficie?: string };
+  fontes?: { titulo?: string; texto?: string };
+  campos?: { fundo?: string; texto?: string; principal?: string; destaque?: string; superficie?: string; letras?: string };
+  textos?: { numero?: string; chamada?: string; frase?: string; botao?: string };
+  legenda?: string;
+}
+/** Modo "um": cartões, 1 entre N; envia { campo, valor }. Com `fontes`, o cartão vem escrito naquelas letras (`exemplo`).
+ *  Modo "varios": chips liga/desliga; envia { campo, valor, ligado }. */
+export interface BlocoOpcoes {
+  tipo: 'opcoes';
+  id?: string;
+  titulo?: string;
+  descricao?: string;
+  acao: string;
+  campo: string;
+  modo?: 'um' | 'varios';
+  /** Modo "um": o valor escolhido hoje. */
+  valor?: string;
+  opcoes: { valor: string; rotulo: string; detalhe?: string; fontes?: { titulo: string; texto?: string }; ligado?: boolean }[];
+  exemplo?: { titulo?: string; texto?: string };
+  vazio?: string;
 }
 
 /** POST /api/modulos/<id>/acao. 200 { ok: true, resultado }; erros { erro } com 400/403/404/409/500/503.
