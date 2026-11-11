@@ -185,8 +185,8 @@ def _ja_respondido(con, conversa_id, id_gatilho):
                        (len(prefixo), prefixo)).fetchone() is not None
 
 
-def _barrar(con, conversa_id, motivo, extra=None):
-    cerebro.marcar_precisa_de_voce(con, conversa_id, motivo)
+def _barrar(con, conversa_id, motivo, extra=None, desligar=False):
+    cerebro.marcar_precisa_de_voce(con, conversa_id, motivo, desligar)
     dados = {"conversa_id": conversa_id, "motivo": motivo}
     dados.update(extra or {})
     banco.registrar_evento(con, "ia_saida_barrada", json.dumps(dados, ensure_ascii=False))
@@ -223,7 +223,7 @@ def entregar(con, conector, instancia, numero, conversa_id, id_gatilho, texto, p
         return _barrar(con, conversa_id, motivo)
     anteriores = respostas_anteriores(con, conversa_id, id_gatilho)
     if len(anteriores) == 2 and all(parecidas(pronto, a) for a in anteriores):
-        return _barrar(con, conversa_id, "anti_loop")
+        return _barrar(con, conversa_id, "anti_loop", desligar=True)   # 3 parecidas: IA sai até o dono devolver
     resultados, lista = [], baloes(pronto)
     for n, balao in enumerate(lista, 1):
         if portao.pode_enviar(con, "ia", numero, agora=agora)[0]:

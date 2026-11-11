@@ -28,6 +28,7 @@ MOTIVOS = {
     "pedir_humano": "A IA pediu para você assumir esta conversa.",
     "erro_interno": "A IA falhou nesta conversa e foi desligada nela.",
     "rodadas": "A IA não chegou a uma resposta (voltou a chamar ferramentas) e foi desligada nesta conversa.",
+    "anti_loop": "A IA repetiu a mesma resposta 3 vezes e foi desligada nesta conversa.",
 }
 ESTADOS_NOTA = ("negado", "falhou", "incerto")
 

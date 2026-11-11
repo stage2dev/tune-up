@@ -108,11 +108,30 @@ class TesteDesligada(Base):
         self.assertEqual(len(self.falsa.chamadas_chat()), n)
         self.assertEqual(self.con.execute("SELECT COUNT(*) FROM mensagens WHERE direcao = 'entrada'").fetchone()[0], 2)
 
-    def test_anti_loop_desliga_a_ia(self):
+    def test_rodadas_desliga_a_ia(self):
         self.falsa.fila = [resposta_ferramenta("qualificar", {"nivel": "morno"}, ident="c%d" % i) for i in range(10)]
         self.chegar("m0", "oi")
         self.assertTrue(self.esperar(lambda: self.conversa()["modo"] == "humano"))
         self.assertEqual(self.conversa()["motivo_humano"], "rodadas")
+
+    def test_anti_loop_tres_respostas_parecidas_desliga_a_ia(self):
+        repetida = "Posso te ajudar com os planos. O que você procura?"
+        for n in range(2):
+            self.falsa.fila = [resposta_texto(repetida)]
+            self.chegar("m%d" % n, "oi %d" % n)
+            self.assertTrue(self.esperar(lambda: len(self.c.entregues) == n + 1))
+        self.falsa.fila = [resposta_texto(repetida)]
+        self.chegar("m2", "oi 2")
+        self.assertTrue(self.esperar(lambda: self.conversa()["modo"] == "humano"))
+        c = self.conversa()
+        self.assertEqual((c["modo"], c["precisa_de_voce"], c["motivo_humano"]), ("humano", 1, "anti_loop"))
+        self.assertEqual(len(self.c.entregues), 2)   # a 3ª parecida não saiu
+        n = len(self.falsa.chamadas_chat())
+        self.falsa.fila = [resposta_texto("não deveria sair")]
+        self.chegar("m3", "alguém aí?")
+        time.sleep(self.ESPERA * 3)
+        self.assertEqual(len(self.falsa.chamadas_chat()), n)   # desligada: o modelo nem é chamado
+        self.assertEqual(len(self.c.entregues), 2)
 
     def test_devolver_para_a_ia_limpa_tudo_e_a_ia_volta_a_responder(self):
         self.falsa.fila = [resposta_ferramenta("pedir_humano", {"motivo": "x"})]
@@ -143,6 +162,14 @@ class TesteAba(Conversas):
         self.assertNotIn("desligada", bloco["titulo"])
         self.assertNotIn("precisa de você", bloco["titulo"])
         self.assertEqual(bloco["botoes"][0]["rotulo"], "Assumir a conversa")
+
+    def test_motivo_anti_loop_aparece_em_pt_nos_blocos(self):
+        from servico import cerebro
+        cerebro.marcar_precisa_de_voce(self.con, self.maria, "anti_loop", True)
+        self.agir("abrir_conversa", conversa_id=str(self.maria))
+        titulo = self.tipos(self.aba(), "conversa")[0]["titulo"]
+        self.assertIn("IA desligada: A IA repetiu", titulo)
+        self.assertNotIn("anti_loop", titulo)
 
 
 if __name__ == "__main__":
