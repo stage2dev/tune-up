@@ -11,7 +11,8 @@ DEPOIS do commit, fora da transação.
 - fromMe: eco de envio nosso (pelo id devolvido ou texto igual em até 5 s) nunca pausa a IA; fromMe que não casa é o
   dono respondendo do celular: grava e pausa a IA da conversa por 15 min.
 - Webhook com segredo errado (modo "registra e conta"): grava, marca "precisa de você" e grava optout_em do SAIR, mas
-  sem efeito para fora: sem confirmação, sem gancho, sem pausa e sem escrever no mapa de @lid.
+  sem efeito para fora: sem confirmação, sem gancho, sem pausa e sem escrever no mapa de @lid. A linha fica com
+  confiavel = 0 e a IA não a lê.
 - Subida: a janela a buscar (recuperar_desde) fica guardada até a busca dar certo; só a mais antiga vale.
 Nenhum telefone ou texto vai para log."""
 import datetime
@@ -118,7 +119,8 @@ def _envio_ecoado(con, ev, numero, momento):
 
 def _de_mim(con, ev, numero, conversa_id, momento, confiavel):
     envio_id = _envio_ecoado(con, ev, numero, momento) if confiavel else None
-    banco.registrar_mensagem(con, conversa_id, "saida", ev.get("texto"), ev["id_externo"], ev["tipo"], envio_id)
+    banco.registrar_mensagem(con, conversa_id, "saida", ev.get("texto"), ev["id_externo"], ev["tipo"], envio_id,
+                             confiavel)
     if envio_id is None and confiavel:   # o dono respondeu do celular: a IA desta conversa espera
         _marcar(con, conversa_id, "pausada_ate", _iso(momento + PAUSA_DONO))
 
@@ -142,7 +144,8 @@ def processar(con, ev, agora, depois, confiavel=True):
     if ev.get("fromMe"):
         return _de_mim(con, ev, numero, conversa_id, momento, confiavel)
     tipo = ev.get("tipo") or "outro"
-    mensagem_id = banco.registrar_mensagem(con, conversa_id, "entrada", ev.get("texto"), ev["id_externo"], tipo)
+    mensagem_id = banco.registrar_mensagem(con, conversa_id, "entrada", ev.get("texto"), ev["id_externo"], tipo,
+                                           confiavel=confiavel)
     if mensagem_id is None:
         return
     if not confiavel:   # o dono confere; opt-out é conservador e vale, mas sem confirmação para fora

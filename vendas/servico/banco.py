@@ -104,6 +104,10 @@ MIGRACOES = [
         "CREATE UNIQUE INDEX mensagens_envio ON mensagens(envio_id) WHERE envio_id IS NOT NULL",
         "CREATE TABLE lids (lid TEXT PRIMARY KEY, telefone TEXT NOT NULL, criado_em TEXT NOT NULL)",
     ],
+    # 6: mensagem de webhook sem segredo fica marcada (0): a IA não a lê nem responde a ela
+    [
+        "ALTER TABLE mensagens ADD COLUMN confiavel INTEGER NOT NULL DEFAULT 1 CHECK (confiavel IN (0, 1))",
+    ],
 ]
 VERSAO = len(MIGRACOES)
 PARECE_SEGREDO = re.compile(r"chave|senha|token|segredo|secret|key|password", re.I)
@@ -206,12 +210,13 @@ def abrir_conversa(con, contato_id):
     return cur.lastrowid
 
 
-def registrar_mensagem(con, conversa_id, direcao, texto, id_externo=None, tipo="texto", envio_id=None):
+def registrar_mensagem(con, conversa_id, direcao, texto, id_externo=None, tipo="texto", envio_id=None,
+                       confiavel=True):
     """Grava a mensagem. Devolve o id, ou None se o id_externo já existe (webhook repetido)."""
     try:
-        cur = con.execute("INSERT INTO mensagens (conversa_id, id_externo, direcao, tipo, texto, criado_em, envio_id) "
-                          "VALUES (?, ?, ?, ?, ?, ?, ?)", (conversa_id, id_externo, direcao, tipo, texto, agora(),
-                                                           envio_id))
+        cur = con.execute("INSERT INTO mensagens (conversa_id, id_externo, direcao, tipo, texto, criado_em, envio_id, "
+                          "confiavel) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                          (conversa_id, id_externo, direcao, tipo, texto, agora(), envio_id, 1 if confiavel else 0))
     except sqlite3.IntegrityError as erro:
         if _unico(erro):
             return None
