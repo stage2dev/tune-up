@@ -71,6 +71,8 @@ export interface Execucao {
   espera_terminal?: boolean;
   /** Opcoes da pergunta que a sessao escreveu (so com pode_responder). */
   pergunta?: PerguntaChat;
+  /** Nomes das skills escolhidas no pedido inicial (servidor antigo nao manda). */
+  habilidades?: string[];
 }
 
 export interface PerguntaChat {
@@ -91,6 +93,33 @@ export interface EventoExecucao {
   texto: string;
   ferramenta?: string;
   erro?: boolean;
+  /** Nomes das skills escolhidas nesta fala do dono (evento 'usuario'). */
+  habilidades?: string[];
+}
+
+/** Skill da lista do chat (GET /api/habilidades). */
+export interface Habilidade {
+  id: string;
+  nome: string;
+  titulo: string;
+  descricao: string;
+  grupo: string;
+  origem: string;
+  /** false = plugin desligado ou pasta extra: o Claude le o arquivo so quando a pessoa escolhe. */
+  listada: boolean;
+  /** true = tune-up: sempre ligado, nao da para escolher. */
+  fixa: boolean;
+}
+
+export interface GrupoHabilidade {
+  id: string;
+  titulo: string;
+}
+
+export interface RespHabilidades {
+  grupos: GrupoHabilidade[];
+  habilidades: Habilidade[];
+  avisos?: string[];
 }
 
 export interface Eventos {

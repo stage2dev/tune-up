@@ -4,13 +4,16 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { Send } from 'lucide-react';
-import { chaves, useExecucoes, useIniciarExecucao, useModelos } from '../../api/ganchos';
+import { chaves, useExecucoes, useHabilidades, useIniciarExecucao, useModelos } from '../../api/ganchos';
 import type { Acao, Execucao } from '../../api/tipos';
 import { Botao, Dialogo } from '../../componentes';
 import { traduzirErroInicio, type ResultadoErro } from '../dev/logica';
 import { Baloes } from './Baloes';
 import { CaixaTexto } from './CaixaTexto';
+import { EtiquetasSkills } from './EtiquetasSkills';
 import { SeletorNivel } from './SeletorNivel';
+import { idsParaEnviar } from './habilidades';
+import type { SkillsDoPedido } from './useSkillsDoPedido';
 import { FRASE_CONFIRMAR, comecoDoPedido, destinoDaExecucao, limitePedido, montarConversa, nivelInicial } from './logica';
 
 const CHAVE_NIVEL = 'painel.chat.nivel';
@@ -30,7 +33,8 @@ function gravarNivel(id: string): void {
   }
 }
 
-export function NovaConversa({ niveis }: { niveis: Acao[] }) {
+export function NovaConversa({ niveis, skills }: { niveis: Acao[]; skills: SkillsDoPedido }) {
+  const lista = useHabilidades();
   const modelos = useModelos();
   const execucoes = useExecucoes();
   const iniciar = useIniciarExecucao();
@@ -50,13 +54,15 @@ export function NovaConversa({ niveis }: { niveis: Acao[] }) {
   const mandar = () => {
     setProblema(null);
     setConfirmar(false);
+    const habilidades = idsParaEnviar(skills.ids, lista.data?.habilidades ?? []);
     iniciar.mutate(
-      { acao: nivel.id, params: { pedido } },
+      { acao: nivel.id, params: { pedido }, habilidades },
       {
         onSuccess: (e) => {
           // A conversa nova entra na lista ja, para a tela dela nao piscar "nao achei".
           qc.setQueryData<Execucao[]>(chaves.execucoes, (l) => (l?.some((x) => x.id === e.id) ? l : [e, ...(l ?? [])]));
           setTexto('');
+          skills.removerEnviados(habilidades);
           ir(`/conversa/${encodeURIComponent(e.id)}`, { replace: true });
         },
         onError: (e) => setProblema(traduzirErroInicio(e)),
@@ -104,6 +110,8 @@ export function NovaConversa({ niveis }: { niveis: Acao[] }) {
           rotulo="Escreva o seu pedido"
           placeholder="Ex.: muda o texto do botão, faz um post sobre a promoção, por que a IA não respondeu?"
           autoFocus
+          topo={<EtiquetasSkills skills={skills} />}
+          aoSoltarSkill={skills.por}
         >
           <Botao onClick={enviar} disabled={!pedido} icone={<Send size={14} aria-hidden="true" />}>
             Enviar

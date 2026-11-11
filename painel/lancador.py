@@ -20,6 +20,7 @@ import time
 
 from catalogo import (ErroAcao, RE_ID_ACAO, carregar_catalogo, montar, nome_da_sessao,  # noqa: F401
                       publica, texto_livre, validar_params)
+from habilidades import anexar as anexar_habilidades, pedido as pedido_com_habilidades
 import mascara
 import modulos
 from estado_exec import GRACA, OCIOSO, mapear_estado  # noqa: F401
@@ -223,7 +224,7 @@ class Lancador:
         responde = acorda and (estado in RESPONDIVEIS or perguntou)
         out.update(sessao_id=sid, params=reg.get("params") or {}, estado=estado,
                    comando_attach=self.comando_attach(reg["id"]), modelo=reg.get("modelo") or "",
-                   esforco=reg.get("esforco") or "", pode_responder=responde,
+                   esforco=reg.get("esforco") or "", pode_responder=responde, habilidades=reg.get("habilidades") or [],
                    # mandar mensagem com a sessão trabalhando ou esperando: para a vez dela e continua na mesma sessão
                    pode_interromper=acorda and estado in ATIVOS)
         # Espera presa no terminal (pedido de permissão): escrever no chat cancela o pedido, não o responde.
@@ -277,7 +278,7 @@ class Lancador:
     def execucao(self, exec_id):
         return next((e for e in self.execucoes() if e["id"] == exec_id), None)
 
-    def iniciar(self, acao_id, params):
+    def iniciar(self, acao_id, params, habilidades=None):
         """Valida, confere duplicata e teto, dispara e registra. Levanta ErroAcao."""
         if not isinstance(acao_id, str) or not RE_ID_ACAO.match(acao_id):
             raise ErroAcao("Ação inválida.")
@@ -288,8 +289,7 @@ class Lancador:
         valores = validar_params(acao, params, self.obter_estado() if precisa_estado else {})
         mascarados = {k: mascara.mascarar(v) if isinstance(v, str) else v for k, v in valores.items()}
         prompt, nome = montar(acao["_prompt"], valores), nome_da_sessao(acao, mascarados)
-        if not prompt or prompt.startswith("-"):
-            raise ErroAcao("O pedido ficou vazio.")
+        prompt, nomes_hab = pedido_com_habilidades(self.cfg, acao["grupo"], prompt, habilidades)  # vazio: 400
         chave = json.dumps(valores, sort_keys=True, ensure_ascii=False)
         try:  # INFO["negar"] dos módulos vale em toda ação; lido antes das travas, com tempo limite
             extra = modulos.regras_de_negar(self.cfg)
@@ -326,7 +326,7 @@ class Lancador:
             reg = {"id": m.group(1), "sessao_id": "", "nome": nome, "acao": acao_id, "grupo": acao["grupo"],
                    "titulo": acao["titulo"], "params": valores, "iniciada_em": agora_iso(t),
                    "iniciada_ts": t, "cwd": self.cfg["workspace"], "risco": acao["risco"],
-                   "modelo": modelo, "esforco": esforco, "negar_modulos": sorted(extra)}
+                   "modelo": modelo, "esforco": esforco, "negar_modulos": sorted(extra), "habilidades": nomes_hab}
             for p in acao["params"]:
                 if p["tipo"] in ("fase", "parte") and valores.get(p["nome"]):
                     reg[p["tipo"]] = valores[p["nome"]]
@@ -376,7 +376,7 @@ class Lancador:
             return None
         return {"perguntas": perguntas} if perguntas else None
 
-    def responder(self, exec_id, texto, interromper=False):
+    def responder(self, exec_id, texto, interromper=False, habilidades=None):
         """Manda outra mensagem para a MESMA sessão. Levanta ErroAcao.
 
         Com `interromper`, vale também para sessão trabalhando ou esperando no terminal: a vez dela
@@ -391,7 +391,7 @@ class Lancador:
         reg = self.achar(exec_id)
         if reg is None:
             raise ErroAcao("Não achei essa conversa.", 404)
-        texto = texto_livre(texto)
+        texto = anexar_habilidades(self.cfg, reg.get("grupo") or reg.get("area"), texto_livre(texto), habilidades)[0]
         try:  # a sessão acorda com as travas de quando começou: regra de módulo nova não entraria nela
             agora_negar = modulos.regras_de_negar(self.cfg)
         except modulos.ErroModulo as e:

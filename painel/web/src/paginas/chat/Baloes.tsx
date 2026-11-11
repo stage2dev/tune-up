@@ -132,6 +132,9 @@ export function Baloes({ itens, trabalhando, rodape }: Props) {
           ) : (
             <Balao key={it.chave} dono={it.tipo === 'dono'} quem={it.tipo === 'dono' ? 'Você' : 'Claude'} ts={it.ts} erro={it.tipo === 'claude' && it.erro}>
               <TextoFala texto={it.texto} />
+              {it.tipo === 'dono' && it.habilidades && (
+                <span className="text-[11px] opacity-80 break-words [overflow-wrap:anywhere]">com: {it.habilidades.join(', ')}</span>
+              )}
             </Balao>
           ),
         )}
