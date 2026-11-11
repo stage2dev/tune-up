@@ -125,7 +125,8 @@ def rodar(args, avisar=print):
         atendente = threading.Thread(target=servidor.serve_forever, kwargs={"poll_interval": 0.2}, daemon=True)
         atendente.start()
         threading.Thread(target=recuperar, args=(app, parar), daemon=True).start()
-        disparos = agendador.Agendador(app.abrir, lambda: app.conector).iniciar(parar)
+        disparos = agendador.Agendador(app.abrir, lambda: app.conector,
+                                       permitidos=lambda: list(cerebro.ler_links(raiz).values())).iniciar(parar)
         avisar("serviço de Vendas em http://127.0.0.1:%d (painel %s); Ctrl+C para parar" % (app.porta, painel),
                flush=True)
         while not parar.wait(0.5):

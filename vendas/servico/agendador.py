@@ -10,7 +10,7 @@ import random
 import sys
 import threading
 
-from servico import banco, campanha, portao, telefone
+from servico import banco, campanha, modelo, portao, telefone
 
 UTC = datetime.timezone.utc
 JITTER = (1.2, 4.0, 12.0)            # mínimo, média, máximo em segundos
@@ -47,9 +47,10 @@ class Agendador:
     """`abrir()` devolve conexão nova do banco; `obter_conector()` o conector atual (ou None). `relogio` e
     `aleatorio` são injetáveis para os testes. `passo()` faz uma volta e devolve quantos segundos esperar."""
 
-    def __init__(self, abrir, obter_conector, relogio=None, aleatorio=None):
+    def __init__(self, abrir, obter_conector, relogio=None, aleatorio=None, permitidos=None):
         self.abrir = abrir
         self.obter_conector = obter_conector
+        self.permitidos = permitidos or (lambda: [])   # URLs do links.json do projeto
         self.relogio = relogio or (lambda: datetime.datetime.now(UTC))
         self.aleatorio = aleatorio or random.Random()
         self.esperar_ate = None     # teto do número todo (minuto, hora, janela): ninguém sai antes disso
@@ -79,6 +80,9 @@ class Agendador:
                                  instancia=instancia)
         if linha is None:
             return OCIOSO_S
+        if banco.ler_config(con, "numero_descartavel") != "1" and campanha.fria(con, linha["contato_id"]):
+            campanha.pausar_por(con, linha["campanha_id"], "sem_numero_descartavel")   # a trava vale também no envio
+            return OCIOSO_S
         try:
             r = self._enviar(con, conector, instancia, linha, agora)
         except telefone.TelefoneInvalido:
@@ -94,7 +98,11 @@ class Agendador:
         anterior = linha["envio_id"] and con.execute("SELECT estado FROM envios WHERE id = ?",
                                                      (linha["envio_id"],)).fetchone()
         if not anterior or anterior["estado"] != "falhou":
-            return portao.enviar_campanha(con, conector, instancia, linha["telefone"], linha["modelo"],
+            texto, motivo = modelo.renderizar(linha["modelo"], linha["nome"], linha["origem"],
+                                              banco.ler_config(con, "empresa"), self.permitidos())
+            if texto is None:
+                return {"estado": "pulado", "envio_id": None, "motivo": motivo}
+            return portao.enviar_campanha(con, conector, instancia, linha["telefone"], texto,
                                           linha["campanha_id"], linha["passo"], agora=agora)
         r = portao.reenviar(con, conector, instancia, linha["envio_id"], agora=agora)
         if r["motivo"] == "nao_reenviavel":   # a linha mudou no meio: vale o que ela diz agora
@@ -103,6 +111,9 @@ class Agendador:
 
     def _depois(self, con, agora, linha, r):
         """Grava o resultado e decide a espera. Teto do número todo = espera global sem marcar o contato."""
+        if r["estado"] == "pulado":
+            campanha.pular(con, linha, r["motivo"])
+            return 0.0
         motivo = r.get("motivo") if r["estado"] == "negado" else None
         tentar = _iso(agora + datetime.timedelta(seconds=ESPERA_FALHA_S)) if r["estado"] == "falhou" else None
         if motivo == "fora_da_janela":

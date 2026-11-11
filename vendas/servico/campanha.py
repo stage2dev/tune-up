@@ -7,17 +7,23 @@ e `tentar_depois`: o agendador tenta de novo a MESMA linha pelo portao.reenviar,
 tentados, até TENTATIVAS_FALHOU vezes; aí o contato fica 'falhou' (final, o dono vê na contagem). 'falhou' com
 numero_invalido (o WhatsApp disse que o número não existe) vira 'negado' na hora e não conta como falha seguida.
 Negado por janela ou teto continua 'pendente', com o motivo guardado e `tentar_depois`. 5 falhas seguidas do conector
-pausam a campanha com o motivo."""
+pausam a campanha com o motivo. 'pulado' = o modelo não pôde ser preenchido para o contato (falta nome ou origem,
+link fora da lista...): fica com o motivo e nunca sai. Ativar passa por `ativar_com_regras` (empresa, modelo, trava
+de número descartável); a trava vem só da config da instância, nunca do corpo do pedido."""
 import re
 
-from servico import banco
+from servico import banco, cerebro, modelo
 
 ESTADOS = ("rascunho", "ativa", "pausada", "concluida")
 FALHAS_PARA_PAUSAR = 5
 TENTATIVAS_FALHOU = 3   # 'falhou' de transporte: tentativas por contato antes de desistir dele
 PERMANENTES = ("optout", "numero_invalido")   # negado assim = nunca mais, em nenhuma campanha
 ATIVOS = ("pendente", "enviado", "incerto")     # envio que pode ter saído (o mesmo critério do portão)
-ROTA = re.compile(r"^/campanhas(?:/(\d+)/(pausar|retomar))?$")
+ROTA = re.compile(r"^/campanhas(?:/(\d+)/(pausar|retomar|ativar)|/(empresa))?$")
+EMPRESA_MAX = 100
+SEM_DESCARTAVEL = ("Disparo a frio (contato que nunca recebeu nada de você ou sem consentimento) viola a Política do "
+                   "WhatsApp Business e pode banir o número. Só liga com um número descartável: conecte um na aba "
+                   "Conexão confirmando que é descartável.")
 
 
 def _transacao(con, funcao):
@@ -63,6 +69,51 @@ def ativar(con, campanha_id):
     return tem is not None and _mudar(con, campanha_id, "rascunho", "ativa")
 
 
+def fria(con, contato_id):
+    """True se o contato é frio: base legal fora de modelo.FRIO_BASES ou nunca recebeu nada."""
+    return con.execute(
+        "SELECT 1 FROM contatos ct WHERE ct.id = ? AND (ct.base_legal IS NULL OR ct.base_legal NOT IN (?, ?) OR NOT "
+        "EXISTS (SELECT 1 FROM envios e WHERE e.contato_id = ct.id AND e.estado IN (%s)))"
+        % ",".join("?" * len(ATIVOS)), (contato_id,) + modelo.FRIO_BASES + ATIVOS).fetchone() is not None
+
+
+def ativar_com_regras(con, campanha_id, permitidos=()):
+    """(codigo, erro) -- (200, None) ativou. Exige empresa na config, modelo válido e, para contato frio, instância
+    criada com numero_descartavel (lida da config, não de pedido). Nada é ativado se algo falha."""
+    def fazer():
+        linha = con.execute("SELECT modelo, estado FROM campanhas WHERE id = ?", (campanha_id,)).fetchone()
+        if linha is None or linha["estado"] != "rascunho":
+            return 409, "A campanha não está num estado que permita isso."
+        empresa = banco.ler_config(con, "empresa")
+        if not empresa:
+            return 409, "Antes de ativar, diga o nome da empresa: ele vai em toda primeira mensagem."
+        try:
+            modelo.validar(linha["modelo"], empresa, permitidos)
+        except modelo.ModeloRecusado as e:
+            return 400, str(e)
+        if banco.ler_config(con, "numero_descartavel") != "1" and any(
+                fria(con, r["contato_id"]) for r in con.execute(
+                    "SELECT contato_id FROM campanha_contatos WHERE campanha_id = ?", (campanha_id,))):
+            return 403, SEM_DESCARTAVEL
+        if not ativar(con, campanha_id):
+            return 409, "A campanha precisa de ao menos um contato."
+        return 200, None
+    return _transacao(con, fazer)
+
+
+def pausar_por(con, campanha_id, motivo):
+    return con.execute("UPDATE campanhas SET estado = 'pausada', motivo = ? WHERE id = ? AND estado = 'ativa'",
+                       (motivo, campanha_id)).rowcount == 1
+
+
+def pular(con, linha, motivo):
+    """O contato não recebe esta mensagem (modelo sem como preencher): 'pulado' com o motivo."""
+    banco._exigir(con.execute(
+        "UPDATE campanha_contatos SET estado = 'pulado', motivo = ?, tentar_depois = NULL "
+        "WHERE campanha_id = ? AND contato_id = ? AND estado = 'pendente'",
+        (motivo, linha["campanha_id"], linha["contato_id"])))
+
+
 def pausar(con, campanha_id):
     return _mudar(con, campanha_id, "ativa", "pausada", ", motivo = 'pausada_pelo_dono'")
 
@@ -87,7 +138,7 @@ def proximo(con, agora_iso, so_conhecidos=False, instancia=None):
         extra = (" AND EXISTS (SELECT 1 FROM envios e WHERE e.contato_id = cc.contato_id AND e.instancia = ? "
                  "AND e.estado IN (%s))" % ",".join("?" * len(ATIVOS)))
     return con.execute(
-        "SELECT cc.campanha_id, cc.contato_id, cc.passo, cc.envio_id, c.modelo, ct.telefone FROM campanha_contatos cc "
+        "SELECT cc.campanha_id, cc.contato_id, cc.passo, cc.envio_id, c.modelo, ct.telefone, ct.nome, ct.origem FROM campanha_contatos cc "
         "JOIN campanhas c ON c.id = cc.campanha_id JOIN contatos ct ON ct.id = cc.contato_id "
         "WHERE c.estado = 'ativa' AND cc.estado = 'pendente' AND (cc.tentar_depois IS NULL OR cc.tentar_depois <= ?)"
         + extra + " ORDER BY c.id, cc.tentar_depois IS NOT NULL, cc.ordem, cc.contato_id LIMIT 1",
@@ -164,15 +215,52 @@ def listar(con):
     return {"campanhas": campanhas}
 
 
+def _permitidos(app):
+    return list(cerebro.ler_links(app.raiz).values()) if app is not None and app.raiz else []
+
+
+def _criar_rota(app, con, corpo):
+    ids = corpo.get("contato_ids")
+    if not isinstance(ids, list) or not ids or not all(type(i) is int for i in ids):
+        return 400, {"erro": "Escolha os contatos da campanha."}
+    if not isinstance(corpo.get("nome"), str) or not corpo["nome"].strip():
+        return 400, {"erro": "Dê um nome à campanha."}
+    try:
+        modelo.validar(corpo.get("modelo"), banco.ler_config(con, "empresa"), _permitidos(app))
+    except modelo.ModeloRecusado as e:
+        return 400, {"erro": str(e)}
+    if len(set(ids)) != con.execute("SELECT COUNT(*) FROM contatos WHERE id IN (%s)" % ",".join("?" * len(set(ids))),
+                                    tuple(set(ids))).fetchone()[0]:
+        return 400, {"erro": "Algum contato escolhido não existe."}
+    return 200, dict(listar(con), id=criar(con, corpo["nome"], corpo["modelo"], ids))
+
+
+def _empresa_rota(con, corpo):
+    nome = modelo.CONTROLE.sub(" ", corpo.get("empresa") if isinstance(corpo.get("empresa"), str) else "").strip()
+    if not nome or len(nome) > EMPRESA_MAX or "{" in nome or "}" in nome:
+        return 400, {"erro": "Informe o nome da empresa (até %d caracteres, sem chaves)." % EMPRESA_MAX}
+    banco.gravar_config(con, "empresa", nome)
+    return 200, {"empresa": nome}
+
+
 def executar(app, con, metodo, caminho, query, corpo):
-    """(código, objeto) de GET /campanhas e POST /campanhas/<id>/pausar|retomar; None = rota desconhecida."""
+    """(código, objeto) de GET /campanhas e POST /campanhas, /campanhas/empresa e /campanhas/<id>/pausar|retomar|ativar;
+    None = rota desconhecida. O corpo nunca muda a trava de número descartável."""
     achou = ROTA.match(caminho)
     if not achou:
         return None
-    if metodo == "GET" and achou.group(1) is None:
+    if metodo == "GET" and achou.group(1) is None and achou.group(3) is None:
         return 200, listar(con)
-    if metodo != "POST" or achou.group(1) is None:
+    if metodo != "POST":
         return None
+    corpo = corpo if isinstance(corpo, dict) else {}
+    if achou.group(3):
+        return _empresa_rota(con, corpo)
+    if achou.group(1) is None:
+        return _criar_rota(app, con, corpo)
+    if achou.group(2) == "ativar":
+        codigo, erro = ativar_com_regras(con, int(achou.group(1)), _permitidos(app))
+        return (200, listar(con)) if codigo == 200 else (codigo, {"erro": erro})
     acao = pausar if achou.group(2) == "pausar" else retomar
     if not acao(con, int(achou.group(1))):
         return 409, {"erro": "A campanha não está num estado que permita isso."}

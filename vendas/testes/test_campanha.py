@@ -22,6 +22,7 @@ UTC = datetime.timezone.utc
 AGORA = datetime.datetime(2026, 11, 10, 15, 0, tzinfo=UTC)   # 12:00 no fuso -03:00
 FORA = datetime.datetime(2026, 11, 10, 23, 0, tzinfo=UTC)    # 20:00 no fuso -03:00
 INST = "loja"
+MODELO = "Oi {nome}, aqui é a {empresa}. Falamos com você porque veio de {origem}. Responda SAIR para não receber mais."
 
 
 def numero(i):
@@ -51,6 +52,8 @@ class Base(unittest.TestCase):
         self.addCleanup(self.con.close)
         banco.gravar_config(self.con, "fuso", "-03:00")
         banco.gravar_config(self.con, "instancia", INST)
+        banco.gravar_config(self.con, "empresa", "Loja Teste")
+        banco.gravar_config(self.con, "numero_descartavel", "1")
         self.c = ConectorFalso()
         self.agora = AGORA
         self.ag = self.novo_agendador()
@@ -64,8 +67,8 @@ class Base(unittest.TestCase):
         ids = []
         for _ in range(n):
             self.n += 1
-            ids.append(banco.salvar_contato(self.con, numero(self.n)))
-        cid = campanha.criar(self.con, "teste", "Oi, tudo bem?", ids)
+            ids.append(banco.salvar_contato(self.con, numero(self.n), "Ana", "a feira"))
+        cid = campanha.criar(self.con, "teste", MODELO, ids)
         if ativa:
             self.assertTrue(campanha.ativar(self.con, cid))
         return cid
@@ -147,7 +150,7 @@ class TestJanelaETetos(Base):
         self.assertEqual(self.estados(velho), ["enviado"] * 3)
         banco.gravar_config(self.con, "instancia", "nova")                 # o que instancia.conectar grava
         self.agora += datetime.timedelta(minutes=5)
-        repetidos = campanha.criar(self.con, "de novo", "Oi outra vez",
+        repetidos = campanha.criar(self.con, "de novo", MODELO,
                                    [banco.buscar_contato(self.con, numero(i))["id"] for i in (1, 2, 3)])
         campanha.ativar(self.con, repetidos)
         cid = self.campanha(10)
@@ -162,10 +165,10 @@ class TestJanelaETetos(Base):
 
     def test_contato_ja_conhecido_passa_depois_do_teto_de_novos(self):
         cid = self.campanha(6)
-        conhecido = banco.salvar_contato(self.con, numero(99))
+        conhecido = banco.salvar_contato(self.con, numero(99), "Ana", "a feira")
         banco.registrar_envio(self.con, "pre:1", "manual", estado="enviado", contato_id=conhecido,
                               quando=portao._iso(AGORA - datetime.timedelta(days=3)), instancia=INST)
-        cid2 = campanha.criar(self.con, "velhos", "Oi de novo", [conhecido])
+        cid2 = campanha.criar(self.con, "velhos", MODELO, [conhecido])
         campanha.ativar(self.con, cid2)
         self.rodar(10)
         self.assertEqual(self.estados(cid), ["enviado"] * 5 + ["pendente"])
@@ -182,7 +185,7 @@ class TestOptoutERespostas(Base):
         self.assertEqual([e["telefone"] for e in self.c.entregues], [self.con.execute(
             "SELECT telefone FROM contatos WHERE id = (SELECT contato_id FROM campanha_contatos WHERE ordem = 1)"
         ).fetchone()[0]])
-        cid2 = campanha.criar(self.con, "outra", "Oi", [banco.buscar_contato(self.con, numero(1))["id"]])
+        cid2 = campanha.criar(self.con, "outra", MODELO, [banco.buscar_contato(self.con, numero(1))["id"]])
         campanha.ativar(self.con, cid2)
         self.rodar(3)
         self.assertEqual((self.estados(cid2), self.c.envios()), (["negado"], 1))   # nunca, em nenhuma campanha
