@@ -1,4 +1,4 @@
-"""Leitura e ações da aba Conversas, do lado do serviço: lista (telefone mascarado), conversa aberta (últimas 100
+"""Leitura e ações da aba Conversas, do lado do serviço: lista (traz o telefone inteiro só para a tela do dono), conversa aberta (últimas 100
 mensagens + envios que ainda não voltaram como eco), envios 'incerto', modo humano/IA, seleção da conversa aberta e
 liberação de UM envio a quem saiu. O envio em si é sempre do portão (portao.py); aqui nada chama o conector."""
 import datetime
@@ -71,7 +71,7 @@ def listar(con, query, agora=None):
     return {"total": total, "aberta": aberta(con), "nao_lidas_total": soma[0], "conversas_nao_lidas": soma[1],
             "conversas": [
         {"id": r["id"], "nome": r["nome"], "nome_exibido": r["nome"] or r["nome_whatsapp"],
-         "telefone_mascarado": mascarar(r["telefone"]), "modo": r["modo"], "ia_desligada": r["modo"] == "humano",
+         "telefone_mascarado": mascarar(r["telefone"]), "telefone": r["telefone"], "modo": r["modo"], "ia_desligada": r["modo"] == "humano",
          "nao_lidas": r["nao_lidas"], "ultima_tipo": r["ultima_tipo"], "precisa_de_voce": bool(r["precisa_de_voce"]),
          "motivo_humano": r["motivo_humano"], "saiu": r["optout_em"] is not None,
          "tem_rascunho": bool(r["tem_rascunho"]), "ia_pausada": portao._pausada(con, r["contato_id"], momento),

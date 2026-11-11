@@ -50,9 +50,7 @@ class TesteMontar(Aba):
         self.parar_batimento()
         self.con.execute("UPDATE batimento SET em = '2000-01-01T00:00:00+00:00' WHERE id = 1")
         blocos = self.blocos()
-        titulos = [b.get("titulo") for b in blocos]
-        self.assertIn("Serviço parado", titulos)
-        self.assertIn("Evolution não preparada", titulos)
+        self.assertEqual([b.get("titulo") for b in blocos], ["O serviço de Vendas está parado"])   # UM bloco só
         texto = json.dumps(blocos)
         self.assertIn(self.mod.cliente.PYTHON + " -B", texto)
         self.assertIn("preparar --projeto", texto)
@@ -98,7 +96,38 @@ class TesteMontar(Aba):
         self.assertEqual(self.falso.chamadas, [])
 
     def test_contadores_do_webhook_seguem_na_aba(self):
-        self.assertIn("Segredo do webhook", [b.get("titulo") for b in self.blocos()])
+        blocos = self.blocos()
+        self.assertEqual(blocos[-3]["titulo"], "Avançado: segurança do recebimento")   # no FIM da aba
+        self.assertIn("recomendado", json.dumps(blocos, ensure_ascii=False))
+
+    def test_conectado_cartao_primeiro_e_formulario_so_em_trocar_de_numero(self):
+        self.criar()
+        self.falso.estado_atual = "conectado"
+        blocos = self.blocos()
+        self.assertEqual((blocos[0]["titulo"], blocos[0]["tipo"]), ("WhatsApp conectado", "kpis"))
+        self.assertEqual({i["rotulo"]: i["valor"] for i in blocos[0]["itens"]}["WhatsApp"], "Conectado")
+        titulos = [b.get("titulo") for b in blocos]
+        self.assertIn("Trocar de número", titulos)
+        self.assertLess(titulos.index("Trocar de número"), [b.get("id") for b in blocos].index("instancia"))
+        self.assertNotIn("Atenção: conexão por QR", titulos)
+        self.assertNotIn("Evolution", json.dumps(blocos))   # a Evolution responde: sem passo de ligar
+
+    def test_nao_conectado_estado_aviso_formulario_e_sem_trocar_de_numero(self):
+        blocos = self.blocos()
+        titulos = [b.get("titulo") for b in blocos]
+        self.assertEqual(titulos[:3], ["WhatsApp", "Atenção: conexão por QR", "Criar ou conectar o WhatsApp"])
+        self.assertNotIn("Trocar de número", titulos)
+
+    def test_evolution_fora_do_ar_mostra_o_passo_de_ligar(self):
+        from servico.conectores import base
+        self.criar()
+
+        def quebra(_):
+            raise base.NaoEnviado("fora", 500)
+        self.falso.estado = quebra
+        blocos = self.blocos()
+        self.assertIn("Prepare o WhatsApp local (Evolution)", [b.get("titulo") for b in blocos])
+        self.assertEqual(self.tipos(blocos, "imagem"), [])
 
     def test_nenhum_segredo_nos_blocos(self):
         self.criar()

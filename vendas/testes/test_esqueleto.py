@@ -59,7 +59,8 @@ class TesteEsqueleto(unittest.TestCase):
         self.assertEqual([a["titulo"] for a in dado["abas"]], ["Conexão", "Conversas", "IA", "Leads", "Disparos", "Buscador", "Voz"])
         for b in aba["blocos"]:
             self.assertIn(b["tipo"], TIPOS)
-        self.assertIn("está parado", aba["blocos"][0]["texto"])
+        self.assertIn("está parado", aba["blocos"][0]["titulo"])
+        self.assertEqual(len(aba["blocos"]), 1)   # parado: UM bloco com o comando, não sete abas de erro
         regras = modulos.regras_de_negar(cfg)
         self.assertIn("Bash(*security find-generic-password*)", regras)
         self.assertIn("Bash(*/api/modulos/*/acao*)", regras)

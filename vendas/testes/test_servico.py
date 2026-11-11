@@ -37,6 +37,9 @@ def carregar_modulo():
     return mod
 
 
+PARADO = "O serviço de Vendas está parado"
+
+
 class Base(unittest.TestCase):
     def setUp(self):
         self.tmp = os.path.realpath(tempfile.mkdtemp())
@@ -286,10 +289,10 @@ class TesteProcesso(Base):
         while True:
             dado = modulo.montar({"raiz": self.projeto}, base=self.base)
             bloco = dado["abas"][0]["blocos"][0]
-            if bloco["titulo"] == "Serviço rodando" or time.monotonic() > fim:
+            if bloco["titulo"] != PARADO or time.monotonic() > fim:
                 break
             time.sleep(0.2)
-        self.assertEqual(bloco["titulo"], "Serviço rodando", dado["avisos"])
+        self.assertNotEqual(bloco["titulo"], PARADO, dado["avisos"])   # rodando: o cartão da conexão, sem aviso de parado
         self.assertEqual(dado["avisos"], [])
         self.assertNotIn(token, json.dumps(dado))
         proc.send_signal(signal.SIGTERM)
@@ -301,7 +304,7 @@ class TesteProcesso(Base):
         self.assertIsNone(con.execute("SELECT * FROM batimento").fetchone())
         con.close()
         bloco = modulo.montar({"raiz": self.projeto, "config": {"porta": 8790}}, base=self.base)["abas"][0]["blocos"][0]
-        self.assertEqual(bloco["titulo"], "Serviço parado")
+        self.assertEqual(bloco["titulo"], PARADO)
         self.assertIn("servico.py --projeto", bloco["texto"])
         self.assertIn("--painel http://127.0.0.1:8790", bloco["texto"])
 
@@ -312,7 +315,7 @@ class TesteProcesso(Base):
         con.execute("INSERT INTO batimento (id, pid, em) VALUES (1, 1, '2020-01-01T00:00:00+00:00')")
         bloco = modulo.montar({"raiz": self.projeto}, base=self.base)["abas"][0]["blocos"][0]
         con.close()
-        self.assertEqual(bloco["titulo"], "Serviço parado")
+        self.assertEqual(bloco["titulo"], PARADO)
 
     def test_tela_nunca_le_o_arquivo_do_token(self):
         with open(MODULO, encoding="utf-8") as f:

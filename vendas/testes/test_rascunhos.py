@@ -214,16 +214,19 @@ class TesteTela(Conversas):
     def conversa_aberta(self):
         self.agir("abrir_conversa", conversa_id=self.maria)
         blocos = self.aba()
-        return [b for b in blocos if b["tipo"] == "conversa" and b["id"] == "conversa_%d" % self.maria][0], blocos
+        caixa = [b for b in blocos if b["tipo"] == "caixa"][0]
+        return caixa["conversa"], blocos
 
     def test_rascunho_aparece_com_aprovar_editar_e_descartar(self):
         rid = self.rascunho()
         bloco, blocos = self.conversa_aberta()
-        rotulos = [b["acao"] for b in bloco["botoes"]]
-        self.assertIn("aprovar_rascunho", rotulos)
-        self.assertIn("descartar_rascunho", rotulos)
-        self.assertEqual(bloco["mensagens"][-1]["texto"], "Claro, o plano custa R$ 99.")
-        self.assertIn("NÃO foi enviado", bloco["mensagens"][-1]["nota"])
+        self.assertEqual([b["tipo"] for b in blocos[:3]], ["caixa", "conversa", "formulario"])   # logo abaixo da caixa
+        bloco_r = blocos[1]
+        rotulos = [b["acao"] for b in bloco_r["botoes"]]
+        self.assertEqual(rotulos, ["aprovar_rascunho", "descartar_rascunho"])
+        self.assertNotIn("aprovar_rascunho", [b["acao"] for b in bloco["botoes"]])   # a conversa não repete
+        self.assertEqual(bloco_r["mensagens"][-1]["texto"], "Claro, o plano custa R$ 99.")
+        self.assertIn("NÃO foi enviado", bloco_r["mensagens"][-1]["nota"])
         form = [b for b in blocos if b["tipo"] == "formulario" and b.get("id") == "editar_rascunho"][0]
         self.assertEqual((form["acao"], form["dados_fixos"], form["campos"][0]["valor"]),
                          ("editar_rascunho", {"rascunho_id": rid}, "Claro, o plano custa R$ 99."))

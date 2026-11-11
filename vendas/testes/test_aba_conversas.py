@@ -42,6 +42,13 @@ class Conversas(Aba):
         self.assertEqual([a["id"] for a in r["abas"]], ["conexao", "conversas", "ia", "leads", "disparos", "buscador", "voz"])
         return r["abas"][1]["blocos"]
 
+    def caixa(self):
+        return self.tipos(self.aba(), "caixa")[0]
+
+    def aberta(self):
+        """A conversa aberta, que agora vive dentro do bloco caixa."""
+        return self.caixa()["conversa"]
+
     def agir(self, acao, **dados):
         return self.mod.agir(self.ctx, acao, dados, base=self.base)
 
@@ -53,27 +60,34 @@ class Conversas(Aba):
 
 
 class TesteLista(Conversas):
-    def test_lista_com_selos_e_telefone_mascarado(self):
-        lista = self.tipos(self.aba(), "lista")[0]
-        por_titulo = {i["titulo"]: i for i in lista["itens"]}
-        self.assertEqual(por_titulo["Maria (****0001)"]["selo"], {"texto": "precisa de você", "tom": "atencao"})
-        self.assertIn("oi, quero saber o preço", por_titulo["Maria (****0001)"]["detalhe"])
-        self.assertEqual(por_titulo["****0002"]["selo"]["texto"], "IA pausada")   # sem nome: telefone mascarado
-        self.assertEqual(por_titulo["Ana (****0003)"]["selo"], {"texto": "saiu", "tom": "ruim"})
-        texto = json.dumps(self.aba(), ensure_ascii=False)
-        for inteiro in ("900000001", "900000002", "900000003"):
-            self.assertNotIn(inteiro, texto)   # nada aberto ainda: nenhum telefone inteiro na tela
+    def test_caixa_com_nome_telefone_formatado_selo_e_previa(self):
+        caixa = self.caixa()
+        self.assertEqual(self.tipos(self.aba(), "lista"), [])   # a caixa substitui a lista e o "Abrir uma conversa"
+        self.assertEqual([b["tipo"] for b in self.aba()].count("formulario"), 0)
+        self.assertEqual(caixa["abrir"], {"acao": "abrir_conversa"})
+        por_id = {i["id"]: i for i in caixa["conversas"]}
+        maria, joao, ana = por_id[str(self.maria)], por_id[str(self.joao)], por_id[str(self.ana)]
+        self.assertEqual((maria["titulo"], maria["selo"]), ("Maria", {"texto": "precisa de você", "tom": "atencao"}))
+        self.assertEqual(maria["detalhe"], "oi, quero saber o preço")
+        self.assertEqual(joao["titulo"], "+55 (11) 90000-0002")   # sem nome: o telefone formatado, inteiro
+        self.assertEqual(joao["selo"]["texto"], "IA pausada")
+        self.assertEqual(ana["selo"], {"texto": "saiu", "tom": "ruim"})
+        self.assertEqual(maria["nao_lidas"], 1)
+        self.assertEqual(maria["quando"], "agora")
+        self.assertNotIn("conversa", caixa)   # nada aberto ainda
 
     def test_conversa_aberta_mostra_telefone_inteiro_e_mensagens(self):
         self.assertEqual(self.agir("abrir_conversa", conversa_id=str(self.maria))["ok"], True)
-        conversa = self.tipos(self.aba(), "conversa")[0]
-        self.assertIn("5511900000001", conversa["titulo"])
+        conversa = self.aberta()
+        self.assertIn("+55 (11) 90000-0001", conversa["titulo"])
         self.assertEqual([(m["de"], m["texto"]) for m in conversa["mensagens"]],
                          [("contato", "oi, quero saber o preço")])
         self.assertEqual(conversa["enviar"], {"acao": "enviar_mensagem", "dados_fixos": {"conversa_id": self.maria},
                                               "rotulo": "Enviar"})
+        self.assertEqual([b["rotulo"] for b in conversa["botoes"]],
+                         ["Assumir a conversa", "Deixar a IA enviar sozinha"])
         self.assertEqual([b["acao"] for b in conversa["botoes"]], ["assumir_conversa", "ia_automatico_conversa"])
-        self.assertNotIn("5511900000002", json.dumps(self.aba()))
+        self.assertNotIn("90000-0002", json.dumps(conversa))
 
     def test_selecao_fica_por_projeto_no_banco_do_servico(self):
         self.agir("abrir_conversa", conversa_id=self.joao)
@@ -85,7 +99,7 @@ class TesteLista(Conversas):
         for i in range(60):
             banco.registrar_mensagem(self.con, self.maria, "entrada", "msg %02d" % i, id_externo="lote-%d" % i)
         self.agir("abrir_conversa", conversa_id=self.maria)
-        mensagens = self.tipos(self.aba(), "conversa")[0]["mensagens"]
+        mensagens = self.aberta()["mensagens"]
         self.assertEqual((len(mensagens), mensagens[-1]["texto"], mensagens[0]["texto"]), (50, "msg 59", "msg 10"))
         status, r = self.pedir_servico("/conversas/%d?limite=5000" % self.maria)
         self.assertEqual((status, len(r["mensagens"])), (200, 61))   # teto 100: as 61 que existem
@@ -132,6 +146,7 @@ class TesteLista(Conversas):
         self.con.execute("UPDATE batimento SET em = '2000-01-01T00:00:00+00:00' WHERE id = 1")
         r = self.mod.montar(self.ctx, base=self.base)
         self.assertEqual(r["abas"][1]["blocos"][0]["titulo"], "Serviço parado")
+        self.assertLess(len(r["abas"][1]["blocos"][0]["texto"]), 60)   # as outras abas só apontam para a Conexão
         self.assertIn("parado", self.enviar(self.maria)["mensagem"])
         self.assertEqual(self.falso.envios(), 0)
 
@@ -195,7 +210,7 @@ class TesteEnvioManual(Conversas):
 
     def test_botao_de_liberar_pede_confirmacao_na_tela(self):
         self.agir("abrir_conversa", conversa_id=self.ana)
-        botoes = {b["acao"]: b for b in self.tipos(self.aba(), "conversa")[0]["botoes"]}
+        botoes = {b["acao"]: b for b in self.aberta()["botoes"]}
         self.assertIn("UMA mensagem", botoes["liberar_saida"]["confirmar"])
 
     def test_negado_por_teto_mostra_motivo_em_portugues(self):
@@ -219,7 +234,7 @@ class TesteEnvioManual(Conversas):
         self.falso.modo_envio = "timeout"
         self.enviar(self.maria, "oi maria")
         self.agir("abrir_conversa", conversa_id=self.maria)
-        ultima = self.tipos(self.aba(), "conversa")[0]["mensagens"][-1]
+        ultima = self.aberta()["mensagens"][-1]
         self.assertEqual((ultima["de"], ultima["texto"], ultima["estado"]), ("eu", "oi maria", "incerto"))
         self.assertIn("não confirmou", ultima["nota"])
 
@@ -296,7 +311,7 @@ class TesteModo(Conversas):
         self.assertTrue(self.agir("assumir_conversa", conversa_id=self.maria)["ok"])
         self.assertEqual(tuple(self.modo(self.maria))[:2], ("humano", 0))
         self.agir("abrir_conversa", conversa_id=self.maria)
-        self.assertEqual([b["acao"] for b in self.tipos(self.aba(), "conversa")[0]["botoes"]], ["devolver_ia", "ia_automatico_conversa"])
+        self.assertEqual([b["acao"] for b in self.aberta()["botoes"]], ["devolver_ia", "ia_automatico_conversa"])
         self.con.execute("UPDATE conversas SET pausada_ate = '2999-01-01T00:00:00+00:00' WHERE id = ?",
                          (self.maria,))
         self.assertTrue(self.agir("devolver_ia", conversa_id=self.maria)["ok"])

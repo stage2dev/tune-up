@@ -250,12 +250,14 @@ class TesteTelaModoWebhook(Base):
             self.webhook(ok)
         tela = self.mod.montar({"raiz": self.projeto, "config": {"porta": PORTA_PAINEL}}, base=self.base)
         blocos = tela["abas"][0]["blocos"]
-        i = [b.get("titulo") for b in blocos].index("Segredo do webhook")  # a aba tem outros blocos antes
-        kpis = {it["rotulo"]: it["valor"] for it in blocos[i]["itens"]}
-        self.assertEqual(kpis, {"Modo": "Registra e conta", "Válidos": 3, "Inválidos": 1, "Válidos seguidos": 1})
-        self.assertEqual(blocos[i + 1]["tipo"], "formulario")
-        self.assertEqual(blocos[i + 1]["acao"], "modo_webhook")
-        self.assertEqual([o["valor"] for o in blocos[i + 1]["campos"][0]["opcoes"]],
+        i = [b.get("titulo") for b in blocos].index("Avançado: segurança do recebimento")
+        self.assertEqual(len(blocos), i + 3, "o bloco avançado fica no FIM da aba")
+        kpis = {it["rotulo"]: it["valor"] for it in blocos[i + 1]["itens"]}
+        self.assertEqual(kpis, {"Jeito atual": "Só contar (recomendado)", "Com senha certa": 3, "Com senha errada": 1,
+                                "Certas em sequência": 1})
+        self.assertEqual(blocos[i + 2]["tipo"], "formulario")
+        self.assertEqual(blocos[i + 2]["acao"], "modo_webhook")
+        self.assertEqual([o["valor"] for o in blocos[i + 2]["campos"][0]["opcoes"]],
                          [rotas.MODO_REGISTRA, rotas.MODO_RECUSA])
 
 

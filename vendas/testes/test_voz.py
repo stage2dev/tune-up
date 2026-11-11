@@ -290,7 +290,7 @@ class TesteAudioIncerto(BaseVoz):
         r = conversas.incertos(self.con, {})
         self.assertEqual(r["incertos"][0]["previa"], "[áudio]")
         self.assertNotIn(self.pasta, repr(r))
-        acoes = [b["acao"] for b in aba.bloco_incertos(r)["botoes"]]
+        acoes = [b["acao"] for b in aba.caixa.bloco_incertos(r)["botoes"]]
         self.assertEqual(acoes, ["descartar_envio"])
 
 

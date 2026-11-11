@@ -150,16 +150,15 @@ class TesteAba(Conversas):
         from servico import cerebro
         cerebro.marcar_precisa_de_voce(self.con, self.maria, "pedir_humano", True)
         blocos = self.aba()
-        item = [i for i in self.tipos(blocos, "lista")[0]["itens"] if i["titulo"].startswith("Maria")][0]
+        item = [i for i in self.tipos(blocos, "caixa")[0]["conversas"] if i["titulo"].startswith("Maria")][0]
         self.assertEqual(item["selo"]["texto"], "precisa de você")
-        self.assertIn("pediu para você assumir", item["detalhe"])
         self.agir("abrir_conversa", conversa_id=str(self.maria))
-        bloco = self.tipos(self.aba(), "conversa")[0]
-        self.assertIn("IA desligada: A IA pediu para você assumir", bloco["titulo"])
+        bloco = self.aberta()
+        self.assertIn("A IA pediu para você assumir", bloco["titulo"])
         self.assertEqual(bloco["botoes"][0]["rotulo"], "Devolver para a IA")
         self.assertTrue(self.agir("devolver_ia", conversa_id=self.maria)["ok"])
-        bloco = self.tipos(self.aba(), "conversa")[0]
-        self.assertNotIn("desligada", bloco["titulo"])
+        bloco = self.aberta()
+        self.assertNotIn("pediu para você assumir", bloco["titulo"])
         self.assertNotIn("precisa de você", bloco["titulo"])
         self.assertEqual(bloco["botoes"][0]["rotulo"], "Assumir a conversa")
 
@@ -167,8 +166,8 @@ class TesteAba(Conversas):
         from servico import cerebro
         cerebro.marcar_precisa_de_voce(self.con, self.maria, "anti_loop", True)
         self.agir("abrir_conversa", conversa_id=str(self.maria))
-        titulo = self.tipos(self.aba(), "conversa")[0]["titulo"]
-        self.assertIn("IA desligada: A IA repetiu", titulo)
+        titulo = self.aberta()["titulo"]
+        self.assertIn("A IA repetiu", titulo)
         self.assertNotIn("anti_loop", titulo)
 
 

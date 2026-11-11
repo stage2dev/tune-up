@@ -6,7 +6,7 @@ import os
 import sqlite3
 
 PORTA_EVOLUTION = 8080  # porta padrão da Evolution local (servico/evolution_local.py)
-MODOS = {"registra_e_conta": "Registra e conta", "recusa": "Recusa segredo errado"}
+MODOS = {"registra_e_conta": "Só contar (recomendado)", "recusa": "Recusar os avisos falsos"}
 VALIDOS_PARA_RECUSA = 20  # o mesmo de servico/rotas.py; quem decide é o serviço
 
 PLUGIN = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -159,22 +159,30 @@ def agir(ctx, acao, dados, base=None):
 
 
 def blocos_webhook(w):
+    """Fim da aba Conexão: a senha que cada mensagem traz. Em palavras simples; o padrão já serve."""
     falta = max(0, VALIDOS_PARA_RECUSA - w["seguidos"])
     return [
-        {"tipo": "kpis", "titulo": "Segredo do webhook", "itens": [
-            {"rotulo": "Modo", "valor": MODOS.get(w["modo"], w["modo"])},
-            {"rotulo": "Válidos", "valor": w["validos"]},
-            {"rotulo": "Inválidos", "valor": w["invalidos"], "tom": "atencao" if w["invalidos"] else "neutro"},
-            {"rotulo": "Válidos seguidos", "valor": w["seguidos"],
-             "detalhe": "pronto para recusar" if not falta else "faltam %d para poder recusar" % falta}]},
-        {"tipo": "formulario", "id": "modo_webhook", "titulo": "Modo do segredo do webhook",
-         "descricao": ("Em \"Registra e conta\" o webhook com segredo errado entra e é contado. \"Recusa\" "
-                       "responde 401 a ele e só liga depois de %d webhooks válidos seguidos (um inválido zera "
-                       "a contagem)." % VALIDOS_PARA_RECUSA),
-         "acao": "modo_webhook", "botao": "Trocar modo",
-         "campos": [{"id": "modo", "rotulo": "Modo", "tipo": "escolha", "valor": w["modo"], "obrigatorio": True,
+        {"tipo": "texto", "titulo": "Avançado: segurança do recebimento",
+         "texto": ("Cada mensagem que chega traz uma senha, para provar que veio mesmo do seu WhatsApp. Você não "
+                   "precisa mexer aqui: o jeito que já está é o recomendado.")},
+        {"tipo": "kpis", "itens": [
+            {"rotulo": "Jeito atual", "valor": MODOS.get(w["modo"], w["modo"])},
+            {"rotulo": "Com senha certa", "valor": w["validos"]},
+            {"rotulo": "Com senha errada", "valor": w["invalidos"], "tom": "atencao" if w["invalidos"] else "neutro"},
+            {"rotulo": "Certas em sequência", "valor": w["seguidos"],
+             "detalhe": "já dá para recusar as erradas" if not falta
+             else "faltam %d para poder recusar as erradas" % falta}]},
+        {"tipo": "formulario", "id": "modo_webhook", "titulo": "Trocar o jeito de tratar senha errada",
+         "descricao": ("\"Só contar\": a mensagem com senha errada entra e é contada. \"Recusar\": ela é barrada, "
+                       "mas isso só liga depois de %d mensagens certas em sequência (uma errada zera a conta)."
+                       % VALIDOS_PARA_RECUSA),
+         "acao": "modo_webhook", "botao": "Trocar",
+         "campos": [{"id": "modo", "rotulo": "Jeito", "tipo": "escolha", "valor": w["modo"], "obrigatorio": True,
                      "opcoes": [{"valor": k, "rotulo": v} for k, v in MODOS.items()]}]},
     ]
+
+
+PARADO_CURTO = [{"tipo": "texto", "titulo": "Serviço parado", "texto": "Ligue o serviço (veja a aba Conexão)."}]
 
 
 def montar(ctx, base=None):
@@ -187,42 +195,37 @@ def montar(ctx, base=None):
         quando = webhook = None
         avisos.append("não consegui ler o banco do serviço (%s)" % type(e).__name__)
     rodando = quando is not None and abs((agora - quando).total_seconds()) <= VIVO_S
-    if rodando:
-        bloco = {"tipo": "texto", "titulo": "Serviço rodando",
-                 "texto": "O serviço de Vendas está rodando (último sinal às %s UTC)." % quando.strftime("%H:%M:%S")}
-    else:
-        bloco = {"tipo": "texto", "titulo": "Serviço parado",
-                 "texto": ("O serviço de Vendas está parado. Ele só liga por um comando seu, digitado num "
-                           "terminal (nunca por uma sessão do Claude). Comando: %s . Para a Evolution local "
-                           "(Docker), prepare antes os arquivos com: %s" % (comando(ctx), comando_evolution(ctx)))}
-    blocos = [bloco, conexao.bloco_evolution(ctx, cliente, comando_evolution(ctx), base)]
-    if rodando:  # QR e estado lidos na hora, a cada montar: nada de cache aqui
-        blocos += conexao.blocos_instancia(*conexao.ler_instancia(ctx, cliente, base))
-        blocos += blocos_webhook(webhook) if webhook else []
-    if rodando:
-        aba, aba_ia = conversas.blocos(ctx, cliente, base), ia.blocos(*ia.ler(ctx, cliente, base))
-        aba_leads = leads.blocos(ctx, *leads.ler(ctx, cliente, base), cliente)
-        aba_disparos = disparos.blocos(ctx, *disparos.ler(ctx, cliente, base))
-        aba_buscador = (buscador.blocos(ctx, *buscador.ler(ctx, cliente, base), FORM_IMPORTAR)
-                        + places.blocos(*places.ler(ctx, cliente, base), buscador.endereco))
-        aba_voz = voz.blocos(*voz.ler(ctx, cliente, base))
-    else:
-        aba_voz = [{"tipo": "texto", "titulo": "Serviço parado", "texto": "Ligue o serviço (veja a aba Conexão) "
-                                                                          "para configurar a voz."}]
-        aba = [{"tipo": "texto", "titulo": "Serviço parado", "texto": "Ligue o serviço (veja a aba Conexão) para "
-                                                                      "ver e responder as conversas."}]
-        aba_ia = [{"tipo": "texto", "titulo": "Serviço parado", "texto": "Ligue o serviço (veja a aba Conexão) para "
-                                                                         "configurar a IA."}]
-        aba_leads = [{"tipo": "texto", "titulo": "Serviço parado", "texto": "Ligue o serviço (veja a aba Conexão) "
-                                                                            "para ver e importar os leads."}]
-        aba_disparos = [{"tipo": "texto", "titulo": "Serviço parado", "texto": "Ligue o serviço (veja a aba Conexão) "
-                                                                               "para ver e criar os disparos."}]
-        aba_buscador = [{"tipo": "texto", "titulo": "Serviço parado", "texto": "Ligue o serviço (veja a aba Conexão) "
-                                                                               "para revisar os candidatos."}]
-    return {"avisos": avisos, "abas": [{"id": "conexao", "titulo": "Conexão", "blocos": blocos},
-                                       {"id": "conversas", "titulo": "Conversas", "blocos": aba},
-                                       {"id": "ia", "titulo": "IA", "blocos": aba_ia},
-                                       {"id": "leads", "titulo": "Leads", "blocos": aba_leads},
-                                       {"id": "disparos", "titulo": "Disparos", "blocos": aba_disparos},
-                                       {"id": "buscador", "titulo": "Buscador", "blocos": aba_buscador},
-                                       {"id": "voz", "titulo": "Voz", "blocos": aba_voz}]}
+    if not rodando:  # UM bloco amigável com o comando exato; as outras abas só apontam para ele
+        _, passo = conexao.texto_evolution(ctx, cliente, comando_evolution(ctx), base)
+        bloco = {"tipo": "texto", "titulo": "O serviço de Vendas está parado",
+                 "texto": ("Ele só liga por um comando seu, digitado num terminal (nunca por uma sessão do Claude). "
+                           "Rode: %s . Se for usar o WhatsApp local (Docker), antes: %s" % (comando(ctx), passo))}
+        nomes = (("conexao", "Conexão"), ("conversas", "Conversas"), ("ia", "IA"), ("leads", "Leads"),
+                 ("disparos", "Disparos"), ("buscador", "Buscador"), ("voz", "Voz"))
+        return {"avisos": avisos, "atualizar_em": 15,
+                "abas": [{"id": i, "titulo": t, "blocos": [bloco] if i == "conexao" else PARADO_CURTO}
+                         for i, t in nomes]}
+    dados, aviso_instancia = conexao.ler_instancia(ctx, cliente, base)  # QR e estado lidos na hora, sem cache
+    conectado = bool(dados) and not aviso_instancia and dados.get("estado") == "conectado"
+    blocos = conexao.blocos_instancia(dados, aviso_instancia)
+    if aviso_instancia or (dados or {}).get("aviso"):  # a Evolution não responde: só agora o passo de ligá-la aparece
+        blocos.insert(1 if aviso_instancia else 2, conexao.bloco_evolution(ctx, cliente, comando_evolution(ctx), base))
+    if webhook:
+        blocos += blocos_webhook(webhook)
+    aba, nao_lidas = conversas.aba(ctx, cliente, base)
+    aba_ia = ia.blocos(*ia.ler(ctx, cliente, base))
+    aba_leads = leads.blocos(ctx, *leads.ler(ctx, cliente, base), cliente)
+    aba_disparos = disparos.blocos(ctx, *disparos.ler(ctx, cliente, base))
+    aba_buscador = (buscador.blocos(ctx, *buscador.ler(ctx, cliente, base), FORM_IMPORTAR)
+                    + places.blocos(*places.ler(ctx, cliente, base), buscador.endereco))
+    aba_voz = voz.blocos(*voz.ler(ctx, cliente, base))
+    aba_conversas = {"id": "conversas", "titulo": "Conversas", "blocos": aba}
+    if nao_lidas >= 1:
+        aba_conversas["alerta"] = nao_lidas
+    return {"avisos": avisos, "atualizar_em": 3 if conectado else 15,
+            "abas": [{"id": "conexao", "titulo": "Conexão", "blocos": blocos}, aba_conversas,
+                     {"id": "ia", "titulo": "IA", "blocos": aba_ia},
+                     {"id": "leads", "titulo": "Leads", "blocos": aba_leads},
+                     {"id": "disparos", "titulo": "Disparos", "blocos": aba_disparos},
+                     {"id": "buscador", "titulo": "Buscador", "blocos": aba_buscador},
+                     {"id": "voz", "titulo": "Voz", "blocos": aba_voz}]}

@@ -141,7 +141,7 @@ class NaoLidas(Base):
         self.assertRegex(lista[0]["quando"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00$")
         for chave in ("precisa_de_voce", "ia_pausada", "ia_desligada", "motivo_humano", "saiu", "modo", "nao_lidas"):
             self.assertIn(chave, lista[0])
-        self.assertNotIn(LEAD, str(lista))   # a lista continua sem o telefone inteiro
+        self.assertEqual(lista[0]["telefone"], LEAD)   # a tela do dono mostra o telefone formatado; o mascarado fica para logs
 
     def test_conversa_traz_o_tipo_e_as_ultimas_100(self):
         self.receber(corpo("I1", mensagem={"imageMessage": {"caption": "foto do carro"}}))

@@ -1,80 +1,23 @@
-"""Aba Conversas: lista (telefone mascarado), conversa aberta no bloco `conversa` (telefone inteiro só aqui), caixa
-de envio, assumir/devolver e envios 'incerto' para o dono decidir. Só fala com o serviço por cliente.chamar (porta,
+"""Aba Conversas: ações e leitura; os blocos (caixa, rascunho, incertos) vêm de caixa.py. Caixa de envio, assumir/devolver e envios 'incerto' para o dono decidir. Só fala com o serviço por cliente.chamar (porta,
 batimento e marca conferidos). Todo envio vai pelo portão do serviço; a tela nunca fala com a Evolution. Os blocos
 não levam token nem chave. Python 3.9, só biblioteca padrão."""
-import datetime
 import hashlib
+import importlib.util
+import os
 import re
 
 ID_CLIENTE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
-MAX_INCERTOS = 10   # botões na tela; o resto aparece depois que estes forem decididos
-AVISO_LIBERAR = ("Este contato pediu para sair. Escrever mesmo assim vale para UMA mensagem e pode ir contra o "
-                 "pedido dele. Liberar?")
-MOTIVOS = {
-    "optout_pede_confirmacao": "Este contato pediu para sair. Para escrever mesmo assim, use o botão \"Liberar uma "
-                               "mensagem\" e envie de novo.",
-    "optout": "Este contato pediu para sair; nada é enviado a ele.",
-    "teto_minuto": "Muitas mensagens no último minuto (limite de 8). Espere um pouco e tente de novo.",
-    "teto_hora": "Muitas mensagens na última hora. Espere um pouco e tente de novo.",
-    "pausa_humana": "A conversa está com você; a IA não escreve nela.",
-    "fora_da_janela": "Fora do horário permitido para esse tipo de envio.",
-    "numero_invalido": "Este número não está no WhatsApp; a mensagem não saiu.",
-    "fuso_invalido": "O fuso do projeto está inválido; corrija a configuração.",
-    "nao_reenviavel": "Este envio não pode mais ser reenviado.",
-    "nao_incerto": "Este envio já foi decidido.",
-    "chave_ocupada": "Essa mensagem já foi registrada antes (clique repetido ignorado).",
-    "descartado_pelo_dono": "Marcada por você como não enviada.",
-    "pendente_na_subida": "O serviço reiniciou no meio do envio: não sei se saiu.",
-    "sem_numero_do_dono": "O número do dono não está configurado.",
-    "pedir_humano": "A IA pediu para você assumir esta conversa.",
-    "erro_interno": "A IA falhou nesta conversa e foi desligada nela.",
-    "rodadas": "A IA não chegou a uma resposta (voltou a chamar ferramentas) e foi desligada nesta conversa.",
-    "anti_loop": "A IA repetiu a mesma resposta 3 vezes e foi desligada nesta conversa.",
-    "campanha_parada": "A campanha deste envio está pausada. Retome-a na aba Disparos para reenviar.",
-    "contato_fora_da_campanha": "Este contato já não espera este envio na campanha (respondeu ou saiu dela).",
-    "sem_optout": "Essa confirmação só vai para quem pediu para sair.",
-    "nao_e_o_dono": "O teste de áudio só vai para o número do dono.",
-    "teto_teste_audio_dia": "Acabou o limite de testes de áudio de hoje.",
-    "teto_audio_dia": "Acabou o limite de áudios da IA de hoje.",
-    "teto_audio_contato_dia": "Acabou o limite de áudios da IA para este contato hoje; a resposta foi em texto.",
-    "audio_incerto": "O áudio da IA pode não ter chegado; confira no celular e responda você.",
-    "rascunho_links_nao_sairam": "O áudio saiu, mas o texto com os links não. Aprove de novo para mandar só os links.",
-    "teto_contatos_novos_dia": "Aquecimento: acabou o limite de contatos novos de hoje para este número.",
-    "teto_diario": "A IA atingiu o teto de gasto do dia; responda você.",
-    "sem_chave": "A IA está sem chave da OpenAI; configure na aba IA.",
-    "sem_modelo": "A IA está sem modelo escolhido; configure na aba IA.",
-    "sem_oferta": "A IA está sem oferta cadastrada; configure na aba IA.",
-    "preco_desconhecido": "O preço do modelo da IA não está cadastrado; informe na aba IA.",
-    "resposta_invalida": "A IA devolveu uma resposta inválida; responda você.",
-    "resposta_cortada": "A resposta da IA veio cortada no meio e não foi enviada; responda você.",
-    "sem_texto": "A IA não escreveu nada; responda você.",
-    "reescrita_falhou": "A IA escreveu um comando em vez de texto e a correção falhou; nada saiu, responda você.",
-    "ferramenta_como_texto": "A IA escreveu um comando em vez de texto; nada saiu, responda você.",
-    "segredo": "A resposta da IA trazia algo parecido com uma chave e foi barrada.",
-    "link_suspeito": "A resposta da IA trazia um link fora da lista e foi barrada.",
-    "vazio": "A resposta da IA ficou vazia depois dos filtros e não saiu.",
-    "rascunho_em_aprovacao": "Este rascunho já está sendo aprovado.",
-    "gatilho_ja_respondido": "Essa mensagem do lead já foi respondida.",
-    "gatilho_ja_tem_rascunho": "Essa mensagem do lead já tem um rascunho.",
-    "envio_negado": "A resposta da IA não saiu; responda você.",
-    "envio_parcial": "A resposta da IA saiu só em parte; complete você.",
-    "sem_conector": "O WhatsApp não está conectado; a IA não respondeu.",
-    "injecao_suspeita": "A mensagem do lead parece tentar mandar na IA; responda você.",
-}
-ESTADOS_NOTA = ("negado", "falhou", "incerto")
+_spec = importlib.util.spec_from_file_location("tune_up_vendas_motivos", os.path.join(os.path.dirname(
+    os.path.abspath(__file__)), "motivos.py"))
+motivos = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(motivos)
+MOTIVOS, motivo_pt = motivos.MOTIVOS, motivos.motivo_pt
+_spec = importlib.util.spec_from_file_location("tune_up_vendas_caixa", os.path.join(os.path.dirname(
+    os.path.abspath(__file__)), "caixa.py"))
+caixa = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(caixa)  # caixa.py carrega motivos.py sozinho; nada de ciclo
+MAX_INCERTOS = caixa.MAX_INCERTOS
 ACOES_RASCUNHO = ("aprovar_rascunho", "editar_rascunho", "descartar_rascunho")
-AVISO_AUTOMATICO = ("Nesta conversa a IA vai ENVIAR as respostas sozinha, sem você aprovar. Mudar para automático?")
-
-
-def motivo_pt(motivo):
-    motivo = motivo or ""
-    if motivo in MOTIVOS:
-        return MOTIVOS[motivo]
-    if motivo.startswith("incerto") or motivo.startswith("erro_inesperado") or motivo == "sem_id_externo":
-        return "O WhatsApp não confirmou se a mensagem saiu."
-    if motivo.startswith("nao_enviado"):
-        return "O WhatsApp recusou a mensagem; ela não saiu."
-    return "O envio foi recusado pelo portão (%s)." % motivo if motivo else ""
 
 
 def _inteiro(valor):
@@ -85,13 +28,6 @@ def _inteiro(valor):
     if isinstance(valor, str) and valor.isdigit() and len(valor) <= 12:
         return int(valor) or None
     return None
-
-
-def _quando(iso):
-    try:
-        return datetime.datetime.fromisoformat(iso).astimezone().strftime("%d/%m %H:%M")
-    except (TypeError, ValueError):
-        return iso or ""
 
 
 def _ler(ctx, cliente, caminho, base):
@@ -105,135 +41,26 @@ def _ler(ctx, cliente, caminho, base):
     return r, None
 
 
-def _nome(c):
-    return c.get("nome") or c.get("telefone_mascarado") or "Sem nome"
-
-
-def _selos(c):
-    achados = []
-    if c.get("saiu"):
-        achados.append(("saiu", "ruim"))
-    if c.get("precisa_de_voce"):
-        achados.append(("precisa de você", "atencao"))
-    if c.get("ia_pausada"):
-        achados.append(("IA pausada", "neutro"))
-    return achados
-
-
-def bloco_lista(r):
-    itens = []
-    for c in r["conversas"]:
-        selos = _selos(c)
-        item = {"titulo": "%s (%s)" % (_nome(c), c["telefone_mascarado"]) if c.get("nome") else _nome(c),
-                "detalhe": " · ".join([c.get("ultima") or "sem mensagens"] + [t for t, _ in selos[1:]]
-                                      + ([motivo_pt(c["motivo_humano"])] if c.get("motivo_humano") else []))}
-        if selos:
-            item["selo"] = {"texto": selos[0][0], "tom": selos[0][1]}
-        itens.append(item)
-    titulo = "Conversas (%d de %d)" % (len(itens), r.get("total", len(itens)))
-    return {"tipo": "lista", "titulo": titulo, "itens": itens, "vazio": "Nenhuma conversa ainda."}
-
-
-def bloco_abrir(r):
-    return {"tipo": "formulario", "id": "abrir_conversa", "titulo": "Abrir uma conversa",
-            "acao": "abrir_conversa", "botao": "Abrir", "campos": [
-                {"id": "conversa_id", "rotulo": "Conversa", "tipo": "escolha", "obrigatorio": True,
-                 "valor": str(r["aberta"]) if r.get("aberta") else "",
-                 "opcoes": [{"valor": str(c["id"]), "rotulo": "%s (%s)" % (c.get("nome") or "Sem nome",
-                                                                           c["telefone_mascarado"])}
-                            for c in r["conversas"]]}]}
-
-
-def bloco_conversa(r):
-    c = r["conversa"]
-    rascunho = r.get("rascunho")
-    mensagens = []
-    for m in r["mensagens"]:
-        item = {"id": m["id"], "de": m["de"], "texto": m["texto"], "quando": _quando(m["quando"])}
-        if m["de"] != "contato" and m.get("estado"):
-            item["estado"] = m["estado"]
-            if m["estado"] in ESTADOS_NOTA and m.get("motivo"):
-                item["nota"] = motivo_pt(m["motivo"])
-        mensagens.append(item)
-    dados = {"conversa_id": c["id"]}
-    botoes = [{"rotulo": "Devolver para a IA", "acao": "devolver_ia", "dados": dados} if c["modo"] == "humano"
-              else {"rotulo": "Assumir a conversa", "acao": "assumir_conversa", "dados": dados}]
-    if c["saiu"] and not c.get("liberado"):
-        botoes.append({"rotulo": "Liberar uma mensagem", "acao": "liberar_saida", "dados": dados,
-                       "confirmar": AVISO_LIBERAR})
-    if rascunho:
-        mensagens.append({"id": "rascunho%d" % rascunho["id"], "de": "ia", "texto": rascunho["texto"],
-                          "quando": _quando(rascunho["criado_em"]),
-                          "nota": ("Rascunho da IA: ainda NÃO foi enviado." + (
-                              " Ao aprovar, vai como áudio (links em texto separado)." if rascunho.get("como_audio")
-                              else "")) if not rascunho["expirado"] else
-                          "Rascunho com mais de 24 horas: expirou e não pode mais ser aprovado."})
-        if not rascunho["expirado"]:
-            dados_r = {"rascunho_id": rascunho["id"]}
-            botoes += [{"rotulo": "Aprovar e enviar", "acao": "aprovar_rascunho", "dados": dados_r},
-                       {"rotulo": "Descartar rascunho", "acao": "descartar_rascunho", "dados": dados_r,
-                        "confirmar": "Descartar este rascunho? Nada será enviado."}]
-    if c.get("modo_ia_efetivo") == "automatico":
-        botoes.append({"rotulo": "Voltar para rascunho nesta conversa", "acao": "ia_rascunho_conversa", "dados": dados})
-    else:
-        botoes.append({"rotulo": "IA em modo automático nesta conversa", "acao": "ia_automatico_conversa",
-                       "dados": dados, "confirmar": AVISO_AUTOMATICO})
-    estado = [t for t, _ in _selos(c)] + ["IA: " + ("automático" if c.get("modo_ia_efetivo") == "automatico"
-                                                    else "rascunho")]
-    estado = estado + (["envio liberado para uma mensagem"] if c.get("liberado") else [])
-    if c.get("motivo_humano"):
-        estado.append("IA desligada: " + motivo_pt(c["motivo_humano"]))
-    return {"tipo": "conversa", "id": "conversa_%d" % c["id"],
-            "titulo": "%s, %s%s" % (c.get("nome") or "Sem nome", c["telefone"],
-                                    " (%s)" % ", ".join(estado) if estado else ""),
-            "mensagens": mensagens, "vazio": "Nenhuma mensagem ainda.", "botoes": botoes,
-            "enviar": {"acao": "enviar_mensagem", "dados_fixos": dados, "rotulo": "Enviar"}}
-
-
-def bloco_incertos(r):
-    """Cada envio incerto com DUAS ações do dono: reenviar a mesma linha ou marcar como não enviado."""
-    itens = r["incertos"][:MAX_INCERTOS]
-    mensagens = [{"id": "e%d" % e["id"], "de": "eu", "estado": "incerto", "quando": _quando(e["quando"]),
-                  "texto": "Para %s: %s" % (e["telefone_mascarado"], e["previa"]), "nota": motivo_pt(e["motivo"])}
-                 for e in itens]
-    botoes = []
-    for e in itens:
-        dados = {"envio_id": e["id"]}
-        if e.get("tipo") != "audio":   # áudio não se reenvia: o arquivo já foi apagado; gere um áudio novo
-            botoes.append({"rotulo": "Reenviar #%d" % e["id"], "acao": "reenviar_envio", "dados": dados,
-                           "confirmar":
-                               "Reenviar a MESMA mensagem? Se ela já tiver saído, o contato recebe duas vezes."})
-        botoes.append({"rotulo": "Marcar #%d como não enviada" % e["id"], "acao": "descartar_envio",
-                       "dados": dados, "confirmar": "Marcar como não enviada? Nada será enviado."})
-    return {"tipo": "conversa", "id": "incertos",
-            "titulo": "Envios incertos (%d): podem ou não ter saído; decida um a um" % r.get("total", len(itens)),
-            "mensagens": mensagens, "botoes": botoes, "vazio": "Nenhum envio incerto."}
-
-
 def blocos(ctx, cliente, base=None):
+    return aba(ctx, cliente, base)[0]
+
+
+def aba(ctx, cliente, base=None):
+    """(blocos, total de não lidas). Uma caixa (lista + conversa aberta), o rascunho da IA logo abaixo e os envios
+    incertos."""
     lista, aviso = _ler(ctx, cliente, "/conversas?limite=50", base)
     if aviso:
-        return [{"tipo": "texto", "titulo": "Conversas indisponíveis", "texto": aviso}]
-    saida = [bloco_lista(lista)]
-    if lista["conversas"]:
-        saida.append(bloco_abrir(lista))
+        return [{"tipo": "texto", "titulo": "Conversas indisponíveis", "texto": aviso}], 0
+    aberta, aviso_aberta = None, None
     if lista.get("aberta"):
-        aberta, aviso = _ler(ctx, cliente, "/conversas/%d?limite=50" % lista["aberta"], base)
-        saida.append(bloco_conversa(aberta) if aberta else {"tipo": "texto", "titulo": "Conversa indisponível",
-                                                            "texto": aviso})
-        rascunho = (aberta or {}).get("rascunho")
-        if rascunho and not rascunho["expirado"]:
-            saida.append({"tipo": "formulario", "id": "editar_rascunho", "titulo": "Editar o rascunho e enviar",
-                          "acao": "editar_rascunho", "botao": "Enviar texto editado",
-                          "dados_fixos": {"rascunho_id": rascunho["id"]},
-                          "campos": [{"id": "texto", "rotulo": "Mensagem", "tipo": "texto_longo",
-                                      "obrigatorio": True, "valor": rascunho["texto"]}]})
+        aberta, aviso_aberta = _ler(ctx, cliente, "/conversas/%d?limite=50" % lista["aberta"], base)
+    saida = [caixa.bloco_caixa(lista, aberta, aviso_aberta)] + caixa.blocos_rascunho((aberta or {}).get("rascunho"))
     incertos, aviso = _ler(ctx, cliente, "/incertos?limite=%d" % MAX_INCERTOS, base)
     if incertos and incertos["incertos"]:
-        saida.append(bloco_incertos(incertos))
+        saida.append(caixa.bloco_incertos(incertos))
     elif aviso:
-        saida.append({"tipo": "texto", "titulo": "Envios incertos indisponíveis", "texto": aviso})
-    return saida
+        saida.append({"tipo": "texto", "titulo": "Mensagens em dúvida indisponíveis", "texto": aviso})
+    return saida, int(lista.get("nao_lidas_total") or 0)
 
 
 def _chamar(ctx, cliente, metodo, caminho, corpo, base, tempo=None):
