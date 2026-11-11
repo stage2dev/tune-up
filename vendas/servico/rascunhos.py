@@ -176,6 +176,34 @@ def aprovar(app, con, rascunho_id, texto=None, agora=None):
     return 200, {"estado": res["estado"], "motivo": res["motivo"], "envio_id": res.get("envio_id")}
 
 
+def destravar_na_subida(con):
+    """Subida do serviço (depois de portao.pendentes_para_incerto): nenhuma aprovação está em curso, então todo
+    'aprovando' é de um processo que caiu. Envio que saiu ou pode ter saído = 'aprovado' (sem reenvio); sem envio, ou
+    envio que falhou ou foi negado = volta a 'pendente' para o dono decidir. Devolve quantos destravou."""
+    con.execute("BEGIN IMMEDIATE")
+    try:
+        travados = [l["id"] for l in con.execute("SELECT id FROM rascunhos WHERE estado = 'aprovando'")]
+        for rid in travados:
+            envio = con.execute("SELECT estado FROM envios WHERE chave_dedupe = ? AND estado <> 'negado'",
+                                ("rascunho_aprovado:%d" % rid,)).fetchone()
+            estado = "aprovado" if envio is not None and envio["estado"] in ("enviado", "incerto", "pendente") \
+                else "pendente"
+            if estado == "aprovado":
+                n = _fechar(con, rid, "aprovado", "aprovando")
+            else:
+                n = con.execute("UPDATE rascunhos SET estado = 'pendente' WHERE id = ? AND estado = 'aprovando'",
+                                (rid,)).rowcount
+            if n != 1:
+                raise RuntimeError("rascunho %d: não destravou" % rid)
+            banco.registrar_evento(con, "rascunho_destravado_na_subida", json.dumps(
+                {"rascunho_id": rid, "estado": estado, "envio": None if envio is None else envio["estado"]}))
+        con.execute("COMMIT")
+    except BaseException:
+        con.execute("ROLLBACK")
+        raise
+    return len(travados)
+
+
 def descartar(con, rascunho_id):
     if _fechar(con, rascunho_id, "descartado") == 1:
         return 200, {"estado": "descartado"}

@@ -18,8 +18,8 @@ import secrets  # noqa: E402
 import signal  # noqa: E402
 import threading  # noqa: E402
 
-from servico import (banco, cerebro, evolution_local, openai_cliente, pasta, portao, recebimento, rotas,  # noqa: E402
-                     travas)
+from servico import (banco, cerebro, evolution_local, openai_cliente, pasta, portao, rascunhos,  # noqa: E402
+                     recebimento, rotas, travas)
 from servico.atendente import Atendente  # noqa: E402
 from servico.conectores import evolution  # noqa: E402
 
@@ -84,11 +84,15 @@ def rodar(args, avisar=print):
         try:
             recebimento.guardar_janela(con)  # antes do 1º batimento desta subida; só some quando a busca der certo
             incertos = portao.pendentes_para_incerto(con)  # caiu no meio de um envio: o dono decide, sem reenvio
+            destravados = rascunhos.destravar_na_subida(con)  # caiu no meio de uma aprovação: depois do incerto
             banco.bater(con)
         finally:
             con.close()
         if incertos:
             avisar("vendas: %d envio(s) ficaram incertos na última parada; veja na tela" % incertos, file=sys.stderr)
+        if destravados:
+            avisar("vendas: %d rascunho(s) estavam sendo aprovados na última parada; quem saiu ficou aprovado, "
+                   "o resto voltou para você decidir" % destravados, file=sys.stderr)
         token = secrets.token_urlsafe(32)
         travas.gravar_segredo(caminho_token, token)
         caminho_segredo = os.path.join(pasta_dados, ARQUIVO_SEGREDO)
