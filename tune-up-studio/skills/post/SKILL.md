@@ -1,7 +1,7 @@
 ---
 name: post
 description: "Makes a still post or a carousel (PNG per frame) from a briefing, using only the owner-approved brand, and checks every frame with the studio QA. Runs unattended from the panel action estudio.post. Use on: post, carrossel, carousel, peça estática, post do Instagram."
-allowed-tools: Read, Bash(${CLAUDE_PLUGIN_ROOT}/node/node_modules/.bin/hyperframes *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/qa_imagem.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/fontes.py *)
+allowed-tools: Read, Bash(${CLAUDE_PLUGIN_ROOT}/node/node_modules/.bin/hyperframes *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/qa_imagem.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/fontes.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/fotos.py *)
 ---
 
 # Post and carousel
@@ -23,7 +23,8 @@ The project root is the working folder path cut right before `/.tune-up/`. Read 
 
 - Use `campos` values only: `cores.*` (hex) and `fontes.*`. Never invent a color or a font. Missing field: use the neutral one from `MARCA.md` next to it.
 - Fonts come from a script, not from you: run `python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/fontes.py --trabalho <working folder>` (absolute path) once. It prints the two `@font-face` lines for `fontes.heading` and `fontes.body` (a generic family like `system-ui` or `sans-serif` becomes a fixed stack of local fonts) and one `/* fonte da marca ...: ... generica ... */` line per field that names a generic family. Paste every printed line as is at the top of each frame's `<style>`; never write or edit an `@font-face` yourself. For each `generica` line, write in `resultado.md` that the brand font of that field is generic and the frame uses the local stack.
-- Logo: if `logo` points to an `.svg` in `<root>/.tune-up/estudio/marca/assets/`, Read it and Write the same text to `q<N>/fonte/assets/logo.svg`. Any other logo type: leave the logo out and say so in `resultado.md`.
+- Logo: if `logo` points to an `.svg` in `<root>/.tune-up/estudio/marca/assets/`, Read it and Write the same text to `q<N>/fonte/assets/logo.svg`. A PNG, JPEG or WebP logo comes only from `fotos.py --logo` (next line). No logo file: leave the logo out and say so in `resultado.md`.
+- Photos: when `marca.json` has a non-empty `fotos` list, the piece may use up to 2 of them (the first is the main photo). Never pick, read or copy an image file yourself: run `python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/fotos.py --trabalho <working folder> --para q<N>/fonte --logo` (absolute working folder; add `--quantas 1` to take only the main photo). It copies the photos as `assets/foto1.<ext>`, `assets/foto2.<ext>` (and a PNG/JPEG/WebP logo as `assets/logo.<ext>`) and prints one line per copied file; use exactly the names it printed. No `fotos` list or nothing printed: no photo, never a substitute. Never use an image made by AI, drawn to look like a photo, or from anywhere else.
 
 ## 3. Copy
 
@@ -64,7 +65,8 @@ Rules:
 - `data-width`/`data-height` and `#root` width/height are the frame size. Every frame of a carousel has the same size.
 - CSS only, colors only through the `--` variables, fonts only through the two `@font-face` names `Brand Heading` and `Brand Body` printed by `fontes.py` (never a bare generic family as the only font: the renderer would download a web font).
 - Safe container: all text inside `#root` with at least 80 px padding; give text boxes a `max-width` and let them wrap. No absolute positioning of text near the edges.
-- Forbidden: `<script>`, any URL (`http`, `//`), web fonts, `gsap`, `data-layout-*` attributes, images other than `assets/logo.svg`. The QA fails on any of these.
+- Photo: `<img src="assets/foto1.<ext>">` in a box of fixed size with `object-fit: cover` (never stretched). Text never sits directly on a photo: every text over or next to it sits on a solid band or block of a brand color, and that text color on that block is 4.5:1 or more (WCAG relative luminance; work it out by hand, `python3 -c` is refused) - no gradient or semi-transparent veil as the text background. Write each text/block pair and its ratio in `resultado.md`. A photo frame still carries the headline; the photo supports it.
+- Forbidden: `<script>`, any URL (`http`, `//`), web fonts, `gsap`, `data-layout-*` attributes, images other than `assets/logo.svg` and the files `fotos.py` printed (the QA accepts images only from `assets/`: png, jpg, webp and `logo.svg`). The QA fails on any of these.
 
 ## 5. Snapshot, check, QA (per frame)
 
@@ -79,5 +81,5 @@ Fix rounds: if the QA is not green, read the failed checks in `q<N>/qa.json`, ed
 ## 6. Finish
 
 1. `python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/qa_imagem.py --final <working folder> --formato=<R> --out final.json`. It re-checks every `q<N>/` frame (size of the format, saved check report, snapshot record) and writes the final line in `linha`: `PRONTO: <n> de <n> quadros verdes` only when every frame is green, otherwise `PRECISA DO SEU OLHO: <k> de <n> verdes, <frames and checks>`.
-2. Write `resultado.md`: format, size, one line per frame from `final.json` (`q<N>/snap/frame-00-at-0s.png`, green or `precisa do seu olho` with the failed checks; a failed font by name), the caption, anything left out (logo, missing brand field, fewer frames than asked) and each generic brand font reported by `fontes.py`.
+2. Write `resultado.md`: format, size, one line per frame from `final.json` (`q<N>/snap/frame-00-at-0s.png`, green or `precisa do seu olho` with the failed checks; a failed font by name), the caption, the photos used (or `sem fotos`), anything left out (logo, missing brand field, fewer frames than asked) and each generic brand font reported by `fontes.py`.
 3. Answer with the `linha` of `final.json`, exactly. Do not list or re-check files after that.

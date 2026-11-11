@@ -53,6 +53,8 @@ FIGURAS = ("img", "picture", "canvas", "object", "embed", "iframe", "video", "in
 RE_CSS_TEXTO = re.compile(r"content\s*:\s*(?:\"[^\"]|'[^']|attr\(|counter)", re.I)
 # A 9:16 piece keeps every text inside #safezone, which must be exactly this box (formatos.json, 14% and 20%).
 RE_SAFEZONE = re.compile(r"#safezone\s*\{([^}]*)\}")
+# A Google piece may be the business photo itself (copied by fotos.py), with no text and no logo.
+RE_FOTO = re.compile(r"foto[12]\.(?:png|jpg|webp)\Z")
 SAFEZONE = {"position:absolute", "top:14%", "bottom:20%", "overflow:hidden"}
 
 
@@ -207,7 +209,7 @@ class _Texto(html.parser.HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         if tag in FIGURAS:
-            self.figuras.append(tag)
+            self.figuras.append((tag, dict(attrs).get("src") or ""))
         if tag not in self.VAZIOS:
             self.pilha.append((tag, dict(attrs).get("id")))
 
@@ -223,8 +225,8 @@ class _Texto(html.parser.HTMLParser):
 
 
 def checar_peca(fonte, plataforma, largura, altura):
-    """Problems the browser check cannot see (empty = ok): a Google piece has no text, logo, assets/ or <img>;
-    a 9:16 piece keeps every text inside #safezone (top 14% and bottom 20% free, clipped)."""
+    """Problems the browser check cannot see (empty = ok): a Google piece has no text and no logo (its only
+    <img> and assets/ files are the business photos foto1/foto2 copied by fotos.py); a 9:16 piece keeps every text inside #safezone (top 14% and bottom 20% free, clipped)."""
     if plataforma != "google" and altura * 9 != largura * 16:
         return []
     caminho = os.path.join(fonte, "index.html")
@@ -239,10 +241,14 @@ def checar_peca(fonte, plataforma, largura, altura):
         return ["cannot read index.html: %s" % type(exc).__name__]
     css = ["CSS content adds text"] if RE_CSS_TEXTO.search(texto) else []
     if plataforma == "google":
-        logo = ["assets/ folder (no logo on a Google image)"] if os.path.lexists(os.path.join(fonte, "assets")) \
-            else []
+        assets = os.path.join(fonte, "assets")
+        nomes = os.listdir(assets) if os.path.isdir(assets) and not os.path.islink(assets) else None
+        logo = ["assets/ holds more than the photos (no logo on a Google image)"] \
+            if os.path.lexists(assets) and (nomes is None or not all(RE_FOTO.match(n) for n in nomes)) else []
         return (["text on the image: %s" % t for t, _ in p.textos] + css + logo
-                + ["<%s> on the image (no logo or picture)" % t for t in p.figuras])[:MAX_PROBLEMAS]
+                + ["<%s> on the image (only <img> of a business photo)" % t for t, src in p.figuras
+                   if not (t == "img" and RE_FOTO.match(src[len("assets/"):]) and src.startswith("assets/"))]
+                )[:MAX_PROBLEMAS]
     problemas = ["text outside #safezone: %s" % t for t, dentro in p.textos if not dentro] + css
     regras = RE_SAFEZONE.findall(texto)
     decl = {d for d in re.sub(r"\s+", "", regras[0]).lower().split(";") if d} if len(regras) == 1 else set()

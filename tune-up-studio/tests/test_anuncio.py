@@ -169,8 +169,10 @@ class Exportar(Base):
             self.assertTrue(anuncio.checar_peca(self.pasta, "google", 1200, 628), corpo + css)
         html("<div></div>")
         os.makedirs(os.path.join(self.pasta, "assets"))
+        with open(os.path.join(self.pasta, "assets", "logo.svg"), "w", encoding="utf-8") as f:
+            f.write("<svg/>")
         self.assertTrue(anuncio.checar_peca(self.pasta, "google", 1200, 628))  # the logo copy lives in assets/
-        os.rmdir(os.path.join(self.pasta, "assets"))
+        shutil.rmtree(os.path.join(self.pasta, "assets"))
         zona = "#safezone{position:absolute;top:14%;bottom:20%;left:80px;right:80px;overflow:hidden}"
         html("<div id='safezone'><h1>Oferta</h1></div>", zona)
         self.assertEqual(anuncio.checar_peca(self.pasta, "meta", 1080, 1920), [])

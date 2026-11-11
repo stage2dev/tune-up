@@ -23,7 +23,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from qa_imagem import (  # noqa: E402
-    GSAP_RE, LAYOUT_ALLOW_RE, NETWORK_PATTERNS, check_strict_json, load_json, newest_mtime,
+    GSAP_RE, LAYOUT_ALLOW_RE, NETWORK_PATTERNS, check_images, check_strict_json, load_json, newest_mtime,
     newest_report, result, saved_report, scan, snapshot_records)
 from reserva_slides import MARK  # noqa: E402
 
@@ -244,7 +244,7 @@ def run(source, video, check_json, width, height, duration, fps, ffmpeg, ffprobe
         checks.append(result("no_gsap", not gsap, gsap or ["ok"]))
         net = scan(source, NETWORK_PATTERNS, strip_xmlns=True)
         checks.append(result("network_lint", not net, net or ["ok"]))
-        checks += [check_fresh(video, source, check_json), check_fonts(source)]
+        checks += [check_images(source), check_fresh(video, source, check_json), check_fonts(source)]
     if engine == "reserve":  # the slides are snapshots of the same composition: it is checked too
         checks.append(check_reserve_tag(data))
     elif check_reserve_tag(data)["ok"]:  # a reserve MP4 is never reported as a render

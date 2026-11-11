@@ -218,7 +218,7 @@ same list (checked by `tests/test_regras_bash.py`). Allowed, nothing else:
 - `ffprobe`.
 - `python3 -I <abs path>/tune-up-studio[/<version>]/scripts/` with
   `qa_video.py`, `qa_imagem.py`, `reserva_slides.py`, `video_ou_reserva.py`,
-  `fontes.py` or `anuncio.py`.
+  `fontes.py`, `anuncio.py` or `fotos.py`.
 
 Every argument is either an option without `/`, a relative path without `:`,
 or a path inside `{trabalho}`. No `..`, `//`, `~`, quotes, `$`, `;`, `&`,

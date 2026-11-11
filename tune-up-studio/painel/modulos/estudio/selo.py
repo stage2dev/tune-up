@@ -25,7 +25,7 @@ SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.d
 STILL = os.path.join("snap", "frame-00-at-0s.png")
 RE_QUADRO = re.compile(r"^q([1-9]\d{0,2})$")
 PULAR = {".hyperframes", "node_modules", ".git"}  # o mesmo que o QA pula na fonte
-MAX_FONTE = 20 * 1024 * 1024
+MAX_FONTE = 32 * 1024 * 1024  # até 2 fotos de 8 MB e a logo de 5 MB, mais o HTML
 MAX_PNG = 50 * 1024 * 1024  # o QA lê o PNG inteiro na memória
 MAX_MP4 = 300 * 1024 * 1024
 MAX_JSON = 1024 * 1024
@@ -151,6 +151,7 @@ def _fonte(qi, fonte, script):
     if script:  # o post é só CSS
         s = qi.scan(fonte, [("script", qi.SCRIPT_RE)])
         out.append(qi.result("no_script", not s, s or ["ok"]))
+    out.append(qi.check_images(fonte))
     return out
 
 

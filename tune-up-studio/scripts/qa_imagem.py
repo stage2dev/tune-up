@@ -50,6 +50,17 @@ LAYOUT_ALLOW_RE = re.compile(
     r"data-layout-(?:allow|ignore|bleed|boundary|check)[\w-]*|"
     r"\blayout(?:Allow|Ignore|Bleed|Boundary|Check)\w*|\bdataset\b|setAttribute", re.I)
 SCRIPT_RE = re.compile(r"<script\b", re.I)
+# Images: only files directly in <source>/assets/, PNG/JPEG/WebP checked by their first bytes (plus the
+# text logo.svg). Every image reference in the text files must name one of them.
+RASTER = {".png": (b"\x89PNG\r\n\x1a\n",), ".jpg": (b"\xff\xd8\xff",), ".jpeg": (b"\xff\xd8\xff",),
+          ".webp": (b"RIFF",)}
+IMAGE_EXT = set(RASTER) | {".svg", ".gif", ".avif", ".bmp", ".ico", ".tif", ".tiff", ".heic", ".apng", ".jxl"}
+ASSET_RE = re.compile(r"(?:\./)?assets/([\w.]+)\Z")
+IMAGE_REF_RE = re.compile(
+    r"""\b(?:src|srcset|poster|data|xlink:href)\s*=\s*["']([^"']*)["']|"""
+    r"""<(?:image|feImage|use)\b[^>]*?\bhref\s*=\s*["']([^"']*)["']|"""
+    r"""(?:url|image-set)\(\s*["']?([^"')\s]*)|"""
+    r"""["'(\s]([^"'()\s<>]+\.(?:png|jpe?g|webp|svg|gif|avif|bmp|ico|tiff?|heic|apng|jxl))(?=["')\s,])""", re.I)
 PNG_CHANNELS = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}
 MAX_RAW = 1080 * 1920 * 8 + 1920 * 8  # biggest format (1080x1920) at 16-bit RGBA, plus filter bytes
 ADAM7 = ((0, 0, 8, 8), (4, 0, 8, 8), (0, 4, 4, 8), (2, 0, 4, 4), (0, 2, 2, 4), (1, 0, 2, 2), (0, 1, 1, 2))
@@ -129,6 +140,8 @@ def scan(folder, patterns, strip_xmlns=False):
     """Return ["file:line: label: match", ...] for every pattern hit."""
     hits = []
     for path in source_files(folder):
+        if os.path.splitext(path)[1].lower() in RASTER:  # binary: checked by check_images, not as text
+            continue
         rel = os.path.relpath(path, folder)
         for number, line in enumerate(read_text(path).splitlines(), 1):
             if strip_xmlns:
@@ -137,6 +150,50 @@ def scan(folder, patterns, strip_xmlns=False):
                 for m in rx.finditer(line):
                     hits.append("%s:%d: %s: %s" % (rel, number, label, m.group(0)))
     return hits
+
+
+def image_file_problem(path, rel):
+    """Why an image file in the source is not allowed, or None (assets/<name>, real type, no link)."""
+    parts, ext = rel.replace(os.sep, "/").split("/"), os.path.splitext(rel)[1].lower()
+    if os.path.islink(path):
+        return "%s: a link" % rel
+    if len(parts) != 2 or parts[0] != "assets":
+        return "%s: images only directly in assets/" % rel
+    if ext == ".svg":
+        return None if parts[1] == "logo.svg" else "%s: the only SVG allowed is assets/logo.svg" % rel
+    if ext not in RASTER:
+        return "%s: type not allowed (png, jpg, webp)" % rel
+    with open(path, "rb") as f:
+        head = f.read(12)
+    if not head.startswith(RASTER[ext]) or (ext == ".webp" and head[8:12] != b"WEBP"):
+        return "%s: the bytes are not %s" % (rel, ext[1:])
+    return None
+
+
+def check_images(source):
+    """Images come only from <source>/assets/ (png, jpg, webp, logo.svg); every reference names one of them."""
+    problems, names = [], set()
+    for path in source_files(source):
+        rel = os.path.relpath(path, source)
+        if os.path.splitext(path)[1].lower() in IMAGE_EXT or os.path.islink(path):
+            bad = image_file_problem(path, rel)
+            if bad:
+                problems.append(bad)
+            else:
+                names.add(os.path.basename(path))
+    for path in source_files(source):
+        if os.path.splitext(path)[1].lower() in IMAGE_EXT - {".svg"}:
+            continue
+        rel = os.path.relpath(path, source)
+        for number, line in enumerate(read_text(path).splitlines(), 1):
+            for m in IMAGE_REF_RE.finditer(line):
+                value = next(g for g in m.groups() if g is not None)
+                for ref in [r.strip().split(" ")[0] for r in value.split(",")] if "srcset" in m.group(0).lower() \
+                        else [value.strip()]:
+                    a = ASSET_RE.match(ref)
+                    if ref and not ref.startswith("#") and not (a and a.group(1) in names):
+                        problems.append("%s:%d: image not in assets/: %s" % (rel, number, ref[:80]))
+    return result("images", not problems, problems or ["ok"])
 
 
 def result(name, ok, details):
@@ -300,6 +357,7 @@ def run(source, png, check_json, width, height, snapshot=False):
         checks.append(result("network_lint", not net, net or ["ok"]))
         script = scan(source, [("script", SCRIPT_RE)])  # the post is CSS only
         checks.append(result("no_script", not script, script or ["ok"]))
+        checks.append(check_images(source))
         if snapshot:
             checks.append(check_snapshot(png, source))
     checks.append(check_strict_json(check_json, source))

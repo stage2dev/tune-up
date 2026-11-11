@@ -1,7 +1,7 @@
 ---
 name: video
 description: "Makes a silent vertical reel (9:16, 1080x1920 MP4, 10 or 15 s) from a briefing, using only the owner-approved brand: script in scenes, CSS-only motion, render or slide reserve, and the studio QA. Runs unattended from the panel actions estudio.video and estudio.video-motion. Use on: vídeo, reel, reels, story em vídeo."
-allowed-tools: Read, Bash(${CLAUDE_PLUGIN_ROOT}/node/node_modules/.bin/hyperframes *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/qa_video.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/reserva_slides.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/fontes.py *)
+allowed-tools: Read, Bash(${CLAUDE_PLUGIN_ROOT}/node/node_modules/.bin/hyperframes *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/qa_video.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/reserva_slides.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/fontes.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/fotos.py *)
 ---
 
 # Reel (9:16 video)
@@ -24,7 +24,8 @@ The project root is the working folder path cut right before `/.tune-up/`. Read 
 
 - Use `campos` values only: `cores.*` (hex) and `fontes.*`. Never invent a color or a font. Missing field: use the neutral one from `MARCA.md` next to it.
 - Fonts come from a script: run `python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/fontes.py --trabalho <working folder>` (absolute path) once and paste every printed line as is at the top of the `<style>`; never write an `@font-face` yourself. For each `generica` line, write in `resultado.md` that the brand font of that field is generic and the video uses the local stack.
-- Logo: if `logo` points to an `.svg` in `<root>/.tune-up/estudio/marca/assets/`, Read it and Write the same text to `fonte/assets/logo.svg`. Any other logo type: leave it out and say so in `resultado.md`.
+- Logo: if `logo` points to an `.svg` in `<root>/.tune-up/estudio/marca/assets/`, Read it and Write the same text to `fonte/assets/logo.svg`. A PNG, JPEG or WebP logo comes only from `fotos.py --logo` (next line). No logo file: leave it out and say so in `resultado.md`.
+- Photos: when `marca.json` has a non-empty `fotos` list, the piece may use up to 2 of them (the first is the main photo). Never pick, read or copy an image file yourself: run `python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/fotos.py --trabalho <working folder> --para fonte --logo` (absolute working folder; add `--quantas 1` to take only the main photo). It copies the photos as `assets/foto1.<ext>`, `assets/foto2.<ext>` (and a PNG/JPEG/WebP logo as `assets/logo.<ext>`) and prints one line per copied file; use exactly the names it printed. No `fotos` list or nothing printed: no photo, never a substitute. Never use an image made by AI, drawn to look like a photo, or from anywhere else.
 
 ## 3. Script in scenes
 
@@ -40,7 +41,7 @@ Write `roteiro.md`, one row per scene: start, length, text, layout, transition i
 
 Measured with HyperFrames 0.9.6; follow it exactly or the check fails:
 - Root: `<div id="root" data-composition-id="video" data-start="0" data-duration="D" data-width="1080" data-height="1920" data-fps="30" data-no-timeline>`, `#root` 1080x1920, `position: relative; overflow: hidden`, background and colors only through `--` variables set from the brand.
-- Every visible element is a direct child of `#root` with `class="clip"`, a unique `id`, `data-start` and `data-duration` (seconds), `position: absolute`. A clip holds plain text or is an `<img src="assets/logo.svg">` or an empty shape: no child elements inside a clip (no `<span>`, `<em>`, `<br>`).
+- Every visible element is a direct child of `#root` with `class="clip"`, a unique `id`, `data-start` and `data-duration` (seconds), `position: absolute`. A clip holds plain text or is an `<img>` of a file in `assets/` (the logo or a photo that `fotos.py` printed) or an empty shape: no child elements inside a clip (no `<span>`, `<em>`, `<br>`).
 - Scene N = the clips with that scene's `data-start` and `data-duration`. A decor shape or the logo that stays all video: `data-start="0" data-duration="D"`.
 - A clip's animation clock starts at its own `data-start`. Give each clip exactly one animation: `animation: <name> <its data-duration>s <easing> 0s 1 both`, no delay, with keyframe percentages for entry, hold and exit (exit in the last 10 to 15%).
 - Hook clips: their `0%` keyframe is fully visible and inside the safe box (settle from `scale(1.06)` or `letter-spacing`), never `opacity: 0` at 0%. Nothing covers them at 0 s (no transition panel, no shape entering over the text), and the color behind them at 0 s is the one you measured for contrast.
@@ -60,7 +61,9 @@ More movement than a sequence of fades. Required:
 - Background shapes may drift or scale slowly and change between scenes with the layout; the logo may turn a few degrees.
 - The call to action text pulses once or twice (`scale(1.07)` and back) after it lands.
 
-Forbidden: `<script>`, any URL (`http`, `//`), web fonts, `gsap`, `data-layout-*` attributes, images other than `assets/logo.svg`, a bare generic family as the only font. The QA fails on any of these.
+Photo scenes: the photo clip has a fixed box (full frame, or a band of it) with `object-fit: cover`; its text clips sit on a solid brand-color block clip placed over the photo, never on the photo itself, and that pair passes 4.5:1 like any other (write it in `roteiro.md`). A photo counts as a layout; still no two scenes in a row with the same arrangement.
+
+Forbidden: `<script>`, any URL (`http`, `//`), web fonts, `gsap`, `data-layout-*` attributes, images other than `assets/logo.svg` and the files `fotos.py` printed, a bare generic family as the only font. The QA fails on any of these.
 
 ## 5. Loop: lint, check, look (at most 2 fix rounds)
 
@@ -90,5 +93,5 @@ The QA also fails when the MP4 is older than `fonte/` or than the last check (re
 
 ## 7. Finish
 
-1. Write `resultado.md`: motor and why (`reserva`: "o projeto não ligou estudio.video_rede_local no painel.json; o vídeo saiu da reserva em slides, sem movimento dentro das cenas"), length and size, one line per scene from `roteiro.md` (with `reserva`, never describe CSS motion as if it were in the video: its motion is `não aparece na reserva`), `video.mp4` and `folha.png`, the `linha` of `qa.json` and its failed checks (a failed font by name), anything left out (logo, missing brand field) and each generic brand font.
+1. Write `resultado.md`: motor and why (`reserva`: "o projeto não ligou estudio.video_rede_local no painel.json; o vídeo saiu da reserva em slides, sem movimento dentro das cenas"), length and size, one line per scene from `roteiro.md` (with `reserva`, never describe CSS motion as if it were in the video: its motion is `não aparece na reserva`), `video.mp4` and `folha.png`, the `linha` of `qa.json` and its failed checks (a failed font by name), the photos used (or `sem fotos`), anything left out (logo, missing brand field) and each generic brand font.
 2. Answer with the `linha` of `qa.json`, exactly (`PRONTO: ...` or `PRECISA DO SEU OLHO: ...`). Do not list or re-check files after that.
