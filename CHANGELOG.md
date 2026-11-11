@@ -2,6 +2,17 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## 2.9.0
+
+Studio plan, Part 10: a friendly Brand tab, `tune-up-studio` 0.3.0.
+
+- Panel core: `POST /api/modulos/{id}/envio?destino=<key>` takes one raw image per request for modules that declare `INFO["envios"]`. Same token and origin checks as the other POST routes, `Content-Length` required and checked before reading, 8 MB ceiling, type decided by the bytes (PNG, JPEG, WebP; dimensions read from the header and capped), file name chosen by the server, atomic write without following links. **SVG is refused**: no strict validator was written.
+- Panel screen: four new blocks, `cores` (color pickers with a low-contrast warning), `envio` (drag or pick a file, progress, errors in plain words), `previa` (a sample post that follows the edits right away) and `opcoes` (cards and on/off chips).
+- Studio: the Brand tab is now logo, business photos (up to 8), five colors in plain words, font pairs shown already written, the business in a few words, a live preview and one confirm button. Any change (color, font, logo, photo, text) drops the approval. "Take the colors from the logo" works for PNG and SVG logos only.
+- Studio: posts, videos and ads may use up to two business photos, copied by `scripts/fotos.py`; text always sits on a brand-color block. QA accepts images only from `assets/` inside the piece source.
+- Proven by clicking through the screen with one real Opus session: upload a logo and two photos, change a color and a font, confirm the brand, ask for a post that uses the photo, approve it.
+- Not proven: the Brand tab after the last review fixes was not looked at in a browser; video and ad with a photo in a real session; Safari; Linux and Windows for the studio (CI does not run `tune-up-studio/tests`).
+
 ## 2.8.0
 
 Studio plan, Parts 1 to 9, and the new plugin `tune-up-studio` 0.2.0: posts, carousels, short videos and ads made from the project's brand, rendered locally and checked by scripts, run from the panel.
