@@ -9,11 +9,12 @@ import os  # noqa: E402
 import shutil  # noqa: E402
 import tempfile  # noqa: E402
 import unittest  # noqa: E402
+from unittest import mock  # noqa: E402
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(AQUI))
 
-from servico import banco, cerebro, chave, pasta, saida  # noqa: E402
+from servico import banco, cerebro, chave, pasta, portao, saida  # noqa: E402
 from servico.conectores.falso import ConectorFalso  # noqa: E402
 from testes.openai_falsa import OpenAIFalsa, resposta_texto  # noqa: E402
 from testes.test_atendente import Base as BaseAtendente  # noqa: E402
@@ -119,6 +120,33 @@ class TesteLinks(Base):
         self.entregar("Acesse https://loja.example.com/planos agora.", permitidos=[])
         self.assertEqual(self.enviados(), ["Acesse agora."])
 
+    def test_dominio_sem_esquema_tambem_cai(self):
+        for t, lista in (("Pague em golpe.com/pix agora", []), ("Acesse bit.ly/abc123", LISTA),
+                         ("Veja loja-falsa.com.br hoje", []), ("Acesse evil.com/login para pagar.", LISTA)):
+            texto, removidas = saida.filtrar_links(t, lista)
+            self.assertEqual(len(removidas), 1, t)
+            self.assertNotRegex(texto, r"\.(com|ly)\b", t)
+        self.entregar("Pague em golpe.com/pix agora.", permitidos=[])
+        self.assertEqual(self.enviados(), ["Pague em agora."])
+
+    def test_dominio_sem_esquema_da_lista_vira_a_url_da_lista(self):
+        texto, _ = saida.filtrar_links("Veja loja.example.com/planos.", LISTA)
+        self.assertEqual(texto, "Veja https://loja.example.com/planos.")
+
+    def test_email_preco_e_reticencias_nao_sao_link(self):
+        t = "Escreva para ana@loja.example.com, custa R$ 99.90... sim...claro. Versão 2.0 ok."
+        self.assertEqual(saida.filtrar_links(t, []), (t, []))
+
+    def test_link_da_lista_sobrevive_ao_corte_de_frases(self):
+        texto, motivo = saida.preparar("Claro! Temos o plano Pro. Custa R$ 99 por mes. Segue o link.\n"
+                                       "https://loja.example.com/planos", LISTA)
+        self.assertIsNone(motivo)
+        self.assertEqual(texto, "Claro! Temos o plano Pro. Custa R$ 99 por mes. Segue o link.\n"
+                                "https://loja.example.com/planos")
+        longo, _ = saida.preparar(("palavra " * 600).strip() + ". https://loja.example.com/planos", LISTA)
+        self.assertLessEqual(len(longo), 4096)
+        self.assertTrue(longo.endswith("https://loja.example.com/planos"))
+
 
 class TesteTamanho(Base):
     def test_cinco_frases_viram_no_maximo_quatro(self):
@@ -187,6 +215,17 @@ class TesteBaloes(Base):
         self.assertEqual(self.enviados(), ["Um"])
         self.assertEqual(len(self.chaves()), 2)
         self.assertEqual([n for n, _ in self.c.chamadas].count("digitando"), 1)   # sem presença para o negado
+
+    def test_balao_negado_pelo_teto_no_meio_marca_precisa_de_voce(self):
+        with mock.patch.object(portao, "TETO_MINUTO", 1):
+            r = self.entregar("Oi! Temos sim.\nO plano Pro custa R$ 99.\nhttps://loja.example.com/planos")
+        self.assertEqual((r["estado"], r["motivo"]), ("negado", "teto_minuto"))
+        self.assertEqual(self.enviados(), ["Oi! Temos sim."])
+        self.assertEqual(self.precisa_de_voce(), 1)
+        dados = self.con.execute("SELECT dados FROM eventos WHERE tipo = 'ia_envio_parcial'").fetchone()
+        self.assertIsNotNone(dados)
+        self.assertIn("https://loja.example.com/planos", dados[0])
+        self.assertIn("teto_minuto", dados[0])
 
     def test_rodada_repetida_do_mesmo_gatilho_nao_duplica(self):
         self.entregar("Oi!\nTemos 2 planos.")

@@ -4,11 +4,12 @@
 2. Ferramenta como texto (JSON, `nome({...})`, bloco de código, marca de papel, texto do sistema) = UMA reescrita
    pelo modelo (sem ferramentas); se ainda falhar, nada sai.
 3. Links: só os do links.json do projeto (host+caminho normalizados; sai a URL da lista, nunca a do texto, então
-   parâmetro de redirecionamento cai). Lista vazia = nenhum link.
-4. No máximo 4 frases e 4096 caracteres (corte em fim de frase).
+   parâmetro de redirecionamento cai). Domínio sem esquema (golpe.com/pix) também é link. Lista vazia = nenhum link.
+4. No máximo 4 frases e 4096 caracteres (corte em fim de frase); link da lista cortado volta no fim.
 5. Anti-loop: a 3ª resposta seguida quase igual às 2 anteriores = nada sai.
 6. Até 3 balões, cada um pelo portão (origem 'ia', chave conversa + gatilho + nº do balão), com "digitando" antes
-   quando o conector suporta (falha da presença não impede o envio). Balão negado = os seguintes não saem.
+   quando o conector suporta (falha da presença não impede o envio). Balão negado = os seguintes não saem;
+   se o 1º já saiu, a conversa fica "precisa de você" com os balões que faltaram no evento ia_envio_parcial.
 Nada sai (1, 2, texto vazio, 5) = a conversa fica "precisa de você" (como o pedir_humano do cérebro)."""
 import difflib
 import json
@@ -27,7 +28,9 @@ ATIVOS = ("pendente", "enviado", "incerto")
 PEDIDO_REESCRITA = ("Reescreva o rascunho como mensagem curta de WhatsApp para o cliente: só texto corrido, sem JSON, "
                     "sem código, sem nome de ferramenta, sem marcas de papel.")
 
-URL = re.compile(r"(?:https?://|www\.)[^\s<>\"'()\[\]{}]+", re.I)
+URL = re.compile(r"(?:https?://|www\.)[^\s<>\"'()\[\]{}]+"
+                 r"|(?<![@\w.-])(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?![\w@-])"   # domínio sem esquema
+                 r"(?::\d+)?(?:/[^\s<>\"'()\[\]{}]*)?", re.I)
 FERRAMENTA = re.compile(
     r"\b[A-Za-z_][A-Za-z0-9_.]*\s*\(\s*[{\[]"                        # nome({...}) / nome([...])
     r"|\b(guardar_dado_do_lead|qualificar|enviar_link|pedir_humano)\s*\("
@@ -43,7 +46,7 @@ FIM_DE_FRASE = re.compile(r"(?<=[.!?…])\s+")
 
 def _normalizar_url(url):
     """(host sem www/porta padrão, caminho sem / final) ou None se não for http(s) com host."""
-    if url.lower().startswith("www."):
+    if "://" not in url:
         url = "https://" + url
     try:
         partes = urlsplit(url)
@@ -105,6 +108,19 @@ def limitar(texto, frases=FRASES_MAX, caracteres=CARACTERES_MAX):
         return corte[:fins[-1]].strip()
     espaco = corte.rfind(" ")
     return (corte[:espaco] if espaco > 0 else corte).strip()
+
+
+def _limitar_mantendo_links(texto):
+    """limitar(), mas os links (já filtrados: todos da lista) que o corte tirou voltam no fim, fora da conta de
+    frases e dentro dos 4096 caracteres."""
+    links = list(dict.fromkeys(m.group(0).rstrip(".,;:!?…") for m in URL.finditer(texto)))
+    cortado = limitar(texto)
+    faltam = [u for u in links if u not in cortado]
+    if not faltam:
+        return cortado
+    cortado = limitar(texto, caracteres=CARACTERES_MAX - len("\n".join(faltam)) - 1)
+    faltam = [u for u in links if u not in cortado]
+    return "\n".join([cortado] + faltam).strip()
 
 
 def baloes(texto, maximo=BALOES_MAX):
@@ -170,7 +186,7 @@ def preparar(texto, permitidos, segredos=(), reescrever=None):
         if tem_segredo(texto, segredos):
             return None, "segredo"
     texto, _ = filtrar_links(texto, permitidos)
-    texto = limitar(texto)
+    texto = _limitar_mantendo_links(texto)
     return (texto, None) if texto else (None, "vazio")
 
 
@@ -187,8 +203,8 @@ def entregar(con, conector, instancia, numero, conversa_id, id_gatilho, texto, p
     anteriores = respostas_anteriores(con, conversa_id, id_gatilho)
     if len(anteriores) == 2 and all(parecidas(pronto, a) for a in anteriores):
         return _barrar(con, conversa_id, "anti_loop")
-    resultados = []
-    for n, balao in enumerate(baloes(pronto), 1):
+    resultados, lista = [], baloes(pronto)
+    for n, balao in enumerate(lista, 1):
         if portao.pode_enviar(con, "ia", numero, agora=agora)[0]:
             try:
                 conector.digitando(instancia, numero, DIGITANDO_MS)
@@ -197,5 +213,10 @@ def entregar(con, conector, instancia, numero, conversa_id, id_gatilho, texto, p
         r = portao.enviar_ia(con, conector, instancia, numero, balao, conversa_id, id_gatilho, n, agora=agora)
         resultados.append(r)
         if r["estado"] != "enviado":
+            if n > 1:   # resposta cortada no meio: o dono completa
+                cerebro.marcar_precisa_de_voce(con, conversa_id, "envio_parcial")
+                banco.registrar_evento(con, "ia_envio_parcial", json.dumps(
+                    {"conversa_id": conversa_id, "estado": r["estado"], "motivo": r["motivo"],
+                     "faltaram": lista[n - 1:]}, ensure_ascii=False))
             break
     return {"estado": resultados[-1]["estado"], "motivo": resultados[-1]["motivo"], "baloes": resultados}
