@@ -65,3 +65,59 @@ Measured with `tests/fixtures/defect-external-fetch` (URL built as
   Later runs read the cache. Declare fonts
   with `@font-face { src: local(...) }` under your own family name, as the
   example post does.
+
+## qa_video.py: silent reel (9:16, 1080x1920, 10 s)
+
+```sh
+# 1. strict check as JSON
+npx --no-install hyperframes check <fonte> --json --strict > check.json
+
+# 2. render (about 10 s of wall time for the example on macOS)
+npx --no-install hyperframes render <fonte> -o <OUT>/video.mp4 --fps 30 --quality delivery
+
+# 3. QA report (exit 0 green, 1 failed); needs ffmpeg and ffprobe on PATH
+python3 scripts/qa_video.py --source <fonte> --video <OUT>/video.mp4 \
+  --check-json check.json --out qa.json
+```
+
+Checks in `qa.json` (plus `layout_allow_count`, `no_gsap`, `network_lint` and
+`hyperframes_check`, shared with `qa_imagem.py`):
+
+| name | fails when |
+| --- | --- |
+| `video_size` | not `--width` x `--height` (default 1080x1920) |
+| `duration` | more than 0.2 s away from `--duration` (default 10) |
+| `fps` | `r_frame_rate` is not `--fps` (default 30) |
+| `codec` | not h264 yuv420p |
+| `faststart` | `moov` box is not before `mdat` |
+| `no_audio` | any audio stream |
+| `blackdetect` | a black span of 0.5 s or more (`blackdetect=d=0.5:pix_th=0.10`) |
+| `freezedetect` | a still span of 2 s or more (`freezedetect=n=-60dB:d=2`) |
+
+`hyperframes check --strict` does not catch a black second: the fixture
+`tests/fixtures/defect-black-second` passes the check and fails only
+`blackdetect` ("black 4-5 s").
+
+## Animation without GSAP (measured with 0.9.6)
+
+- CSS `@keyframes` are seeked frame by frame. Frames of the MP4 at 0.2, 1, 3.5,
+  5, 7 and 9.8 s all differ and match `snapshot --at` of the same times.
+- A composition with no `window.__timelines` must carry `data-no-timeline` on
+  its root, even when it moves; without it `check` fails with
+  `missing_timeline_registry`.
+- Give each animation `animation-fill-mode: both` and a finite count. With
+  delays of 3.3 s, 3.7 s and 6.6 s, a seek before the delay showed the end
+  state, while delays up to 0.8 s held the start state. Late entrances in the
+  example run over the whole 10 s with no delay and use keyframe percentages.
+- Lines that replace each other (captions) are clips: `class="clip"`,
+  `data-start`, `data-duration` and an `id`. Caption lines stacked in one box
+  with opacity-only fades failed `check` with `content_overlap`; without an
+  `id` a clip gives the `studio_missing_editable_id` warning.
+
+## Inside the Claude Code sandbox (`claude --bg`, CLI 2.1.322)
+
+Proof script: `painel/tests_reais/prova_video_bg.py`. With the studio fixture
+settings, `hyperframes render` fails with `listen EPERM: operation not
+permitted 127.0.0.1`: render serves the composition on loopback and the
+sandbox network block forbids the bind. `Skill(hyperframes)` in `deny` blocks
+the skill ("Skill execution blocked by permission rules").

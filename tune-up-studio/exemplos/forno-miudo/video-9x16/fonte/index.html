@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Forno Miúdo - vídeo 9:16</title>
+  <style>
+    /* 10 s, 1080x1920, silent. CSS @keyframes only: every animation has a fixed
+       delay (document time), a finite iteration count and fill-mode both, so
+       the frame is a function of time alone. Caption lines are clips
+       (data-start/data-duration), one at a time. Safe area: 220 px top, 440 px
+       bottom, 90 px sides; the caption sits inside it. */
+    @font-face { font-family: "Forno Serif"; src: local("Georgia"), local("Times New Roman"); }
+    @font-face { font-family: "Forno Sans"; src: local("Helvetica Neue"), local("Arial"); }
+    html, body { margin: 0; background: #FFF8EC; }
+    #root {
+      position: relative; width: 1080px; height: 1920px; overflow: hidden;
+      background: #FFF8EC; color: #3B2417; font-family: "Forno Sans", sans-serif;
+    }
+    .anim { animation-fill-mode: both; animation-iteration-count: 1; }
+    .sol {
+      position: absolute; left: 540px; top: 260px; width: 900px; height: 900px; margin-left: -450px;
+      border-radius: 50%; background: #F4E4C8;
+      animation: sobe 10s linear 0s;
+    }
+    .barra { position: absolute; left: 90px; right: 90px; top: 240px; height: 10px; border-radius: 5px; background: #F4E4C8; }
+    .barra i {
+      display: block; height: 100%; border-radius: 5px; background: #A85A1F; transform-origin: left center;
+      animation: enche 10s linear 0s;
+    }
+    .topo { position: absolute; left: 90px; top: 300px; display: flex; align-items: center; gap: 28px; }
+    .topo img { width: 140px; height: 140px; animation: entra 0.7s ease-out 0.1s; }
+    .marca { font-family: "Forno Serif", serif; font-size: 60px; font-weight: 700; color: #5A3320; animation: entra 0.7s ease-out 0.4s; }
+    h1 {
+      position: absolute; left: 90px; top: 520px; width: 900px; margin: 0;
+      font-family: "Forno Serif", serif; font-size: 112px; line-height: 1.04; color: #3B2417;
+      animation: entra 0.8s ease-out 0.8s;
+    }
+    h1 em { font-style: normal; color: #A85A1F; }
+    .selo {
+      position: absolute; left: 90px; top: 900px; padding: 16px 36px; border-radius: 999px;
+      background: #5A3320; color: #FFF8EC; font-size: 40px; font-weight: 700; letter-spacing: 2px;
+      animation: selo 10s ease-in-out 0s;
+    }
+    .apoio {
+      position: absolute; left: 90px; top: 1010px; width: 860px; margin: 0; font-size: 48px; line-height: 1.3;
+      animation: apoio 10s ease-in-out 0s;
+    }
+    .cta {
+      position: absolute; left: 90px; top: 1170px; padding: 30px 52px; border-radius: 24px;
+      background: #5A3320; color: #FFFFFF; font-size: 52px; font-weight: 700; transform-origin: left center;
+      animation: cta 10s ease-in-out 0s;
+    }
+    .legenda {
+      position: absolute; left: 90px; right: 90px; bottom: 440px; height: 150px;
+      border-radius: 20px; background: rgba(59, 36, 23, 0.88);
+    }
+    .legenda p {
+      position: absolute; left: 0; right: 0; top: 50%; margin: 0; padding: 0 36px; transform: translateY(-50%);
+      color: #FFFFFF; font-size: 44px; font-weight: 700; line-height: 1.2; text-align: center;
+    }
+    @keyframes sobe { from { transform: translateY(80px) scale(0.92); } to { transform: translateY(-80px) scale(1.04); } }
+    @keyframes enche { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+    @keyframes entra { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+    /* Late entrances run over the whole 10 s with no delay: with delays of
+       3.3 s, 3.7 s and 6.6 s, a seek before the delay showed the end state
+       (see scripts/README.md). */
+    @keyframes selo { 0%, 33% { opacity: 0; transform: translateX(-80px); } 39%, 100% { opacity: 1; transform: translateX(0); } }
+    @keyframes apoio { 0%, 37% { opacity: 0; transform: translateY(40px); } 44%, 100% { opacity: 1; transform: translateY(0); } }
+    @keyframes cta {
+      0%, 66% { opacity: 0; transform: scale(0.8); } 72%, 76% { opacity: 1; transform: scale(1); }
+      82% { opacity: 1; transform: scale(1.06); } 88% { opacity: 1; transform: scale(1); }
+      94% { opacity: 1; transform: scale(1.06); } 100% { opacity: 1; transform: scale(1); }
+    }
+  </style>
+</head>
+<body>
+  <div id="root" data-composition-id="video" data-start="0" data-duration="10"
+       data-width="1080" data-height="1920" data-fps="30" data-no-timeline>
+    <div class="sol anim"></div>
+    <div class="barra"><i class="anim"></i></div>
+    <div class="topo">
+      <img class="anim" src="assets/logo.svg" alt="Forno Miúdo">
+      <span class="marca anim">Forno Miúdo</span>
+    </div>
+    <h1 class="anim">Pão de fermentação <em>natural</em></h1>
+    <span class="selo anim">FORNADA DAS 6H</span>
+    <p class="apoio anim">Feito de véspera, assado de manhã cedo.</p>
+    <span class="cta anim">Reserve seu pão de amanhã</span>
+    <div class="legenda">
+      <p id="legenda-1" class="clip" data-start="0" data-duration="3.3">Pão de fermentação natural, feito de véspera.</p>
+      <p id="legenda-2" class="clip" data-start="3.3" data-duration="3.3">Sai do forno às 6h, ainda quentinho.</p>
+      <p id="legenda-3" class="clip" data-start="6.6" data-duration="3.4">Reserve hoje e busque amanhã cedo.</p>
+    </div>
+  </div>
+</body>
+</html>
