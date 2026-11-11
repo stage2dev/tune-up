@@ -20,7 +20,8 @@ TETO_AUDIO_DIA = 20  # padrão do "teto de áudio/dia" da IA; config teto_audio_
 JANELA = (9, 19)     # campanha só das 09:00 às 18:59 no fuso do projeto (config "fuso")
 ATIVOS = ("pendente", "enviado", "incerto")  # o que conta como saída do número ('falhou' não saiu)
 CONTATO = object()   # marcador na chave: troca pelo id do contato dentro da reserva
-# aquecimento: teto de contatos NOVOS por dia na campanha; dia 1 = data local do 1º envio de campanha (config)
+# aquecimento: teto de contatos NOVOS (nunca receberam nada DESTA instância) por dia na campanha; dia 1 = data local
+# do 1º envio de campanha da instância (config "aquecimento_inicio:<instancia>"): trocar de número recomeça a curva
 CURVA_NOVOS = (5, 20, 36, 65, 117, 210, 378, 680)
 AQUECIMENTO = "aquecimento_inicio"
 
@@ -39,11 +40,15 @@ ORIGENS = tuple(REGRAS)
 AUDIO = ("audio_ia", "teste_audio")
 
 
-def teto_contatos_novos(con, hoje):
-    """Teto de contatos NOVOS no dia local `hoje` (date) pela curva de aquecimento. Sem envio de campanha ainda (ou
-    data gravada ilegível ou no futuro) = dia 1; depois do último degrau, fica no último."""
+def chave_aquecimento(instancia):
+    return "%s:%s" % (AQUECIMENTO, instancia)
+
+
+def teto_contatos_novos(con, hoje, instancia):
+    """Teto de contatos NOVOS da instância no dia local `hoje` (date) pela curva de aquecimento. Sem envio de campanha
+    da instância ainda (ou data gravada ilegível ou no futuro) = dia 1; depois do último degrau, fica no último."""
     try:
-        inicio = datetime.date.fromisoformat(banco.ler_config(con, AQUECIMENTO) or "")
+        inicio = datetime.date.fromisoformat(banco.ler_config(con, chave_aquecimento(instancia)) or "")
     except ValueError:
         return CURVA_NOVOS[0]
     dia = max((hoje - inicio).days, 0)
@@ -90,12 +95,20 @@ def _tentar(con, envio_id, origem, quando):
                               (envio_id, origem, quando)))
 
 
-def contatos_novos_no_dia(con, inicio_dia):
-    """Contador diário: contatos cujo PRIMEIRO envio ativo foi a partir de inicio_dia (iso UTC)."""
+def contatos_novos_no_dia(con, inicio_dia, instancia):
+    """Contador diário: contatos cujo PRIMEIRO envio ativo DESTA instância foi a partir de inicio_dia (iso UTC)."""
     marcas = ",".join("?" * len(ATIVOS))
     return con.execute("SELECT COUNT(*) FROM (SELECT MIN(tentado_em) AS primeiro FROM envios WHERE estado IN (%s) "
-                       "AND contato_id IS NOT NULL GROUP BY contato_id) WHERE primeiro >= ?" % marcas,
-                       ATIVOS + (inicio_dia,)).fetchone()[0]
+                       "AND contato_id IS NOT NULL AND instancia = ? GROUP BY contato_id) WHERE primeiro >= ?" % marcas,
+                       ATIVOS + (instancia, inicio_dia)).fetchone()[0]
+
+
+def _marcar_aquecimento(con, origem, instancia, agora):
+    """Dia 1 da instância = data local do 1º envio de campanha dela; gravado na reserva, só a primeira vez. SQL direto:
+    o nome da instância é livre e não pode cair na trava de "parece segredo" do gravar_config."""
+    if origem == "campanha":
+        con.execute("INSERT INTO config (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO NOTHING",
+                    (chave_aquecimento(instancia), agora.astimezone(fuso(con)).date().isoformat()))
 
 
 def _pausada(con, contato_id, agora):
@@ -115,7 +128,7 @@ def _pausada(con, contato_id, agora):
     return ate > agora
 
 
-def _motivo_teto(con, origem, contato_id, agora, inicio_dia, hoje, ignorar):
+def _motivo_teto(con, origem, contato_id, agora, inicio_dia, hoje, ignorar, instancia):
     teto = REGRAS[origem]["teto"]
     if "minuto" in teto and _contar(con, _iso(agora - datetime.timedelta(minutes=1))) >= TETO_MINUTO:
         return "teto_minuto"
@@ -128,15 +141,15 @@ def _motivo_teto(con, origem, contato_id, agora, inicio_dia, hoje, ignorar):
         if _contar(con, inicio_dia, "AND origem = ?", ("audio_ia",)) >= limite:
             return "teto_audio_dia"
     if "novos_dia" in teto:
-        limite = teto_contatos_novos(con, hoje)
-        ja = con.execute("SELECT 1 FROM envios WHERE contato_id = ? AND id <> ? AND estado IN (%s)"
-                         % ",".join("?" * len(ATIVOS)), (contato_id, ignorar or 0) + ATIVOS).fetchone()
-        if limite is not None and ja is None and contatos_novos_no_dia(con, inicio_dia) >= limite:
+        limite = teto_contatos_novos(con, hoje, instancia)
+        ja = con.execute("SELECT 1 FROM envios WHERE contato_id = ? AND id <> ? AND instancia = ? AND estado IN (%s)"
+                         % ",".join("?" * len(ATIVOS)), (contato_id, ignorar or 0, instancia) + ATIVOS).fetchone()
+        if limite is not None and ja is None and contatos_novos_no_dia(con, inicio_dia, instancia) >= limite:
             return "teto_contatos_novos_dia"
     return None
 
 
-def _motivo(con, origem, numero, contato_id, confirmar_optout, agora, ignorar=None):
+def _motivo(con, origem, numero, contato_id, confirmar_optout, agora, ignorar=None, instancia=None):
     """Motivo da negação pela linha da tabela da origem, ou None. Lê o banco AGORA (dentro da reserva)."""
     regra = REGRAS[origem]
     if origem == "teste_audio":
@@ -165,7 +178,7 @@ def _motivo(con, origem, numero, contato_id, confirmar_optout, agora, ignorar=No
     if regra["janela"] and not JANELA[0] <= local.hour < JANELA[1]:
         return "fora_da_janela"
     inicio_dia = _iso(local.replace(hour=0, minute=0, second=0, microsecond=0))
-    return _motivo_teto(con, origem, contato_id, agora, inicio_dia, local.date(), ignorar)
+    return _motivo_teto(con, origem, contato_id, agora, inicio_dia, local.date(), ignorar, instancia)
 
 
 def _contato_de(con, origem, numero):
@@ -174,13 +187,15 @@ def _contato_de(con, origem, numero):
     return banco.salvar_contato(con, numero)
 
 
-def pode_enviar(con, origem, numero, confirmar_optout=False, agora=None):
-    """(True, None) ou (False, motivo) pela tabela, sem gravar nada. A decisão que vale é a da reserva."""
+def pode_enviar(con, origem, numero, confirmar_optout=False, agora=None, instancia=None):
+    """(True, None) ou (False, motivo) pela tabela, sem gravar nada. A decisão que vale é a da reserva.
+    Sem `instancia`, vale a da config."""
     if origem not in REGRAS:
         raise ValueError("origem desconhecida: %r" % origem)
     canonico = telefone.normalizar(numero)
     contato = banco.buscar_contato(con, canonico) if origem != "teste_audio" else None
-    motivo = _motivo(con, origem, canonico, contato["id"] if contato else None, confirmar_optout, _agora(agora))
+    motivo = _motivo(con, origem, canonico, contato["id"] if contato else None, confirmar_optout, _agora(agora),
+                     instancia=instancia or banco.ler_config(con, "instancia"))
     return motivo is None, motivo
 
 
@@ -188,7 +203,7 @@ def _resultado(estado, envio_id=None, motivo=None, id_externo=None):
     return {"estado": estado, "envio_id": envio_id, "motivo": motivo, "id_externo": id_externo}
 
 
-def _reservar(con, origem, numero, tipo, conteudo, partes, confirmar_optout, agora):
+def _reservar(con, origem, numero, tipo, conteudo, partes, confirmar_optout, agora, instancia=None):
     if con.in_transaction:
         raise RuntimeError("o portão precisa de uma conexão fora de transação")
     canonico = telefone.normalizar(numero)
@@ -201,14 +216,15 @@ def _reservar(con, origem, numero, tipo, conteudo, partes, confirmar_optout, ago
         if ocupada is not None:
             con.execute("COMMIT")
             return _resultado("duplicado", ocupada["id"], "chave_ocupada"), None
-        motivo = _motivo(con, origem, canonico, contato_id, confirmar_optout, agora)
+        motivo = _motivo(con, origem, canonico, contato_id, confirmar_optout, agora, instancia=instancia)
         estado = "negado" if motivo else "pendente"
         envio_id = banco.registrar_envio(con, chave, origem, estado=estado, motivo=motivo, contato_id=contato_id,
-                                         telefone=canonico, tipo=tipo, conteudo=conteudo, quando=_iso(agora))
+                                         telefone=canonico, tipo=tipo, conteudo=conteudo, quando=_iso(agora),
+                                         instancia=instancia)
         if envio_id is None:  # não acontece sob BEGIN IMMEDIATE; se acontecer, não envia
             raise banco.EscritaSemEfeito("chave %s ocupada dentro da reserva" % origem)
-        if origem == "campanha" and not motivo and banco.ler_config(con, AQUECIMENTO) is None:
-            banco.gravar_config(con, AQUECIMENTO, agora.astimezone(fuso(con)).date().isoformat())  # dia 1, na reserva
+        if not motivo:
+            _marcar_aquecimento(con, origem, instancia, agora)
         con.execute("COMMIT")
     except BaseException:
         con.execute("ROLLBACK")
@@ -258,7 +274,8 @@ def _enviar(con, conector, instancia, origem, numero, conteudo, partes, confirma
     if not isinstance(conteudo, str) or not conteudo:
         raise ValueError("conteúdo vazio")
     tipo = "audio" if origem in AUDIO else "texto"
-    pronto, reserva = _reservar(con, origem, numero, tipo, conteudo, partes, confirmar_optout, _agora(agora))
+    pronto, reserva = _reservar(con, origem, numero, tipo, conteudo, partes, confirmar_optout, _agora(agora),
+                                instancia)
     if pronto is not None:
         return pronto
     envio_id, canonico = reserva
@@ -320,12 +337,13 @@ def reenviar(con, conector, instancia, envio_id, confirmar_optout=False, agora=N
             con.execute("COMMIT")
             return _resultado(linha["estado"], envio_id, "nao_reenviavel")
         motivo = _motivo(con, linha["origem"], linha["telefone"], linha["contato_id"], confirmar_optout, momento,
-                         ignorar=envio_id)
+                         ignorar=envio_id, instancia=instancia)
         if motivo is None:
-            cur = con.execute("UPDATE envios SET estado = 'pendente', motivo = NULL, tentado_em = ? WHERE id = ? "
-                              "AND estado IN ('incerto', 'falhou')", (_iso(momento), envio_id))
+            cur = con.execute("UPDATE envios SET estado = 'pendente', motivo = NULL, tentado_em = ?, instancia = ? "
+                              "WHERE id = ? AND estado IN ('incerto', 'falhou')", (_iso(momento), instancia, envio_id))
             banco._exigir(cur)
             _tentar(con, envio_id, linha["origem"], _iso(momento))
+            _marcar_aquecimento(con, linha["origem"], instancia, momento)
         con.execute("COMMIT")
     except BaseException:
         con.execute("ROLLBACK")

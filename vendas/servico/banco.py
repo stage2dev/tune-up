@@ -156,6 +156,7 @@ MIGRACOES = [
         "ALTER TABLE campanha_contatos ADD COLUMN envio_id INTEGER REFERENCES envios(id)",
         "ALTER TABLE campanha_contatos ADD COLUMN ordem INTEGER NOT NULL DEFAULT 0",
         "CREATE INDEX campanha_contatos_fila ON campanha_contatos(estado, tentar_depois)",
+        "ALTER TABLE envios ADD COLUMN instancia TEXT",   # aquecimento e "contato novo" valem por instância
     ],
 ]
 VERSAO = len(MIGRACOES)
@@ -275,7 +276,7 @@ def registrar_mensagem(con, conversa_id, direcao, texto, id_externo=None, tipo="
 
 
 def registrar_envio(con, chave_dedupe, origem, estado="pendente", motivo=None, contato_id=None, telefone=None,
-                    tipo=None, conteudo=None, quando=None):
+                    tipo=None, conteudo=None, quando=None, instancia=None):
     """Grava o envio. Devolve o id, ou None se a chave já está ocupada por um envio não negado.
     Um 'negado' nunca ocupa a chave (índice único parcial). Fora 'negado', grava junto a 1ª tentativa."""
     if estado not in ESTADOS_ENVIO:
@@ -284,8 +285,9 @@ def registrar_envio(con, chave_dedupe, origem, estado="pendente", motivo=None, c
     con.execute("SAVEPOINT registrar_envio")   # envio e tentativa entram juntos, dentro ou fora de transação
     try:
         cur = con.execute("INSERT INTO envios (chave_dedupe, contato_id, estado, origem, motivo, telefone, tipo, "
-                          "conteudo, criado_em, tentado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                          (chave_dedupe, contato_id, estado, origem, motivo, telefone, tipo, conteudo, quando, quando))
+                          "conteudo, criado_em, tentado_em, instancia) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                          (chave_dedupe, contato_id, estado, origem, motivo, telefone, tipo, conteudo, quando, quando,
+                           instancia))
         _exigir(cur)
         if estado != "negado":
             _exigir(con.execute("INSERT INTO tentativas (envio_id, origem, estado, em) VALUES (?, ?, ?, ?)",

@@ -1,9 +1,10 @@
 """Campanha = modelo da mensagem + contatos (campanha_contatos). Estados: rascunho, ativa, pausada, concluida.
 
-Contato da campanha: 'pendente' (na fila) -> 'enviado' | 'incerto' | 'falhou' (o que o portão devolveu; o agendador
-nunca reenvia: só o dono, na aba Conversas) | 'negado' (opt-out ou número inválido: nunca mais) | 'respondeu' (o
-lead falou: sai da campanha e a conversa fica com o recebimento/IA). Negado por janela ou teto continua 'pendente',
-com o motivo guardado e `tentar_depois`. 5 falhas seguidas do conector pausam a campanha com o motivo."""
+Contato da campanha: 'pendente' (na fila) -> 'enviado' | 'incerto' (pode ter saído: o agendador nunca reenvia; só o
+dono, na aba Conversas) | 'negado' (opt-out ou número inválido: nunca mais) | 'respondeu' (o lead falou: sai da
+campanha e a conversa fica com o recebimento/IA). 'falhou' (prova de que não saiu) continua 'pendente' com o envio_id
+e `tentar_depois`: o agendador tenta de novo a MESMA linha pelo portao.reenviar. Negado por janela ou teto continua
+'pendente', com o motivo guardado e `tentar_depois`. 5 falhas seguidas do conector pausam a campanha com o motivo."""
 import re
 
 from servico import banco
@@ -73,29 +74,29 @@ def concluir_prontas(con):
                        "FROM campanha_contatos WHERE campanha_id = campanhas.id AND estado = 'pendente')").rowcount
 
 
-def proximo(con, agora_iso, so_conhecidos=False):
+def proximo(con, agora_iso, so_conhecidos=False, instancia=None):
     """Próximo contato vencido das campanhas ativas (campanha mais antiga, depois a ordem), ou None.
-    so_conhecidos=True: só quem já recebeu algo deste número (o teto de NOVOS do dia acabou)."""
+    so_conhecidos=True: só quem já recebeu algo desta instância (o teto de NOVOS do dia acabou)."""
     extra = ""
     if so_conhecidos:
-        extra = (" AND EXISTS (SELECT 1 FROM envios e WHERE e.contato_id = cc.contato_id AND e.estado IN (%s))"
-                 % ",".join("?" * len(ATIVOS)))
+        extra = (" AND EXISTS (SELECT 1 FROM envios e WHERE e.contato_id = cc.contato_id AND e.instancia = ? "
+                 "AND e.estado IN (%s))" % ",".join("?" * len(ATIVOS)))
     return con.execute(
-        "SELECT cc.campanha_id, cc.contato_id, cc.passo, c.modelo, ct.telefone FROM campanha_contatos cc "
+        "SELECT cc.campanha_id, cc.contato_id, cc.passo, cc.envio_id, c.modelo, ct.telefone FROM campanha_contatos cc "
         "JOIN campanhas c ON c.id = cc.campanha_id JOIN contatos ct ON ct.id = cc.contato_id "
         "WHERE c.estado = 'ativa' AND cc.estado = 'pendente' AND (cc.tentar_depois IS NULL OR cc.tentar_depois <= ?)"
         + extra + " ORDER BY c.id, cc.ordem, cc.contato_id LIMIT 1",
-        (agora_iso,) + (ATIVOS if so_conhecidos else ())).fetchone()
+        (agora_iso,) + (((instancia,) + ATIVOS) if so_conhecidos else ())).fetchone()
 
 
 def _estado_do_contato(con, r):
-    """Estado do contato na campanha pelo resultado do portão; None = continua 'pendente'."""
-    if r["estado"] in ("enviado", "incerto", "falhou"):
+    """Estado do contato na campanha pelo resultado do portão; None = continua 'pendente' ('falhou' volta à fila)."""
+    if r["estado"] in ("enviado", "incerto"):
         return r["estado"]
     if r["estado"] == "duplicado":   # já reservado antes (reinício no meio): vale o que a linha do envio diz
         linha = con.execute("SELECT estado FROM envios WHERE id = ?", (r["envio_id"],)).fetchone()
         estado = linha["estado"] if linha else None
-        return "incerto" if estado == "pendente" else estado if estado in ("enviado", "incerto", "falhou") else None
+        return "incerto" if estado == "pendente" else estado if estado in ("enviado", "incerto") else None
     if r["estado"] == "negado" and r["motivo"] in PERMANENTES:
         return "negado"
     return None

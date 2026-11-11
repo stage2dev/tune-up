@@ -2,7 +2,8 @@
 'campanha' fixa. Janela, tetos (8/min, 200/h, aquecimento de NOVOS por dia), opt-out e dedupe são do portão, dentro
 da reserva; aqui ficam o jitter entre envios e as esperas. Nenhuma transação de escrita fica aberta durante a chamada
 ao conector (o portão grava 'pendente', chama, fecha). Reiniciar no meio não duplica: a chave campanha+contato+passo
-já ocupada volta 'duplicado' e o contato fica com o estado do envio. 'incerto' nunca é reenviado daqui."""
+já ocupada volta 'duplicado' e o contato fica com o estado do envio. 'incerto' nunca é reenviado daqui; 'falhou'
+(prova de que não saiu) volta depois de ESPERA_FALHA_S pelo portao.reenviar, que reconfere as regras na reserva."""
 import datetime
 import random
 import sys
@@ -15,6 +16,7 @@ JITTER = (1.2, 4.0, 12.0)            # mínimo, média, máximo em segundos
 OCIOSO_S = 5.0                       # nada vencido: olha de novo
 SEM_CONECTOR_S = 30.0
 ERRO_S = 30.0
+ESPERA_FALHA_S = 60.0                # 'falhou': o contato volta à fila depois disso
 ESPERA_TETO = {"teto_minuto": 20.0, "teto_hora": 300.0, "fuso_invalido": 600.0}   # tetos do número todo
 
 
@@ -72,12 +74,12 @@ class Agendador:
         if conector is None or not instancia:
             return SEM_CONECTOR_S
         campanha.concluir_prontas(con)
-        linha = campanha.proximo(con, _iso(agora), so_conhecidos=bool(self.novos_ate and agora < self.novos_ate))
+        linha = campanha.proximo(con, _iso(agora), so_conhecidos=bool(self.novos_ate and agora < self.novos_ate),
+                                 instancia=instancia)
         if linha is None:
             return OCIOSO_S
         try:
-            r = portao.enviar_campanha(con, conector, instancia, linha["telefone"], linha["modelo"],
-                                       linha["campanha_id"], linha["passo"], agora=agora)
+            r = self._enviar(con, conector, instancia, linha, agora)
         except telefone.TelefoneInvalido:
             r = {"estado": "negado", "envio_id": None, "motivo": "numero_invalido"}
         except Exception as e:   # banco ou portão: conta como falha e tenta depois (a chave segura o duplicado)
@@ -86,10 +88,22 @@ class Agendador:
             return ERRO_S
         return self._depois(con, agora, linha, r)
 
+    def _enviar(self, con, conector, instancia, linha, agora):
+        """Contato com envio 'falhou' tenta de novo a MESMA linha (sem chave nova); senão, envio novo de campanha."""
+        anterior = linha["envio_id"] and con.execute("SELECT estado FROM envios WHERE id = ?",
+                                                     (linha["envio_id"],)).fetchone()
+        if not anterior or anterior["estado"] != "falhou":
+            return portao.enviar_campanha(con, conector, instancia, linha["telefone"], linha["modelo"],
+                                          linha["campanha_id"], linha["passo"], agora=agora)
+        r = portao.reenviar(con, conector, instancia, linha["envio_id"], agora=agora)
+        if r["motivo"] == "nao_reenviavel":   # a linha mudou no meio: vale o que ela diz agora
+            r = dict(r, estado="duplicado")
+        return r
+
     def _depois(self, con, agora, linha, r):
         """Grava o resultado e decide a espera. Teto do número todo = espera global sem marcar o contato."""
         motivo = r.get("motivo") if r["estado"] == "negado" else None
-        tentar = None
+        tentar = _iso(agora + datetime.timedelta(seconds=ESPERA_FALHA_S)) if r["estado"] == "falhou" else None
         if motivo == "fora_da_janela":
             self.esperar_ate = proxima_janela(con, agora)
         elif motivo in ESPERA_TETO:

@@ -64,7 +64,7 @@ class Base(unittest.TestCase):
         for _ in range(n):
             self.n += 1
             banco.registrar_envio(self.con, "pre:%d" % self.n, origem, estado="enviado", contato_id=contato,
-                                  quando=portao._iso(quando))
+                                  quando=portao._iso(quando), instancia=INST)
 
     def linha(self, envio_id):
         return self.con.execute("SELECT * FROM envios WHERE id = ?", (envio_id,)).fetchone()
@@ -165,12 +165,12 @@ class TesteTetos(Base):
         self.encher(1, AGORA - datetime.timedelta(days=3), numero=antigo)   # já recebeu antes: não é novo
         self.encher(1, AGORA - datetime.timedelta(hours=1), numero=OUTRO)    # 1 contato novo hoje
         inicio = portao._iso(datetime.datetime(2026, 11, 10, 3, 0, tzinfo=UTC))  # 00:00 no fuso -03:00
-        self.assertEqual(portao.contatos_novos_no_dia(self.con, inicio), 1)
+        self.assertEqual(portao.contatos_novos_no_dia(self.con, inicio, INST), 1)
         with mock.patch.object(portao, "teto_contatos_novos", return_value=1):
             self.negado(self.mandar("campanha", chave="a"), "teto_contatos_novos_dia")
             self.enviado(self.mandar("campanha", numero=antigo, chave="a"))
         self.enviado(self.mandar("campanha", chave="b"), chamadas=2)        # gancho padrão: dia 1 = 5 novos
-        self.assertEqual(portao.contatos_novos_no_dia(self.con, inicio), 2)
+        self.assertEqual(portao.contatos_novos_no_dia(self.con, inicio, INST), 2)
 
     def test_audio_ia__teto(self):
         self._minuto_e_hora("audio_ia")
