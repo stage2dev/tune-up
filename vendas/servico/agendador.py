@@ -111,7 +111,11 @@ class Agendador:
 
     def _depois(self, con, agora, linha, r):
         """Grava o resultado e decide a espera. Teto do número todo = espera global sem marcar o contato."""
-        if r["estado"] == "pulado":
+        if r["estado"] == "pulado" and r["motivo"] in modelo.DA_CAMPANHA:   # modelo, empresa ou links.json
+            campanha.pausar_por(con, linha["campanha_id"], r["motivo"])
+            print("vendas: agendador: campanha pausada: %s" % r["motivo"], file=sys.stderr)
+            return OCIOSO_S
+        if r["estado"] == "pulado":   # só o valor deste contato (sem nome/origem, chave ou link no valor, longo)
             campanha.pular(con, linha, r["motivo"])
             return 0.0
         motivo = r.get("motivo") if r["estado"] == "negado" else None

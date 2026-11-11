@@ -7,11 +7,12 @@ sys.dont_write_bytecode = True
 
 import json  # noqa: E402
 import os  # noqa: E402
+import random  # noqa: E402
 import unittest  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from servico import banco, campanha, modelo  # noqa: E402
+from servico import agendador, banco, campanha, cerebro, modelo  # noqa: E402
 from testes.test_campanha import MODELO, Base, numero  # noqa: E402
 
 
@@ -153,13 +154,54 @@ class TestEnvio(Modelo):
         self.rodar(2)
         self.assertEqual(self.estados(cid), ["enviado"])
 
-    def test_empresa_mudou_depois_do_salvar_e_pulado(self):
-        ids = self.contatos(("Ana", "a feira"))
+    def pausada(self, cid, motivo, estados):
+        c = campanha.listar(self.con)["campanhas"][0]
+        self.assertEqual((c["estado"], c["motivo"], self.estados(cid)), ("pausada", motivo, estados))
+
+    def test_empresa_mudou_depois_do_salvar_pausa_sem_pular(self):
+        ids = self.contatos(("Ana", "a feira"), ("Bia", "a feira"))
         cid = self.criar("Oi, aqui é a Loja Teste. Você veio de {origem}. Responda SAIR.", ids)[1]["id"]
         self.ativar(cid)
         banco.gravar_config(self.con, "empresa", "Outra Loja")
+        self.rodar(4)
+        self.assertEqual(self.c.envios(), 0)
+        self.pausada(cid, "modelo_invalido", ["pendente", "pendente"])
+
+    def test_sem_empresa_no_envio_pausa_sem_pular(self):
+        cid = self.criar(ids=self.contatos(("Ana", "a feira"), ("Bia", "a feira")))[1]["id"]
+        self.ativar(cid)
+        self.con.execute("DELETE FROM config WHERE chave = 'empresa'")
+        self.rodar(4)
+        self.assertEqual(self.c.envios(), 0)
+        self.pausada(cid, "sem_empresa", ["pendente", "pendente"])
+
+    def test_links_quebrado_no_meio_pausa_e_retomar_continua(self):
+        self.links(site="https://loja.example/oferta")
+        ids = self.contatos(*[("C%d" % i, "a feira") for i in range(5)])
+        cid = self.criar(MODELO + " Veja https://loja.example/oferta", ids)[1]["id"]
+        ag = agendador.Agendador(lambda: banco.abrir(self.pasta), lambda: self.c, relogio=lambda: self.agora,
+                                 aleatorio=random.Random(7),
+                                 permitidos=lambda: list(cerebro.ler_links(self.app.raiz).values()))
+        self.assertEqual(self.ativar(cid)[0], 200)
+        self.rodar(1, ag=ag)
+        arquivo = cerebro.caminho_links(self.app.raiz)
+        with open(arquivo, "w", encoding="utf-8") as f:
+            f.write('{"site": "https://loja.ex')                         # edição pela metade
+        self.rodar(6, passo_s=15, ag=ag)
+        self.assertEqual(self.c.envios(), 1)
+        self.pausada(cid, "modelo_invalido", ["enviado"] + ["pendente"] * 4)
+        with open(arquivo, "w", encoding="utf-8") as f:
+            json.dump({"site": "https://loja.example/oferta"}, f)
+        self.assertEqual(campanha.executar(self.app, self.con, "POST", "/campanhas/%d/retomar" % cid, {}, {})[0], 200)
+        self.rodar(10, passo_s=15, ag=ag)
+        self.assertEqual((self.estados(cid), self.c.envios()), (["enviado"] * 5, 5))
+
+    def test_link_da_empresa_fora_da_lista_pausa(self):
+        cid = self.criar(ids=self.contatos(("Ana", "a feira")))[1]["id"]
+        self.ativar(cid)
+        banco.gravar_config(self.con, "empresa", "golpe.example/x")
         self.rodar(2)
-        self.assertEqual((self.estados(cid), self.motivos(cid), self.c.envios()), (["pulado"], ["modelo_invalido"], 0))
+        self.pausada(cid, "modelo_invalido", ["pendente"])
 
     def test_valor_com_chave_ou_link_e_pulado(self):
         ids = self.contatos(("An{a}", "a feira"), ("Bia", "golpe.example/x"))
@@ -177,6 +219,13 @@ class TestRenderizar(unittest.TestCase):
         self.assertTrue(texto.startswith("Oi Ana, aqui é a Loja."))
         self.assertEqual(modelo.renderizar(MODELO, "x" * 1000, "a feira", "Loja", []), (None, "mensagem_longa"))
         self.assertEqual(modelo.renderizar(MODELO, "Ana", "a feira", "", [])[1], "sem_empresa")
+        self.assertEqual(modelo.renderizar(MODELO, "Ana", "a feira", "Loja", [])[1], None)
+        for motivo in ("modelo_invalido", "sem_empresa", "sem_identificacao", "sem_sair"):
+            self.assertIn(motivo, modelo.DA_CAMPANHA)
+        for motivo in ("sem_nome", "sem_origem", "valor_invalido", "link_fora_da_lista", "mensagem_longa"):
+            self.assertNotIn(motivo, modelo.DA_CAMPANHA)
+        self.assertEqual(modelo.renderizar(MODELO + " " + "x" * 880, "Ana", "a feira", "L" * 100, [])[1],
+                         "modelo_invalido")   # passa de 1000 só pela empresa: problema da campanha toda
 
 
 class TestEmpresa(Modelo):

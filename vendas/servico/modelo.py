@@ -13,6 +13,8 @@ CHAVE = re.compile(r"\{([^{}]*)\}")
 SAIR = re.compile(r"responda\s+sair(?![\w])", re.IGNORECASE)
 CONTROLE = re.compile(r"[\x00-\x1f\x7f]+")
 FRIO_BASES = ("consentimento", "cliente_existente")   # qualquer outra base legal = contato frio
+# motivo que vale para a campanha toda (modelo, empresa ou links.json): pausa a campanha, nunca pula o contato
+DA_CAMPANHA = ("modelo_invalido", "sem_empresa", "sem_identificacao", "sem_sair")
 
 
 class ModeloRecusado(ValueError):
@@ -59,7 +61,16 @@ def renderizar(modelo, nome, origem, empresa, permitidos=()):
     except ModeloRecusado:
         return None, "modelo_invalido"
     valores = {"nome": _valor(nome), "empresa": _valor(empresa), "origem": _valor(origem)}
-    for chave in ("empresa", "origem") + (("nome",) if "{nome}" in modelo else ()):
+    if not valores["empresa"]:
+        return None, "sem_empresa"
+    base = CHAVE.sub(lambda m: valores["empresa"] if m.group(1) == "empresa" else "", modelo).strip()
+    try:   # só com a empresa: o que falha aqui falha para todo contato
+        _links(base, permitidos)
+    except ModeloRecusado:
+        return None, "modelo_invalido"
+    if len(base) > MAXIMO:
+        return None, "modelo_invalido"
+    for chave in ("origem",) + (("nome",) if "{nome}" in modelo else ()):
         if not valores[chave]:
             return None, "sem_" + chave
     if any("{" in v or "}" in v for v in valores.values()):
