@@ -251,10 +251,10 @@ class TesteCriar(Disparos):
         self.assertFalse(r["ok"])
         self.assertIn("empresa", r["mensagem"])
         self.assertFalse(self.agir("disparos_previa", modelo=MODELO, qualificacao="quentissimo")["ok"])
-        self.assertFalse(self.agir("disparos_criar", nome="x", modelo=MODELO, base_legal="inventada")["ok"])
+        self.assertFalse(self.agir("disparos_criar", id_cliente="t1", nome="x", modelo=MODELO, base_legal="inventada")["ok"])
 
     def test_criar_por_filtro_cria_rascunho_sem_quem_saiu(self):
-        r = self.agir("disparos_criar", nome="Feira", modelo=MODELO, origem="feira")
+        r = self.agir("disparos_criar", id_cliente="t1", nome="Feira", modelo=MODELO, origem="feira")
         self.assertTrue(r["ok"], r)
         linhas = self.sql("SELECT c.estado, COUNT(cc.contato_id) FROM campanhas c JOIN campanha_contatos cc ON "
                           "cc.campanha_id = c.id GROUP BY c.id")
@@ -262,8 +262,8 @@ class TesteCriar(Disparos):
         self.assertEqual(len(self.botoes()), 1)
 
     def test_criar_sem_ninguem_ou_sem_nome_e_erro(self):
-        self.assertFalse(self.agir("disparos_criar", nome="x", modelo=MODELO, origem="nao-existe")["ok"])
-        self.assertFalse(self.agir("disparos_criar", nome="  ", modelo=MODELO)["ok"])
+        self.assertFalse(self.agir("disparos_criar", id_cliente="t1", nome="x", modelo=MODELO, origem="nao-existe")["ok"])
+        self.assertFalse(self.agir("disparos_criar", id_cliente="t1", nome="  ", modelo=MODELO)["ok"])
         self.assertEqual(self.sql("SELECT COUNT(*) FROM campanhas")[0][0], 0)
 
     def test_empresa_grava_e_recusa_vazio_ou_com_chave(self):

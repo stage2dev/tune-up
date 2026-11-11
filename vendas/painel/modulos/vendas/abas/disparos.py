@@ -68,6 +68,8 @@ def _chamar(ctx, cliente, metodo, caminho, corpo, base):
 def _resumo_previa(r):
     texto = "%d contato(s) escolhido(s); %d novo(s) para o aquecimento; %d frio(s)." % (
         r.get("total", 0), r.get("novos", 0), r.get("frios", 0))
+    if r.get("em_outra"):
+        texto += " %d já em outra campanha (ficam de fora para não receber de novo)." % r["em_outra"]
     for i, a in enumerate(r.get("amostras") or [], 1):
         texto += "\n%d) %s" % (i, a.get("texto") or "(não sairia: %s)" % motivo_texto(a.get("motivo")))
     return texto
@@ -81,6 +83,9 @@ def agir(ctx, cliente, acao, dados, base=None):
         corpo = {k: str(dados.get(k) or "") for k in ("modelo", "origem", "qualificacao", "base_legal")}
         if acao == "disparos_criar":
             corpo["nome"] = str(dados.get("nome") or "")
+            corpo["id_cliente"] = dados.get("id_cliente")
+            if not isinstance(corpo["id_cliente"], str) or not corpo["id_cliente"]:
+                return {"ok": False, "mensagem": "A tela não mandou o identificador do formulário. Recarregue a tela."}
         caminho = "/disparos/" + ("previa" if acao == "disparos_previa" else "criar")
     else:
         cid = _id(dados)
@@ -95,6 +100,9 @@ def agir(ctx, cliente, acao, dados, base=None):
     if acao == "disparos_previa":
         return {"ok": True, "mensagem": _resumo_previa(r)}
     if acao == "disparos_criar":
+        if r.get("repetida"):
+            return {"ok": True, "mensagem": "A campanha #%s já tinha sido criada por este formulário: nada foi criado "
+                                            "de novo." % r.get("id")}
         return {"ok": True, "mensagem": "Campanha #%s criada como rascunho. Confira a prévia e ative." % r.get("id")}
     return {"ok": True, "mensagem": {"disparos_empresa": "Empresa gravada.", "disparos_ativar": "Campanha ativada.",
                                      "disparos_pausar": "Campanha pausada.",
@@ -172,14 +180,19 @@ def blocos(ctx, dados, aviso):
     if dados is None:
         return [{"tipo": "texto", "titulo": "Disparos indisponíveis", "texto": aviso or "O serviço não respondeu."}]
     campanhas = dados.get("campanhas") or []
+    total = max(dados.get("total_campanhas") or 0, len(campanhas))
+    # Ativa e pausada sempre aparecem (botão Pausar/Retomar e o motivo da pausa); o corte vale só para o resto.
+    vivas = [c for c in campanhas if c.get("estado") in ("ativa", "pausada")]
+    resto = [c for c in campanhas if c.get("estado") not in ("ativa", "pausada")]
+    na_tela = vivas + resto[:max(CAMPANHAS_NA_TELA - len(vivas), 0)]
     saida = [_hoje(dados)]
-    for c in campanhas[:CAMPANHAS_NA_TELA]:
+    for c in na_tela:
         saida += _campanha(c)
     if not campanhas:
         saida.append({"tipo": "texto", "titulo": "Campanhas", "texto": "Nenhuma campanha ainda. Crie a primeira abaixo."})
-    elif len(campanhas) > CAMPANHAS_NA_TELA:
-        saida.append({"tipo": "texto", "titulo": "Campanhas",
-                      "texto": "Mostrando as %d mais novas de %d." % (CAMPANHAS_NA_TELA, len(campanhas))})
+    elif total > len(na_tela):
+        saida.append({"tipo": "texto", "titulo": "Campanhas", "texto": "Mostrando %d de %d: todas as ativas e "
+                      "pausadas e as mais novas das outras." % (len(na_tela), total)})
     saida.append({"tipo": "formulario", "id": "disparos_empresa", "titulo": "Nome da empresa",
                   "descricao": "Vai em toda primeira mensagem. A campanha só ativa com ele.",
                   "acao": "disparos_empresa", "botao": "Gravar", "campos": [
@@ -191,7 +204,9 @@ def blocos(ctx, dados, aviso):
         campos = _campos(nome)
         campos.insert(len(campos) - 2, {"id": "origem", "rotulo": "Origem", "tipo": "escolha", "valor": "",
                                         "opcoes": origens})
+        fixos = {"id_cliente": "criar-%d" % (dados.get("ultima_campanha") or 0)} if nome else {}
         saida.append({"tipo": "formulario", "id": acao, "titulo": titulo, "acao": acao, "botao": botao,
+                      "dados_fixos": fixos,
                       "descricao": "Os contatos vêm dos filtros (quem saiu nunca entra). A prévia mostra quantos "
                                    "são e quantos são novos para o aquecimento." if not nome else
                                    "Cria como rascunho: nada sai até você ativar.", "campos": campos})

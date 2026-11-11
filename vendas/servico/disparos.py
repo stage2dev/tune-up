@@ -10,6 +10,10 @@ from servico import banco, campanha, leads, modelo, portao
 ROTA = re.compile(r"^/disparos(?:/(previa|criar))?$")
 AMOSTRAS = 3
 CAMPANHAS_MAX = 50
+ID_CLIENTE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+# Já está noutra campanha: numa que ainda pode mandar (não concluída) ou já recebeu (ou pode ter recebido) de uma.
+EM_OUTRA = ("SELECT cc.contato_id FROM campanha_contatos cc JOIN campanhas c ON c.id = cc.campanha_id "
+            "WHERE c.estado != 'concluida' OR cc.estado IN ('enviado', 'incerto', 'respondeu')")
 
 
 def _filtro(corpo):
@@ -22,15 +26,18 @@ def _filtro(corpo):
 
 
 def _selecionar(con, f):
-    """Contatos que batem com o filtro (sem opt-out), do mais antigo ao mais novo: [(id, nome, origem)]."""
+    """(livres, em_outra): contatos que batem com o filtro (sem opt-out), do mais antigo ao mais novo, [(id, nome,
+    origem)]; quem já está noutra campanha (EM_OUTRA) só é contado, nunca entra: senão recebe a abertura de novo."""
     onde, args = leads._onde(dict(f, optout="nao", conversa=""))
     if f["base_legal"] == "outro":
         onde += " AND k.base_legal LIKE 'outro:%'"
     elif f["base_legal"]:
         onde += " AND k.base_legal = ?"
         args = args + [f["base_legal"]]
-    return con.execute("SELECT k.id, k.nome, k.origem FROM contatos k LEFT JOIN conversas c ON c.contato_id = k.id"
-                       "%s ORDER BY k.id" % onde, args).fetchall()
+    linhas = con.execute("SELECT k.id, k.nome, k.origem FROM contatos k LEFT JOIN conversas c ON c.contato_id = k.id"
+                         "%s ORDER BY k.id" % onde, args).fetchall()
+    ocupados = {r[0] for r in con.execute(EM_OUTRA)}
+    return [r for r in linhas if r[0] not in ocupados], sum(1 for r in linhas if r[0] in ocupados)
 
 
 def _novos(con, ids):
@@ -57,25 +64,38 @@ def previa(app, con, corpo):
     f = _filtro(corpo)
     if f is None:
         return 400, {"erro": "Filtro inválido."}
-    linhas = _selecionar(con, f)
+    linhas, em_outra = _selecionar(con, f)
     ids = [r[0] for r in linhas]
     try:
         modelo.validar(corpo.get("modelo"), banco.ler_config(con, "empresa"), campanha._permitidos(app))
     except modelo.ModeloRecusado as e:
         return 400, {"erro": str(e)}
-    return 200, {"total": len(ids), "novos": _novos(con, ids), "frios": sum(1 for i in ids if campanha.fria(con, i)),
+    return 200, {"total": len(ids), "em_outra": em_outra, "novos": _novos(con, ids), "frios": sum(1 for i in ids if campanha.fria(con, i)),
                  "amostras": _amostras(app, con, corpo["modelo"], linhas)}
 
 
 def criar(app, con, corpo):
-    f = _filtro(corpo)
+    """Rascunho com os contatos livres do filtro. O mesmo id_cliente (um por formulário) devolve a campanha já criada:
+    o pedido que passou do tempo e o dono repetiu não cria outra. Tudo numa transação: dois pedidos ao mesmo tempo
+    não pegam os mesmos contatos."""
+    f, id_cliente = _filtro(corpo), corpo.get("id_cliente")
     if f is None:
         return 400, {"erro": "Filtro inválido."}
-    ids = [r[0] for r in _selecionar(con, f)]
-    if not ids:
-        return 400, {"erro": "Nenhum contato bate com este filtro (quem saiu nunca entra)."}
-    return campanha._criar_rota(app, con, {"nome": corpo.get("nome"), "modelo": corpo.get("modelo"),
-                                           "contato_ids": ids})
+    if id_cliente is not None and (not isinstance(id_cliente, str) or not ID_CLIENTE.match(id_cliente)):
+        return 400, {"erro": "Identificador do formulário inválido."}
+
+    def fazer():
+        if id_cliente is not None:
+            ja = con.execute("SELECT id FROM campanhas WHERE id_cliente = ?", (id_cliente,)).fetchone()
+            if ja:
+                return 200, dict(campanha.listar(con), id=ja[0], repetida=True)
+        linhas, em_outra = _selecionar(con, f)
+        if not linhas:
+            return 400, {"erro": "Nenhum contato livre neste filtro (quem saiu nunca entra; %d já em outra "
+                                 "campanha)." % em_outra}
+        return campanha._criar_rota(app, con, {"nome": corpo.get("nome"), "modelo": corpo.get("modelo"),
+                                               "contato_ids": [r[0] for r in linhas]}, id_cliente)
+    return campanha._transacao(con, fazer)
 
 
 def janela(con, agora=None):
@@ -119,8 +139,12 @@ def _progresso(con, c, app):
 
 
 def estado(app, con):
-    campanhas = [_progresso(con, c, app) for c in campanha.listar(con)["campanhas"][:CAMPANHAS_MAX]]
-    return {"campanhas": campanhas, "empresa": banco.ler_config(con, "empresa") or None,
+    """Ativas e pausadas vêm primeiro e nunca são cortadas (o dono tem de poder pausar); depois as mais novas."""
+    todas = sorted(campanha.listar(con)["campanhas"], key=lambda c: (c["estado"] not in ("ativa", "pausada"), -c["id"]))
+    vivas = sum(1 for c in todas if c["estado"] in ("ativa", "pausada"))
+    campanhas = [_progresso(con, c, app) for c in todas[:max(CAMPANHAS_MAX, vivas)]]
+    return {"campanhas": campanhas, "total_campanhas": len(todas),
+            "ultima_campanha": max([c["id"] for c in todas] or [0]), "empresa": banco.ler_config(con, "empresa") or None,
             "numero_descartavel": banco.ler_config(con, "numero_descartavel") == "1",
             "janela": janela(con), "aquecimento": aquecimento(con),
             "origens": [r[0] for r in con.execute("SELECT DISTINCT origem FROM contatos WHERE origem IS NOT NULL "

@@ -41,14 +41,14 @@ def _transacao(con, funcao):
         raise
 
 
-def criar(con, nome, modelo, contato_ids):
+def criar(con, nome, modelo, contato_ids, id_cliente=None):
     """Campanha em 'rascunho' com os contatos na ordem dada (repetido entra uma vez). Devolve o id."""
     if not isinstance(nome, str) or not nome.strip() or not isinstance(modelo, str) or not modelo.strip():
         raise ValueError("campanha precisa de nome e modelo")
 
     def fazer():
-        cur = con.execute("INSERT INTO campanhas (nome, modelo, estado, criado_em) VALUES (?, ?, 'rascunho', ?)",
-                          (nome.strip(), modelo, banco.agora()))
+        cur = con.execute("INSERT INTO campanhas (nome, modelo, estado, criado_em, id_cliente) "
+                          "VALUES (?, ?, 'rascunho', ?, ?)", (nome.strip(), modelo, banco.agora(), id_cliente))
         banco._exigir(cur)
         for ordem, contato_id in enumerate(dict.fromkeys(contato_ids)):
             banco._exigir(con.execute("INSERT INTO campanha_contatos (campanha_id, contato_id, ordem) "
@@ -219,7 +219,7 @@ def _permitidos(app):
     return list(cerebro.ler_links(app.raiz).values()) if app is not None and app.raiz else []
 
 
-def _criar_rota(app, con, corpo):
+def _criar_rota(app, con, corpo, id_cliente=None):
     ids = corpo.get("contato_ids")
     if not isinstance(ids, list) or not ids or not all(type(i) is int for i in ids):
         return 400, {"erro": "Escolha os contatos da campanha."}
@@ -232,7 +232,7 @@ def _criar_rota(app, con, corpo):
     if len(set(ids)) != con.execute("SELECT COUNT(*) FROM contatos WHERE id IN (%s)" % ",".join("?" * len(set(ids))),
                                     tuple(set(ids))).fetchone()[0]:
         return 400, {"erro": "Algum contato escolhido não existe."}
-    return 200, dict(listar(con), id=criar(con, corpo["nome"], corpo["modelo"], ids))
+    return 200, dict(listar(con), id=criar(con, corpo["nome"], corpo["modelo"], ids, id_cliente))
 
 
 def _empresa_rota(con, corpo):

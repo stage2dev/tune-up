@@ -158,6 +158,11 @@ MIGRACOES = [
         "CREATE INDEX campanha_contatos_fila ON campanha_contatos(estado, tentar_depois)",
         "ALTER TABLE envios ADD COLUMN instancia TEXT",   # aquecimento e "contato novo" valem por instância
     ],
+    # 11: criar campanha pela tela é idempotente (o mesmo id_cliente nunca cria duas)
+    [
+        "ALTER TABLE campanhas ADD COLUMN id_cliente TEXT",
+        "CREATE UNIQUE INDEX campanhas_id_cliente ON campanhas(id_cliente) WHERE id_cliente IS NOT NULL",
+    ],
 ]
 VERSAO = len(MIGRACOES)
 PARECE_SEGREDO = re.compile(r"chave|senha|token|segredo|secret|key|password", re.I)
