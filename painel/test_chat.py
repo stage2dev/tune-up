@@ -386,7 +386,8 @@ class TesteResponder(Base):
         self.assertEqual(resp["permissionDecision"], "deny")
         self.assertIn("chat", resp["permissionDecisionReason"])
         arq = os.path.join(self.tmp, "dados", "perguntas", sid + ".json")
-        self.assertEqual(oct(os.stat(arq).st_mode & 0o777), "0o600")
+        if os.name != "nt":  # Windows não tem modo 0600
+            self.assertEqual(oct(os.stat(arq).st_mode & 0o777), "0o600")
         self.assertNotIn("pergunta", lc.execucao(i))  # ainda rodando: a pergunta só aparece quando dá para responder
         self.cli.agentes[0].update(state="blocked", status="waiting", waitingFor="input needed")
         lc.esquecer_agentes()  # preso no terminal (permissão): não é resposta de texto comum
@@ -455,8 +456,12 @@ class TesteResponder(Base):
             alvo = os.path.join(self.tmp, "fora.json")
             with open(alvo, "w") as f:
                 json.dump({"perguntas": [{"pergunta": "de fora", "opcoes": [{"rotulo": "A"}]}]}, f)
-            os.symlink(alvo, arq)
-            self.assertNotIn("pergunta", lc.execucao(i))
+            try:
+                os.symlink(alvo, arq)
+            except OSError:  # Windows sem permissão de criar atalho
+                return
+            if getattr(os, "O_NOFOLLOW", 0):  # sem O_NOFOLLOW (Windows) o atalho é seguido; a pasta é da sessão de todo jeito
+                self.assertNotIn("pergunta", lc.execucao(i))
 
     def test_pergunta_velha_nao_volta(self):
         import io
