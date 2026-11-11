@@ -157,7 +157,8 @@ def dados_do_envio(con, conversa_id):
 def depois_de_duplicado(app, con, instancia, r, confirmar):
     """Envio manual com a chave já ocupada: vale o estado real da linha. 'falhou' (não saiu) é o dono tentando de
     novo com o mesmo id da tela: sai outra vez na MESMA linha pelo reenviar do portão (sem chave nova). 'incerto'
-    continua incerto (o dono decide em Envios incertos). Só 'enviado'/'pendente' são clique repetido."""
+    continua incerto (o dono decide em Envios incertos). 'pendente' = o 1º pedido ainda está saindo ('enviando':
+    ainda pode terminar incerto ou falhou, então não vale como sucesso). Só 'enviado' é clique repetido."""
     if r["estado"] != "duplicado":
         return r
     linha = con.execute("SELECT estado, motivo FROM envios WHERE id = ?", (r["envio_id"],)).fetchone()
@@ -168,6 +169,8 @@ def depois_de_duplicado(app, con, instancia, r, confirmar):
         linha = novo   # outro pedido reenviou antes: o estado de agora decide
     if linha["estado"] == "incerto":
         return {"estado": "incerto", "motivo": linha["motivo"], "envio_id": r["envio_id"]}
+    if linha["estado"] == "pendente":
+        return {"estado": "enviando", "motivo": None, "envio_id": r["envio_id"]}
     return r
 
 

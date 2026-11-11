@@ -6,6 +6,7 @@ import sys
 sys.dont_write_bytecode = True
 
 import os  # noqa: E402
+import time  # noqa: E402
 import types  # noqa: E402
 import unittest  # noqa: E402
 from unittest import mock  # noqa: E402
@@ -13,6 +14,7 @@ from unittest import mock  # noqa: E402
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(AQUI))
 
+from servico.conectores import base as cbase  # noqa: E402
 from testes.test_aba_conversas import Conversas  # noqa: E402
 
 PAINEL = os.path.join(os.path.dirname(os.path.dirname(AQUI)), "painel")
@@ -57,6 +59,50 @@ class TesteMesmoIdDepoisDeFalha(Conversas):
         self.assertEqual(r["ok"], True)
         self.assertIn("clique repetido", r["mensagem"])
         self.assertEqual(self.falso.envios(), 1)
+
+    def test_pendente_com_mesmo_id_diz_que_ainda_esta_saindo(self):
+        self.assertTrue(self.enviar(self.maria, "oi", "u1")["ok"])
+        self.con.execute("UPDATE envios SET estado = 'pendente'")  # o 1º pedido ainda espera o conector
+        r = self.enviar(self.maria, "oi", "u1")
+        self.assertEqual(r["ok"], False)
+        self.assertIn("ainda está saindo", r["mensagem"])
+        self.assertEqual(self.falso.envios(), 1)
+
+
+class TesteConectorLento(Conversas):
+    """O conector espera mais que o tempo de rede comum da tela: o envio não pode virar 'Feito.' de mentira."""
+
+    def lento(self, espera, erro=None):
+        original = self.falso._enviar
+
+        def enviar(*a):
+            time.sleep(espera)
+            if erro is not None:
+                raise erro
+            return original(*a)
+        self.falso._enviar = enviar
+
+    def test_envio_espera_o_conector_alem_do_tempo_de_rede(self):
+        self.lento(1.0)
+        with mock.patch.object(self.mod.cliente, "TEMPO_REDE_S", 0.4), \
+                mock.patch.object(self.mod.cliente, "TEMPO_ENVIO_S", 3, create=True):
+            r = self.enviar(self.maria, "oi", "u1")
+        self.assertEqual((r["ok"], r["mensagem"]), (True, "Mensagem enviada."))
+
+    def test_repetir_enquanto_sai_nao_vira_sucesso(self):
+        self.lento(1.5, cbase.EnvioIncerto("5xx lento"))
+        with mock.patch.object(self.mod.cliente, "TEMPO_REDE_S", 0.3), \
+                mock.patch.object(self.mod.cliente, "TEMPO_ENVIO_S", 0.3, create=True):
+            primeiro = self.enviar(self.maria, "oi", "u1")
+            segundo = self.enviar(self.maria, "oi", "u1")  # o dono tenta de novo com o mesmo id
+        self.assertEqual(primeiro["ok"], False)
+        self.assertEqual(segundo["ok"], False)
+        self.assertIn("ainda está saindo", segundo["mensagem"])
+        for _ in range(50):
+            if self.envios()[0]["estado"] != "pendente":
+                break
+            time.sleep(0.1)
+        self.assertEqual([e["estado"] for e in self.envios()], ["incerto"])
 
 
 @unittest.skipUnless(os.path.isfile(os.path.join(PAINEL, "modulos.py")), "painel não está ao lado do plugin")

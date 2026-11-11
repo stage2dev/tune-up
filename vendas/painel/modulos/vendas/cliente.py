@@ -12,6 +12,7 @@ import urllib.request
 
 VIVO_S = 15  # batimento mais velho que isso = serviço parado (o serviço bate a cada 3 s)
 TEMPO_REDE_S = 5  # toda chamada ao serviço tem tempo limite próprio (o painel não para a thread do agir)
+TEMPO_ENVIO_S = 18  # envio espera o conector (até 15 s) e cabe nos 20 s do agir do painel
 SEM_RESPOSTA = "O serviço de Vendas não respondeu. Ligue-o e tente de novo."
 
 PLUGIN = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -36,13 +37,13 @@ def ler(raiz, base, sql):
         con.close()
 
 
-def pedir(metodo, url, cab, corpo=None):
+def pedir(metodo, url, cab, corpo=None, tempo=None):
     """Pedido ao serviço local com tempo limite e sem proxy. Devolve (código, objeto JSON)."""
     dados = None if corpo is None else json.dumps(corpo).encode("utf-8")
     pedido = urllib.request.Request(url, data=dados, method=metodo, headers=cab)
     abridor = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
-        with abridor.open(pedido, timeout=TEMPO_REDE_S) as r:
+        with abridor.open(pedido, timeout=tempo or TEMPO_REDE_S) as r:
             return r.status, json.loads(r.read().decode("utf-8") or "{}")
     except urllib.error.HTTPError as e:
         try:
@@ -89,7 +90,7 @@ def endereco(ctx, base=None, agora=None):
     return url
 
 
-def chamar(ctx, metodo, caminho, corpo=None, base=None):
+def chamar(ctx, metodo, caminho, corpo=None, base=None, tempo=None):
     """Confere o serviço deste projeto, pega o token pela origem do painel e faz o pedido. Devolve (código, JSON).
     Recusa com mensagem clara em qualquer falha antes do pedido. O token nunca sai daqui."""
     url = endereco(ctx, base)
@@ -101,6 +102,6 @@ def chamar(ctx, metodo, caminho, corpo=None, base=None):
         cab = {"X-Vendas-Token": r["token"]}
         if corpo is not None:
             cab["Content-Type"] = "application/json"
-        return pedir(metodo, url + caminho, cab, corpo)
+        return pedir(metodo, url + caminho, cab, corpo, tempo)
     except (OSError, ValueError):
         raise Recusa(SEM_RESPOSTA)

@@ -167,10 +167,10 @@ def blocos(ctx, cliente, base=None):
     return saida
 
 
-def _chamar(ctx, cliente, metodo, caminho, corpo, base):
+def _chamar(ctx, cliente, metodo, caminho, corpo, base, tempo=None):
     """(código, resposta) ou (None, mensagem) quando a tela não chega ao serviço certo."""
     try:
-        codigo, r = cliente.chamar(ctx, metodo, caminho, corpo, base=base)
+        codigo, r = cliente.chamar(ctx, metodo, caminho, corpo, base=base, tempo=tempo)
     except cliente.Recusa as e:
         return None, str(e)
     return codigo, r if isinstance(r, dict) else {}
@@ -185,6 +185,8 @@ def _resposta_envio(codigo, r, sucesso):
         return {"ok": True, "mensagem": sucesso}
     if estado == "duplicado":
         return {"ok": True, "mensagem": motivo_pt("chave_ocupada")}
+    if estado == "enviando":
+        return {"ok": False, "mensagem": "A mensagem ainda está saindo; não repita, confira em instantes."}
     if estado == "incerto":
         return {"ok": False, "mensagem": "Não sei se a mensagem saiu (o WhatsApp não confirmou). Ela aparece em "
                                          "\"Envios incertos\": decida lá, sem enviar de novo antes."}
@@ -208,7 +210,8 @@ def agir(ctx, cliente, acao, dados, base=None):
             return {"ok": False, "mensagem": "Envio inválido."}
         reenviar = acao == "reenviar_envio"
         codigo, r = _chamar(ctx, cliente, "POST", "/incertos/%d/%s" % (envio, "reenviar" if reenviar else
-                                                                      "descartar"), {}, base)
+                                                                      "descartar"), {}, base,
+                            cliente.TEMPO_ENVIO_S if reenviar else None)
         if codigo is None:
             return {"ok": False, "mensagem": r}
         if not reenviar:
@@ -225,7 +228,8 @@ def agir(ctx, cliente, acao, dados, base=None):
         if not isinstance(id_cliente, str) or not id_cliente:
             return {"ok": False, "mensagem": "A tela não mandou o identificador do envio. Recarregue a tela."}
         codigo, r = _chamar(ctx, cliente, "POST", "/enviar", {"conversa_id": conversa, "texto": texto,
-                                                              "id_tela": id_do_servico(id_cliente)}, base)
+                                                              "id_tela": id_do_servico(id_cliente)}, base,
+                            cliente.TEMPO_ENVIO_S)
         return {"ok": False, "mensagem": r} if codigo is None else _resposta_envio(codigo, r, "Mensagem enviada.")
     rotas = {"abrir_conversa": ("/conversas/aberta", {"conversa_id": conversa}, "Conversa aberta."),
              "assumir_conversa": ("/conversas/%d/modo" % conversa, {"modo": "humano"},
