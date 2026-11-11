@@ -10,7 +10,7 @@ This runs in the background. Nobody answers questions: never ask anything, never
 
 The prompt gives: the working folder (`{trabalho}`, your current folder), `Motor` (`hyperframes` or `reserva`), `Duracao` (`10` or `15` seconds, called `D` below) and the briefing file. Write only inside the working folder. Use relative paths made of letters, digits, `_`, `.` and `/` only (no `-`, no `..`).
 
-`Motor: reserva` means this project did not turn on the local render (`estudio.video_rede_local` in `painel.json`): never run `render`, it cannot open its local port here. The video is made from still slides of the same composition (step 6b).
+`Motor: reserva` means this project did not turn on the local render (`estudio.video_rede_local` in `painel.json`): never run `render`, it cannot open its local port here. The video is made from still slides of the same composition (step 6b): only the layout of each scene reaches the video, none of the CSS motion. So with `reserva`, scenes must differ in layout, not only in motion: no two scenes in a row with the same arrangement (vary alignment, headline size, a full brand-color block behind a scene, a big number filling the screen). The reserve script itself varies the cut (wipe, slide) and a slow zoom or pan per slide.
 
 ## 1. Inputs
 
@@ -28,7 +28,7 @@ The project root is the working folder path cut right before `/.tune-up/`. Read 
 
 ## 3. Script in scenes
 
-Write `roteiro.md`, one row per scene: start, length, text, motion. `D` = 10: 4 scenes of 2.5 s. `D` = 15: 5 scenes of 3 s.
+Write `roteiro.md`, one row per scene: start, length, text, motion (with `reserva`, write `não aparece na reserva` in the motion column). `D` = 10: 4 scenes of 2.5 s. `D` = 15: 5 scenes of 3 s.
 - Scene 1 is the hook and it is on screen in the very first frame (the first frame is the thumbnail): a question or a strong claim from the briefing.
 - One idea per scene: a headline and at most one short line. Never repeat a fact already shown.
 - The last scene is the call to action from the briefing, readable for at least 2 s.
@@ -41,7 +41,7 @@ Measured with HyperFrames 0.9.6; follow it exactly or the check fails:
 - Every visible element is a direct child of `#root` with `class="clip"`, a unique `id`, `data-start` and `data-duration` (seconds), `position: absolute`. A clip holds plain text or is an `<img src="assets/logo.svg">` or an empty shape: no child elements inside a clip (no `<span>`, `<em>`, `<br>`).
 - Scene N = the clips with that scene's `data-start` and `data-duration`. A decor shape or the logo that stays all video: `data-start="0" data-duration="D"`.
 - A clip's animation clock starts at its own `data-start`. Give each clip exactly one animation: `animation: <name> <its data-duration>s <easing> 0s 1 both`, no delay, with keyframe percentages for entry, hold and exit (exit in the last 10 to 15%).
-- Hook clips: their `0%` keyframe is fully visible and inside the safe box (settle from `scale(1.06)`, `letter-spacing`, a color change), never `opacity: 0` at 0%.
+- Hook clips: their `0%` keyframe is fully visible and inside the safe box (settle from `scale(1.06)` or `letter-spacing`, already at 4.5:1 contrast or more against what is behind it: frame 0 is the cover), never `opacity: 0` at 0%.
 - The last line must stay fully visible for at least 2 s: start its entry in the first 15% of the last scene and give it no exit.
 
 More movement than a sequence of fades. Required:
@@ -67,7 +67,7 @@ Fix round = edit `fonte/index.html` and redo 1 to 3. At most 2 fix rounds for th
 
 1. `HF render fonte -o video.mp4 --fps 30 --quality delivery --quiet`
 2. `python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/qa_video.py --source fonte --video video.mp4 --duration D --out qa.json --sheet folha.png`
-3. Read `folha.png` (one frame per second of the MP4). If the QA is red and fix rounds are left, fix, redo step 5 and this step.
+3. Read `folha.png` (one frame per second of the MP4). If the QA is red and fix rounds are left, fix, then redo step 5 and 6a steps 1 to 3 (render again: never keep an MP4 older than the fix).
 
 If the render fails twice, make the video by 6b and say in `resultado.md` that the render failed and the reserve was used.
 
@@ -79,5 +79,5 @@ If the render fails twice, make the video by 6b and say in `resultado.md` that t
 
 ## 7. Finish
 
-1. Write `resultado.md`: motor and why (`reserva`: "o projeto não ligou estudio.video_rede_local no painel.json; o vídeo saiu da reserva em slides, sem movimento dentro das cenas"), length and size, one line per scene from `roteiro.md`, `video.mp4` and `folha.png`, the `linha` of `qa.json` and its failed checks, anything left out (logo, missing brand field) and each generic brand font.
+1. Write `resultado.md`: motor and why (`reserva`: "o projeto não ligou estudio.video_rede_local no painel.json; o vídeo saiu da reserva em slides, sem movimento dentro das cenas"), length and size, one line per scene from `roteiro.md` (with `reserva`, never describe CSS motion as if it were in the video: its motion is `não aparece na reserva`), `video.mp4` and `folha.png`, the `linha` of `qa.json` and its failed checks, anything left out (logo, missing brand field) and each generic brand font.
 2. Answer with the `linha` of `qa.json`, exactly (`PRONTO: ...` or `PRECISA DO SEU OLHO: ...`). Do not list or re-check files after that.

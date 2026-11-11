@@ -43,6 +43,16 @@ class Graph(unittest.TestCase):
             self.assertIn(label, g)
         self.assertNotIn("drawtext", g)
 
+    def test_cuts_and_moves_vary_and_never_dissolve(self):
+        # A plain dissolve shows two texts on top of each other; one zoom on every slide reads as a template.
+        g = reserva_slides.build_graph(5, 1080, 1920, 30, 15.0, 0.5, 0.06)
+        cuts = [line.split("transition=")[1].split(":")[0] for line in g.splitlines() if "xfade" in line]
+        self.assertEqual(len(cuts), 4)
+        self.assertEqual(len(set(cuts)), 4)
+        self.assertNotIn("fade", cuts)
+        moves = [line.split("zoompan=")[1].split(":d=")[0] for line in g.splitlines() if "zoompan" in line]
+        self.assertTrue(all(moves[i] != moves[i - 1] for i in range(1, len(moves))), moves)
+
     def test_single_slide_has_no_crossfade(self):
         self.assertNotIn("xfade", reserva_slides.build_graph(1, 1080, 1920, 30, 10.0, 0.5, 0.06))
 
@@ -114,6 +124,12 @@ class Fallback(unittest.TestCase):
                         "-movflags", "+faststart", out], check=True)
         failed = [c["name"] for c in self.qa(out)["checks"] if not c["ok"]]
         self.assertEqual(failed, ["engine_reserve"])
+
+    def test_reserve_video_cannot_pass_as_render(self):
+        out = os.path.join(self.tmp, "as-render.mp4")
+        video_ou_reserva.run("fonte", self.slides, out, "/nonexistent/hyperframes", ffmpeg=FFMPEG)
+        failed = [c["name"] for c in self.qa(out, engine="hyperframes")["checks"] if not c["ok"]]
+        self.assertEqual(failed, ["engine_hyperframes"])
 
     def test_reserve_still_needs_the_composition_check(self):
         out = os.path.join(self.tmp, "r.mp4")

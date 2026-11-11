@@ -188,6 +188,8 @@ def run(source, video, check_json, width, height, duration, fps, ffmpeg, ffprobe
         checks.append(result("network_lint", not net, net or ["ok"]))
     if engine == "reserve":  # the slides are snapshots of the same composition: it is checked too
         checks.append(check_reserve_tag(data))
+    elif check_reserve_tag(data)["ok"]:  # a reserve MP4 is never reported as a render
+        checks.append(result("engine_hyperframes", False, ["the MP4 carries the reserve tag; use --engine reserve"]))
     checks.append(check_strict_json(check_json, source, duration))
     return {"ok": all(c["ok"] for c in checks), "checks": checks}
 
