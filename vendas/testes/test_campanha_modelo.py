@@ -15,6 +15,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from servico import agendador, banco, campanha, cerebro, modelo  # noqa: E402
 from testes.test_campanha import MODELO, Base, numero  # noqa: E402
 
+COLADO = "Olá {nome}.Aqui é a {empresa}, você veio de {origem}. Responda SAIR para não receber mais."
+
 
 class AppFalso:
     def __init__(self, raiz):
@@ -79,6 +81,12 @@ class TestSalvar(Modelo):
         self.assertEqual(self.criar(MODELO + " Veja https://loja.example/oferta")[0], 200)
         self.antes = 1
         self.recusa(MODELO + " Veja https://loja.example/outra", "link")
+
+    def test_variavel_colada_que_forma_link_recusada(self):
+        banco.gravar_config(self.con, "empresa", "Loja Teste")
+        self.recusa(COLADO, "link")
+        self.recusa(COLADO.replace("{nome}.Aqui", "{nome}. Aqui").replace("{origem}.", "{origem}.br"), "link")
+        self.assertEqual(self.criar(COLADO.replace("{nome}.Aqui", "{nome}. Aqui"))[0], 200)
 
     def test_empresa_literal_basta_como_identificacao(self):
         banco.gravar_config(self.con, "empresa", "Loja Teste")
@@ -196,6 +204,18 @@ class TestEnvio(Modelo):
         self.rodar(10, passo_s=15, ag=ag)
         self.assertEqual((self.estados(cid), self.c.envios()), (["enviado"] * 5, 5))
 
+    def test_modelo_antigo_que_forma_link_pausa_sem_pular(self):
+        cid = self.criar(ids=self.contatos(("Ana", "a feira"), ("Bia", "a feira")))[1]["id"]
+        self.con.execute("UPDATE campanhas SET modelo = ?", (COLADO,))   # gravado antes da checagem existir
+        codigo, corpo = self.ativar(cid)
+        self.assertEqual((codigo, "link" in corpo["erro"]), (400, True))   # ativar recusa
+        self.con.execute("UPDATE campanhas SET modelo = ?", (MODELO,))
+        self.assertEqual(self.ativar(cid)[0], 200)
+        self.con.execute("UPDATE campanhas SET modelo = ?", (COLADO,))   # já ativa: o envio confere de novo
+        self.rodar(15)
+        self.assertEqual(self.c.envios(), 0)
+        self.pausada(cid, "modelo_invalido", ["pendente", "pendente"])
+
     def test_link_da_empresa_fora_da_lista_pausa(self):
         cid = self.criar(ids=self.contatos(("Ana", "a feira")))[1]["id"]
         self.ativar(cid)
@@ -224,6 +244,7 @@ class TestRenderizar(unittest.TestCase):
             self.assertIn(motivo, modelo.DA_CAMPANHA)
         for motivo in ("sem_nome", "sem_origem", "valor_invalido", "link_fora_da_lista", "mensagem_longa"):
             self.assertNotIn(motivo, modelo.DA_CAMPANHA)
+        self.assertEqual(modelo.renderizar(COLADO, "Ana", "a feira", "Loja Teste", []), (None, "modelo_invalido"))
         self.assertEqual(modelo.renderizar(MODELO + " " + "x" * 880, "Ana", "a feira", "L" * 100, [])[1],
                          "modelo_invalido")   # passa de 1000 só pela empresa: problema da campanha toda
 

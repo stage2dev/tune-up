@@ -15,6 +15,7 @@ CONTROLE = re.compile(r"[\x00-\x1f\x7f]+")
 FRIO_BASES = ("consentimento", "cliente_existente")   # qualquer outra base legal = contato frio
 # motivo que vale para a campanha toda (modelo, empresa ou links.json): pausa a campanha, nunca pula o contato
 DA_CAMPANHA = ("modelo_invalido", "sem_empresa", "sem_identificacao", "sem_sair")
+EXEMPLO = "exemplo"   # valor-palavra no lugar de {nome}/{origem}: pega o link que o modelo forma com qualquer valor
 
 
 class ModeloRecusado(ValueError):
@@ -48,6 +49,12 @@ def validar(modelo, empresa, permitidos=()):
     if not SAIR.search(modelo):
         raise ModeloRecusado("A mensagem precisa ensinar a sair: escreva \"responda SAIR\".")
     _links(modelo, permitidos)
+    valores = {"nome": EXEMPLO, "origem": EXEMPLO, "empresa": _valor(empresa) or EXEMPLO}
+    try:   # preenchido: "{nome}.Aqui" vira "Ana.Aqui", um link com qualquer nome
+        _links(CHAVE.sub(lambda m: valores[m.group(1)], modelo), permitidos)
+    except ModeloRecusado:
+        raise ModeloRecusado("Ao preencher as variáveis a mensagem forma um link (ex.: \"{nome}.Aqui\"). "
+                             "Ponha um espaço depois de cada variável.")
 
 
 def _valor(bruto):
