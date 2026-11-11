@@ -1,14 +1,13 @@
 // Bloco "conversa": fio de mensagens, caixa de envio e botoes de acao (com confirmacao na propria tela).
 // Tambem e o painel direito do bloco "caixa" (cheia: ocupa a altura, fio rola por dentro, envio preso embaixo).
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import type { Bloco } from '../../api/tipos';
 import { Botao, Cartao, EstadoVazio } from '../../componentes';
 import { CLASSE_CAMPO } from './Formulario';
-import { copiaDoBotao, criarEnviador, dadosDaMensagem, estaNoFim, itens, textoOuNada, type BotaoCopia } from './interativos';
+import { copiaDoBotao, criarEnviador, dadosDaMensagem, estaNoFim, itens, textoOuNada, type BlocoCru, type BotaoCopia } from './interativos';
 import { Mensagens } from './Mensagens';
 import { AvisoEnvio, useEnvio } from './useEnvio';
 
-export function Conversa({ b, moduloId, cheia = false, topo }: { b: Bloco; moduloId?: string; cheia?: boolean; topo?: ReactNode }) {
+export function Conversa({ b, moduloId, cheia = false, topo }: { b: BlocoCru; moduloId?: string; cheia?: boolean; topo?: ReactNode }) {
   const mensagens = itens(b.mensagens);
   const enviar = b.enviar && typeof b.enviar === 'object' ? (b.enviar as Record<string, unknown>) : null;
   const botoes = itens(b.botoes).filter((x) => typeof x.acao === 'string' && typeof x.rotulo === 'string');

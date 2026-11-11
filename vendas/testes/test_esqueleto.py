@@ -36,7 +36,8 @@ class TesteEsqueleto(unittest.TestCase):
         with open(os.path.join(RAIZ, ".claude-plugin", "marketplace.json"), encoding="utf-8") as f:
             m = json.load(f)
         fontes = {p["name"]: p["source"] for p in m["plugins"]}
-        self.assertEqual(fontes, {"tune-up": "./", "tune-up-vendas": "./vendas"})
+        self.assertEqual({k: fontes.get(k) for k in ("tune-up", "tune-up-vendas")},
+                         {"tune-up": "./", "tune-up-vendas": "./vendas"})
 
     def test_modulo_carrega_pelo_painel_real(self):
         tmp = os.path.realpath(tempfile.mkdtemp())

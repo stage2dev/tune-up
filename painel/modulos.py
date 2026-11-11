@@ -3,10 +3,11 @@
 Só carrega <pacote>/modulos/<id>/modulo.py de ids listados em painel.json
 "modulos" (ou, de plugin instalado, "modulos_de_plugins": ver modulos_plugin.py). O id segue ^[a-z0-9_-]{1,40}$ e o caminho real do arquivo tem de
 ficar dentro de <pacote>/modulos/<id>/ (atalho para fora é recusado). O módulo
-expõe INFO = {"id","titulo","icone"} e montar(ctx) -> dict; ctx = {"raiz",
-"pacote","dados","config","hoje"}. montar() roda com tempo limite, exceção vira
+expõe INFO = {"id","titulo","icone"} e montar(ctx) -> dict; ctx = {"raiz","pacote","dados","config","hoje",
+"execucoes" (função do lançador ou None),"dono_faltando"}. montar() roda com tempo limite, exceção vira
 erro só daquele módulo e a resposta passa por uma conferência mínima de forma.
-Opcional: INFO["acoes"] (lista de nomes) + agir(ctx, acao, dados) -> dict, e INFO["negar"]
+Opcional: INFO["acoes"] (lista de nomes) + agir(ctx, acao, dados) -> dict ({"codigo": 409} = 409), INFO["esquemas"]
+({acao: {campo: tipo}}: campo fora do esquema ou de outro tipo dá 400) e INFO["negar"]
 (regras de permissão negadas em toda sessão que o painel dispara).
 Os arquivos irmãos do módulo são importados isolados (ver _importar): nome igual a\num do núcleo ou de outro módulo não vaza.
 Python 3.9, só biblioteca padrão.
@@ -20,38 +21,23 @@ import sys
 import threading
 import time
 
+import dono
 import modulos_plugin
-import travas
+import travas_validar
+from modulos_forma import ErroModulo, conferir  # noqa: F401 - modulos.ErroModulo/conferir seguem valendo
 
 RE_ID = re.compile(r"^[a-z0-9_-]{1,40}$")
-NIVEIS = ("info", "atencao", "critico")
 TEMPO_LIMITE = 20.0
 TTL = 30.0
-MAX_ABAS = 30
-MAX_BLOCOS = 100
-MAX_ALERTAS = 50
 
 _lock = threading.Lock()
 _lock_import = threading.Lock()  # um import de módulo por vez (mexe em sys.path/sys.modules)
 _carregados = {}   # caminho -> (mtime, módulo)
-_cache = {}        # id -> (quando, código, dado)
+_cache = {}        # id -> (quando, código, dado, pulso)
 _rodando = {}      # id -> thread
 _lock_agir = threading.Lock()  # trava das ações, separada da de montar
 _agindo = {}       # id -> thread de agir()
 _geracao = {}      # id -> sobe a cada agir() que volta; montar() em voo não grava cache velho
-
-
-class ErroModulo(Exception):
-    def __init__(self, codigo, mensagem, avisos=None):
-        Exception.__init__(self, mensagem)
-        self.codigo, self.mensagem, self.avisos = codigo, mensagem, list(avisos or [])
-
-    def corpo(self):
-        return {"erro": self.mensagem, "avisos": self.avisos}
-
-
-def _agora():
-    return datetime.datetime.now().astimezone().isoformat(timespec="seconds")
 
 
 def caminho_do_modulo(cfg, mid):
@@ -161,72 +147,11 @@ def contexto(cfg):
     pacote = cfg.get("pacote_dir") or ""
     return {"raiz": cfg.get("raiz") or cfg.get("workspace"), "pacote": pacote,
             "dados": os.path.join(pacote, "dados") if pacote else "",
-            "config": dict(cfg.get("bruto") or {}), "hoje": datetime.date.today()}
+            "config": dict(cfg.get("bruto") or {}), "hoje": datetime.date.today(),
+            "execucoes": cfg.get("_execucoes"), "dono_faltando": lambda requer: dono.faltando(cfg, requer)}
 
 
-def _texto(v, n=500):
-    return v[:n] if isinstance(v, str) else ""
-
-
-def _caixa(b, avisos, aba):
-    """Bloco caixa: sem lista ou sem abrir.acao sai inteiro; linha sem id/titulo sai; o resto passa."""
-    abrir, conv = b.get("abrir"), b.get("conversas")
-    if not isinstance(conv, list) or not isinstance(abrir, dict) or not _texto(abrir.get("acao")):
-        avisos.append("aba %s: bloco caixa sem 'conversas' ou sem 'abrir.acao' ignorado" % aba)
-        return None
-    linhas = [c for c in conv if isinstance(c, dict) and _texto(c.get("id")) and isinstance(c.get("titulo"), str)]
-    if len(linhas) != len(conv):
-        avisos.append("aba %s: conversa sem 'id' ou 'titulo' ignorada" % aba)
-    saida = dict(b, conversas=linhas)
-    if "conversa" in saida and not isinstance(saida["conversa"], dict):
-        del saida["conversa"]
-    return saida
-
-
-def _numero(v):
-    return isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and v not in (float("inf"), float("-inf"))
-
-
-def conferir(dado, inf):
-    """Forma mínima da resposta de montar(). Peça ruim sai com aviso; o resto passa."""
-    if not isinstance(dado, dict):
-        raise ErroModulo(500, "Esta tela devolveu algo estranho.", ["montar() não devolveu um objeto"])
-    avisos = [_texto(a) for a in dado.get("avisos") or [] if isinstance(a, str)][:50]
-    alertas = []
-    for a in dado.get("alertas") or []:
-        if isinstance(a, dict) and a.get("nivel") in NIVEIS and isinstance(a.get("texto"), str):
-            alertas.append({"nivel": a["nivel"], "texto": _texto(a["texto"])})
-        else:
-            avisos.append("um alerta fora do formato foi ignorado")
-    abas = []
-    for aba in (dado.get("abas") or [])[:MAX_ABAS]:
-        if not isinstance(aba, dict) or not isinstance(aba.get("id"), str) or not isinstance(aba.get("blocos"), list):
-            avisos.append("uma aba fora do formato foi ignorada")
-            continue
-        blocos = [b for b in aba["blocos"][:MAX_BLOCOS] if isinstance(b, dict) and isinstance(b.get("tipo"), str)]
-        if len(blocos) != len(aba["blocos"][:MAX_BLOCOS]):
-            avisos.append("aba %s: bloco sem 'tipo' ignorado" % _texto(aba["id"], 40))
-        nome = _texto(aba["id"], 40)
-        blocos = [x for x in (_caixa(b, avisos, nome) if b["tipo"] == "caixa" else b for b in blocos) if x is not None]
-        aba = dict(aba, id=nome, titulo=_texto(aba.get("titulo") or aba["id"], 80), blocos=blocos)
-        if not (_numero(aba.get("alerta")) and aba["alerta"] >= 1):
-            aba.pop("alerta", None)
-        else:
-            aba["alerta"] = int(aba["alerta"])
-        abas.append(aba)
-    gerado = dado.get("gerado_em") if isinstance(dado.get("gerado_em"), str) else _agora()
-    saida = {"id": inf["id"], "titulo": _texto(dado.get("titulo"), 60) or inf["titulo"], "gerado_em": gerado,
-             "alertas": alertas[:MAX_ALERTAS], "abas": abas, "avisos": avisos}
-    if _numero(dado.get("atualizar_em")):
-        saida["atualizar_em"] = min(60, max(2, dado["atualizar_em"]))
-    try:
-        json.dumps(saida, ensure_ascii=False, allow_nan=False)
-    except (TypeError, ValueError) as e:
-        raise ErroModulo(500, "Esta tela devolveu algo estranho.", ["resposta não vira JSON: %s" % e])
-    return saida
-
-
-def _rodar_montar(mod, ctx, mid, tempo):
+def _rodar_montar(mod, ctx, mid, tempo, chave=None):
     caixa = {}
 
     def alvo():
@@ -235,46 +160,48 @@ def _rodar_montar(mod, ctx, mid, tempo):
         except BaseException as e:  # noqa: B902 - um módulo quebrado não derruba o painel
             caixa["erro"] = e
 
-    with _lock:
+    with _lock:  # duas montagens juntas da mesma geração e pulso: a segunda espera a primeira e reusa
         t = _rodando.get(mid)
-        if t is not None and t.is_alive():
-            raise ErroModulo(503, "Esta tela ainda está sendo montada. Tente de novo daqui a pouco.")
-        t = threading.Thread(target=alvo, name="modulo-%s" % mid, daemon=True)
-        _rodando[mid] = t
-    t.start()
+        dono = t is None or not t.is_alive() or t.chave != chave
+        if dono:
+            t = _rodando[mid] = threading.Thread(target=alvo, name="modulo-%s" % mid, daemon=True)
+            t.caixa, t.chave = caixa, chave
+            t.start()
     t.join(tempo)
     if t.is_alive():
-        raise ErroModulo(500, "Esta tela demorou demais para montar.",
-                         ["montar() de %s passou de %d s" % (mid, int(tempo))])
+        if not dono:  # a outra montagem passou do tempo
+            raise ErroModulo(503, "Esta tela ainda está sendo montada. Tente de novo daqui a pouco.")
+        raise ErroModulo(500, "Esta tela demorou demais para montar.", ["montar() de %s passou de %d s" % (mid, int(tempo))])
     with _lock:
-        _rodando.pop(mid, None)
-    if "erro" in caixa:
-        e = caixa["erro"]
+        if _rodando.get(mid) is t:
+            _rodando.pop(mid)
+    if "erro" in t.caixa:
+        e = t.caixa["erro"]
         raise ErroModulo(500, "Não consegui montar esta tela.",
                          ["%s.montar quebrou: %s: %s" % (mid, type(e).__name__, str(e)[:200])])
-    return caixa.get("dado")
+    return t.caixa.get("dado")
 
 
-def montar(cfg, mid, usar_cache=True, tempo=TEMPO_LIMITE):
-    """(código, corpo) de GET /api/modulos/<id>."""
+def montar(cfg, mid, usar_cache=True, tempo=TEMPO_LIMITE, pulso=None):
+    """(código, corpo) de GET /api/modulos/<id>; `pulso` diferente do guardado vence o cache (sessão começou/terminou)."""
     agora = time.monotonic()
     with _lock:
         geracao = _geracao.get(mid, 0)
     if usar_cache:
         with _lock:
             item = _cache.get(mid)
-        if item and agora - item[0] < TTL:
+        if item and agora - item[0] < TTL and item[3] == pulso:
             return item[1], item[2]
     try:
         mod = carregar(cfg, mid)
-        saida = conferir(_rodar_montar(mod, contexto(cfg), mid, tempo), info(mod, mid))
+        saida = conferir(_rodar_montar(mod, contexto(cfg), mid, tempo, (geracao, pulso)), info(mod, mid))
         codigo, corpo = 200, saida
     except ErroModulo as e:
         codigo, corpo = e.codigo, e.corpo()
     if codigo in (200, 500):
         with _lock:
             if _geracao.get(mid, 0) == geracao:  # uma ação no meio deixou este resultado velho
-                _cache[mid] = (time.monotonic(), codigo, corpo)
+                _cache[mid] = (time.monotonic(), codigo, corpo, pulso)
     return codigo, corpo
 
 
@@ -342,6 +269,28 @@ def _rodar_agir(mod, ctx, mid, acao, dados, tempo):
     return caixa.get("dado")
 
 
+TIPOS_ESQUEMA = {"texto": lambda v: isinstance(v, str) and len(v) <= 2000,
+                 "booleano": lambda v: isinstance(v, bool),
+                 "numero": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and v == v
+                 and abs(v) != float("inf")}
+
+
+def _conferir_esquema(i, mid, acao, dados):
+    """INFO["esquemas"][acao] = {campo: tipo}. Sem esquema para a ação, `dados` passa intacto.
+    Os textos de erro não ecoam nome nem valor de campo (vêm do que foi digitado)."""
+    esquemas = i.get("esquemas") if isinstance(i, dict) else None
+    if esquemas is None or (isinstance(esquemas, dict) and acao not in esquemas):
+        return
+    esquema = esquemas.get(acao) if isinstance(esquemas, dict) else None
+    if not isinstance(esquema, dict) or not all(isinstance(k, str) and t in TIPOS_ESQUEMA
+                                                for k, t in esquema.items()):
+        raise ErroModulo(500, "Esta tela está incompleta.", ["modulo %s: INFO[\"esquemas\"] inválido" % mid])
+    if any(k not in esquema for k in dados):
+        raise ErroModulo(400, "A ação recebeu um campo que não conhece.")
+    if not all(TIPOS_ESQUEMA[esquema[k]](v) for k, v in dados.items()):
+        raise ErroModulo(400, "A ação recebeu um campo com valor do tipo errado.")
+
+
 def agir(cfg, mid, acao, dados, tempo=TEMPO_LIMITE):
     """(código, corpo) de POST /api/modulos/<id>/acao. `dados` vai intacto para agir()."""
     try:
@@ -355,9 +304,15 @@ def agir(cfg, mid, acao, dados, tempo=TEMPO_LIMITE):
             raise ErroModulo(400, "Esta tela não tem essa ação.")
         if not isinstance(dados, dict):
             raise ErroModulo(400, "Os dados da ação precisam ser um objeto.")
-        resultado = _rodar_agir(mod, contexto(cfg), mid, acao, dados, tempo)  # já apagou o cache
+        _conferir_esquema(i, mid, acao, dados)
+        # aprovação do dono (dono.py): só um comando grava, nunca montar() nem a sessão
+        ctx = dict(contexto(cfg), ler_dono=lambda: dono.ler(cfg, mid),
+                   gravar_dono=lambda chave, valor: dono.gravar(cfg, mid, chave, valor))
+        resultado = _rodar_agir(mod, ctx, mid, acao, dados, tempo)  # já apagou o cache
     except ErroModulo as e:
         return e.codigo, e.corpo()
+    if isinstance(resultado, dict) and resultado.get("codigo") == 409:  # o módulo recusou: já feito ou em conflito
+        return 409, {"erro": str(resultado.get("mensagem") or "Isto já foi feito.")[:500], "avisos": []}
     try:  # a ação já aconteceu: resposta estranha vira 200 com aviso, para ninguém repetir
         if not isinstance(resultado, dict):
             raise TypeError
@@ -384,7 +339,7 @@ def _ler_negar(cfg, mid):
     if not isinstance(i, dict) or "negar" not in i:
         return []
     try:
-        trv = travas.validar_travas({"negar": i["negar"]})
+        trv = travas_validar.validar_travas({"negar": i["negar"]})
         if trv["regras_negar"]:
             raise ValueError("só regras de permissão em texto")
     except ValueError as e:
@@ -403,6 +358,16 @@ def negar_dos_modulos(cfg):
             avisos.append("módulo %s com problema; nenhuma ação roda até corrigir ou desligar: %s"
                           % (mid, "; ".join(e.avisos) or e.mensagem))
     return regras, avisos
+
+
+def antes_de_disparar(cfg, acao, tempo=None):
+    """Conferência dos módulos antes de uma sessão sair: o `requer` da ação (aprovação do dono,
+    dono.py; falta dá ErroModulo(409)) e depois as regras de negar (lista)."""
+    falta = dono.faltando(cfg, acao.get("_requer") or [])
+    if falta:
+        raise ErroModulo(409, "Esta ação precisa da aprovação do dono antes (%s). Aprove na tela do módulo."
+                         % ", ".join(falta))
+    return regras_de_negar(cfg, tempo)
 
 
 def regras_de_negar(cfg, tempo=None):

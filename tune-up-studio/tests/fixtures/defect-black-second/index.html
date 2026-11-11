@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Defect: 1 s of black</title>
+  <style>
+    /* Planted defect for qa_video.py: a full-frame black clip from 4 s to 5 s. */
+    html, body { margin: 0; background: #FFF8EC; }
+    #root { position: relative; width: 1080px; height: 1920px; overflow: hidden; background: #FFF8EC; }
+    .barra {
+      position: absolute; left: 90px; right: 90px; top: 240px; height: 40px; background: #A85A1F;
+      transform-origin: left center; animation: enche 10s linear 0s both;
+    }
+    h1 { position: absolute; left: 90px; top: 400px; margin: 0; font: 700 96px sans-serif; color: #3B2417; }
+    #preto { position: absolute; inset: 0; background: #000000; }
+    @keyframes enche { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  </style>
+</head>
+<body>
+  <div id="root" data-composition-id="video" data-start="0" data-duration="10"
+       data-width="1080" data-height="1920" data-fps="30" data-no-timeline>
+    <div class="barra"></div>
+    <h1>Tela preta</h1>
+    <div id="preto" class="clip" data-start="4" data-duration="1"></div>
+  </div>
+</body>
+</html>

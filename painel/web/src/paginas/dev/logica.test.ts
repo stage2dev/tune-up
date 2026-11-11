@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ErroApi, esquecerSessao } from '../../api/cliente';
 import type { Execucao } from '../../api/tipos';
 import {
-  agrupar, casaBusca, estaNoFim, formatarDuracao, iniciar, juntarPrecisa, lerEstado, ordenarFases,
-  pedidoRodarParte, textoVolta, traduzirErroInicio, ultimoSinal,
+  agrupar, casaBusca, estadoEmPalavras, estaNoFim, formatarDuracao, iniciar, juntarPrecisa, lerEstado, ordenarFases,
+  moduloDaExecucao, pedidoRodarParte, textoVolta, traduzirErroInicio, ultimoSinal,
 } from './logica';
 import type { Fase } from './tipos';
 
@@ -111,5 +111,23 @@ describe('POST /api/execucoes com fetch falso', () => {
     expect(r).toEqual({ tipo: 'erro', texto: 'Parte inválida.' });
     expect(traduzirErroInicio(new ErroApi('x', 0))).toEqual({ tipo: 'erro', texto: 'x' });
     expect(traduzirErroInicio(new Error('qualquer'))).toEqual({ tipo: 'erro', texto: 'Algo deu errado. Tente de novo.' });
+  });
+});
+
+describe('execucao de modulo', () => {
+  const mods = [{ id: 'estudio', titulo: 'Estúdio', alertas: 0 }];
+  it('acha o modulo pelo grupo da acao; dev e chat nao sao modulo', () => {
+    expect(moduloDaExecucao({ grupo: 'estudio' }, mods)?.titulo).toBe('Estúdio');
+    expect(moduloDaExecucao({ area: 'estudio' }, mods)?.id).toBe('estudio');
+    expect(moduloDaExecucao({ grupo: 'dev' }, mods)).toBeUndefined();
+    expect(moduloDaExecucao({ grupo: 'estudio' }, undefined)).toBeUndefined();
+  });
+  it('estado em palavras, sem comando de terminal', () => {
+    for (const e of ['rodando', 'precisa_de_voce', 'terminou', 'parada', 'sumiu', undefined]) {
+      const t = estadoEmPalavras(e, 'Estúdio');
+      expect(t).toContain('Estúdio');
+      expect(t).not.toMatch(/claude attach|terminal/i);
+    }
+    expect(estadoEmPalavras('terminou', 'Estúdio')).toBe('Terminou. Veja o resultado em Estúdio.');
   });
 });

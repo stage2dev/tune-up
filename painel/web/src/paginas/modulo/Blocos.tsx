@@ -1,17 +1,24 @@
-// Renderizador dos blocos do contrato de modulo (kpis, tabela, lista, serie, texto, acoes e os interativos).
+// Renderizador dos blocos do contrato de modulo (kpis, tabela, lista, serie, texto, acoes, formulario, conversa, caixa, imagem, galeria,
+// midia, cores, envio, previa, opcoes).
 // Cada bloco chega de um pacote de projeto e pode vir incompleto: tudo aqui e lido com cuidado.
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { Bloco } from '../../api/tipos';
-import { Cartao, EstadoVazio, Selo } from '../../componentes';
+import { Botao, Cartao, EstadoVazio, Selo } from '../../componentes';
 import type { Tom } from '../../componentes/Selo';
 import { BotoesDoGrupo } from './BotaoAcao';
 import { Caixa } from './Caixa';
 import { Conversa } from './Conversa';
+import { Cores } from './Cores';
+import { Envio } from './Envio';
 import { Formulario } from './Formulario';
 import { Imagem } from './Imagem';
+import { Galeria, Midia } from './Midia';
 import { numero, SEM_DADO } from './formato';
-import { chavesDosBlocos } from './interativos';
+import { Opcoes } from './Opcoes';
+import { Previa } from './Previa';
+import { ProvedorRascunho } from './Rascunho';
+import { chavesDosBlocos, type BlocoCru } from './interativos';
 import { montarSeries, type SerieEntrada } from './series';
 
 const COR_TOM: Record<string, string> = {
@@ -34,7 +41,7 @@ export function mostrarValor(v: unknown): string {
   return SEM_DADO;
 }
 
-function Moldura({ b, children }: { b: Bloco; children: ReactNode }) {
+function Moldura({ b, children }: { b: BlocoCru; children: ReactNode }) {
   return <Cartao titulo={texto(b.titulo)}>{children}</Cartao>;
 }
 
@@ -42,7 +49,7 @@ function Vazio({ texto: t }: { texto?: string }) {
   return <EstadoVazio titulo="Nada para mostrar" texto={t ?? 'Este bloco ainda não tem dados.'} />;
 }
 
-function Kpis({ b }: { b: Bloco }) {
+function Kpis({ b }: { b: BlocoCru }) {
   const itens = lista(b.itens);
   return (
     <Moldura b={b}>
@@ -68,11 +75,15 @@ function Kpis({ b }: { b: Bloco }) {
   );
 }
 
-function Tabela({ b }: { b: Bloco }) {
+// Coluna 'secundaria' some no celular (menos de 640 px): a tabela cabe sem rolagem lateral.
+const SO_TELA_LARGA = 'hidden sm:table-cell';
+
+// `recolhido: true`: a tabela fica fechada atrás do título (detalhe técnico que quase ninguém precisa ver).
+function Tabela({ b }: { b: BlocoCru }) {
   const colunas = lista(b.colunas).filter((c) => typeof c.id === 'string');
   const linhas = lista(b.linhas);
-  return (
-    <Moldura b={b}>
+  const corpo = (
+    <>
       {colunas.length === 0 || linhas.length === 0 ? (
         <Vazio texto={texto(b.vazio)} />
       ) : (
@@ -81,7 +92,7 @@ function Tabela({ b }: { b: Bloco }) {
             <thead>
               <tr className="text-left text-xs text-[var(--color-text-secondary)]">
                 {colunas.map((c) => (
-                  <th key={String(c.id)} scope="col" className={`py-1.5 px-2 font-medium ${c.alinhar === 'dir' ? 'text-right' : ''}`}>
+                  <th key={String(c.id)} scope="col" className={`py-1.5 px-2 font-medium ${c.alinhar === 'dir' ? 'text-right' : ''} ${c.secundaria === true ? SO_TELA_LARGA : ''}`}>
                     {mostrarValor(c.rotulo ?? c.id)}
                   </th>
                 ))}
@@ -91,7 +102,7 @@ function Tabela({ b }: { b: Bloco }) {
               {linhas.map((l, k) => (
                 <tr key={k} className="border-t border-[var(--color-border-subtle)]">
                   {colunas.map((c) => (
-                    <td key={String(c.id)} className={`py-1.5 px-2 break-words ${c.alinhar === 'dir' ? 'text-right tabular-nums' : ''}`}>
+                    <td key={String(c.id)} className={`py-1.5 px-2 break-words ${c.alinhar === 'dir' ? 'text-right tabular-nums' : ''} ${c.secundaria === true ? SO_TELA_LARGA : ''}`}>
                       {mostrarValor(l[String(c.id)])}
                     </td>
                   ))}
@@ -101,11 +112,20 @@ function Tabela({ b }: { b: Bloco }) {
           </table>
         </div>
       )}
-    </Moldura>
+    </>
+  );
+  if (b.recolhido !== true) return <Moldura b={b}>{corpo}</Moldura>;
+  return (
+    <Cartao>
+      <details>
+        <summary className="cursor-pointer min-h-11 flex items-center text-sm font-medium">{texto(b.titulo) ?? 'Detalhes'}</summary>
+        {corpo}
+      </details>
+    </Cartao>
   );
 }
 
-function Itens({ b }: { b: Bloco }) {
+function Itens({ b }: { b: BlocoCru }) {
   const itens = lista(b.itens);
   return (
     <Moldura b={b}>
@@ -132,7 +152,7 @@ function Itens({ b }: { b: Bloco }) {
   );
 }
 
-function Serie({ b }: { b: Bloco }) {
+function Serie({ b }: { b: BlocoCru }) {
   const m = montarSeries(lista(b.series) as unknown as SerieEntrada[]);
   const unidade = texto(b.unidade);
   const formatar = (v: number) => (unidade ? `${numero(v, Number.isInteger(v) ? 0 : 2)} ${unidade}` : numero(v, Number.isInteger(v) ? 0 : 2));
@@ -163,12 +183,19 @@ function Serie({ b }: { b: Bloco }) {
   );
 }
 
-function Texto({ b }: { b: Bloco }) {
+function Texto({ b, aoIrAba }: { b: BlocoCru; aoIrAba?: (aba: string) => void }) {
   const t = texto(b.texto);
-  return <Moldura b={b}>{t ? <p className="text-sm whitespace-pre-line break-words">{t}</p> : <Vazio />}</Moldura>;
+  const ir = b.ir_para && typeof b.ir_para === 'object' ? (b.ir_para as Record<string, unknown>) : null;
+  const aba = ir ? texto(ir.aba) : undefined;
+  return (
+    <Moldura b={b}>
+      {t ? <p className="text-sm whitespace-pre-line break-words">{t}</p> : <Vazio />}
+      {aba && aoIrAba && <Botao className="mt-3" onClick={() => aoIrAba(aba)}>{texto(ir?.rotulo) ?? 'Abrir'}</Botao>}
+    </Moldura>
+  );
 }
 
-function Acoes({ b }: { b: Bloco }) {
+function Acoes({ b }: { b: BlocoCru }) {
   const grupo = texto(b.grupo);
   return (
     <Moldura b={b}>
@@ -189,41 +216,75 @@ function Desconhecido({ tipo }: { tipo: string }) {
   );
 }
 
-export function RenderBloco({ bloco, moduloId }: { bloco: Bloco; moduloId?: string }) {
-  switch (bloco?.tipo) {
+export function RenderBloco({ bloco, moduloId, aoIrAba }: { bloco: Bloco; moduloId?: string; aoIrAba?: (aba: string) => void }) {
+  const b = bloco as BlocoCru; // vem de um pacote de projeto: cada bloco le os campos com cuidado
+  switch (b?.tipo) {
     case 'kpis':
-      return <Kpis b={bloco} />;
+      return <Kpis b={b} />;
     case 'tabela':
-      return <Tabela b={bloco} />;
+      return <Tabela b={b} />;
     case 'lista':
-      return <Itens b={bloco} />;
+      return <Itens b={b} />;
     case 'serie':
-      return <Serie b={bloco} />;
+      return <Serie b={b} />;
     case 'texto':
-      return <Texto b={bloco} />;
+      return <Texto b={b} aoIrAba={aoIrAba} />;
     case 'acoes':
-      return <Acoes b={bloco} />;
+      return <Acoes b={b} />;
     case 'formulario':
-      return <Formulario b={bloco} moduloId={moduloId} />;
+      return <Formulario b={b} moduloId={moduloId} />;
     case 'conversa':
-      return <Conversa b={bloco} moduloId={moduloId} />;
+      return <Conversa b={b} moduloId={moduloId} />;
     case 'caixa':
-      return <Caixa b={bloco} moduloId={moduloId} />;
+      return <Caixa b={b} moduloId={moduloId} />;
     case 'imagem':
-      return <Imagem b={bloco} desconhecido={() => <Desconhecido tipo="imagem" />} />;
+      return <Imagem b={b} desconhecido={() => <Desconhecido tipo="imagem" />} />;
+    case 'galeria':
+      return <Galeria b={b} moduloId={moduloId} />;
+    case 'midia':
+      return <Midia b={b} moduloId={moduloId} />;
+    case 'cores':
+      return <Cores b={b} moduloId={moduloId} />;
+    case 'envio':
+      return <Envio b={b} moduloId={moduloId} />;
+    case 'previa':
+      return <Previa b={b} moduloId={moduloId} />;
+    case 'opcoes':
+      return <Opcoes b={b} moduloId={moduloId} />;
     default:
-      return <Desconhecido tipo={String(bloco?.tipo ?? '')} />;
+      return <Desconhecido tipo={String(b?.tipo ?? '')} />;
   }
 }
 
-export function Blocos({ blocos, moduloId }: { blocos: Bloco[]; moduloId?: string }) {
+export function Blocos({ blocos, moduloId, aoIrAba }: { blocos: Bloco[]; moduloId?: string; aoIrAba?: (aba: string) => void }) {
   if (!Array.isArray(blocos) || blocos.length === 0) {
     return <Cartao><EstadoVazio titulo="Esta aba está vazia" texto="O módulo ainda não trouxe nada para mostrar aqui." /></Cartao>;
   }
-  const chaves = chavesDosBlocos(blocos);
+  const chaves = chavesDosBlocos(blocos as BlocoCru[]);
+  const lado = blocos.map((b) => (b as BlocoCru)?.lado === true); // "lado": coluna lateral fixa na tela larga (previa ao vivo)
+  const primeiro = lado.indexOf(true);
+  if (primeiro < 0) {
+    return (
+      <ProvedorRascunho>
+        <div className="grid gap-3 grid-cols-[minmax(0,1fr)]">
+          {blocos.map((b, i) => <RenderBloco key={chaves[i]} bloco={b} moduloId={moduloId} aoIrAba={aoIrAba} />)}
+        </div>
+      </ProvedorRascunho>
+    );
+  }
+  // tela estreita: uma coluna na ordem do modulo; de 1024 px para cima a coluna lateral acompanha a rolagem
+  const fila = { '--fila': `1 / span ${Math.max(1, lado.filter((x) => !x).length)}` } as CSSProperties;
   return (
-    <div className="grid gap-3 grid-cols-[minmax(0,1fr)]">
-      {blocos.map((b, i) => <RenderBloco key={chaves[i]} bloco={b} moduloId={moduloId} />)}
-    </div>
+    <ProvedorRascunho>
+      <div className="grid gap-3 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)]">
+        {blocos.map((b, i) => lado[i] ? (i === primeiro && (
+          <div key="lado" data-lado className="grid gap-3 content-start min-w-0 lg:col-start-2 lg:self-start lg:sticky lg:top-4 lg:[grid-row:var(--fila)]" style={fila}>
+            {blocos.map((x, k) => lado[k] && <RenderBloco key={chaves[k]} bloco={x} moduloId={moduloId} aoIrAba={aoIrAba} />)}
+          </div>
+        )) : (
+          <div key={chaves[i]} className="grid min-w-0 lg:col-start-1"><RenderBloco bloco={b} moduloId={moduloId} aoIrAba={aoIrAba} /></div>
+        ))}
+      </div>
+    </ProvedorRascunho>
   );
 }

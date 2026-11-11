@@ -90,3 +90,9 @@ def mascarar(texto):
         return texto
     except Exception:  # nunca devolve o original
         return OCULTO
+
+
+def primeira_linha(texto, limite=200):
+    """1ª linha não vazia (sem cor ANSI), mascarada e curta: a causa de um erro do CLI sem vazar segredo."""
+    linhas = [x.strip() for x in re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", texto or "").splitlines() if x.strip()]
+    return mascarar(linhas[0])[:limite] if linhas else "sem saída"

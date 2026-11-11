@@ -70,7 +70,8 @@ export default function Modulo() {
         <Cartao><EstadoVazio titulo="Este módulo não tem abas" texto="Ele está habilitado, mas ainda não trouxe nenhuma aba para mostrar." /></Cartao>
       ) : (
         <Abas abas={abas.map((a) => ({ id: a.id, rotulo: a.titulo, alerta: alertaDaAba(a.alerta) }))} ativa={ativa.id} aoTrocar={setEscolhida}>
-          <Blocos key={`${id}:${ativa.id}`} blocos={ativa.blocos} moduloId={id} />
+          <Blocos key={`${id}:${ativa.id}`} blocos={ativa.blocos} moduloId={id}
+            aoIrAba={(aba) => { if (abas.some((a) => a.id === aba)) { setEscolhida(aba); window.scrollTo?.({ top: 0 }); } }} />
         </Abas>
       )}
     </Pagina>

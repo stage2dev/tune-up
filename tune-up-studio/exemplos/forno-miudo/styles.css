@@ -1,0 +1,18 @@
+:root {
+  --color-bg: #FFF8EC;
+  --color-surface: #F4E4C8;
+  --color-primary: #C9702B;
+  --color-text: #3B2417;
+  --color-accent: #5A3320;
+  --font-heading: Georgia, "Times New Roman", serif;
+  --font-body: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --radius: 16px;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--color-bg); color: var(--color-text); font-family: var(--font-body); line-height: 1.5; }
+header, main, footer { max-width: 720px; margin: 0 auto; padding: 24px; }
+header { display: flex; align-items: center; gap: 16px; }
+h1, h2 { font-family: var(--font-heading); color: var(--color-accent); margin: 0; }
+.card { background: var(--color-surface); border-radius: var(--radius); padding: 20px; margin: 16px 0; }
+.cta { display: inline-block; background: var(--color-primary); color: #fff; padding: 12px 24px; border-radius: var(--radius); text-decoration: none; font-weight: 700; }
+footer { font-size: 14px; opacity: .8; }

@@ -1,0 +1,47 @@
+{
+  "_about": "Positive list for Bash in studio actions (plan B of the sandbox). Copy 'negar' into every studio action; tune-up-studio/tests/test_regras_bash.py checks the fixture matches. {trabalho} is resolved by the panel core.",
+  "negar": [
+    {
+      "ferramenta": "Bash",
+      "campo": "command",
+      "entrada": "^(?!(?:ffmpeg|ffprobe|python3)(?: |\\Z)|/)",
+      "motivo": "Bash do estúdio: só ffmpeg, ffprobe, python3 com script do estúdio ou o hyperframes fixado"
+    },
+    {
+      "ferramenta": "Bash",
+      "campo": "command",
+      "entrada": "\\.\\.|//|/\\./|--(?:describe|docker|ffmpeg|ffprobe|hyperframes)\\b",
+      "motivo": "Bash do estúdio: sem '..', '//', snapshot --describe, render --docker nem caminho de ferramenta nos scripts"
+    },
+    {
+      "ferramenta": "Bash",
+      "campo": "command",
+      "entrada": "^(?=/)(?!(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/node/node_modules/\\.bin/hyperframes +(?:render|check|lint|validate|inspect|snapshot|info|compositions)(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
+      "motivo": "hyperframes: só render, check, lint, validate, inspect, snapshot, info e compositions, saída em {trabalho}"
+    },
+    {
+      "ferramenta": "Bash",
+      "campo": "command",
+      "entrada": "^ffmpeg(?= |\\Z)(?!(?: +(?:-protocol_whitelist +file,pipe +-i +(?:(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?)|(?!-i(?: |\\Z)|-protocol_whitelist(?: |\\Z))(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?)))* *\\Z)",
+      "motivo": "ffmpeg: cada -i precedido de -protocol_whitelist file,pipe, sem ':' nem caminho fora de {trabalho}, grafo em arquivo"
+    },
+    {
+      "ferramenta": "Bash",
+      "campo": "command",
+      "entrada": "^ffprobe(?= |\\Z)(?!(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
+      "motivo": "ffprobe: sem ':' nem caminho fora de {trabalho}"
+    },
+    {
+      "ferramenta": "Bash",
+      "campo": "command",
+      "entrada": "^python3(?= |\\Z)(?! +-I(?: +-B)? +(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/scripts/(?:qa_video|qa_imagem|reserva_slides|video_ou_reserva|fontes|anuncio|fotos)\\.py(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
+      "motivo": "python3: só os scripts do estúdio (com -I), sem '-c' nem script gravado em {trabalho} (nem por outro nome dela)"
+    },
+    {
+      "ferramenta": "Bash",
+      "campo": "command",
+      "entrada": "^(?!(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/node/node_modules/\\.bin/hyperframes )[\\s\\S]*(?i:\\.hyperframes)",
+      "motivo": "Bash do estúdio: só o hyperframes fixado cita .hyperframes (o QA confia nos relatórios dessa pasta)"
+    }
+  ]
+}

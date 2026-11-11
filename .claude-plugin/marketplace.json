@@ -9,7 +9,13 @@
       "name": "tune-up",
       "source": "./",
       "description": "A disciplined Claude Code workflow: research that changes nothing, written plans, one Part per conversation, model and effort per role, and guards for git, production databases and file size.",
-      "version": "2.8.0"
+      "version": "2.10.0"
+    },
+    {
+      "name": "tune-up-studio",
+      "source": "./tune-up-studio",
+      "description": "Studio module for the tune-up panel: posts and short videos from the project's brand, rendered locally with a pinned HyperFrames and checked by deterministic QA. macOS, Linux and WSL2 only.",
+      "version": "0.3.0"
     },
     {
       "name": "tune-up-vendas",

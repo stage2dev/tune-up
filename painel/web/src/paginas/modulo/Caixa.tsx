@@ -4,14 +4,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useIsFetching } from '@tanstack/react-query';
 import { ArrowLeft, Search } from 'lucide-react';
-import type { Bloco } from '../../api/tipos';
 import { chaves } from '../../api/ganchos';
 import { Cartao, EstadoVazio, Selo } from '../../componentes';
 import type { Tom } from '../../componentes/Selo';
 import { CLASSE_CAMPO } from './Formulario';
 import { Conversa } from './Conversa';
 import { conversaAVista, filtrarConversas, lerConversas, pedidoDaLinha, quandoCurto, voltouDepoisDeAbrir, type LinhaCaixa } from './entrada';
-import { textoOuNada } from './interativos';
+import { textoOuNada, type BlocoCru } from './interativos';
 import { AvisoEnvio, useEnvio } from './useEnvio';
 
 const TOM_SELO: Record<string, Tom> = { neutro: 'neutro', bom: 'ok', atencao: 'atencao', ruim: 'erro' };
@@ -51,7 +50,7 @@ function Linha({ l, abrindo, desligada, aoAbrir }: { l: LinhaCaixa; abrindo: boo
   );
 }
 
-export function Caixa({ b, moduloId }: { b: Bloco; moduloId?: string }) {
+export function Caixa({ b, moduloId }: { b: BlocoCru; moduloId?: string }) {
   const linhas = lerConversas(b.conversas);
   const ativa = linhas.find((l) => l.ativa);
   const aberta = b.conversa && typeof b.conversa === 'object' && !Array.isArray(b.conversa) ? (b.conversa as Record<string, unknown>) : null;

@@ -16,6 +16,7 @@ import unittest  # noqa: E402
 from unittest import mock  # noqa: E402
 
 import lancador  # noqa: E402
+import registro  # noqa: E402
 import trava  # noqa: E402
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
@@ -165,7 +166,7 @@ class TesteRegistroOcupado(unittest.TestCase):
         with open(self.reg.arquivo, "w", encoding="utf-8") as f:
             json.dump([{"id": "abcdef01"}], f)
         for alvo, valor in (("PRAZO_OCUPADO", 2), ("time.sleep", lambda s: None)):
-            p = mock.patch.object(lancador, alvo, valor) if "." not in alvo else mock.patch(alvo, valor)
+            p = mock.patch.object(registro, alvo, valor) if "." not in alvo else mock.patch(alvo, valor)
             p.start()
             self.addCleanup(p.stop)
 
@@ -177,7 +178,7 @@ class TesteRegistroOcupado(unittest.TestCase):
         self.assertEqual([r["id"] for r in self.reg.ler()], ["abcdef02"])
 
     def test_gravar_desiste_depois_do_prazo_e_nao_deixa_temporario(self):
-        with mock.patch.object(lancador, "PRAZO_OCUPADO", 0.2), mock.patch("time.sleep", time.sleep), \
+        with mock.patch.object(registro, "PRAZO_OCUPADO", 0.2), mock.patch("time.sleep", time.sleep), \
                 mock.patch("os.replace", falha_n_vezes(10 ** 6, os.replace)):
             with self.assertRaises(PermissionError):
                 self.reg.gravar([{"id": "abcdef02"}])
@@ -191,7 +192,7 @@ class TesteRegistroOcupado(unittest.TestCase):
         self.assertEqual(falso.conta["n"], 4)
 
     def test_ler_com_permissionerror_persistente_sobe_em_vez_de_lista_vazia(self):
-        with mock.patch.object(lancador, "PRAZO_OCUPADO", 0.2), mock.patch("time.sleep", time.sleep), \
+        with mock.patch.object(registro, "PRAZO_OCUPADO", 0.2), mock.patch("time.sleep", time.sleep), \
                 mock.patch("builtins.open", falha_n_vezes(10 ** 6, open)):
             with self.assertRaises(PermissionError):
                 self.reg.ler()

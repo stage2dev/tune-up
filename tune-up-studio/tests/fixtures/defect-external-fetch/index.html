@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Defect fixture</title>
+  <style>
+    html, body { margin: 0; background: #FFF8EC; }
+    #root {
+      position: relative; width: 1080px; height: 1350px; overflow: hidden; box-sizing: border-box;
+      padding: 96px; background: #FFF8EC; color: #3B2417; font-family: Georgia, serif;
+    }
+    h1 { margin: 0; font-size: 72px; }
+    #rede { margin-top: 48px; font-size: 48px; }
+  </style>
+</head>
+<body>
+  <div id="root" data-composition-id="post" data-start="0" data-duration="5"
+       data-width="1080" data-height="1350" data-no-timeline>
+    <h1>Forno Miúdo</h1>
+    <p id="rede">rede: esperando</p>
+  </div>
+  <script>
+    // Planted defect: the URL is assembled at runtime so the source never holds the scheme as one literal.
+    // 192.0.2.1 is TEST-NET-1 (RFC 5737): never routed, no DNS lookup.
+    var alvo = "192.0.2.1";
+    var url = "ht" + "tp://" + alvo + "/beacon";
+    fetch(url, { mode: "no-cors" })
+      .then(function () { document.getElementById("rede").textContent = "rede: saiu"; })
+      .catch(function () { document.getElementById("rede").textContent = "rede: bloqueada"; });
+  </script>
+</body>
+</html>

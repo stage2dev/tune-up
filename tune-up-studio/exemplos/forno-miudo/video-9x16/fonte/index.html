@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Forno Miúdo - vídeo 9:16</title>
+  <style>
+    /* 10 s, 1080x1920, silent. CSS @keyframes only: every animation has a fixed
+       delay (document time), a finite iteration count and fill-mode both, so
+       the frame is a function of time alone. The title is on screen from frame
+       0; something new enters about every 1.5 s and the last 3 s add the
+       WhatsApp line and pulse the button. No caption box (no audio) and no
+       progress bar (the app draws its own). Safe area: 220 px top, 440 px
+       bottom, 90 px sides. */
+    @font-face { font-family: "Forno Serif"; src: local("Georgia"), local("Times New Roman"); }
+    @font-face { font-family: "Forno Sans"; src: local("Helvetica Neue"), local("Arial"); }
+    html, body { margin: 0; background: #FFF8EC; }
+    #root {
+      position: relative; width: 1080px; height: 1920px; overflow: hidden;
+      background: #FFF8EC; color: #3B2417; font-family: "Forno Sans", sans-serif;
+    }
+    .anim { animation-fill-mode: both; animation-iteration-count: 1; }
+    /* Kept right of the logo so it never covers the logo's own beige disc. */
+    .sol {
+      position: absolute; left: 900px; top: 370px; width: 900px; height: 900px; margin-left: -450px;
+      border-radius: 50%; background: #F4E4C8;
+      animation: sobe 10s linear 0s;
+    }
+    .topo { position: absolute; left: 90px; top: 300px; display: flex; align-items: center; gap: 28px; }
+    .topo img { width: 140px; height: 140px; }
+    .marca { font-family: "Forno Serif", serif; font-size: 60px; font-weight: 700; color: #5A3320; }
+    h1 {
+      position: absolute; left: 90px; top: 520px; width: 900px; margin: 0;
+      font-family: "Forno Serif", serif; font-size: 112px; line-height: 1.04; color: #3B2417;
+      transform-origin: left top; animation: titulo 1.2s ease-out 0s;
+    }
+    h1 em { font-style: normal; color: #A85A1F; }
+    .selo {
+      position: absolute; left: 90px; top: 900px; padding: 16px 36px; border-radius: 999px;
+      background: #5A3320; color: #FFF8EC; font-size: 40px; font-weight: 700; letter-spacing: 2px;
+      animation: selo 10s ease-in-out 0s;
+    }
+    .apoio {
+      position: absolute; left: 90px; top: 1010px; width: 860px; margin: 0; font-size: 48px; line-height: 1.3;
+      animation: apoio 10s ease-in-out 0s;
+    }
+    .cta {
+      position: absolute; left: 90px; top: 1200px; padding: 30px 52px; border-radius: 24px;
+      background: #5A3320; color: #FFF8EC; font-size: 52px; font-weight: 700; transform-origin: left center;
+      animation: cta 10s ease-in-out 0s;
+    }
+    .whats {
+      position: absolute; left: 90px; top: 1360px; margin: 0; font-size: 44px; font-weight: 700; color: #5A3320;
+      animation: whats 10s ease-in-out 0s;
+    }
+    @keyframes sobe { from { transform: translateY(60px) scale(0.92); } to { transform: translateY(-60px) scale(1.04); } }
+    @keyframes titulo { from { transform: scale(1.05); } to { transform: scale(1); } }
+    /* Late entrances run over the whole 10 s with no delay: with delays of
+       3.3 s, 3.7 s and 6.6 s, a seek before the delay showed the end state
+       (see scripts/README.md). */
+    @keyframes selo { 0%, 14% { opacity: 0; transform: translateX(-80px); } 20%, 100% { opacity: 1; transform: translateX(0); } }
+    @keyframes apoio { 0%, 29% { opacity: 0; transform: translateY(40px); } 36%, 100% { opacity: 1; transform: translateY(0); } }
+    @keyframes cta {
+      0%, 48% { opacity: 0; transform: scale(0.8); } 55%, 74% { opacity: 1; transform: scale(1); }
+      80% { opacity: 1; transform: scale(1.07); } 86% { opacity: 1; transform: scale(1); }
+      92% { opacity: 1; transform: scale(1.07); } 100% { opacity: 1; transform: scale(1); }
+    }
+    @keyframes whats { 0%, 66% { opacity: 0; transform: translateY(30px); } 72%, 100% { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body>
+  <div id="root" data-composition-id="video" data-start="0" data-duration="10"
+       data-width="1080" data-height="1920" data-fps="30" data-no-timeline>
+    <div class="sol anim"></div>
+    <div class="topo">
+      <img src="assets/logo.svg" alt="Forno Miúdo">
+      <span class="marca">Forno Miúdo</span>
+    </div>
+    <h1 class="anim">Pão de fermentação <em>natural</em></h1>
+    <span class="selo anim">FORNADA DAS 6H</span>
+    <p class="apoio anim">Feito de véspera,<br>assado de manhã cedo.</p>
+    <span class="cta anim">Reserve seu pão de amanhã</span>
+    <p class="whats anim">Peça pelo WhatsApp</p>
+  </div>
+</body>
+</html>

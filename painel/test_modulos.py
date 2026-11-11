@@ -232,8 +232,14 @@ class TesteAcoesDeModulo(unittest.TestCase):
             if "loja" in modulos._rodando and modulos._rodando["loja"].is_alive():
                 break
             threading.Event().wait(0.01)
-        self.assertEqual(modulos.montar(self.cfg, "loja", usar_cache=False)[0], 503)  # montar rodando
-        self.assertEqual(modulos.agir(self.cfg, "loja", "salvar", {})[0], 200)  # ação não leva 503
+        self.assertEqual(modulos.agir(self.cfg, "loja", "salvar", {})[0], 200)  # ação não espera montar
+        antes = self.mod.MONTAR[0]
+        cod, d = modulos.montar(self.cfg, "loja", usar_cache=False)  # a montagem de antes da ação está velha
+        self.assertEqual(cod, 200, d)
+        self.assertEqual(self.mod.MONTAR[0], antes + 1)  # montou de novo, não reusou a tela de antes
+        self.assertEqual(d["abas"][0]["blocos"][0]["texto"], str(antes + 1))
+        t.join(5)
+        self.assertEqual(modulos.montar(self.cfg, "loja")[1]["abas"][0]["blocos"][0]["texto"], str(antes + 1))
 
     def test_cache_fresco_e_acao_invalida_cache(self):
         self.assertEqual(modulos.montar(self.cfg, "loja")[0], 200)
@@ -244,6 +250,11 @@ class TesteAcoesDeModulo(unittest.TestCase):
         modulos.agir(self.cfg, "loja", "salvar", {})
         modulos.montar(self.cfg, "loja")
         self.assertEqual(self.mod.MONTAR[0], 3)  # a ação esqueceu o cache da tela
+        modulos.montar(self.cfg, "loja", pulso=(("a", "rodando"),))
+        modulos.montar(self.cfg, "loja", pulso=(("a", "rodando"),))
+        self.assertEqual(self.mod.MONTAR[0], 4)
+        modulos.montar(self.cfg, "loja", pulso=(("a", "terminou"),))
+        self.assertEqual(self.mod.MONTAR[0], 5)  # a sessão terminou: a fila não espera os 30 s
 
     def test_negar_dos_modulos_chega_na_sessao(self):
         import lancador

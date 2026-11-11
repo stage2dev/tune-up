@@ -375,7 +375,7 @@ class TesteResponder(Base):
         sid = i + "-1111-2222-3333-444455556666"
         cmd = self.bg()[0]
         conf = json.loads(cmd[cmd.index("--settings") + 1])
-        gancho = conf["hooks"]["PreToolUse"][0]["hooks"][0]["command"].split()[-1]
+        gancho = conf["hooks"]["PreToolUse"][0]["hooks"][0]["command"].split(" || ")[0].split()[-1]
         entrada = {"tool_name": "AskUserQuestion", "session_id": sid, "tool_input": {"questions": [
             {"question": "Qual cor?", "header": "Cor", "multiSelect": False,
              "options": [{"label": "Azul", "description": "cor azul"}, {"label": "Verde"}, {"label": ""}, "lixo"]},
@@ -485,7 +485,7 @@ class TesteResponder(Base):
         self.assertNotIn("pergunta", lc.execucao(i))
         # 3) o gancho apaga a pergunta quando a sessão usa outra ferramenta
         cmd = self.bg()[-1]
-        gancho = json.loads(cmd[cmd.index("--settings") + 1])["hooks"]["PreToolUse"][0]["hooks"][0]["command"].split()[-1]
+        gancho = json.loads(cmd[cmd.index("--settings") + 1])["hooks"]["PreToolUse"][0]["hooks"][0]["command"].split(" || ")[0].split()[-1]
         travas.principal(["travas.py", gancho], io.StringIO(json.dumps(
             {"tool_name": "Read", "session_id": sid, "tool_input": {"file_path": "/tmp/x"}})), io.StringIO())
         self.assertFalse(os.path.exists(arq))

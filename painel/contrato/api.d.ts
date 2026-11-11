@@ -150,6 +150,7 @@ export interface ParamAcao {
   opcoes?: string[]; // só em 'escolha'
   max?: number; // só em 'texto' (padrão 500, teto 2000; com `linhas`, teto 6000)
   linhas?: boolean; // só em 'texto': true aceita quebra de linha (caixa grande na tela)
+  formato?: 'url'; // só em 'texto' sem linhas: o servidor exige https:// sem espaço
   ajuda?: string;
 }
 
@@ -168,6 +169,9 @@ export interface Acao {
    *  A sessão sai com o primeiro que a licença tem (GET /api/modelos); o último é a reserva e nunca é sondado. */
   modelos: string[];
   esforco: Esforco | null; // null = esforço padrão do CLI
+  /** Teto de tempo (1 a 1440). Passou: o painel roda `claude stop` e marca `falha` na execução. null = sem teto. */
+  max_minutos: number | null; // desde que começou ou desde a última resposta
+  max_bloqueado_min: number | null; // tempo em precisa_de_voce
   equipe: string; // texto curto para a tela, ex. "1 a 2 agentes"; '' se a ação não disser
 }
 
@@ -209,6 +213,7 @@ export interface Execucao {
   parte?: string;
   modelo: string; // apelido com que a sessão saiu; '' = padrão do CLI
   esforco: string; // '' = padrão do CLI
+  falha?: 'max_minutos' | 'max_bloqueado_min'; // parada pelo painel ao passar do teto (estado 'parada')
   /** true quando dá para mandar outra mensagem sem interromper nada: estado terminou ou parada, e também
    *  precisa_de_voce quando a vez acabou com uma pergunta escrita (o Claude perguntou e espera o texto).
    *  Vence `pode_interromper` quando os dois vêm true. */
@@ -412,7 +417,7 @@ export interface RespModulos {
 }
 
 import type { Bloco } from './blocos';
-export type { Tom, Bloco, CampoFormulario, BlocoFormulario, MensagemConversa, BlocoConversa, BlocoCaixa, BlocoImagem, ReqAcaoModulo, RespAcaoModulo } from './blocos';
+export type { Tom, Bloco, CampoFormulario, BlocoFormulario, MensagemConversa, BlocoConversa, BlocoCaixa, BlocoImagem, BlocoGaleria, BlocoMidia, BlocoCores, BlocoEnvio, BlocoPrevia, BlocoOpcoes, ReqAcaoModulo, RespAcaoModulo } from './blocos';
 
 /** 200. 404 { erro, avisos? } se o id não está habilitado; 500 { erro, avisos } se montar() quebra ou demora;
  *  503 { erro } se uma montagem anterior ainda está rodando. O servidor confere só a forma mínima
@@ -425,6 +430,24 @@ export interface RespModulo {
   abas: { id: string; titulo: string; blocos: Bloco[]; alerta?: number }[]; // alerta: selo na aba (inteiro >= 1)
   avisos: string[];
   atualizar_em?: number; // segundos entre releituras, preso em 2..60 (sem número: 15)
+}
+
+/** POST /api/modulos/<id>/envio?destino=<chave> — corpo = bytes crus da imagem (não é JSON nem multipart).
+ *  Só para chave declarada em INFO["envios"] = { chave: { pasta (relativa a <dados>), tipos: ('png'|'jpeg'|'webp')[],
+ *  max_bytes (teto 8 MB), max_arquivos (teto 500), gancho?: boolean } }. Mesmas defesas de todo POST (token, Origin,
+ *  Sec-Fetch-Site, Host), sem exigir Content-Type. Content-Length obrigatório (411) e conferido antes de ler (413).
+ *  Tipo pelos bytes; SVG, GIF, outro tipo, cabeçalho mentiroso ou mais de 8192 px de lado / 40 Mpx: 415.
+ *  404 módulo ou chave fora da declaração; 409 pasta com atalho, limite de arquivos; 500 declaração inválida.
+ *  201 arquivo novo; 200 o mesmo conteúdo já estava lá (repetido: true, nada duplicado, gancho não roda de novo). */
+export interface RespEnvioModulo {
+  ok: true;
+  caminho: string; // relativo a <dados>: "<pasta>/<sha256 curto>.png|.jpg|.webp"
+  c: string | null; // para GET /api/modulos/<id>/arquivo?c=; null se a pasta não está em INFO["midia"]
+  tipo: 'png' | 'jpeg' | 'webp';
+  largura: number;
+  altura: number;
+  repetido: boolean;
+  avisos: string[]; // gancho que falhou (o arquivo já foi guardado)
 }
 
 // ---------------------------------------------------------------- módulos do núcleo que faltam ou quebram
@@ -451,6 +474,7 @@ export interface PainelJson {
   pacote?: string; // pasta dentro de .tune-up (padrão "painel-projeto"); atalho para fora é ignorado
   modulos?: string[]; // ids habilitados (padrão [])
   modulos_de_plugins?: string[]; // "plugin@marketplace:modulo" de plugin instalado (padrão []); a API usa só o id curto
+  acoes_de_plugins?: string[]; // "plugin@marketplace" de plugin instalado (padrão []); soma <installPath>/painel/acoes/*.json
   areas_acompanhamento?: { id: string; titulo?: string; regex: string }[]; // sem isso tudo cai em "geral"
   claude_projects_dir?: string; // padrão ~/.claude/projects
   projeto_mem?: string; // projeto no claude-mem (padrão: nome da pasta raiz)
