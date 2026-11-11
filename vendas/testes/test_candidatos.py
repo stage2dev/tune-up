@@ -184,12 +184,10 @@ class TesteRotaAcaoESubida(Pasta):
     
     def test_acao_da_tela_importa_pelo_servico(self):
         self.app.raiz = self.projeto
-        con = banco.abrir(self.pasta)
-        try:
-            banco.bater(con)
-            banco.registrar_servico(con, self.app.porta, self.app.marca)
-        finally:
-            con.close()
+        con = banco.abrir(self.pasta)  # fica aberta: sem conexão WAL não há -shm e a tela lê "serviço parado"
+        self.addCleanup(con.close)
+        banco.bater(con)
+        banco.registrar_servico(con, self.app.porta, self.app.marca)
         mod = carregar_modulo()
         self.assertIn("importar_candidatos", mod.INFO["acoes"])
         self.soltar("a.json", [BOA])

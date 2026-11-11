@@ -22,12 +22,10 @@ class Aba(Base):
         super().setUp()
         self.mod = carregar_modulo()
         self.ctx = {"raiz": self.projeto, "config": {"porta": PORTA_PAINEL}}
-        con = banco.abrir(self.pasta)
-        try:
-            banco.bater(con)
-            banco.registrar_servico(con, self.app.porta, self.app.marca)
-        finally:
-            con.close()
+        con = banco.abrir(self.pasta)  # fica aberta: sem conexão WAL não há -shm e a tela lê "serviço parado"
+        self.addCleanup(con.close)
+        banco.bater(con)
+        banco.registrar_servico(con, self.app.porta, self.app.marca)
 
     def aba(self):
         return [a for a in self.mod.montar(self.ctx, base=self.base)["abas"] if a["id"] == "leads"][0]["blocos"]

@@ -42,12 +42,10 @@ class Aba(Base):
         self.app.places_url = self.falsa.url
         self.mod = carregar_modulo()
         self.ctx = {"raiz": self.projeto, "config": {"porta": PORTA_PAINEL}}
-        con = banco.abrir(self.pasta)
-        try:
-            banco.bater(con)
-            banco.registrar_servico(con, self.app.porta, self.app.marca)
-        finally:
-            con.close()
+        con = banco.abrir(self.pasta)  # fica aberta: sem conexão WAL não há -shm e a tela lê "serviço parado"
+        self.addCleanup(con.close)
+        banco.bater(con)
+        banco.registrar_servico(con, self.app.porta, self.app.marca)
 
     def agir(self, acao, **dados):
         return self.mod.agir(self.ctx, acao, dados, base=self.base)
