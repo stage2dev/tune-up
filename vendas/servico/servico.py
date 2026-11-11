@@ -123,7 +123,8 @@ def rodar(args, avisar=print):
         finally:
             con.close()
         app.conector = conector(pasta_dados, app.porta, segredo, avisar)
-        ia = Atendente(app.abrir, cerebro.Cerebro(pasta_dados, raiz, args.openai_url), lambda: app.conector)
+        ia = Atendente(app.abrir, cerebro.Cerebro(pasta_dados, raiz, args.openai_url), lambda: app.conector,
+                       app=app)
         recebimento.registrar_gancho(ia.receber)
         for sinal in (signal.SIGINT, signal.SIGTERM):
             signal.signal(sinal, lambda *_: parar.set())

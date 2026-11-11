@@ -1,5 +1,5 @@
-"""Cérebro da IA de vendas: OpenAI Chat Completions com 4 ferramentas de lista fechada (guardar_dado_do_lead,
-qualificar, enviar_link, pedir_humano). Nunca manda `reasoning_effort` (quebra junto com function tools).
+"""Cérebro da IA de vendas: OpenAI Chat Completions com ferramentas de lista fechada (guardar_dado_do_lead,
+qualificar, enviar_link, pedir_humano e, só quando quem chama oferece, responder_em_audio). Nunca manda `reasoning_effort` (quebra junto com function tools).
 Antes de cada chamada reserva o pior caso no teto diário (BEGIN IMMEDIATE); não cabe = não chama. Modelo sem preço
 = não chama. Erro, tempo esgotado, teto, sem preço, sem chave, sem modelo ou exceção inesperada = texto None (nada a
 enviar) e a conversa fica "precisa de você". Aqui nada envia: quem chama decide."""
@@ -47,7 +47,7 @@ def _funcao(nome, descricao, propriedades):
         "additionalProperties": False}}}
 
 
-def ferramentas(links):
+def ferramentas(links, audio=False):
     lista = [
         _funcao("guardar_dado_do_lead", "Guarda um dado que o lead contou (ex.: nome, email, interesse).",
                 {"campo": {"type": "string"}, "valor": {"type": "string"}}),
@@ -57,6 +57,9 @@ def ferramentas(links):
     if links:  # sem links.json não há ferramenta de link (e uma chamada forçada é recusada)
         lista.append(_funcao("enviar_link", "Envia um link da lista do projeto.",
                              {"nome": {"type": "string", "enum": sorted(links)}}))
+    if audio:   # o código decide (servico/audio_ia.py): fora disso a ferramenta nem existe para o modelo
+        lista.append(_funcao("responder_em_audio", "A sua próxima resposta vai como nota de voz (o lead mandou áudio "
+                             "ou pediu áudio). Depois de chamar, escreva a resposta normalmente.", {}))
     return lista
 
 
@@ -90,20 +93,21 @@ class Cerebro:
     def __init__(self, pasta_dados, raiz, base_url=openai_cliente.URL_PADRAO, tempo=openai_cliente.TEMPO_S):
         self.pasta_dados, self.raiz, self.base, self.tempo = pasta_dados, raiz, base_url, tempo
 
-    def responder(self, con, conversa_id, mensagens):
+    def responder(self, con, conversa_id, mensagens, audio=False):
         """mensagens: [{"role": "user"|"assistant", "content": texto}]. Devolve {texto, links, precisa_de_voce,
-        motivo, chamadas, custo_usd}. texto None = nada a enviar. Exceção inesperada = nada a enviar, IA fora da
+        motivo, chamadas, custo_usd, como_audio}. audio=True oferece responder_em_audio. texto None = nada a enviar. Exceção inesperada = nada a enviar, IA fora da
         conversa e "precisa de você" (motivo erro_interno); só sobe se nem marcar der certo (quem chama registra)."""
-        r = {"texto": None, "links": [], "precisa_de_voce": False, "motivo": None, "chamadas": 0, "custo_usd": 0.0}
+        r = {"texto": None, "links": [], "precisa_de_voce": False, "motivo": None, "chamadas": 0, "custo_usd": 0.0,
+             "como_audio": False}
         try:
-            return self._responder(con, conversa_id, mensagens, r)
+            return self._responder(con, conversa_id, mensagens, r, audio)
         except Exception as e:
             if con.in_transaction:
                 con.execute("ROLLBACK")
             print("vendas: cérebro: erro_interno: %s" % type(e).__name__, file=sys.stderr)
             return self._parar(con, conversa_id, r, "erro_interno", True, type(e).__name__)
 
-    def _responder(self, con, conversa_id, mensagens, r):
+    def _responder(self, con, conversa_id, mensagens, r, audio=False):
         segredo = chave.ler(self.pasta_dados)
         modelo = banco.ler_config(con, "ia_modelo")
         if not segredo or not modelo:
@@ -117,7 +121,7 @@ class Cerebro:
         links = ler_links(self.raiz)
         historico = [{"role": "system", "content": conhecimento.instrucoes(saber)}] + list(mensagens)
         for _ in range(RODADAS_MAX):
-            corpo = {"model": modelo, "messages": historico, "tools": ferramentas(links), "tool_choice": "auto",
+            corpo = {"model": modelo, "messages": historico, "tools": ferramentas(links, audio), "tool_choice": "auto",
                      "max_completion_tokens": SAIDA_MAX}
             resposta, custo = self._chamar(con, segredo, par, corpo, r)
             if resposta is None:
@@ -139,7 +143,7 @@ class Cerebro:
                 return r
             historico.append({"role": "assistant", "content": msg.get("content"), "tool_calls": chamadas})
             for chamada in chamadas:
-                saida = self._ferramenta(con, conversa_id, chamada, links, r)
+                saida = self._ferramenta(con, conversa_id, chamada, links, r, audio)
                 historico.append({"role": "tool", "tool_call_id": str((chamada or {}).get("id") or ""),
                                   "content": json.dumps(saida, ensure_ascii=False)})
             if r["motivo"] == "pedir_humano":   # a IA saiu da conversa: nada a enviar e nenhuma chamada a mais
@@ -192,7 +196,7 @@ class Cerebro:
         r.update({"texto": None, "links": [], "precisa_de_voce": True, "motivo": motivo})
         return r
 
-    def _ferramenta(self, con, conversa_id, chamada, links, r):
+    def _ferramenta(self, con, conversa_id, chamada, links, r, audio=False):
         """Executa UMA chamada de ferramenta. Nome ou argumento fora da lista = recusado (nada acontece)."""
         try:
             nome = chamada["function"]["name"]
@@ -231,4 +235,7 @@ class Cerebro:
             marcar_precisa_de_voce(con, conversa_id, "pedir_humano", True)
             r["precisa_de_voce"], r["motivo"], r["texto"] = True, "pedir_humano", None
             return {"ok": True}
+        if nome == "responder_em_audio" and audio:   # não oferecida = desconhecida (chamada forçada não liga o áudio)
+            r["como_audio"] = True
+            return {"ok": True, "aviso": "Escreva a resposta; ela vai como áudio. Links vão em texto separado."}
         return {"ok": False, "erro": "ferramenta desconhecida"}

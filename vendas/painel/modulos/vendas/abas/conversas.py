@@ -36,6 +36,8 @@ MOTIVOS = {
     "nao_e_o_dono": "O teste de áudio só vai para o número do dono.",
     "teto_teste_audio_dia": "Acabou o limite de testes de áudio de hoje.",
     "teto_audio_dia": "Acabou o limite de áudios da IA de hoje.",
+    "teto_audio_contato_dia": "Acabou o limite de áudios da IA para este contato hoje; a resposta foi em texto.",
+    "audio_incerto": "O áudio da IA pode não ter chegado; confira no celular e responda você.",
     "teto_contatos_novos_dia": "Aquecimento: acabou o limite de contatos novos de hoje para este número.",
     "teto_diario": "A IA atingiu o teto de gasto do dia; responda você.",
     "sem_chave": "A IA está sem chave da OpenAI; configure na aba IA.",
@@ -161,7 +163,9 @@ def bloco_conversa(r):
     if rascunho:
         mensagens.append({"id": "rascunho%d" % rascunho["id"], "de": "ia", "texto": rascunho["texto"],
                           "quando": _quando(rascunho["criado_em"]),
-                          "nota": "Rascunho da IA: ainda NÃO foi enviado." if not rascunho["expirado"] else
+                          "nota": ("Rascunho da IA: ainda NÃO foi enviado." + (
+                              " Ao aprovar, vai como áudio (links em texto separado)." if rascunho.get("como_audio")
+                              else "")) if not rascunho["expirado"] else
                           "Rascunho com mais de 24 horas: expirou e não pode mais ser aprovado."})
         if not rascunho["expirado"]:
             dados_r = {"rascunho_id": rascunho["id"]}

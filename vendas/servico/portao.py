@@ -18,6 +18,7 @@ TETO_MINUTO = 8
 TETO_HORA = 200
 TETO_TESTE_AUDIO_DIA = 5
 TETO_AUDIO_DIA = 20  # padrão do "teto de áudio/dia" da IA; config teto_audio_dia troca
+TETO_AUDIO_CONTATO_DIA = 2  # áudios da IA por contato por dia; config teto_audio_contato_dia troca
 JANELA = (9, 19)     # campanha só das 09:00 às 18:59 no fuso do projeto (config "fuso")
 ATIVOS = ("pendente", "enviado", "incerto")  # o que conta como saída do número ('falhou' não saiu)
 CONTATO = object()   # marcador na chave: troca pelo id do contato dentro da reserva
@@ -141,6 +142,10 @@ def _motivo_teto(con, origem, contato_id, agora, inicio_dia, hoje, ignorar, inst
         limite = int(banco.ler_config(con, "teto_audio_dia", str(TETO_AUDIO_DIA)))
         if _contar(con, inicio_dia, "AND origem = ?", ("audio_ia",)) >= limite:
             return "teto_audio_dia"
+        limite = int(banco.ler_config(con, "teto_audio_contato_dia", str(TETO_AUDIO_CONTATO_DIA)))
+        if contato_id is not None and _contar(con, inicio_dia, "AND origem = ? AND envio_id IN (SELECT id FROM envios "
+                                              "WHERE contato_id = ?)", ("audio_ia", contato_id)) >= limite:
+            return "teto_audio_contato_dia"
     if "novos_dia" in teto:
         limite = teto_contatos_novos(con, hoje, instancia)
         ja = con.execute("SELECT 1 FROM envios WHERE contato_id = ? AND id <> ? AND instancia = ? AND estado IN (%s)"
@@ -342,6 +347,12 @@ def enviar_audio_ia(con, conector, instancia, numero, caminho_ogg, conversa_id, 
     """Chave = a da IA com sufixo de áudio."""
     return _enviar(con, conector, instancia, "audio_ia", numero, caminho_ogg,
                    [conversa_id, id_gatilho, balao, "audio"], agora=agora)
+
+
+def enviar_audio_rascunho(con, conector, instancia, numero, caminho_ogg, id_rascunho, agora=None):
+    """Rascunho 'enviar como áudio' aprovado: origem audio_ia (opt-out, pausa e tetos de áudio valem), chave = id
+    do rascunho."""
+    return _enviar(con, conector, instancia, "audio_ia", numero, caminho_ogg, ["rascunho", id_rascunho], agora=agora)
 
 
 def enviar_teste_audio(con, conector, instancia, numero, caminho_ogg, id_tela, agora=None):

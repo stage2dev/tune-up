@@ -2,14 +2,17 @@
 na aba Conversas e a aprovação sai pelo portão com a origem fixa 'rascunho_aprovado' (chave = id do rascunho, então
 aprovar duas vezes envia uma). 'automatico': a IA envia (origem 'ia'). O modo da conversa (conversas.modo_ia) vale
 sobre o padrão do projeto (config ia_modo_padrao, 'rascunho' se faltar). Um rascunho novo substitui o pendente da
-conversa; passa de 24 h e deixa de poder ser aprovado; opt-out depois do rascunho = negado no portão."""
+conversa; passa de 24 h e deixa de poder ser aprovado; opt-out depois do rascunho = negado no portão.
+Rascunho 'enviar como áudio' (como_audio, a IA usou responder_em_audio): nada é gerado antes da aprovação; aprovar
+gera e manda o áudio (origem audio_ia, chave audio_ia:rascunho:<id>) e os links em texto (rascunho_aprovado); falha
+da voz = o texto inteiro sai como rascunho_aprovado (servico/audio_ia.py)."""
 import datetime
 import json
 import logging
 import re
 import sqlite3
 
-from servico import banco, conversas, portao, saida
+from servico import audio_ia, banco, conversas, portao, saida
 
 UTC = datetime.timezone.utc
 MODOS_IA = ("rascunho", "automatico")
@@ -49,21 +52,23 @@ def _expirado(criado_em, agora):
 
 
 def pendente(con, conversa_id, agora=None):
-    """O rascunho pendente da conversa ({id, texto, criado_em, expirado}) ou None."""
-    r = con.execute("SELECT id, texto, criado_em FROM rascunhos WHERE conversa_id = ? AND estado = 'pendente'",
+    """O rascunho pendente da conversa ({id, texto, criado_em, expirado, como_audio}) ou None."""
+    r = con.execute("SELECT id, texto, criado_em, como_audio FROM rascunhos WHERE conversa_id = ? AND estado = 'pendente'",
                     (conversa_id,)).fetchone()
     if r is None:
         return None
-    return {"id": r["id"], "texto": r["texto"], "criado_em": r["criado_em"],
+    return {"id": r["id"], "texto": r["texto"], "criado_em": r["criado_em"], "como_audio": bool(r["como_audio"]),
             "expirado": _expirado(r["criado_em"], agora or datetime.datetime.now(UTC))}
 
 
-def guardar(con, conversa_id, gatilho_id, texto, permitidos=(), segredos=(), reescrever=None):
+def guardar(con, conversa_id, gatilho_id, texto, permitidos=(), segredos=(), reescrever=None, como_audio=False):
     """Passa o texto da IA pelo mesmo sanitizador da saída e guarda como rascunho (nada é enviado). Barrado = a
     conversa fica 'precisa de você'. O rascunho novo troca o pendente; o mesmo gatilho não gera dois."""
     pronto, motivo = saida.preparar(texto, permitidos, segredos, reescrever)
     if pronto is None:
         return saida._barrar(con, conversa_id, motivo)
+    if como_audio:   # o dono vê a fala exata (já cortada) e os links embaixo
+        pronto = audio_ia.para_rascunho(pronto)
     quando = banco.agora()
     con.execute("BEGIN IMMEDIATE")
     try:
@@ -73,8 +78,8 @@ def guardar(con, conversa_id, gatilho_id, texto, permitidos=(), segredos=(), ree
             return saida._barrar(con, conversa_id, "rascunho_em_aprovacao")
         con.execute("UPDATE rascunhos SET estado = 'substituido', decidido_em = ? WHERE conversa_id = ? "
                     "AND estado = 'pendente'", (quando, conversa_id))
-        cur = con.execute("INSERT INTO rascunhos (conversa_id, mensagem_id, texto, criado_em) VALUES (?, ?, ?, ?)",
-                          (conversa_id, gatilho_id, pronto, quando))
+        cur = con.execute("INSERT INTO rascunhos (conversa_id, mensagem_id, texto, criado_em, como_audio) VALUES "
+                          "(?, ?, ?, ?, ?)", (conversa_id, gatilho_id, pronto, quando, 1 if como_audio else 0))
         banco._exigir(cur)
         banco.registrar_evento(con, "ia_rascunho", json.dumps({"conversa_id": conversa_id, "rascunho_id":
                                                                cur.lastrowid}))
@@ -131,7 +136,7 @@ def aprovar(app, con, rascunho_id, texto=None, agora=None):
     quando a mensagem saiu (ou pode ter saído); recusa passageira (teto) devolve a pendente, opt-out o encerra.
     Tentativa anterior com outro texto (falhou) não é reenviada com o texto velho: 409."""
     agora = agora or datetime.datetime.now(UTC)
-    r = con.execute("SELECT d.id, d.estado, d.texto, d.criado_em, k.telefone FROM rascunhos d JOIN conversas c ON "
+    r = con.execute("SELECT d.id, d.estado, d.texto, d.criado_em, d.como_audio, k.telefone FROM rascunhos d JOIN conversas c ON "
                     "c.id = d.conversa_id JOIN contatos k ON k.id = c.contato_id WHERE d.id = ?",
                     (rascunho_id,)).fetchone()
     if r is None:
@@ -159,9 +164,12 @@ def aprovar(app, con, rascunho_id, texto=None, agora=None):
     elif final != r["texto"]:   # já aprovado: o portão só dedupa, um texto diferente nunca sai por aqui
         return 409, {"erro": "Este rascunho já foi enviado com outro texto."}
     try:
-        res = portao.enviar_rascunho_aprovado(con, app.conector, instancia, r["telefone"], final, rascunho_id,
-                                              agora=agora)
-        res = conversas.depois_de_duplicado(app, con, instancia, res, False)
+        res, texto_envio = audio_ia.aprovar(app, con, instancia, r["telefone"], final, rascunho_id) \
+            if r["como_audio"] else (None, final)
+        if texto_envio:   # o texto, ou só os links depois do áudio
+            res_texto = portao.enviar_rascunho_aprovado(con, app.conector, instancia, r["telefone"], texto_envio,
+                                                        rascunho_id, agora=agora)
+            res = res or conversas.depois_de_duplicado(app, con, instancia, res_texto, False)
     except BaseException:
         if travou:
             _decidir(con, rascunho_id, "pendente")
@@ -184,8 +192,10 @@ def destravar_na_subida(con):
     try:
         travados = [l["id"] for l in con.execute("SELECT id FROM rascunhos WHERE estado = 'aprovando'")]
         for rid in travados:
-            envio = con.execute("SELECT estado FROM envios WHERE chave_dedupe = ? AND estado <> 'negado'",
-                                ("rascunho_aprovado:%d" % rid,)).fetchone()
+            envio = con.execute("SELECT estado FROM envios WHERE chave_dedupe IN (?, ?) AND estado <> 'negado' ORDER BY "
+                                "estado IN ('enviado', 'incerto', 'pendente') DESC LIMIT 1", ("rascunho_aprovado:%d" % rid,
+                                                                                            "audio_ia:rascunho:%d" % rid)
+                                ).fetchone()   # o texto ou o áudio do rascunho
             estado = "aprovado" if envio is not None and envio["estado"] in ("enviado", "incerto", "pendente") \
                 else "pendente"
             if estado == "aprovado":

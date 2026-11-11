@@ -17,7 +17,9 @@
   envia pelo portão. O sanitizador vale nos dois.
 - Não responde: modo humano, pausada, opt-out, entrada confiável mais nova que o gatilho, rodada sem gatilho.
   Grupo, fromMe, mídia e mensagem velha nem chegam aqui (o recebimento não chama o gancho).
-- parar(): as esperas acabam sem responder e as threads terminam (join com tempo limite)."""
+- parar(): as esperas acabam sem responder e as threads terminam (join com tempo limite).
+- Áudio (servico/audio_ia.py): com `app` (voz) a rodada oferece responder_em_audio só quando o código decide; a IA
+  usou = o texto vai como nota de voz (falha da voz = texto) ou fica como rascunho 'enviar como áudio'."""
 import datetime
 import json
 import re
@@ -25,7 +27,7 @@ import sys
 import threading
 import time
 
-from servico import banco, cerebro, chave, rascunhos, saida
+from servico import audio_ia, banco, cerebro, chave, rascunhos, saida
 
 UTC = datetime.timezone.utc
 ESPERA_S = 12
@@ -91,10 +93,12 @@ def contexto(con, conversa_id, gatilho_id, limite=CONTEXTO):
 
 
 class Atendente:
-    """abrir() devolve uma conexão nova; obter_conector() o conector atual (ou None)."""
+    """abrir() devolve uma conexão nova; obter_conector() o conector atual (ou None); app = o do serviço (voz:
+    pasta_dados, conector, elevenlabs_url); sem app a IA nunca responde em áudio."""
 
-    def __init__(self, abrir, cerebro_ia, obter_conector, espera=ESPERA_S):
+    def __init__(self, abrir, cerebro_ia, obter_conector, espera=ESPERA_S, app=None):
         self.abrir, self.cerebro, self.obter_conector, self.espera = abrir, cerebro_ia, obter_conector, espera
+        self.app = app
         self._mutex = threading.Lock()
         self._prazos = {}      # conversa -> prazo (monotonic) do debounce
         self._gatilhos = {}    # conversa -> maior mensagem_id entregue pelo gancho nesta espera
@@ -172,13 +176,18 @@ class Atendente:
             cerebro.marcar_precisa_de_voce(con, conversa_id, "injecao_suspeita")
             banco.registrar_evento(con, "injecao_suspeita", json.dumps(
                 {"conversa_id": conversa_id, "mensagens": suspeitas}))
-        r = self.cerebro.responder(con, conversa_id, mensagens)   # rede, fora de transação
+        audio = audio_ia.oferecer(self.app, con, conversa_id, gatilho["id"])
+        r = self.cerebro.responder(con, conversa_id, mensagens, audio=audio)   # rede, fora de transação
         if not r["texto"]:
             return None
         texto = "\n".join([r["texto"]] + [u for u in r["links"] if u not in r["texto"]])
         permitidos, segredos = list(cerebro.ler_links(self.cerebro.raiz).values()), [chave.ler(self.cerebro.pasta_dados)]
         reescrever = lambda t, pedido: self.cerebro.reescrever(con, t, pedido)  # noqa: E731
         if rascunhos.modo_da_conversa(con, conversa_id) == "rascunho":   # nada sai: o dono aprova na tela
-            return rascunhos.guardar(con, conversa_id, gatilho["id"], texto, permitidos, segredos, reescrever)
+            return rascunhos.guardar(con, conversa_id, gatilho["id"], texto, permitidos, segredos, reescrever,
+                                     como_audio=audio and r.get("como_audio"))
+        if audio and r.get("como_audio"):
+            return audio_ia.entregar(self.app, con, conector, instancia, conversa["telefone"], conversa_id,
+                                     gatilho["id_externo"], texto, permitidos, segredos, reescrever)
         return saida.entregar(con, conector, instancia, conversa["telefone"], conversa_id, gatilho["id_externo"],
                               texto, permitidos=permitidos, segredos=segredos, reescrever=reescrever)

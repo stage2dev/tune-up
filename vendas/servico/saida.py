@@ -37,7 +37,7 @@ URL = re.compile(r"(?:https?://|www\.)[^\s<>\"'()\[\]{}]+"
                  r"(?::\d+)?(?:/[^\s<>\"'()\[\]{}]*)?", re.I)
 FERRAMENTA = re.compile(
     r"\b[A-Za-z_][A-Za-z0-9_.]*\s*\(\s*[{\[]"                        # nome({...}) / nome([...])
-    r"|\b(guardar_dado_do_lead|qualificar|enviar_link|pedir_humano)\s*\("
+    r"|\b(guardar_dado_do_lead|qualificar|enviar_link|pedir_humano|responder_em_audio)\s*\("
     r"|```|\"(name|arguments|tool_calls|function|role|content)\"\s*:"
     r"|\{\s*\"[^\"\n]{1,40}\"\s*:"                                   # objeto JSON
     r"|(^|\n)\s*(system|assistant|developer|user|tool|sistema|usu[aá]rio)\s*:"

@@ -206,6 +206,8 @@ MIGRACOES = [
             texto TEXT NOT NULL,
             criado_em TEXT NOT NULL)""",
     ],
+    # 16: rascunho que a IA quer mandar como áudio (responder_em_audio): o áudio só é gerado na aprovação
+    ["ALTER TABLE rascunhos ADD COLUMN como_audio INTEGER NOT NULL DEFAULT 0"],
 ]
 VERSAO = len(MIGRACOES)
 PARECE_SEGREDO = re.compile(r"chave|senha|token|segredo|secret|key|password", re.I)
