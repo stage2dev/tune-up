@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shlex
+import stat
 import subprocess
 import sys
 import tempfile
@@ -19,6 +20,7 @@ import time
 
 from catalogo import (ErroAcao, RE_ID_ACAO, carregar_catalogo, montar, nome_da_sessao,  # noqa: F401
                       publica, texto_livre, validar_params)
+from habilidades import anexar as anexar_habilidades, pedido as pedido_com_habilidades
 import mascara
 import modulos
 from estado_exec import GRACA, OCIOSO, mapear_estado  # noqa: F401
@@ -31,6 +33,8 @@ RE_SESSAO = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
 RE_SAIDA = re.compile(r"backgrounded\s*·\s*([0-9a-f]{6,16})\b")
 RE_ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 ATIVOS = ("rodando", "precisa_de_voce")
+PERGUNTA_MAX = 64 * 1024
+PERGUNTA_VALE = 120  # s: quanto a conversa pode andar depois da pergunta sem ela ficar para trás
 RESPONDIVEIS = ("terminou", "parada")  # a sessão acabou a vez dela: dá para mandar outra mensagem
 TTL_AGENTES = 3
 MAX_REGISTRO = 200
@@ -171,7 +175,7 @@ class Lancador:
         return "%s attach %s" % (shlex.quote(self.cfg["claude_bin"]), exec_id)
 
     def _estado(self, reg, agente, agora):
-        ocioso = None
+        ocioso = ult = None
         sid = str((agente or {}).get("sessionId") or reg.get("sessao_id") or "")
         if agente and sid:
             try:
@@ -179,10 +183,15 @@ class Lancador:
                 ult = transcricao.ultima_atividade(self.cfg["projects_dir"], sid, self.cfg["workspace"])
                 ocioso = None if ult is None else time.time() - ult
             except Exception:
-                ocioso = None
+                ocioso = ult = None
         estado = mapear_estado(reg, agente, agora, ocioso)
         # Acabou de receber uma resposta: o CLI ainda pode mostrar a linha velha (done/idle) por alguns segundos.
-        if estado in RESPONDIVEIS and agora - float(reg.get("respondida_ts") or 0) < GRACA:
+        # Vale só enquanto a conversa não andou depois da resposta; se já escreveu, o "terminou" é de verdade.
+        respondida = float(reg.get("respondida_ts") or 0)
+        # A linha velha também pode ser a da pergunta já respondida (blocked, sem processo depois do stop).
+        sem_processo = not (agente or {}).get("status") and not (agente or {}).get("pid")
+        velho = estado in RESPONDIVEIS or (estado == "precisa_de_voce" and sem_processo)
+        if velho and agora - respondida < GRACA and (ult is None or ult <= respondida + 2):
             return "rodando"
         return estado
 
@@ -203,12 +212,27 @@ class Lancador:
         out["grupo"] = out["area"] = reg.get("grupo") or reg.get("area") or ""
         sid = reg.get("sessao_id") or ""
         # Responder acorda a sessão guardada pelo CLI (com as travas dela): só vale se ela ainda está na lista.
-        responde = (estado in RESPONDIVEIS and bool(RE_SESSAO.match(sid))
-                    and agentes is not None and agentes.get(reg["id"]) is not None
-                    and self._regras_cabem(reg, {} if caixa is None else caixa))
+        linha = (agentes or {}).get(reg["id"])
+        # Medido no CLI 2.1.322: a vez acabou com uma pergunta escrita -> state=blocked + status=idle (sem
+        # waitingFor). É "precisa de você", mas a resposta é texto comum: vale como vez terminada.
+        perguntou = (estado == "precisa_de_voce" and linha is not None and not linha.get("waitingFor")
+                     and str(linha.get("status") or "").lower() == "idle")
+        # As regras de negar dos módulos de agora têm de caber nas que a sessão levou (vale para os dois jeitos).
+        acorda = bool(RE_SESSAO.match(sid)) and linha is not None and (
+            (estado in RESPONDIVEIS or perguntou or estado in ATIVOS)
+            and self._regras_cabem(reg, {} if caixa is None else caixa))
+        responde = acorda and (estado in RESPONDIVEIS or perguntou)
         out.update(sessao_id=sid, params=reg.get("params") or {}, estado=estado,
                    comando_attach=self.comando_attach(reg["id"]), modelo=reg.get("modelo") or "",
-                   esforco=reg.get("esforco") or "", pode_responder=responde)
+                   esforco=reg.get("esforco") or "", pode_responder=responde, habilidades=reg.get("habilidades") or [],
+                   # mandar mensagem com a sessão trabalhando ou esperando: para a vez dela e continua na mesma sessão
+                   pode_interromper=acorda and estado in ATIVOS)
+        # Espera presa no terminal (pedido de permissão): escrever no chat cancela o pedido, não o responde.
+        out["espera_terminal"] = bool(estado == "precisa_de_voce" and not perguntou
+                                      and linha is not None and linha.get("waitingFor"))
+        pergunta = self._pergunta(sid, reg) if responde else None
+        if pergunta:
+            out["pergunta"] = pergunta
         for k in ("fase", "parte"):
             if reg.get(k):
                 out[k] = reg[k]
@@ -254,7 +278,7 @@ class Lancador:
     def execucao(self, exec_id):
         return next((e for e in self.execucoes() if e["id"] == exec_id), None)
 
-    def iniciar(self, acao_id, params):
+    def iniciar(self, acao_id, params, habilidades=None):
         """Valida, confere duplicata e teto, dispara e registra. Levanta ErroAcao."""
         if not isinstance(acao_id, str) or not RE_ID_ACAO.match(acao_id):
             raise ErroAcao("Ação inválida.")
@@ -265,8 +289,7 @@ class Lancador:
         valores = validar_params(acao, params, self.obter_estado() if precisa_estado else {})
         mascarados = {k: mascara.mascarar(v) if isinstance(v, str) else v for k, v in valores.items()}
         prompt, nome = montar(acao["_prompt"], valores), nome_da_sessao(acao, mascarados)
-        if not prompt or prompt.startswith("-"):
-            raise ErroAcao("O pedido ficou vazio.")
+        prompt, nomes_hab = pedido_com_habilidades(self.cfg, acao["grupo"], prompt, habilidades)  # vazio: 400
         chave = json.dumps(valores, sort_keys=True, ensure_ascii=False)
         try:  # INFO["negar"] dos módulos vale em toda ação; lido antes das travas, com tempo limite
             extra = modulos.regras_de_negar(self.cfg)
@@ -303,7 +326,7 @@ class Lancador:
             reg = {"id": m.group(1), "sessao_id": "", "nome": nome, "acao": acao_id, "grupo": acao["grupo"],
                    "titulo": acao["titulo"], "params": valores, "iniciada_em": agora_iso(t),
                    "iniciada_ts": t, "cwd": self.cfg["workspace"], "risco": acao["risco"],
-                   "modelo": modelo, "esforco": esforco, "negar_modulos": sorted(extra)}
+                   "modelo": modelo, "esforco": esforco, "negar_modulos": sorted(extra), "habilidades": nomes_hab}
             for p in acao["params"]:
                 if p["tipo"] in ("fase", "parte") and valores.get(p["nome"]):
                     reg[p["tipo"]] = valores[p["nome"]]
@@ -311,8 +334,53 @@ class Lancador:
         self.esquecer_agentes()
         return self._como_execucao(reg, {}, t)
 
-    def responder(self, exec_id, texto):
+    def _arquivo_pergunta(self, sid):
+        return os.path.join(self.cfg["dados_dir"], "perguntas", sid + ".json")
+
+    def _pergunta(self, sid, reg=None):
+        """Pergunta de múltipla escolha que a sessão quis fazer (gravada pelo gancho em travas.py).
+
+        O arquivo mora numa pasta em que a sessão pode escrever: é lido como dado não confiável
+        (só arquivo comum, sem bloquear, até 64 KB, forma conferida, texto mascarado) e qualquer
+        problema vira "sem pergunta". Pergunta velha não volta: tem de ser mais nova que o começo
+        da vez (início ou última resposta) e a conversa não pode ter seguido muito depois dela.
+        """
+        try:
+            arq = self._arquivo_pergunta(sid)
+            fd = os.open(arq, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0))
+            with os.fdopen(fd, "rb") as f:
+                info = os.fstat(f.fileno())
+                if not stat.S_ISREG(info.st_mode) or info.st_size > PERGUNTA_MAX:
+                    return None
+                dado = json.loads(f.read(PERGUNTA_MAX + 1).decode("utf-8"))
+            comeco = max(float((reg or {}).get("iniciada_ts") or 0), float((reg or {}).get("respondida_ts") or 0))
+            if info.st_mtime < comeco - 2:
+                return None
+            import transcricao
+            ult = transcricao.ultima_atividade(self.cfg["projects_dir"], sid, self.cfg["workspace"])
+            if ult is not None and ult > info.st_mtime + PERGUNTA_VALE:
+                return None  # a sessão seguiu trabalhando depois de perguntar: a pergunta ficou para trás
+            from travas import limpar_perguntas
+            lista = dado.get("perguntas") if isinstance(dado, dict) else None
+            perguntas = limpar_perguntas({"questions": [
+                {"question": q.get("pergunta"), "header": q.get("cabecalho"), "multiSelect": q.get("multipla"),
+                 "options": [{"label": o.get("rotulo"), "description": o.get("descricao")}
+                             for o in (q.get("opcoes") if isinstance(q.get("opcoes"), list) else [])
+                             if isinstance(o, dict)]}
+                for q in (lista if isinstance(lista, list) else []) if isinstance(q, dict)]})
+            for q in perguntas:  # mesma máscara de tudo que a tela mostra de uma sessão
+                q["pergunta"], q["cabecalho"] = mascara.mascarar(q["pergunta"]), mascara.mascarar(q["cabecalho"])
+                for o in q["opcoes"]:
+                    o["rotulo"], o["descricao"] = mascara.mascarar(o["rotulo"]), mascara.mascarar(o["descricao"])
+        except Exception:  # arquivo ausente, ruim ou trocado por outra coisa
+            return None
+        return {"perguntas": perguntas} if perguntas else None
+
+    def responder(self, exec_id, texto, interromper=False, habilidades=None):
         """Manda outra mensagem para a MESMA sessão. Levanta ErroAcao.
+
+        Com `interromper`, vale também para sessão trabalhando ou esperando no terminal: a vez dela
+        é parada (como um Esc) e a mensagem entra na mesma conversa (medido no CLI 2.1.322).
 
         Medido no CLI 2.1.322: `claude --bg --resume <sessionId> "texto"` SEM outras opções acorda a
         sessão com as opções guardadas (nome, modelo, esforço, travas) e o mesmo id. Com o processo
@@ -323,7 +391,7 @@ class Lancador:
         reg = self.achar(exec_id)
         if reg is None:
             raise ErroAcao("Não achei essa conversa.", 404)
-        texto = texto_livre(texto)
+        texto = anexar_habilidades(self.cfg, reg.get("grupo") or reg.get("area"), texto_livre(texto), habilidades)[0]
         try:  # a sessão acorda com as travas de quando começou: regra de módulo nova não entraria nela
             agora_negar = modulos.regras_de_negar(self.cfg)
         except modulos.ErroModulo as e:
@@ -335,8 +403,11 @@ class Lancador:
         with self._trava:
             todas = self.execucoes(forcar=True)
             ex = next((e for e in todas if e["id"] == exec_id), None)
-            if ex is None or not ex["pode_responder"]:
+            ativa = bool(ex) and ex["estado"] in ATIVOS
+            if ex is None or not (ex["pode_responder"] or (interromper and ex["pode_interromper"])):
                 estado = (ex or {}).get("estado")
+                if estado in ATIVOS and (ex or {}).get("pode_interromper") is False:
+                    raise ErroAcao("A sessão ainda está subindo. Tente de novo em alguns segundos.", 409, exec_id)
                 if estado == "rodando":
                     raise ErroAcao("O Claude ainda está trabalhando. Espere ele terminar para responder.", 409, exec_id)
                 if estado == "precisa_de_voce":
@@ -344,7 +415,7 @@ class Lancador:
                                    409, exec_id)
                 raise ErroAcao("Esta conversa não pode mais ser continuada. Comece uma nova.", 409, exec_id)
             ativas = [e for e in todas if e["estado"] in ATIVOS]
-            if len(ativas) >= self.cfg["max_execucoes"]:
+            if not ativa and len(ativas) >= self.cfg["max_execucoes"]:  # a que já roda já ocupa a vaga dela
                 raise ErroAcao("Já tem %d rodando ao mesmo tempo. Espere uma acabar ou pare uma."
                                % len(ativas), 409, ativas[0]["id"])
             cod, out, err = self.rodar([bin_, "stop", exec_id], ws, 20)
@@ -378,6 +449,10 @@ class Lancador:
                 self.dormir(2)
             t = self.relogio()
             self.registro.atualizar(exec_id, respondida_ts=t, terminou_em="", parada_pelo_painel=False)
+            try:
+                os.unlink(self._arquivo_pergunta(ex["sessao_id"]))  # a pergunta foi respondida
+            except OSError:
+                pass
         self.esquecer_agentes()
         out = self._como_execucao(self.achar(exec_id), {}, t)
         out["estado"] = self._ultimo[exec_id] = "rodando"  # acabou de acordar; a lista do CLI ainda não foi relida

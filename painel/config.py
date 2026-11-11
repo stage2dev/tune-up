@@ -221,6 +221,25 @@ def _areas(bruto, avisos):
     return ok
 
 
+def _pastas_habilidades(bruto, raiz, avisos):
+    """habilidades_pastas: [{titulo, pasta}] de skills fora da lista do Claude (o Claude lê o SKILL.md)."""
+    lista = bruto.get("habilidades_pastas", [])
+    if not isinstance(lista, list):
+        avisos.append("painel.json: habilidades_pastas precisa ser uma lista; ignorei")
+        return []
+    ok = []
+    for p in lista[:MAX_AREAS]:
+        pasta = _caminho(p.get("pasta"), raiz) if isinstance(p, dict) else None
+        titulo = p.get("titulo") if isinstance(p, dict) and isinstance(p.get("titulo"), str) else ""
+        if not pasta or not RE_NOME_PROJETO.match(titulo.strip()) or re.search(r"[\x00-\x1f\x7f]", pasta):
+            avisos.append("painel.json: pasta de skills inválida ignorada (precisa de titulo e pasta)")
+        elif not os.path.isdir(pasta):
+            avisos.append("painel.json: pasta de skills %r não existe; ignorei" % titulo.strip())
+        else:
+            ok.append({"titulo": titulo.strip(), "pasta": pasta})
+    return ok
+
+
 def migrar_registro_antigo(cfg, antiga=None):
     """Uma vez só: copia o registro de execuções de <painel>/dados (versão antiga) para dados_dir.
 
@@ -336,6 +355,7 @@ def carregar(raiz=None, arquivo=None, home=None):
         modulos=_modulos(bruto, avisos),
         home=home or os.path.expanduser("~"),
         areas_acompanhamento=_areas(bruto, avisos),
+        habilidades_pastas=_pastas_habilidades(bruto, raiz, avisos),
         painel_dir=PAINEL,
         # registro das execuções e arquivos das ações; pacote fora de .tune-up não recebe escrita
         dados_dir=os.path.join(pacote, "dados") if pacote_ok or not os.path.lexists(pacote)

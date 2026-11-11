@@ -2,6 +2,35 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## 2.7.1
+
+A module action that says it failed now shows as an error, and a second plugin joins the marketplace.
+
+- `POST /api/modulos/<id>/acao`: when the module's `agir` returns `{ok: false, mensagem}`, the panel answers 422 with that message, so the screen shows an error and never "Feito.".
+- New plugin `tune-up-vendas` 0.1.0 in `vendas/` (second marketplace entry, own README, CHANGELOG and tests; CI step "Sales module tests"). It is off until a project lists it in `modulos_de_plugins`. Nothing in the core imports it.
+
+## 2.7.0
+
+The panel chat has a list of skills to pick from.
+
+- The left column of the chat has two views, "Conversas" and "Skills". The skills list has a search box and groups by theme (marketing, sales, design and UX, code, review and security, database, research and documents, video and media, others) or by plugin. Click a skill or drag it into the message box; it becomes a tag above the text (up to 6 per message). The request balloon shows the skills that went with it.
+- `GET /api/habilidades` lists skills from installed plugins, the user's skills, the project's skills and optional extra folders (`habilidades_pastas` in `painel.json`). Skills of a disabled plugin or of an extra folder are marked "off the list": the session reads their `SKILL.md` by path instead of calling the Skill tool. Skills of `tune-up` and `tune-up-*` plugins show as always on and cannot be picked. Theme rules live in `painel/habilidades.json` (the skill and plugin name are matched before the description); the project package can add `habilidades.json` with its own rules and a plugin-to-group map.
+- `POST /api/execucoes` and `POST .../responder` take `habilidades` (ids from the list, chat levels only). The server, never the screen, appends a short block to the prompt naming the chosen skills and saying the tune-up flow always applies; the block is stripped from the transcript and the event carries `habilidades`. A message that already contains one of the block's marker lines is refused.
+- Skill files are untrusted: read without blocking, regular files only, 8 KB cap, names and folder names checked, descriptions masked, no file path sent to the screen. A plugin registry or settings file that cannot be read becomes a warning in the list.
+- Picking skills tells the session which ones to use; it does not unload the others. Measured on CLI 2.1.322: `--settings` with `enabledPlugins` does start a session with fewer plugins, but the option is lost when the session is resumed, so the panel does not use it.
+- `painel/web/dist` rebuilt.
+
+## 2.6.0
+
+The panel chat no longer needs the terminal.
+
+- One screen: `/` and `/conversa/:id` draw the same chat (conversation list, conversation, box at the bottom) with a "who is working" side panel that shows the main session and its sub-agents live.
+- Questions come to the chat. In chat levels (and actions with `"perguntas_no_chat": true`) the guard hook denies `AskUserQuestion`, stores the options and tells the session to ask in text and end its turn; the run then carries `pergunta` and `pode_responder`. Option buttons only fill the box; the person sends. Measured on CLI 2.1.322: a session blocked on `AskUserQuestion` has not written the question to the transcript yet, and a turn that ends with a written question shows as `blocked` + `idle`.
+- Send a message while the session works or waits: `POST .../responder {texto, interromper: true}` (`pode_interromper`) stops its turn and wakes the same session with the message. On a permission prompt stuck in the terminal (`espera_terminal`) this cancels the prompt; the screen says so and keeps "open in terminal". The refusal for changed module rules covers this path too.
+- The stored question is untrusted: read without blocking, regular files only, 64 KB cap, masked like everything else shown from a session, and dropped when it is older than the current turn or the session moved on.
+- "Working" after a reply now ends as soon as the session has answered, not after a fixed wait. The CLI's automatic "No response requested." line is hidden.
+- `painel/web/dist` rebuilt.
+
 ## 2.5.0
 
 The panel closes the token door, masks what it shows and lets modules act.

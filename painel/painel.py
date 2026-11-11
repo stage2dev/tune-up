@@ -24,6 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer  # noqa: E40
 
 import config  # noqa: E402
 import estaticos  # noqa: E402
+import habilidades  # noqa: E402
 import lancador as lanc  # noqa: E402
 import leitor  # noqa: E402
 import mascara  # noqa: E402
@@ -261,6 +262,8 @@ def fazer_handler(app):
                 return self._agentes(query)
             if caminho == "/api/modulos":
                 return self._json(200, modulos.listar(app.cfg))
+            if caminho == "/api/habilidades":
+                return self._json(200, habilidades.para_tela(habilidades.listar(app.cfg)))
             m = RE_ROTA_MODULO.match(caminho)
             if m:
                 fresco = (query.get("fresco") or ["0"])[0] in ("1", "true")
@@ -308,7 +311,7 @@ def fazer_handler(app):
             caminho = urllib.parse.urlsplit(self.path).path
             try:
                 if caminho == "/api/execucoes":
-                    ex = app.lancador.iniciar(corpo.get("acao"), corpo.get("params"))
+                    ex = app.lancador.iniciar(corpo.get("acao"), corpo.get("params"), corpo.get("habilidades"))
                     app.estado.invalidar()
                     return self._json(201, {"execucao": para_tela(ex)})
                 m = RE_ROTA_EXEC.match(caminho)
@@ -319,7 +322,9 @@ def fazer_handler(app):
                 if m and m.group(2) == "abrir":
                     return self._json(200, app.lancador.abrir(m.group(1)))
                 if m and m.group(2) == "responder":
-                    ex = app.lancador.responder(m.group(1), corpo.get("texto"))
+                    ex = app.lancador.responder(m.group(1), corpo.get("texto"),
+                                                interromper=corpo.get("interromper") is True,
+                                                habilidades=corpo.get("habilidades"))
                     app.estado.invalidar()
                     return self._json(200, {"execucao": para_tela(ex)})
                 m = RE_ROTA_MODULO_ACAO.match(caminho)

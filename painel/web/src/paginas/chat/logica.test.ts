@@ -196,3 +196,17 @@ describe('pedacosDoTexto', () => {
     expect(pedacosDoTexto('linha 1\nlinha 2')).toEqual([{ codigo: false, texto: 'linha 1\nlinha 2' }]);
   });
 });
+
+describe('montarConversa com skills', () => {
+  it('poe as skills no balao do pedido e nas respostas', () => {
+    const ev = [
+      { n: 1, ts: '', tipo: 'usuario', texto: 'prompt' },
+      { n: 2, ts: '', tipo: 'usuario', texto: 'mais uma', habilidades: ['p:x'] },
+      { n: 3, ts: '', tipo: 'usuario', texto: 'sem', habilidades: [] },
+    ] as EventoExecucao[];
+    const itens = montarConversa('oi', ev, ['p:a', 'b']);
+    expect(itens[0]).toMatchObject({ tipo: 'dono', habilidades: ['p:a', 'b'] });
+    expect(itens[1]).toMatchObject({ tipo: 'dono', habilidades: ['p:x'] });
+    expect(itens[2]).toMatchObject({ tipo: 'dono', habilidades: undefined });
+  });
+});

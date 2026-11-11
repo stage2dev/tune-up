@@ -1,8 +1,8 @@
 // Ganchos de busca (TanStack Query v5). Regra de tela: enquanto carrega, use `isPending`
 // (nunca isLoading) para mostrar esqueleto; so mostre "vazio" quando !isPending && !isError.
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, ErroApi } from './cliente';
-import type { Acao, Acompanhamento, DadosModulo, EstadoPainel, Eventos, Execucao, ListaModulos, ReqAcaoModulo, RespAcaoModulo, RespModelos, Sessao } from './tipos';
+import type { Acao, Acompanhamento, DadosModulo, EstadoPainel, Eventos, Execucao, ListaModulos, ReqAcaoModulo, RespAcaoModulo, RespHabilidades, RespModelos, Sessao } from './tipos';
 import { obterSessao } from './cliente';
 import { buscarEventos, intervaloEventos, type EventosCache } from './eventos';
 
@@ -15,6 +15,7 @@ export const chaves = {
   /** Eventos com as falas inteiras (?inteiro=1, tela de conversa). Chave propria: nao mistura com o texto cortado. */
   eventosInteiro: (id: string) => ['eventos-inteiro', id] as const,
   modelos: ['modelos'] as const,
+  habilidades: ['habilidades'] as const,
   modulos: ['modulos'] as const,
   modulo: (id: string) => ['modulo', id] as const,
   acompanhamento: ['acompanhamento'] as const,
@@ -103,12 +104,31 @@ export const useModelos = () =>
     refetchInterval: (q) => (Object.values(q.state.data ?? {}).includes('verificando') ? 4000 : false),
   });
 
+/** GET /api/habilidades: lista de skills do chat. Poucas buscas (cache de 5 min); 404 = servidor antigo, sem repetir. */
+export const useHabilidades = () =>
+  useQuery({
+    queryKey: chaves.habilidades,
+    queryFn: () => apiGet<RespHabilidades>('/api/habilidades'),
+    staleTime: 5 * 60_000,
+    retry: (n, e) => !(e instanceof ErroApi && e.status === 404) && n < 2,
+  });
+
+/** Erro 400 ao enviar com skills: a lista pode ter mudado; busca de novo para a tela atualizar sozinha. */
+function atualizarSeHabilidadeInvalida(qc: QueryClient, e: unknown, habilidades?: string[]) {
+  if (habilidades?.length && e instanceof ErroApi && e.status === 400) void qc.invalidateQueries({ queryKey: chaves.habilidades });
+}
+
 /** POST /api/execucoes/{id}/responder: continua a mesma sessao. */
 export function useResponder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, texto }: { id: string; texto: string }) =>
-      apiPost<{ execucao: Execucao }>(`/api/execucoes/${encodeURIComponent(id)}/responder`, { texto }).then((r) => r.execucao),
+    onError: (e, v) => atualizarSeHabilidadeInvalida(qc, e, v.habilidades),
+    mutationFn: ({ id, texto, interromper, habilidades }: { id: string; texto: string; interromper?: boolean; habilidades?: string[] }) =>
+      apiPost<{ execucao: Execucao }>(`/api/execucoes/${encodeURIComponent(id)}/responder`, {
+        texto,
+        ...(interromper ? { interromper: true } : {}),
+        ...(habilidades?.length ? { habilidades } : {}),
+      }).then((r) => r.execucao),
     onSuccess: (e) => {
       // Troca a execucao na lista ja (sem esperar os 3 s) e religa a busca de eventos, que tinha parado no fim.
       qc.setQueryData<Execucao[]>(chaves.execucoes, (l) => l?.map((x) => (x.id === e.id ? e : x)));
@@ -123,7 +143,8 @@ export function useResponder() {
 export function useIniciarExecucao() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (corpo: { acao: string; params: Record<string, string> }) =>
+    onError: (e, v) => atualizarSeHabilidadeInvalida(qc, e, v.habilidades),
+    mutationFn: (corpo: { acao: string; params: Record<string, string>; habilidades?: string[] }) =>
       apiPost<{ execucao: Execucao }>('/api/execucoes', corpo).then((r) => r.execucao),
     onSuccess: () => qc.invalidateQueries({ queryKey: chaves.execucoes }),
   });

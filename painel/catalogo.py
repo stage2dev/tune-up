@@ -118,7 +118,9 @@ def validar_acao(a):
             # código e crédito sempre pedem confirmação, diga o JSON o que disser
             "confirmar": bool(a.get("confirmar")) or a["risco"] in ("codigo", "credito"),
             "params": params, "modelos": _modelos(a), "esforco": esforco, "equipe": equipe.strip()[:60],
-            "_prompt": prompt.strip(), "_nome": nome_sessao, "_travas": trv, "_substitui": a.get("substitui") is True}
+            "_prompt": prompt.strip(), "_nome": nome_sessao, "_travas": trv, "_substitui": a.get("substitui") is True,
+            # pergunta de múltipla escolha aparece no chat (a sessão não fica presa esperando o terminal)
+            "_perguntas_chat": grupo == GRUPO_CHAT or a.get("perguntas_no_chat") is True}
 
 
 def _arquivos(pastas):
