@@ -18,6 +18,7 @@ sys.path.insert(0, PAINEL)
 import catalogo  # noqa: E402
 import trabalho  # noqa: E402
 import travas  # noqa: E402
+import travas_validar  # noqa: E402
 
 RULES = os.path.join(STUDIO, "regras", "bash-estudio.json")
 FIXTURE = os.path.join(PAINEL, "tests_reais", "acao_estudio.json")
@@ -135,7 +136,7 @@ class RulesFile(unittest.TestCase):
 
     def test_rules_pass_core_validation(self):
         with open(RULES, encoding="utf-8") as f:
-            out = travas.validar_travas({"negar": json.load(f)["negar"]})
+            out = travas_validar.validar_travas({"negar": json.load(f)["negar"]})
         self.assertEqual(len(out["regras_negar"]), 7)
 
 

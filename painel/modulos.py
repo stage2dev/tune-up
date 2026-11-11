@@ -23,7 +23,7 @@ import time
 
 import dono
 import modulos_plugin
-import travas
+import travas_validar
 
 RE_ID = re.compile(r"^[a-z0-9_-]{1,40}$")
 NIVEIS = ("info", "atencao", "critico")
@@ -387,7 +387,7 @@ def _ler_negar(cfg, mid):
     if not isinstance(i, dict) or "negar" not in i:
         return []
     try:
-        trv = travas.validar_travas({"negar": i["negar"]})
+        trv = travas_validar.validar_travas({"negar": i["negar"]})
         if trv["regras_negar"]:
             raise ValueError("só regras de permissão em texto")
     except ValueError as e:

@@ -98,3 +98,13 @@ export const useAgentes = (todos: boolean) =>
     refetchIntervalInBackground: false,
     placeholderData: keepPreviousData,
   });
+
+/** Agentes de UMA sessao (?sessao=<id>&todos=1: todos os sub-agentes, para o retrato final).
+ *  Atualiza a cada 3 s so enquanto `ativa`; parada, fica o ultimo retrato. */
+export const useAgentesDaSessao = (id: string | undefined, ativa: boolean) =>
+  useQuery({
+    queryKey: ['agentes', 'sessao', id ?? ''] as const,
+    enabled: !!id,
+    queryFn: () => apiGet<unknown>(urlAgentes(true, id)).then(normalizarAgentes),
+    refetchInterval: ativa ? 3000 : false,
+  });

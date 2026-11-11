@@ -214,15 +214,45 @@ export interface Execucao {
   modelo: string; // apelido com que a sessão saiu; '' = padrão do CLI
   esforco: string; // '' = padrão do CLI
   falha?: 'max_minutos' | 'max_bloqueado_min'; // parada pelo painel ao passar do teto (estado 'parada')
-  /** true quando dá para mandar outra mensagem (estado terminou ou parada, com sessao_id conhecido). */
+  /** true quando dá para mandar outra mensagem sem interromper nada: estado terminou ou parada, e também
+   *  precisa_de_voce quando a vez acabou com uma pergunta escrita (o Claude perguntou e espera o texto).
+   *  Vence `pode_interromper` quando os dois vêm true. */
   pode_responder: boolean;
+  /** true quando a sessão trabalha ou espera (rodando / precisa_de_voce) e dá para mandar mensagem com
+   *  `interromper: true`: a vez dela para (como um Esc) e a mensagem entra na mesma conversa. */
+  pode_interromper: boolean;
+  /** Pergunta de múltipla escolha que a sessão quis fazer. Nos níveis do chat o AskUserQuestion é barrado
+   *  (a sessão não fica presa no terminal): ela escreve a pergunta como texto e termina a vez, e o painel
+   *  guarda as opções aqui (texto mascarado como o resto; vale só para a vez atual). Só vem quando `pode_responder` (o estado costuma ser precisa_de_voce); some quando
+   *  o dono responde. A resposta é texto
+   *  livre em /responder (a tela pode montar o texto a partir dos botões, ex. "Azul"). */
+  pergunta?: PerguntaChat;
+  /** true quando a espera é um pedido preso no terminal (permissão): `precisa_de_voce` sem `pode_responder`.
+   *  Mandar mensagem com `interromper` CANCELA o pedido (não o aprova); aprovar é só no terminal (/abrir). */
+  espera_terminal: boolean;
+  /** Nomes das skills escolhidas no pedido inicial (servidor antigo nao manda). */
+  habilidades?: string[];
+}
+
+export interface PerguntaChat {
+  perguntas: {
+    pergunta: string;
+    cabecalho: string; // '' se não veio
+    multipla: boolean; // true = pode marcar mais de uma
+    opcoes: { rotulo: string; descricao: string }[]; // até 6; pode vir vazia
+  }[]; // 1 a 4
 }
 
 /** POST /api/execucoes/{id}/responder — continua a MESMA sessão (mesmo id, mesmas travas, modelo e esforço).
  *  200 { execucao }. 400 texto vazio/ruim (até 6000 letras, aceita quebra de linha); 404; 409 se a sessão
- *  ainda trabalha ou espera resposta no terminal (precisa_de_voce: use /abrir); 500 se o CLI falhar. */
+ *  ainda trabalha ou espera e o pedido veio sem `interromper`, ou se a sessão ainda está subindo; 500 se o CLI falhar. */
 export interface PedidoResposta {
   texto: string;
+  /** true = vale também com a sessão rodando ou em precisa_de_voce (`pode_interromper`): interrompe e manda.
+   *  Sem isso, nesses estados dá 409. */
+  interromper?: boolean;
+  /** ids de GET /api/habilidades (até 6; só no chat); o servidor põe o bloco das skills no fim do texto. 400 se inválido. */
+  habilidades?: string[];
 }
 export interface RespResposta {
   execucao: Execucao;
@@ -232,6 +262,8 @@ export interface RespResposta {
 export interface PedidoExecucao {
   acao: string;
   params: Record<string, string>;
+  /** ids de GET /api/habilidades (até 6; só no chat); o servidor põe o bloco das skills no fim do pedido. 400 se inválido. */
+  habilidades?: string[];
 }
 export interface RespExecucaoCriada {
   execucao: Execucao; // 201
@@ -255,7 +287,18 @@ export interface Evento {
   texto: string; // até 600 letras, segredos mascarados com ***
   ferramenta?: string; // em 'ferramenta' e 'subagente'
   erro?: boolean; // true em 'resultado' (só resultados com erro aparecem) e em 'sistema'
+  /** Nomes das skills escolhidas nesta fala do dono (evento 'usuario'). */
+  habilidades?: string[];
 }
+
+/** GET /api/habilidades — skills do chat (cache de 60 s no servidor; nunca manda caminho de arquivo). */
+export interface Habilidade {
+  id: string; nome: string; titulo: string; descricao: string; grupo: string; origem: string;
+  listada: boolean; // false = plugin desligado ou pasta extra: o Claude le o arquivo so quando a pessoa escolhe
+  fixa: boolean; // true = tune-up: sempre ligado, nao da para escolher
+}
+export interface GrupoHabilidade { id: string; titulo: string }
+export interface RespHabilidades { grupos: GrupoHabilidade[]; habilidades: Habilidade[]; avisos?: string[] }
 
 /** GET /api/execucoes/{id}/eventos?desde=N[&inteiro=1] — comece com desde=0 e mande `proximo` na próxima.
  *  Com inteiro=1 as falas ('usuario' e 'assistente') vêm com até 12000 letras (chat); o resto segue em 600. */

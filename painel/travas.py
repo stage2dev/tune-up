@@ -35,12 +35,6 @@ import unicodedata
 
 RISCO_LEVE = ("leitura", "rascunho")
 DECISOES = ("deny", "ask")
-MAX_REGRAS = 200
-MAX_TEXTO = 300
-MAX_REGEX = 1000  # lista do que pode (lookahead negativo) precisa de espaço
-MAX_CONF = 48 * 1024
-RE_CAMPO = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,40}$")
-RE_CONTROLE = re.compile(r"[\x00-\x1f\x7f]")
 NEGAR_LEVE = ["Edit(**/.claude/settings*.json)", "Write(**/.claude/settings*.json)",
               "MultiEdit(**/.claude/settings*.json)"]
 _CONFIG = (r"(?i)(^|[/\s'\"=])\.claude/(settings[^/\s'\"]*\.json|(hooks|skills|plugins)\b)"
@@ -88,67 +82,20 @@ def _dobrado(texto):
     return unicodedata.normalize("NFKC", texto).casefold()
 
 
-# ---------------------------------------------------------------- validação (usada pelo catálogo)
-
-def _regra(obj, onde):
-    if not isinstance(obj.get("ferramenta"), str) or not obj["ferramenta"] or len(obj["ferramenta"]) > MAX_REGEX:
-        raise ValueError("%s: regra sem 'ferramenta'" % onde)
-    out = {"ferramenta": obj["ferramenta"]}
-    for chave in ("ferramenta", "entrada"):
-        if chave in obj:
-            if not isinstance(obj[chave], str) or len(obj[chave]) > MAX_REGEX:
-                raise ValueError("%s: '%s' precisa ser texto curto" % (onde, chave))
-            try:
-                re.compile(obj[chave])
-            except re.error:
-                raise ValueError("%s: regex '%s' inválida" % (onde, chave))
-            out[chave] = obj[chave]
-    if "campo" in obj:
-        if not isinstance(obj["campo"], str) or not RE_CAMPO.match(obj["campo"]):
-            raise ValueError("%s: 'campo' inválido" % onde)
-        out["campo"] = obj["campo"]
-    decisao = obj.get("decisao", "deny")
-    if decisao not in DECISOES:
-        raise ValueError("%s: 'decisao' precisa ser deny ou ask" % onde)
-    out["decisao"] = decisao
-    motivo = obj.get("motivo")
-    out["motivo"] = (motivo if isinstance(motivo, str) and motivo.strip() else "regra da ação")[:160]
-    return out
-
-
-def validar_travas(acao):
-    """Lê negar/permitir do JSON da ação. Devolve dict limpo ou levanta ValueError."""
-    out = {"negar": [], "permitir": [], "regras_negar": [], "regras_permitir": []}
-    for campo in ("negar", "permitir"):
-        lista = acao.get(campo, [])
-        if not isinstance(lista, list) or len(lista) > MAX_REGRAS:
-            raise ValueError("'%s' precisa ser uma lista de até %d regras" % (campo, MAX_REGRAS))
-        for i, item in enumerate(lista):
-            onde = "%s[%d]" % (campo, i)
-            if isinstance(item, str):
-                if not item.strip() or len(item) > MAX_TEXTO or RE_CONTROLE.search(item):
-                    raise ValueError("%s: regra de permissão inválida" % onde)
-                out[campo].append(item.strip())
-            elif isinstance(item, dict):
-                out["regras_" + campo].append(_regra(item, onde))
-            else:
-                raise ValueError("%s: precisa ser texto ou objeto" % onde)
-    if len(json.dumps(out, ensure_ascii=False)) > MAX_CONF:
-        raise ValueError("travas grandes demais")
-    return out
-
-
 # ---------------------------------------------------------------- argv da sessão
 
-def config_gancho(acao, protegidos=(), liberados=()):
+def config_gancho(acao, protegidos=(), liberados=(), perguntas_dir=None):
     trv = acao.get("_travas") or {}
     leve = acao.get("risco") in RISCO_LEVE
     bash = (any(re.match(r"Bash(\(|$)", r) for r in trv.get("permitir") or [])
             or any(re.fullmatch(r["ferramenta"], "Bash") for r in trv.get("regras_permitir") or []))
-    return {"v": 1, "falha": "deny" if leve else "ask", "forte": "deny" if leve else "ask",
+    conf = {"v": 1, "falha": "deny" if leve else "ask", "forte": "deny" if leve else "ask",
             "leve": leve, "bash": bash, "sb": bool(acao.get("sandbox")),
             "prot": [p for p in protegidos if p], "lib": [p for p in liberados if p],
             "n": trv.get("regras_negar") or [], "p": trv.get("regras_permitir") or []}
+    if perguntas_dir and acao.get("_perguntas_chat"):
+        conf["perg"] = perguntas_dir  # pergunta de múltipla escolha vai para o chat, não para o terminal
+    return conf
 
 
 def _codificar(conf):
@@ -163,11 +110,12 @@ def _decodificar(texto):
     return conf
 
 
-def settings_da_sessao(acao, protegidos=(), liberados=(), python=None, este_arquivo=None, workspace="", dados=""):
+def settings_da_sessao(acao, protegidos=(), liberados=(), python=None, este_arquivo=None, workspace="", dados="",
+                       perguntas_dir=None):
     """Texto JSON para `--settings`. Sem segredo: só regra, o caminho deste gancho e o bloco `sandbox`/`env`."""
     python = python or sys.executable or "python3"
     este_arquivo = este_arquivo or os.path.abspath(__file__)
-    conf = config_gancho(acao, protegidos, liberados)
+    conf = config_gancho(acao, protegidos, liberados, perguntas_dir)
     comando = " ".join(shlex.quote(x) for x in (python, "-I", "-B", este_arquivo, _codificar(conf)))
     comando += " || exit 2"  # python ausente ou quebrado: código 2 bloqueia a chamada (não deixa passar)
     cfg = {"hooks": {"PreToolUse": [{"matcher": "*", "hooks": [
@@ -195,8 +143,9 @@ def argv_travas(acao, cfg=None):
     dados = cfg.get("dados_dir") or ""  # estes saem da exceção `dados`: só o servidor grava
     import sandbox
     protegidos += [os.path.join(dados, x) for x in sandbox.DONO] if dados else []
+    perguntas = os.path.join(dados, "perguntas") if dados else None
     return ["--settings", settings_da_sessao(acao, protegidos, liberados, workspace=cfg.get("workspace") or "",
-                                             dados=dados)]
+                                             dados=dados, perguntas_dir=perguntas)]
 
 
 # ---------------------------------------------------------------- o gancho
@@ -382,6 +331,54 @@ def decidir(conf, ferramenta, entrada, cwd=""):
     return None
 
 
+RE_SESSAO_GANCHO = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+FERR_PERGUNTA = "AskUserQuestion"
+MOTIVO_PERGUNTA = ("esta sessão roda no chat do painel, sem terminal. Não use AskUserQuestion: escreva a pergunta "
+                   "como texto na sua resposta (com as opções numeradas, a recomendada primeiro) e TERMINE a vez. "
+                   "O dono responde pelo chat e a conversa continua")
+
+
+def limpar_perguntas(entrada):
+    """Entrada do AskUserQuestion -> lista curta e limpa para a tela."""
+    out = []
+    for q in (entrada.get("questions") if isinstance(entrada, dict) else None) or []:
+        if not isinstance(q, dict) or not isinstance(q.get("question"), str) or not q["question"].strip():
+            continue
+        opcoes = []
+        for o in q.get("options") or []:
+            if isinstance(o, dict) and isinstance(o.get("label"), str) and o["label"].strip():
+                opcoes.append({"rotulo": o["label"].strip()[:120],
+                               "descricao": str(o.get("description") or "").strip()[:300]})
+        out.append({"pergunta": q["question"].strip()[:500], "cabecalho": str(q.get("header") or "").strip()[:40],
+                    "multipla": q.get("multiSelect") is True, "opcoes": opcoes[:6]})
+    return out[:4]
+
+
+def guardar_pergunta(pasta, sessao_id, entrada):
+    """Grava <pasta>/<sessionId>.json (0600, troca atômica). Falha aqui nunca libera a ferramenta."""
+    perguntas = limpar_perguntas(entrada)
+    if not perguntas or not isinstance(sessao_id, str) or not RE_SESSAO_GANCHO.match(sessao_id):
+        return False
+    try:
+        os.makedirs(pasta, mode=0o700, exist_ok=True)
+        tmp = os.path.join(pasta, ".%s.%d.tmp" % (sessao_id, os.getpid()))
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"perguntas": perguntas}, f, ensure_ascii=False)
+        os.replace(tmp, os.path.join(pasta, sessao_id + ".json"))
+        return True
+    except OSError:
+        return False
+
+
+def esquecer_pergunta(pasta, sessao_id):
+    if isinstance(sessao_id, str) and RE_SESSAO_GANCHO.match(sessao_id):
+        try:
+            os.unlink(os.path.join(pasta, sessao_id + ".json"))
+        except OSError:
+            pass
+
+
 def principal(argv, stdin, stdout):
     falha = "deny"
     try:
@@ -390,6 +387,12 @@ def principal(argv, stdin, stdout):
         dados = json.load(stdin)
         resposta = decidir(conf, str(dados.get("tool_name") or ""), dados.get("tool_input") or {},
                            dados.get("cwd") or "")
+        if isinstance(conf.get("perg"), str) and conf["perg"]:
+            if dados.get("tool_name") == FERR_PERGUNTA:
+                guardar_pergunta(conf["perg"], dados.get("session_id"), dados.get("tool_input") or {})
+                resposta = "deny", MOTIVO_PERGUNTA
+            else:  # usou outra ferramenta: seguiu em frente, a pergunta antiga não vale mais
+                esquecer_pergunta(conf["perg"], dados.get("session_id"))
     except Exception as erro:  # nunca libera no escuro
         resposta = falha, "a trava do painel falhou: " + type(erro).__name__
     if resposta:

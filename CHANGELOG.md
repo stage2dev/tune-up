@@ -2,9 +2,20 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
-## 2.7.0
+## Unreleased
 
-Studio plan, Part 2: a real post and a real video from a neutral example project, without GSAP.
+Studio plan, merged with 2.6.0/2.7.0 from main (version and full notes in the next commit).
+
+Part 1, mechanisms in the panel core (proven with real background sessions):
+
+- Actions can declare a `sandbox` block, a work folder (`{trabalho}`, created by the server before launch; the session runs with that folder as cwd), a long text parameter saved to a file, `env`, and time limits (`max_minutos`, `max_bloqueado_min`: the panel stops the session and frees the slot).
+- Guard hook: relative paths in Bash are resolved against the session cwd; `dados/../` no longer escapes; backslash escapes (`.cla\ude`) are read the way a POSIX shell reads them; the owner approval file and `aprovados/` are never writable by a session.
+- Measured on CLI 2.1.32x with a fixture action, `pular_permissoes` on and off: network (curl, ffmpeg over https, WebFetch, MCP) denied; writes outside the work folder denied by Bash and by Write; `.env` unreadable; one write inside the work folder accepted; headless Chrome renders a frame inside the sandbox with no extra flag; model and effort reach the session.
+- `claude --bg` refuses a folder that is not trusted, and inside a git repository trust is checked at the git root. The launch error now shows the cause.
+- `tune-up-studio/node/`: HyperFrames pinned to 0.9.6 with a lockfile (newest stable release at least 7 days old on 2026-11-10); install with `npm ci --ignore-scripts`, then `npm audit signatures`. Known: `npm audit` reports undici 7.25.0 (pinned by HyperFrames, also in its latest release).
+- Not proven: the effect of `worktree.bgIsolation` inside a git project.
+
+Part 2, a real post and a real video from a neutral example project, without GSAP:
 
 - `tune-up-studio/exemplos/forno-miudo/`: fictional bakery with a brand answer key, a 4:5 post (1080x1350) and a 10 s 9:16 video (1080x1920), both plain HTML and CSS keyframes. HyperFrames 0.9.6 seeks CSS-only animation frame by frame (measured), so GSAP is not needed and HyperFrames stays as the engine.
 - `tune-up-studio/scripts/`: `qa_imagem.py` and `qa_video.py` (stdlib + ffprobe). They catch the planted defects (text overflow, one black second, layout-silencing attributes, a runtime-built external fetch) and, after review, truncated PNG/MP4 files and a check report that belongs to another piece. `reserva_slides.py` builds an FFmpeg slide video when HyperFrames is unavailable.
@@ -13,16 +24,27 @@ Studio plan, Part 2: a real post and a real video from a neutral example project
 - Measured (provisional): render of the 10 s video about 5 s and 460 MB; a background session that renders it about 21 s and 175k tokens (mostly cache).
 - Guard hook on Windows: the allowed `dados` folder is recognised with mixed separators (simulated; CI is the proof).
 
+## 2.7.0
+
+The panel chat has a list of skills to pick from.
+
+- The left column of the chat has two views, "Conversas" and "Skills". The skills list has a search box and groups by theme (marketing, sales, design and UX, code, review and security, database, research and documents, video and media, others) or by plugin. Click a skill or drag it into the message box; it becomes a tag above the text (up to 6 per message). The request balloon shows the skills that went with it.
+- `GET /api/habilidades` lists skills from installed plugins, the user's skills, the project's skills and optional extra folders (`habilidades_pastas` in `painel.json`). Skills of a disabled plugin or of an extra folder are marked "off the list": the session reads their `SKILL.md` by path instead of calling the Skill tool. Skills of `tune-up` and `tune-up-*` plugins show as always on and cannot be picked. Theme rules live in `painel/habilidades.json` (the skill and plugin name are matched before the description); the project package can add `habilidades.json` with its own rules and a plugin-to-group map.
+- `POST /api/execucoes` and `POST .../responder` take `habilidades` (ids from the list, chat levels only). The server, never the screen, appends a short block to the prompt naming the chosen skills and saying the tune-up flow always applies; the block is stripped from the transcript and the event carries `habilidades`. A message that already contains one of the block's marker lines is refused.
+- Skill files are untrusted: read without blocking, regular files only, 8 KB cap, names and folder names checked, descriptions masked, no file path sent to the screen. A plugin registry or settings file that cannot be read becomes a warning in the list.
+- Picking skills tells the session which ones to use; it does not unload the others. Measured on CLI 2.1.322: `--settings` with `enabledPlugins` does start a session with fewer plugins, but the option is lost when the session is resumed, so the panel does not use it.
+- `painel/web/dist` rebuilt.
+
 ## 2.6.0
 
-Studio plan, Part 1: mechanisms in the panel core, proven with real background sessions.
+The panel chat no longer needs the terminal.
 
-- Actions can declare a `sandbox` block, a work folder (`{trabalho}`, created by the server before launch; the session runs with that folder as cwd), a long text parameter saved to a file, `env`, and time limits (`max_minutos`, `max_bloqueado_min`: the panel stops the session and frees the slot).
-- Guard hook: relative paths in Bash are resolved against the session cwd; `dados/../` no longer escapes; backslash escapes (`.cla\ude`) are read the way a POSIX shell reads them; the owner approval file and `aprovados/` are never writable by a session.
-- Measured on CLI 2.1.32x with a fixture action, `pular_permissoes` on and off: network (curl, ffmpeg over https, WebFetch, MCP) denied; writes outside the work folder denied by Bash and by Write; `.env` unreadable; one write inside the work folder accepted; headless Chrome renders a frame inside the sandbox with no extra flag; model and effort reach the session.
-- `claude --bg` refuses a folder that is not trusted, and inside a git repository trust is checked at the git root. The launch error now shows the cause.
-- `tune-up-studio/node/`: HyperFrames pinned to 0.9.6 with a lockfile (newest stable release at least 7 days old on 2026-11-10); install with `npm ci --ignore-scripts`, then `npm audit signatures`. Known: `npm audit` reports undici 7.25.0 (pinned by HyperFrames, also in its latest release).
-- Not proven: the effect of `worktree.bgIsolation` inside a git project.
+- One screen: `/` and `/conversa/:id` draw the same chat (conversation list, conversation, box at the bottom) with a "who is working" side panel that shows the main session and its sub-agents live.
+- Questions come to the chat. In chat levels (and actions with `"perguntas_no_chat": true`) the guard hook denies `AskUserQuestion`, stores the options and tells the session to ask in text and end its turn; the run then carries `pergunta` and `pode_responder`. Option buttons only fill the box; the person sends. Measured on CLI 2.1.322: a session blocked on `AskUserQuestion` has not written the question to the transcript yet, and a turn that ends with a written question shows as `blocked` + `idle`.
+- Send a message while the session works or waits: `POST .../responder {texto, interromper: true}` (`pode_interromper`) stops its turn and wakes the same session with the message. On a permission prompt stuck in the terminal (`espera_terminal`) this cancels the prompt; the screen says so and keeps "open in terminal". The refusal for changed module rules covers this path too.
+- The stored question is untrusted: read without blocking, regular files only, 64 KB cap, masked like everything else shown from a session, and dropped when it is older than the current turn or the session moved on.
+- "Working" after a reply now ends as soon as the session has answered, not after a fixed wait. The CLI's automatic "No response requested." line is hidden.
+- `painel/web/dist` rebuilt.
 
 ## 2.5.0
 

@@ -12,7 +12,7 @@ import re
 import dono
 import sandbox
 import teto
-from travas import validar_travas
+from travas_validar import validar_travas
 
 RE_ID_ACAO = re.compile(r"^[a-z0-9][a-z0-9.\-]{1,60}$")
 RE_NOME_PARAM = re.compile(r"^[a-z_][a-z0-9_]{0,30}$")
@@ -159,6 +159,8 @@ def validar_acao(a):
             "_prompt": prompt.strip(), "_nome": nome_sessao, "_travas": trv, "_substitui": a.get("substitui") is True,
             "_requer": requer,  # pré-condição: aprovação do dono (dono.py), conferida ao disparar
             "_so_com": so_com,  # a ação só existe no projeto que liga esta chave (catalogo_do_projeto)
+            # pergunta de múltipla escolha aparece no chat (a sessão não fica presa esperando o terminal)
+            "_perguntas_chat": grupo == GRUPO_CHAT or a.get("perguntas_no_chat") is True,
             **tetos, **caixa}
 
 

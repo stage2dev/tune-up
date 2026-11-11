@@ -67,6 +67,23 @@ export interface Execucao {
   esforco?: string;
   /** true quando da para mandar outra mensagem (POST /api/execucoes/{id}/responder). */
   pode_responder?: boolean;
+  /** true quando a sessao trabalha ou espera e da para mandar com `interromper: true`. */
+  pode_interromper?: boolean;
+  /** Espera presa no terminal (pedido de permissao): mandar mensagem cancela o pedido, nao aprova. */
+  espera_terminal?: boolean;
+  /** Opcoes da pergunta que a sessao escreveu (so com pode_responder). */
+  pergunta?: PerguntaChat;
+  /** Nomes das skills escolhidas no pedido inicial (servidor antigo nao manda). */
+  habilidades?: string[];
+}
+
+export interface PerguntaChat {
+  perguntas: {
+    pergunta: string;
+    cabecalho: string;
+    multipla: boolean;
+    opcoes: { rotulo: string; descricao: string }[];
+  }[];
 }
 
 export type TipoEvento = 'usuario' | 'assistente' | 'ferramenta' | 'resultado' | 'subagente' | 'sistema';
@@ -78,6 +95,33 @@ export interface EventoExecucao {
   texto: string;
   ferramenta?: string;
   erro?: boolean;
+  /** Nomes das skills escolhidas nesta fala do dono (evento 'usuario'). */
+  habilidades?: string[];
+}
+
+/** Skill da lista do chat (GET /api/habilidades). */
+export interface Habilidade {
+  id: string;
+  nome: string;
+  titulo: string;
+  descricao: string;
+  grupo: string;
+  origem: string;
+  /** false = plugin desligado ou pasta extra: o Claude le o arquivo so quando a pessoa escolhe. */
+  listada: boolean;
+  /** true = tune-up: sempre ligado, nao da para escolher. */
+  fixa: boolean;
+}
+
+export interface GrupoHabilidade {
+  id: string;
+  titulo: string;
+}
+
+export interface RespHabilidades {
+  grupos: GrupoHabilidade[];
+  habilidades: Habilidade[];
+  avisos?: string[];
 }
 
 export interface Eventos {
