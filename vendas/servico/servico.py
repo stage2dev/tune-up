@@ -18,7 +18,7 @@ import secrets  # noqa: E402
 import signal  # noqa: E402
 import threading  # noqa: E402
 
-from servico import (banco, cerebro, evolution_local, openai_cliente, pasta, portao, rascunhos,  # noqa: E402
+from servico import (agendador, banco, cerebro, evolution_local, openai_cliente, pasta, portao, rascunhos,  # noqa: E402
                      recebimento, rotas, travas)
 from servico.atendente import Atendente  # noqa: E402
 from servico.conectores import evolution  # noqa: E402
@@ -125,6 +125,7 @@ def rodar(args, avisar=print):
         atendente = threading.Thread(target=servidor.serve_forever, kwargs={"poll_interval": 0.2}, daemon=True)
         atendente.start()
         threading.Thread(target=recuperar, args=(app, parar), daemon=True).start()
+        disparos = agendador.Agendador(app.abrir, lambda: app.conector).iniciar(parar)
         avisar("serviço de Vendas em http://127.0.0.1:%d (painel %s); Ctrl+C para parar" % (app.porta, painel),
                flush=True)
         while not parar.wait(0.5):
@@ -133,6 +134,7 @@ def rodar(args, avisar=print):
         servidor.server_close()
         recebimento.registrar_gancho(None)
         ia.parar()
+        disparos.join(60)   # um envio no meio termina (o conector tem timeout) antes de sair
         batimento.join(BATIMENTO_S + 5)
         avisar("serviço de Vendas parado", flush=True)
         return 0

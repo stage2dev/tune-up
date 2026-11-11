@@ -20,6 +20,9 @@ TETO_AUDIO_DIA = 20  # padrão do "teto de áudio/dia" da IA; config teto_audio_
 JANELA = (9, 19)     # campanha só das 09:00 às 18:59 no fuso do projeto (config "fuso")
 ATIVOS = ("pendente", "enviado", "incerto")  # o que conta como saída do número ('falhou' não saiu)
 CONTATO = object()   # marcador na chave: troca pelo id do contato dentro da reserva
+# aquecimento: teto de contatos NOVOS por dia na campanha; dia 1 = data local do 1º envio de campanha (config)
+CURVA_NOVOS = (5, 20, 36, 65, 117, 210, 378, 680)
+AQUECIMENTO = "aquecimento_inicio"
 
 # optout: confirmar | nega | livre | exige. teto: minuto, hora, audio_dia, novos_dia, teste_dia
 REGRAS = {
@@ -36,9 +39,15 @@ ORIGENS = tuple(REGRAS)
 AUDIO = ("audio_ia", "teste_audio")
 
 
-def teto_contatos_novos(con, dia):
-    """Gancho do teto de contatos NOVOS por dia da campanha (a curva entra num item seguinte). None = sem teto."""
-    return None
+def teto_contatos_novos(con, hoje):
+    """Teto de contatos NOVOS no dia local `hoje` (date) pela curva de aquecimento. Sem envio de campanha ainda (ou
+    data gravada ilegível ou no futuro) = dia 1; depois do último degrau, fica no último."""
+    try:
+        inicio = datetime.date.fromisoformat(banco.ler_config(con, AQUECIMENTO) or "")
+    except ValueError:
+        return CURVA_NOVOS[0]
+    dia = max((hoje - inicio).days, 0)
+    return CURVA_NOVOS[min(dia, len(CURVA_NOVOS) - 1)]
 
 
 def _iso(momento):
@@ -106,7 +115,7 @@ def _pausada(con, contato_id, agora):
     return ate > agora
 
 
-def _motivo_teto(con, origem, contato_id, agora, inicio_dia, ignorar):
+def _motivo_teto(con, origem, contato_id, agora, inicio_dia, hoje, ignorar):
     teto = REGRAS[origem]["teto"]
     if "minuto" in teto and _contar(con, _iso(agora - datetime.timedelta(minutes=1))) >= TETO_MINUTO:
         return "teto_minuto"
@@ -119,7 +128,7 @@ def _motivo_teto(con, origem, contato_id, agora, inicio_dia, ignorar):
         if _contar(con, inicio_dia, "AND origem = ?", ("audio_ia",)) >= limite:
             return "teto_audio_dia"
     if "novos_dia" in teto:
-        limite = teto_contatos_novos(con, inicio_dia)
+        limite = teto_contatos_novos(con, hoje)
         ja = con.execute("SELECT 1 FROM envios WHERE contato_id = ? AND id <> ? AND estado IN (%s)"
                          % ",".join("?" * len(ATIVOS)), (contato_id, ignorar or 0) + ATIVOS).fetchone()
         if limite is not None and ja is None and contatos_novos_no_dia(con, inicio_dia) >= limite:
@@ -156,7 +165,7 @@ def _motivo(con, origem, numero, contato_id, confirmar_optout, agora, ignorar=No
     if regra["janela"] and not JANELA[0] <= local.hour < JANELA[1]:
         return "fora_da_janela"
     inicio_dia = _iso(local.replace(hour=0, minute=0, second=0, microsecond=0))
-    return _motivo_teto(con, origem, contato_id, agora, inicio_dia, ignorar)
+    return _motivo_teto(con, origem, contato_id, agora, inicio_dia, local.date(), ignorar)
 
 
 def _contato_de(con, origem, numero):
@@ -198,6 +207,8 @@ def _reservar(con, origem, numero, tipo, conteudo, partes, confirmar_optout, ago
                                          telefone=canonico, tipo=tipo, conteudo=conteudo, quando=_iso(agora))
         if envio_id is None:  # não acontece sob BEGIN IMMEDIATE; se acontecer, não envia
             raise banco.EscritaSemEfeito("chave %s ocupada dentro da reserva" % origem)
+        if origem == "campanha" and not motivo and banco.ler_config(con, AQUECIMENTO) is None:
+            banco.gravar_config(con, AQUECIMENTO, agora.astimezone(fuso(con)).date().isoformat())  # dia 1, na reserva
         con.execute("COMMIT")
     except BaseException:
         con.execute("ROLLBACK")

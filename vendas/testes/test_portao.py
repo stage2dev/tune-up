@@ -169,7 +169,7 @@ class TesteTetos(Base):
         with mock.patch.object(portao, "teto_contatos_novos", return_value=1):
             self.negado(self.mandar("campanha", chave="a"), "teto_contatos_novos_dia")
             self.enviado(self.mandar("campanha", numero=antigo, chave="a"))
-        self.enviado(self.mandar("campanha", chave="b"), chamadas=2)        # gancho padrão = sem teto
+        self.enviado(self.mandar("campanha", chave="b"), chamadas=2)        # gancho padrão: dia 1 = 5 novos
         self.assertEqual(portao.contatos_novos_no_dia(self.con, inicio), 2)
 
     def test_audio_ia__teto(self):

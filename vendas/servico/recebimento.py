@@ -21,7 +21,7 @@ import re
 import sys
 import unicodedata
 
-from servico import banco, portao, telefone
+from servico import banco, campanha, portao, telefone
 from servico.conectores import evolution
 
 UTC = datetime.timezone.utc
@@ -141,7 +141,8 @@ def processar(con, ev, agora, depois, confiavel=True):
         numero = telefone.normalizar(numero)
     except telefone.TelefoneInvalido:
         return _evento(con, "telefone_invalido", ev)
-    conversa_id = banco.abrir_conversa(con, banco.salvar_contato(con, numero))
+    contato_id = banco.salvar_contato(con, numero)
+    conversa_id = banco.abrir_conversa(con, contato_id)
     momento = _momento(ev, agora)
     if ev.get("fromMe"):
         return _de_mim(con, ev, numero, conversa_id, momento, confiavel)
@@ -150,6 +151,7 @@ def processar(con, ev, agora, depois, confiavel=True):
                                            confiavel=confiavel)
     if mensagem_id is None:
         return
+    campanha.lead_respondeu(con, contato_id)   # o lead falou: sai da fila das campanhas (até sem segredo: só para)
     if not confiavel:   # o dono confere; opt-out é conservador e vale, mas sem confirmação para fora
         if tipo == "texto" and e_saida(ev.get("texto")):
             banco.marcar_optout(con, numero, _iso(momento))

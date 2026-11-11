@@ -98,7 +98,7 @@ python3 -B <plugin folder>/servico/evolution_local.py preparar --projeto <projec
 | `manual` | needs `confirmar_optout=True` | no | no | 8/min | screen id per click |
 | `rascunho_aprovado` | denied | no | no | 8/min | draft id |
 | `ia` | denied | denied | no | 8/min, 200/h | conversation + trigger message id + bubble |
-| `campanha` | denied | denied | denied outside | 8/min, 200/h, new contacts/day hook | campaign + contact + step |
+| `campanha` | denied | denied | denied outside | 8/min, 200/h, new contacts/day warm-up | campaign + contact + step |
 | `audio_ia` | denied | denied | no | 8/min, 200/h, audio/day (config `teto_audio_dia`, default 20) | the `ia` key + `audio` |
 | `teste_audio` | no | no | no | 5/day, only to config `numero_dono` | screen id |
 | `confirmacao_sair` | allowed only after opt-out | no | no | 1 per contact | contact |
@@ -107,7 +107,8 @@ python3 -B <plugin folder>/servico/evolution_local.py preparar --projeto <projec
 - The reservation runs in `BEGIN IMMEDIATE` and re-checks opt-out, pause and limits at send time. The `envios` row is written as `pendente` before the connector call, then becomes `enviado` (with `id_externo`), `falhou` (surely not sent) or `incerto` (may have been sent).
 - `negado` rows carry the reason and do not hold the dedupe key; a key already held returns `duplicado` without a new row or a connector call.
 - On start, every `pendente` row becomes `incerto`. Nothing is resent automatically; `portao.reenviar()` (an explicit owner action) moves the same row back to `pendente` after re-checking the rules.
-- The daily new-contacts limit for campaigns is a hook (`teto_contatos_novos`) that returns no limit for now; the daily counter (`contatos_novos_no_dia`) is in place.
+- Campaign warm-up: new contacts per day (contacts never sent anything by this number) follow 5, 20, 36, 65, 117, 210, 378, 680 (then stays at 680). Day 1 is the local date of the first campaign send, stored in config `aquecimento_inicio` inside the reservation; the limit is checked in the same transaction.
+- Campaign scheduler (`servico/campanha.py`, `servico/agendador.py`): a service thread takes the next due contact of the active campaigns and sends through the gate with origin `campanha`, waiting a random 1.2-12 s (mean ~4 s) after each connector call. Window and rate denials wait without marking the contact; new-contacts denials retry the contact at the next 09:00; opt-out and invalid numbers are never retried; `incerto` and `falhou` are never resent by the scheduler (the owner decides on the Conversas tab). Five consecutive connector failures pause the campaign with the reason. A lead who sends a message leaves the queue of every campaign. Token-protected `GET /campanhas` and `POST /campanhas/<id>/pausar|retomar`.
 
 ## Where data lives
 

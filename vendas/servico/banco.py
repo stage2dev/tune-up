@@ -146,6 +146,17 @@ MIGRACOES = [
         "CREATE UNIQUE INDEX rascunhos_gatilho ON rascunhos(conversa_id, mensagem_id)",
         "CREATE UNIQUE INDEX rascunhos_pendente ON rascunhos(conversa_id) WHERE estado IN ('pendente', 'aprovando')",
     ],
+    # 10: campanha = modelo + contatos; o agendador guarda o motivo, quando tentar de novo e o envio de cada contato
+    [
+        "ALTER TABLE campanhas ADD COLUMN modelo TEXT",
+        "ALTER TABLE campanhas ADD COLUMN motivo TEXT",
+        "ALTER TABLE campanhas ADD COLUMN falhas_seguidas INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE campanha_contatos ADD COLUMN motivo TEXT",
+        "ALTER TABLE campanha_contatos ADD COLUMN tentar_depois TEXT",
+        "ALTER TABLE campanha_contatos ADD COLUMN envio_id INTEGER REFERENCES envios(id)",
+        "ALTER TABLE campanha_contatos ADD COLUMN ordem INTEGER NOT NULL DEFAULT 0",
+        "CREATE INDEX campanha_contatos_fila ON campanha_contatos(estado, tentar_depois)",
+    ],
 ]
 VERSAO = len(MIGRACOES)
 PARECE_SEGREDO = re.compile(r"chave|senha|token|segredo|secret|key|password", re.I)

@@ -9,7 +9,7 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
-from servico import banco, conversas, ia, instancia, leads, openai_cliente, portao, rascunhos, telefone
+from servico import banco, campanha, conversas, ia, instancia, leads, openai_cliente, portao, rascunhos, telefone
 from servico.conectores.base import ErroConector
 
 CORPO_MAX = 1024 * 1024
@@ -44,8 +44,9 @@ def igual(recebido, esperado):
 
 
 def _modulo(caminho):
-    """Módulo das rotas com token (rascunhos e modo por conversa, IA, conversas) que atende o caminho, ou None."""
-    return next((m for m in (rascunhos, ia, leads, conversas) if m.ROTA.match(caminho)), None)
+    """Módulo das rotas com token (rascunhos e modo por conversa, IA, leads, campanhas, conversas) que atende o
+    caminho, ou None."""
+    return next((m for m in (rascunhos, ia, leads, campanha, conversas) if m.ROTA.match(caminho)), None)
 
 
 def guardar_evento(con, instancia, corpo, segredo_ok):
