@@ -107,16 +107,27 @@ def _ler(caminho):
     return dado
 
 
+def host_do_site(site):
+    """Host normalizado do site (minúsculo, sem 'www.'), ou None."""
+    host = (urlsplit(site).hostname or "").lower() if site else ""
+    return (host[4:] if host.startswith("www.") else host) or None
+
+
 def _gravar(con, linhas):
     """Insere numa transação. Devolve (novos, repetidos); repetido = mesmo telefone ou mesmo nome/cidade/nicho."""
     novos = 0
     con.execute("BEGIN IMMEDIATE")
     try:
         for l in linhas:
+            host = host_do_site(l["site"])
+            if host and con.execute("SELECT 1 FROM candidatos WHERE site_host = ? AND estado = 'descartado'",
+                                    (host,)).fetchone():
+                continue  # empresa descartada há pouco: não sugere de novo (telefone igual já cai no índice único)
             cur = con.execute(
-                "INSERT OR IGNORE INTO candidatos (nome, site, telefone, url_da_fonte, nicho, cidade, criado_em) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)", (l["nome"], l["site"], l["telefone"], l["url_da_fonte"],
-                                                   l["nicho"], l["cidade"], banco.agora()))
+                "INSERT OR IGNORE INTO candidatos (nome, site, telefone, url_da_fonte, nicho, cidade, criado_em, "
+                "site_host) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (l["nome"], l["site"], l["telefone"],
+                                                              l["url_da_fonte"], l["nicho"], l["cidade"],
+                                                              banco.agora(), host))
             novos += cur.rowcount
         con.execute("COMMIT")
     except BaseException:

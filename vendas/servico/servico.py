@@ -18,7 +18,7 @@ import secrets  # noqa: E402
 import signal  # noqa: E402
 import threading  # noqa: E402
 
-from servico import (agendador, banco, candidatos, cerebro, evolution_local, openai_cliente, pasta, portao, rascunhos,  # noqa: E402
+from servico import (agendador, banco, candidatos, cerebro, evolution_local, openai_cliente, pasta, portao, rascunhos, revisao,  # noqa: E402
                      recebimento, rotas, travas)
 from servico.atendente import Atendente  # noqa: E402
 from servico.conectores import evolution  # noqa: E402
@@ -148,6 +148,10 @@ def rodar(args, avisar=print):
 
 def importar_candidatos(con, raiz, avisar=print):
     """Subida: importa (e apaga) o que o buscador deixou na pasta de candidatos. Pasta fora do pacote ou erro = aviso."""
+    try:
+        revisao.purgar(con)  # descartados há mais de 30 dias saem (antes da importação: aí podem voltar)
+    except Exception as e:
+        avisar("vendas: não consegui limpar os candidatos descartados (%s)" % type(e).__name__, file=sys.stderr)
     try:
         r = candidatos.importar(con, raiz)
     except candidatos.PastaRecusada as e:

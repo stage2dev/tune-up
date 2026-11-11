@@ -178,6 +178,13 @@ MIGRACOES = [
         "CREATE UNIQUE INDEX candidatos_telefone ON candidatos(telefone) WHERE telefone IS NOT NULL",
         "CREATE UNIQUE INDEX candidatos_nome ON candidatos(nome, ifnull(cidade, ''), ifnull(nicho, ''))",
     ],
+    # 13: revisão do dono: data da decisão, contato criado/mesclado na aprovação e site normalizado (anti re-sugestão)
+    [
+        "ALTER TABLE candidatos ADD COLUMN decidido_em TEXT",
+        "ALTER TABLE candidatos ADD COLUMN contato_id INTEGER",
+        "ALTER TABLE candidatos ADD COLUMN site_host TEXT",
+        "CREATE INDEX candidatos_site_host ON candidatos(site_host) WHERE site_host IS NOT NULL",
+    ],
 ]
 VERSAO = len(MIGRACOES)
 PARECE_SEGREDO = re.compile(r"chave|senha|token|segredo|secret|key|password", re.I)
