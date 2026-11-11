@@ -69,13 +69,21 @@ def gravar_segredo(caminho, valor):
         os.close(fd)
 
 
-def ler_ou_criar_segredo(caminho):
-    """Segredo que sobrevive à reinicialização (o do webhook vai para a configuração da Evolution)."""
+def ler_segredo(caminho):
+    """Segredo já gravado (32 caracteres ou mais), ou None se falta ou é curto demais."""
     if os.path.exists(caminho):
         with open(caminho, encoding="utf-8") as f:
             valor = f.read().strip()
         if len(valor) >= 32:
             return valor
+    return None
+
+
+def ler_ou_criar_segredo(caminho):
+    """Segredo que sobrevive à reinicialização (o do webhook vai para a configuração da Evolution)."""
+    valor = ler_segredo(caminho)
+    if valor is not None:
+        return valor
     valor = secrets.token_urlsafe(32)
     gravar_segredo(caminho, valor)
     return valor

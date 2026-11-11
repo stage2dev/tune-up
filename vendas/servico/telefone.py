@@ -17,8 +17,16 @@ def normalizar(valor):
             raise TelefoneInvalido("identificador não é telefone (ex.: @lid): %r" % texto)
         texto = texto[:-len(SUFIXO_JID)].split(":")[0]
     digitos = re.sub(r"\D", "", texto)
-    if len(digitos) in (10, 11) and not texto.startswith("+"):
-        digitos = PAIS + digitos
+    internacional = texto.startswith("+")
+    if not internacional and digitos.startswith("00"):  # 00 na frente = discagem internacional, igual ao +
+        internacional, digitos = True, digitos[2:]
+    if not internacional:
+        if digitos.startswith("0") and len(digitos) in (11, 12):
+            digitos = digitos[1:]  # 0 de discagem interurbana do Brasil (0 + DDD + número)
+        if len(digitos) in (10, 11):
+            digitos = PAIS + digitos
+    if digitos.startswith("0"):
+        raise TelefoneInvalido("código de país não começa com 0: %r" % texto)
     if not digitos.startswith(PAIS):
         if not 8 <= len(digitos) <= 15:
             raise TelefoneInvalido("tamanho inválido: %d dígitos" % len(digitos))

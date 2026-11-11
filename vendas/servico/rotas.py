@@ -1,7 +1,9 @@
 """Rotas HTTP do serviço: saúde, token de envio (só para a origem exata do painel), estado com token e webhook
 com segredo em header. Nenhum dado do pedido vai para log; nenhum segredo vai para resposta que não o peça."""
+import hashlib
 import hmac
 import json
+import os
 import re
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -46,6 +48,35 @@ def guardar_evento(con, instancia, corpo, segredo_ok):
         {"instancia": instancia, "segredo_ok": segredo_ok, "corpo": corpo}, ensure_ascii=False))
 
 
+def impressao(segredo):
+    """Impressão digital curta do segredo (sha256), para notar a troca sem guardar o segredo no banco."""
+    return hashlib.sha256(segredo.encode("utf-8")).hexdigest()[:16]
+
+
+def conferir_segredo(con, segredo, novo=False):
+    """Na subida: o segredo do webhook é novo (novo=True) ou mudou desde a última vez? Zera os válidos seguidos
+    e, se o modo era 'recusa', volta para 'registra_e_conta' (a Evolution ainda manda o segredo velho). Devolve
+    True nesse caso."""
+    nova = impressao(segredo)
+    con.execute("BEGIN IMMEDIATE")
+    try:
+        antiga = banco.ler_config(con, "webhook_impressao")
+        voltou = False
+        if novo or (antiga is not None and antiga != nova):
+            banco.gravar_config(con, "webhook_validos_seguidos", "0")
+            voltou = banco.ler_config(con, "webhook_modo", MODO_REGISTRA) != MODO_REGISTRA
+            if voltou:
+                banco.gravar_config(con, "webhook_modo", MODO_REGISTRA)
+        if antiga != nova:
+            banco.gravar_config(con, "webhook_impressao", nova)
+        con.execute("COMMIT")
+    except BaseException:
+        if con.in_transaction:
+            con.execute("ROLLBACK")
+        raise
+    return voltou
+
+
 class App:
     """Estado do serviço que o handler usa: porta, origem do painel, token, segredo e o gancho do webhook."""
 
@@ -58,6 +89,7 @@ class App:
         self.despachar = despachar
         self.conector = conector  # só o portão chama o envio dele
         self.desde = banco.agora()
+        self.marca = os.path.basename(os.path.normpath(pasta_dados))  # hash da pasta de dados = qual projeto
 
     def abrir(self):
         return banco.abrir(self.pasta_dados)
@@ -136,7 +168,8 @@ def fazer_handler(app):
             if not self._host():
                 return
             if caminho == "/saude":
-                return self._json(200, {"ok": True, "servico": "tune-up-vendas", "desde": app.desde})
+                return self._json(200, {"ok": True, "servico": "tune-up-vendas", "desde": app.desde,
+                                        "marca": app.marca})
             if caminho == "/token-de-envio":
                 if self._origem_exata():
                     self._json(200, {"token": app.token})
@@ -189,10 +222,19 @@ def fazer_handler(app):
                 corpo = self._corpo_json()
                 if corpo is None:
                     return
-                if segredo_ok:
-                    banco.somar_config(con, "webhook_validos")
-                    banco.somar_config(con, "webhook_validos_seguidos")
-                app.despachar(con, instancia, corpo, segredo_ok)
+                if not segredo_ok:
+                    app.despachar(con, instancia, corpo, False)
+                else:  # o válido só conta se o evento foi guardado: os dois na mesma transação
+                    con.execute("BEGIN IMMEDIATE")
+                    try:
+                        app.despachar(con, instancia, corpo, True)
+                        banco.somar_config(con, "webhook_validos")
+                        banco.somar_config(con, "webhook_validos_seguidos")
+                        con.execute("COMMIT")
+                    except BaseException:
+                        if con.in_transaction:
+                            con.execute("ROLLBACK")
+                        raise
             finally:
                 con.close()
             self._json(200, {"ok": True})

@@ -148,9 +148,14 @@ class TesteTelaModoWebhook(Base):
     def setUp(self):
         super().setUp()
         self.mod = carregar_modulo()
+        self.ctx = {"raiz": self.projeto, "config": {"porta": PORTA_PAINEL}}
+        self.con = banco.abrir(self.pasta)  # conexão aberta = -shm existe, como com o serviço no ar
+        self.addCleanup(self.con.close)
+        banco.bater(self.con)
+        banco.registrar_servico(self.con, self.app.porta, self.app.marca)
 
-    def agir(self, modo):
-        r = self.mod.agir(CTX_PAINEL, "modo_webhook", {"modo": modo}, porta=self.app.porta)
+    def agir(self, modo, ctx=None):
+        r = self.mod.agir(ctx or self.ctx, "modo_webhook", {"modo": modo}, base=self.base)
         self.assertNotIn(self.token, json.dumps(r))
         return r
 
@@ -167,21 +172,49 @@ class TesteTelaModoWebhook(Base):
         self.assertFalse(self.agir("qualquer")["ok"])
 
     def test_agir_com_outro_painel_ou_servico_parado(self):
-        r = self.mod.agir({"config": {"porta": 18788}}, "modo_webhook", {"modo": rotas.MODO_REGISTRA},
-                          porta=self.app.porta)
+        r = self.agir(rotas.MODO_REGISTRA, ctx={"raiz": self.projeto, "config": {"porta": 18788}})
         self.assertFalse(r["ok"])
         self.assertIn("403", r["mensagem"])
         livre = socket.socket()
         livre.bind(("127.0.0.1", 0))
         porta = livre.getsockname()[1]
         livre.close()
-        r = self.mod.agir(CTX_PAINEL, "modo_webhook", {"modo": rotas.MODO_REGISTRA}, porta=porta)
+        banco.registrar_servico(self.con, porta, self.app.marca)
+        r = self.agir(rotas.MODO_REGISTRA)
         self.assertEqual(r, {"ok": False, "mensagem": "O serviço de Vendas não respondeu. Ligue-o e tente de novo."})
 
+    def test_agir_nunca_mexe_no_servico_de_outro_projeto(self):
+        outro = os.path.join(self.tmp, "outro")
+        os.makedirs(outro)
+        app2 = rotas.App(pasta.pasta_de_dados(outro, base=self.base), 0, PAINEL, "u" * 43, "v" * 43)
+        srv2 = rotas.criar_servidor(app2, 0)
+        threading.Thread(target=srv2.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True).start()
+        self.addCleanup(srv2.server_close)
+        self.addCleanup(srv2.shutdown)
+        con2 = banco.abrir(app2.pasta_dados)
+        self.addCleanup(con2.close)
+        for _ in range(rotas.VALIDOS_PARA_RECUSA):  # o outro projeto já pode recusar
+            banco.somar_config(con2, "webhook_validos_seguidos")
+        # o banco DESTE projeto aponta para a porta onde agora responde o serviço do outro projeto
+        banco.registrar_servico(self.con, app2.porta, self.app.marca)
+        r = self.agir(rotas.MODO_RECUSA)
+        self.assertFalse(r["ok"])
+        self.assertIn("OUTRO projeto", r["mensagem"])
+        self.assertEqual(banco.ler_config(con2, "webhook_modo", rotas.MODO_REGISTRA), rotas.MODO_REGISTRA)
+
+    def test_agir_recusa_batimento_velho_ou_porta_sem_registro(self):
+        self.con.execute("UPDATE batimento SET em = '2000-01-01T00:00:00+00:00' WHERE id = 1")
+        r = self.agir(rotas.MODO_REGISTRA)
+        self.assertFalse(r["ok"])
+        self.assertIn("parado", r["mensagem"])
+        banco.bater(self.con)
+        self.con.execute("DELETE FROM config WHERE chave = 'servico_porta'")
+        r = self.agir(rotas.MODO_REGISTRA)
+        self.assertFalse(r["ok"])
+        self.assertIn("não registrou a porta", r["mensagem"])
+        self.assertFalse(self.agir(rotas.MODO_REGISTRA, ctx=CTX_PAINEL)["ok"], "sem raiz = recusa")
+
     def test_tela_mostra_contadores_e_a_troca(self):
-        con = banco.abrir(self.pasta)  # conexão aberta = -shm existe, como com o serviço no ar
-        self.addCleanup(con.close)
-        banco.bater(con)
         for ok in (True, True, False, True):
             self.webhook(ok)
         tela = self.mod.montar({"raiz": self.projeto, "config": {"porta": PORTA_PAINEL}}, base=self.base)

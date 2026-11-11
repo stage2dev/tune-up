@@ -10,6 +10,9 @@ from servico import pasta, telefone
 ARQUIVO = "vendas.db"
 ESPERA_MS = 5000
 ESTADOS_ENVIO = ("pendente", "enviado", "falhou", "negado", "incerto")
+# estado novo -> estados de onde pode vir; 'enviado' é final (nunca volta para 'negado' ou 'falhou')
+ORIGENS_DO_ENVIO = {"pendente": ("falhou", "incerto"), "enviado": ("pendente", "incerto"),
+                    "falhou": ("pendente",), "negado": ("pendente",), "incerto": ("pendente",)}
 
 MIGRACOES = [
     # 1: esquema inicial
@@ -241,10 +244,13 @@ def registrar_envio(con, chave_dedupe, origem, estado="pendente", motivo=None, c
 
 
 def mudar_envio(con, envio_id, estado, motivo=None, id_externo=None):
+    """Muda o estado só a partir das origens permitidas (nunca sai de 'enviado'). Nenhuma linha = EscritaSemEfeito."""
     if estado not in ESTADOS_ENVIO:
         raise ValueError("estado de envio inválido: %r" % estado)
-    cur = con.execute("UPDATE envios SET estado = ?, motivo = COALESCE(?, motivo), "
-                      "id_externo = COALESCE(?, id_externo) WHERE id = ?", (estado, motivo, id_externo, envio_id))
+    origens = ORIGENS_DO_ENVIO[estado]
+    cur = con.execute("UPDATE envios SET estado = ?, motivo = COALESCE(?, motivo), id_externo = COALESCE(?, "
+                      "id_externo) WHERE id = ? AND estado IN (%s)" % ",".join("?" * len(origens)),
+                      (estado, motivo, id_externo, envio_id) + origens)
     _exigir(cur)
 
 
@@ -276,6 +282,19 @@ def somar_config(con, chave, n=1):
                       "SET valor = CAST(COALESCE(valor, '0') AS INTEGER) + ?", (chave, str(n), n))
     _exigir(cur)
     return int(ler_config(con, chave))
+
+
+def registrar_servico(con, porta, marca):
+    """Porta real e marca do projeto (hash da pasta de dados) do serviço no ar: a tela lê e confere antes de agir."""
+    con.execute("BEGIN IMMEDIATE")
+    try:
+        gravar_config(con, "servico_porta", str(porta))
+        gravar_config(con, "servico_marca", marca)
+        con.execute("COMMIT")
+    except BaseException:
+        if con.in_transaction:
+            con.execute("ROLLBACK")
+        raise
 
 
 def bater(con, pid=None):

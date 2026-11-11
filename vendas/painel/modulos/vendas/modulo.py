@@ -2,17 +2,11 @@
 A tela só LÊ o banco (modo somente leitura) e nunca lê o arquivo do token. Python 3.9, só biblioteca padrão."""
 import datetime
 import importlib.util
-import json
 import os
-import pathlib
 import shlex
 import sqlite3
-import urllib.error
-import urllib.request
 
-PORTA = 8791  # porta padrão do serviço (servico/servico.py)
-VIVO_S = 15  # batimento mais velho que isso = serviço parado (o serviço bate a cada 3 s)
-TEMPO_REDE_S = 5  # toda chamada ao serviço tem tempo limite próprio (o painel não para a thread do agir)
+PORTA_EVOLUTION = 8080  # porta padrão da Evolution local (servico/evolution_local.py)
 MODOS = {"registra_e_conta": "Registra e conta", "recusa": "Recusa segredo errado"}
 VALIDOS_PARA_RECUSA = 20  # o mesmo de servico/rotas.py; quem decide é o serviço
 
@@ -20,9 +14,18 @@ PLUGIN = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path
 SERVICO = os.path.join(PLUGIN, "servico", "servico.py")
 EVOLUTION_LOCAL = os.path.join(PLUGIN, "servico", "evolution_local.py")
 
-_spec = importlib.util.spec_from_file_location("tune_up_vendas_pasta", os.path.join(PLUGIN, "servico", "pasta.py"))
-pasta = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(pasta)
+_spec = importlib.util.spec_from_file_location("tune_up_vendas_cliente", os.path.join(os.path.dirname(
+    os.path.abspath(__file__)), "cliente.py"))
+cliente = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(cliente)  # toda ação da tela fala com o serviço por cliente.chamar
+pasta = cliente.pasta
+VIVO_S = cliente.VIVO_S
+porta_do_painel = cliente.porta_do_painel
+
+PORTA = 8791  # porta padrão do serviço (servico/servico.py); só para as regras de negar
+# pasta de dados externa (servico/pasta.py) em macOS, Linux e Windows, no formato das regras do Claude Code
+PASTAS_DE_DADOS = ("~/Library/Application Support/tune-up-vendas", "~/.local/share/tune-up-vendas",
+                   "~/AppData/Local/tune-up-vendas")
 
 INFO = {
     "id": "vendas",
@@ -32,26 +35,19 @@ INFO = {
     "negar": [
         "Bash(*127.0.0.1:%d*)" % PORTA,
         "Bash(*localhost:%d*)" % PORTA,
+        "Bash(*127.0.0.1:%d*)" % PORTA_EVOLUTION,
+        "Bash(*localhost:%d*)" % PORTA_EVOLUTION,
         "Bash(*/api/modulos/*/acao*)",
         "Bash(*tune-up-vendas*)",
-        "Read(*tune-up-vendas*)",
-        "Edit(*tune-up-vendas*)",
-        "Write(*tune-up-vendas*)",
+        "Bash(*docker exec*)",
+        "Bash(*docker inspect*)",
+        "Bash(*docker compose config*)",
         "Bash(*security find-generic-password*)",
-    ],
+    ] + ["%s(%s/**)" % (ferramenta, dados) for dados in PASTAS_DE_DADOS for ferramenta in ("Read", "Edit", "Write")],
 }
 
 
-def _ler(raiz, base, sql):
-    """Linhas de uma consulta no banco do serviço, ou None sem banco aberto. Não cria nada: modo somente leitura."""
-    arquivo = os.path.join(pasta.caminho_da_pasta(raiz, base), "vendas.db")
-    if not os.path.isfile(arquivo) or not os.path.exists(arquivo + "-shm"):
-        return None  # sem -shm não há conexão WAL aberta (e o modo ro não consegue criá-lo): serviço parado
-    con = sqlite3.connect(pathlib.Path(os.path.abspath(arquivo)).as_uri() + "?mode=ro", uri=True, timeout=2)
-    try:
-        return con.execute(sql).fetchall()
-    finally:
-        con.close()
+_ler = cliente.ler
 
 
 def ler_batimento(raiz, base=None):
@@ -70,11 +66,6 @@ def ler_webhook(raiz, base=None):
             "invalidos": numero("webhook_invalidos"), "seguidos": numero("webhook_validos_seguidos")}
 
 
-def porta_do_painel(ctx):
-    porta = ((ctx or {}).get("config") or {}).get("porta")
-    return porta if isinstance(porta, int) and 1024 <= porta <= 65535 else 8787
-
-
 def comando(ctx):
     raiz = (ctx or {}).get("raiz") or "<raiz do projeto>"
     return "python3 -B %s --projeto %s --painel http://127.0.0.1:%s" % (
@@ -86,44 +77,22 @@ def comando_evolution(ctx):
     return "python3 -B %s preparar --projeto %s" % (shlex.quote(EVOLUTION_LOCAL), shlex.quote(raiz))
 
 
-def _pedir(metodo, url, cab, corpo=None):
-    """Pedido ao serviço local com tempo limite e sem proxy. Devolve (código, objeto JSON)."""
-    dados = None if corpo is None else json.dumps(corpo).encode("utf-8")
-    pedido = urllib.request.Request(url, data=dados, method=metodo, headers=cab)
-    abridor = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    try:
-        with abridor.open(pedido, timeout=TEMPO_REDE_S) as r:
-            return r.status, json.loads(r.read().decode("utf-8") or "{}")
-    except urllib.error.HTTPError as e:
-        try:
-            return e.code, json.loads(e.read().decode("utf-8") or "{}")
-        except ValueError:
-            return e.code, {}
-        finally:
-            e.close()
-
-
-def agir(ctx, acao, dados, porta=PORTA):
-    """modo_webhook: pede ao serviço a troca do modo do segredo do webhook. Quem confere os 20 válidos seguidos
-    é o serviço. Repetir o mesmo modo não muda nada. O token de envio nunca volta no resultado."""
+def agir(ctx, acao, dados, base=None):
+    """modo_webhook: pede ao serviço DESTE projeto a troca do modo do segredo do webhook (cliente.chamar confere
+    porta, batimento e marca antes do token). Quem confere os 20 válidos seguidos é o serviço. Repetir o mesmo
+    modo não muda nada. O token de envio nunca volta no resultado."""
     if acao != "modo_webhook":
         return {"ok": False, "mensagem": "Ação desconhecida."}
     modo = (dados or {}).get("modo")
     if modo not in MODOS:
         return {"ok": False, "mensagem": "Escolha um modo válido."}
-    base = "http://127.0.0.1:%d" % porta
     try:
-        codigo, r = _pedir("GET", base + "/token-de-envio",
-                           {"Origin": "http://127.0.0.1:%d" % porta_do_painel(ctx)})
-        if codigo != 200 or not isinstance(r.get("token"), str):
-            return {"ok": False, "mensagem": "O serviço não liberou a troca (%d). Confira se ele foi ligado com "
-                                             "--painel deste painel." % codigo}
-        codigo, r = _pedir("POST", base + "/modo-webhook",
-                           {"X-Vendas-Token": r["token"], "Content-Type": "application/json"}, {"modo": modo})
-    except (OSError, ValueError):
-        return {"ok": False, "mensagem": "O serviço de Vendas não respondeu. Ligue-o e tente de novo."}
+        codigo, r = cliente.chamar(ctx, "POST", "/modo-webhook", {"modo": modo}, base=base)
+    except cliente.Recusa as e:
+        return {"ok": False, "mensagem": str(e)}
     if codigo != 200:
-        return {"ok": False, "mensagem": str(r.get("erro") or "O serviço recusou a troca (%d)." % codigo)}
+        return {"ok": False, "mensagem": str((r if isinstance(r, dict) else {}).get("erro")
+                                             or "O serviço recusou a troca (%d)." % codigo)}
     return {"ok": True, "mensagem": "Modo do webhook: %s." % MODOS[modo]}
 
 

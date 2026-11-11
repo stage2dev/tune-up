@@ -84,20 +84,24 @@ def rodar(args, avisar=print):
             avisar("vendas: %d envio(s) ficaram incertos na última parada; veja na tela" % incertos, file=sys.stderr)
         token = secrets.token_urlsafe(32)
         travas.gravar_segredo(caminho_token, token)
-        segredo = travas.ler_ou_criar_segredo(os.path.join(pasta_dados, ARQUIVO_SEGREDO))
+        caminho_segredo = os.path.join(pasta_dados, ARQUIVO_SEGREDO)
+        segredo_novo = travas.ler_segredo(caminho_segredo) is None
+        segredo = travas.ler_ou_criar_segredo(caminho_segredo)
         app = rotas.App(pasta_dados, args.porta, painel, token, segredo)
         try:
             servidor = rotas.criar_servidor(app, args.porta)
         except OSError as e:
             avisar("vendas: não subi: a porta %d não abriu (%s)" % (args.porta, e.strerror or e), file=sys.stderr)
             return 4
-        ambiente = evolution_local.ler_ambiente(pasta_dados)  # .env do preparar; o ambiente do terminal manda
-        ambiente.update({k: os.environ[k] for k in (evolution.VAR_URL, evolution.VAR_CHAVE) if os.environ.get(k)})
+        con = banco.abrir(pasta_dados)
         try:
-            app.conector = evolution.Evolution.do_ambiente("http://%s:%d" % (rotas.HOST_DOCKER, app.porta),
-                                                           segredo, ambiente)
-        except ValueError:
-            app.conector = None  # POST /enviar responde 503 até o dono configurar a Evolution
+            if rotas.conferir_segredo(con, segredo, segredo_novo):
+                avisar("vendas: o segredo do webhook é novo; o modo voltou para 'Registra e conta' e a contagem de "
+                       "válidos seguidos zerou (a Evolution ainda pode mandar o segredo antigo)", file=sys.stderr)
+            banco.registrar_servico(con, app.porta, app.marca)  # a tela confere porta e projeto antes de agir
+        finally:
+            con.close()
+        app.conector = conector(pasta_dados, app.porta, segredo, avisar)
         for sinal in (signal.SIGINT, signal.SIGTERM):
             signal.signal(sinal, lambda *_: parar.set())
         batimento = threading.Thread(target=bater_sempre, args=(pasta_dados, parar), daemon=True)
@@ -117,6 +121,29 @@ def rodar(args, avisar=print):
         parar.set()
         _limpar(pasta_dados, caminho_token)
         trava.soltar()
+
+
+def conector(pasta_dados, porta, segredo, avisar=print):
+    """Conector da Evolution pelo .env do preparar (o ambiente do terminal manda), ou None com aviso no stderr:
+    sem conector, POST /enviar responde 503 até o dono configurar a Evolution."""
+    env = evolution_local.caminho_env(pasta_dados)
+    try:
+        ambiente = evolution_local.ler_ambiente(pasta_dados)
+    except (OSError, ValueError) as e:
+        ambiente = {}
+        avisar("vendas: não consegui ler %s (%s); sigo sem ele" % (env, getattr(e, "strerror", None)
+                                                                   or type(e).__name__), file=sys.stderr)
+    else:
+        if not ambiente and os.path.exists(env):
+            avisar("vendas: %s está incompleto (falta SERVER_URL ou AUTHENTICATION_API_KEY); rode de novo "
+                   "evolution_local.py preparar --refazer" % env, file=sys.stderr)
+    ambiente.update({k: os.environ[k] for k in (evolution.VAR_URL, evolution.VAR_CHAVE) if os.environ.get(k)})
+    try:
+        return evolution.Evolution.do_ambiente("http://%s:%d" % (rotas.HOST_DOCKER, porta), segredo, ambiente)
+    except ValueError as e:
+        avisar("vendas: nenhum conector de WhatsApp configurado (%s); o envio fica desligado. Rode "
+               "evolution_local.py preparar ou defina as variáveis." % e, file=sys.stderr)
+        return None
 
 
 def _limpar(pasta_dados, caminho_token):

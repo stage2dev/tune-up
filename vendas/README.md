@@ -30,21 +30,23 @@ python3 -B <plugin folder>/servico/servico.py --projeto <project root> [--porta 
 - One service per project: a non-blocking exclusive lock on `servico.trava` in the data folder. A second start exits with code 3 and a clear message. A data folder inside the project or under a synced folder exits with code 2.
 - `--painel` is the panel's exact origin (scheme, host and port). Only that origin gets the send token.
 - Writes a heartbeat to the database every 3 s; the screen shows "Serviço parado" when the heartbeat is missing or older than 15 s.
+- On start it records its real port and the project marker (the data-folder hash) in its database. It also stores a fingerprint (sha256 prefix) of the webhook secret: when the secret is new or changed, the consecutive-valid counter goes back to 0 and a `recusa` mode goes back to `registra_e_conta`, with a notice on stderr.
+- On start it prints a notice on stderr when the Evolution `.env` exists but is incomplete or unreadable, or when no connector is configured (sending stays off, `POST /enviar` answers 503).
 
 Routes:
 
 | Route | Rule |
 |---|---|
-| `GET /saude` | health, no secrets |
+| `GET /saude` | health, no secrets; includes `marca`, the project marker (data-folder hash) |
 | `GET /token-de-envio` | returns the send token only when `Origin` is exactly the `--painel` origin; any other origin or no `Origin` = 403. `OPTIONS` and CORS only for that origin |
 | `GET /estado` | requires header `X-Vendas-Token` (compared in constant time); webhook mode and counters |
 | `POST /modo-webhook` | requires `X-Vendas-Token`; JSON `{modo}` with `registra_e_conta` or `recusa`. `recusa` answers 409 until 20 consecutive valid webhooks were received (an invalid one resets the count); going back to `registra_e_conta` is always allowed |
 | `POST /enviar` | requires `X-Vendas-Token`; JSON `{telefone, texto, id_tela, confirmar_optout}`. Always origin `manual` (an `origem` field in the body is ignored) and always through the send gate. Replies `{estado, motivo, envio_id}`; 503 when the Evolution connector or the instance is not configured |
-| `POST /webhook/<instance>` | JSON only, 1 MB limit; secret in header `X-Vendas-Segredo` (constant-time compare). Mode `registra_e_conta` (default) accepts and counts valid/invalid; mode `recusa` answers 401 to a wrong secret. The raw event goes to the `eventos` table |
+| `POST /webhook/<instance>` | JSON only, 1 MB limit; secret in header `X-Vendas-Segredo` (constant-time compare). Mode `registra_e_conta` (default) accepts and counts valid/invalid; mode `recusa` answers 401 to a wrong secret. The raw event goes to the `eventos` table; a valid webhook is counted only in the same transaction that stored its event |
 
 `Host` must be `127.0.0.1` or `localhost` (and the service port); `host.docker.internal` is accepted only on the webhook route. Nothing from a request is written to logs.
 
-The screen ("Conexão" tab, while the service runs) shows the webhook mode, the valid, invalid and consecutive-valid counters and a form to switch the mode. The form calls the module action `modo_webhook`, which asks the service (default port 8791) for the send token as the panel origin and posts to `POST /modo-webhook`; the 20-valid rule is enforced by the service, and the token never comes back in the action result.
+The screen ("Conexão" tab, while the service runs) shows the webhook mode, the valid, invalid and consecutive-valid counters and a form to switch the mode. The form calls the module action `modo_webhook`. Every module action goes through `painel/modulos/vendas/cliente.py`: it reads the port from this project's database (read-only), refuses when the heartbeat is stale, checks that `GET /saude` returns this project's marker (so it never acts on another project's service on that port), then asks for the send token as the panel origin and posts to `POST /modo-webhook`; the 20-valid rule is enforced by the service, and the token never comes back in the action result.
 
 The send token is new on every start and stored 0600 in the data folder (deleted on clean stop); the webhook secret is kept 0600 in the data folder across restarts. The panel screen never reads either file.
 
@@ -57,7 +59,7 @@ python3 -B <plugin folder>/servico/evolution_local.py preparar --projeto <projec
 ```
 
 - Writes `compose.yml` and `.env` into `<data folder>/evolution/` (the external data folder below, never the project root; a target inside the project or under a synced folder is refused with exit code 2).
-- `.env` is mode 0600 and holds an API key and a Postgres password generated on the spot. The public default key of the Evolution examples is never used. An existing `.env` is never overwritten unless you pass `--refazer` (which also needs the old Postgres volume removed, since Postgres keeps the first password).
+- `.env` is mode 0600 and holds an API key and a Postgres password generated on the spot. The public default key of the Evolution examples is never used. An existing `.env` is never overwritten unless you pass `--refazer`, which rotates only the API key and keeps the existing `POSTGRES_PASSWORD` (Postgres keeps the password of its first start). A new database password needs `--refazer --senha-nova`, and then the old Postgres volume must be removed.
 - `compose.yml` runs Evolution API v2.3.7, Postgres 15 and Redis 7. Only the Evolution port is published, bound to `127.0.0.1` (default 8080); Postgres and Redis publish nothing. Telemetry and the global webhook are off.
 - It prints the command to start the containers, `docker compose -f <data folder>/evolution/compose.yml up -d`, and never runs Docker itself.
 - The service reads the Evolution URL (`SERVER_URL`) and key from that `.env` when `VENDAS_EVOLUTION_URL` / `VENDAS_EVOLUTION_CHAVE` are not set in its environment. It registers each instance's webhook as `http://host.docker.internal:<service port>/webhook/<instance>` with the secret in the `X-Vendas-Segredo` header, so start the service with the same `--porta` you gave `preparar`.
@@ -90,6 +92,9 @@ Outside the project tree, in an external data folder, one subfolder per project 
 
 - macOS: `~/Library/Application Support/tune-up-vendas/<hash>/`
 - Linux: `$XDG_DATA_HOME/tune-up-vendas/<hash>/` (default `~/.local/share`)
+- Windows: `%LOCALAPPDATA%\tune-up-vendas\<hash>\`
+
+On case-insensitive disks (the macOS and Windows defaults) the hash uses the lower-cased real path, so the same project opened with different letter case keeps one database.
 
 The folder is mode 0700 and its files 0600. Keys, tokens and contact data never go inside the project, logs or route replies. Folders synced by tools such as Syncthing are refused.
 
@@ -98,15 +103,23 @@ The folder is mode 0700 and its files 0600. Keys, tokens and contact data never 
 The module declares these in `INFO["negar"]` and the panel joins them into the deny rules of every session it starts:
 
 - `Bash(*127.0.0.1:8791*)` and `Bash(*localhost:8791*)` (default service port)
+- `Bash(*127.0.0.1:8080*)` and `Bash(*localhost:8080*)` (default local Evolution port)
 - `Bash(*/api/modulos/*/acao*)` (the panel's action route)
-- `Bash(*tune-up-vendas*)`, `Read(*tune-up-vendas*)`, `Edit(*tune-up-vendas*)`, `Write(*tune-up-vendas*)` (data folder and service)
+- `Bash(*tune-up-vendas*)` (data folder, service and `docker compose -f <data folder>/...`)
+- `Bash(*docker exec*)`, `Bash(*docker inspect*)`, `Bash(*docker compose config*)` (they print the container environment, including the Evolution key and the Postgres password)
 - `Bash(*security find-generic-password*)` (macOS keychain)
+- `Read`, `Edit` and `Write` on the data folder, anchored on the real paths: `~/Library/Application Support/tune-up-vendas/**` (macOS), `~/.local/share/tune-up-vendas/**` (Linux) and `~/AppData/Local/tune-up-vendas/**` (Windows)
+
+These rules use the default ports. If you start the service or the Evolution on another port (`--porta`, `--porta-evolution`), or set `XDG_DATA_HOME` / `LOCALAPPDATA` to another folder, add a matching rule yourself (for example `Bash(*127.0.0.1:9090*)` and `Bash(*localhost:9090*)`).
+
+**What these rules are and are not.** The deny rules and the `Origin` check on `GET /token-de-envio` are an extra layer against accidents (a session reading a file or calling the service by mistake, a transcript, a synced folder). They are **not** protection from a local process of the same user: any program you run, or a session with unrestricted Bash (for example with `pular_permissoes: true`), can read the data folder and call the service.
 
 Sessions you start by hand do not go through the panel, so also add the same rules as "ask" rules in the project's `regras_bash`, for example:
 
 ```json
 { "regras_bash": [
-  { "regex": "127\\.0\\.0\\.1:8791|localhost:8791", "acao": "perguntar", "msg": "Sales service port." },
+  { "regex": "127\\.0\\.0\\.1:(8791|8080)|localhost:(8791|8080)", "acao": "perguntar", "msg": "Sales service or Evolution port." },
+  { "regex": "docker\\s+(exec|inspect|compose\\s+config)", "acao": "perguntar", "msg": "Docker command that prints secrets." },
   { "regex": "/api/modulos/[^/ ]+/acao", "acao": "perguntar", "msg": "Panel action route." },
   { "regex": "tune-up-vendas", "acao": "perguntar", "msg": "Sales data folder or service." },
   { "regex": "security\\s+find-generic-password", "acao": "perguntar", "msg": "Keychain read." }

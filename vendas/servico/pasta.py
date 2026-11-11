@@ -1,6 +1,7 @@
 """Pasta de dados FORA do projeto: banco, logs e segredos nunca entram na árvore do projeto nem numa pasta sincronizada.
 macOS: ~/Library/Application Support/tune-up-vendas/<hash>/; Linux: $XDG_DATA_HOME ou ~/.local/share; Windows: %LOCALAPPDATA%.
-<hash> = sha256 do realpath da raiz do projeto. A base só muda por argumento explícito (testes), nunca por pedido."""
+<hash> = sha256 do realpath da raiz do projeto (em minúsculas em disco que ignora maiúsculas).
+A base só muda por argumento explícito (testes), nunca por pedido."""
 import hashlib
 import os
 import sys
@@ -47,9 +48,22 @@ def validar(pasta, raiz_projeto):
         atual = acima
 
 
+def identidade(raiz_projeto):
+    """realpath da raiz; em minúsculas quando o disco ignora maiúsculas (o mesmo projeto, a mesma pasta de dados)."""
+    real = os.path.realpath(raiz_projeto)
+    trocado = real.swapcase()
+    if trocado != real:
+        try:
+            if os.path.samefile(real, trocado):  # o disco achou o mesmo arquivo com a caixa trocada
+                return real.lower()
+        except OSError:
+            pass
+    return real
+
+
 def caminho_da_pasta(raiz_projeto, base=None):
     """Só o caminho da pasta de dados deste projeto: não cria nem valida (leitura pela tela)."""
-    marca = hashlib.sha256(os.path.realpath(raiz_projeto).encode("utf-8")).hexdigest()[:16]
+    marca = hashlib.sha256(identidade(raiz_projeto).encode("utf-8")).hexdigest()[:16]
     return os.path.join(base or pasta_base(), marca)
 
 
