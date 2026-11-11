@@ -299,6 +299,8 @@ def fazer_handler(app):
                                            corpo.get("numero_descartavel"))
                 except ValueError:
                     return self._erro(400, "Nome de instância inválido (letras, números, _ e -, até 64).")
+                except instancia.TrocaRecusada as e:
+                    return self._erro(409, str(e))
                 except ErroConector:
                     return self._erro(502, instancia.ERRO_CONECTOR)
             finally:

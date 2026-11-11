@@ -154,6 +154,32 @@ class TesteAgir(Aba):
         self.assertFalse(r["ok"])
         self.assertNotIn("segredo-interno-123", json.dumps(r))
 
+    def test_criar_que_falha_nao_troca_a_instancia_gravada(self):
+        from servico.conectores import base
+        self.assertTrue(self.criar(numero_descartavel="sim")["ok"])
+
+        def quebra(_):
+            raise base.NaoEnviado("fora", 500)
+        self.falso.criar = quebra
+        self.assertFalse(self.criar(instancia="loja2", numero_descartavel="nao")["ok"])
+        self.assertEqual(self.config("instancia", ""), "loja")
+        self.assertEqual(self.config("numero_descartavel"), "1")
+
+    def test_troca_recusada_com_a_antiga_conectada(self):
+        self.assertTrue(self.criar(numero_descartavel="sim")["ok"])
+        self.falso.estado = lambda nome: {"loja": "conectado"}.get(nome, "desconectado")
+        r = self.criar(instancia="loja2", numero_descartavel="sim")
+        self.assertFalse(r["ok"])
+        self.assertIn("loja", r["mensagem"])
+        self.assertEqual(self.config("instancia", ""), "loja")
+        self.assertEqual([c for c in self.falso.chamadas if c[0] == "criar"], [("criar", ("loja",))])
+        self.assertTrue(self.criar(instancia="loja", numero_descartavel="sim")["ok"], "mesma instância segue")
+
+    def test_troca_permitida_com_a_antiga_desconectada(self):
+        self.assertTrue(self.criar(numero_descartavel="sim")["ok"])
+        self.assertTrue(self.criar(instancia="loja2", numero_descartavel="sim")["ok"])
+        self.assertEqual(self.config("instancia", ""), "loja2")
+
     def test_rota_exige_token(self):
         self.assertEqual(self.pedir("GET", "/instancia")[0], 403)
         self.assertEqual(self.pedir("POST", "/instancia", {rotas.CAB_TOKEN: "errado"}, {"instancia": "x"})[0], 403)

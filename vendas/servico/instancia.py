@@ -27,12 +27,21 @@ def ler(con, conector):
     return saida
 
 
+class TrocaRecusada(Exception):
+    """Outra instância já gravada segue conectada: trocar o nome faria o serviço parar de ler o número antigo."""
+
+
 def conectar(con, conector, instancia, numero_descartavel):
-    """Grava a config e cria a instância (já existindo, o conector só regrava o webhook). ValueError = nome inválido
-    (nada gravado); ErroConector sobe para a rota. Gravar antes de criar deixa a tela pedir o QR de novo se a
-    criação falhar no meio."""
+    """Cria a instância (já existindo, o conector só regrava o webhook) e só então grava a config. ValueError = nome
+    inválido; ErroConector sobe para a rota; TrocaRecusada = outra instância gravada ainda conectada. Em todos esses
+    casos nada muda na config: o webhook e a recuperação seguem lendo a instância antiga."""
     base.validar_instancia(instancia)
+    atual = banco.ler_config(con, "instancia")
+    if atual and atual != instancia and conector.estado(atual) == "conectado":
+        raise TrocaRecusada("A instância %s ainda está conectada. Desconecte o aparelho dela no WhatsApp "
+                            "(Aparelhos conectados) antes de trocar, senão as mensagens dela deixam de ser lidas."
+                            % atual)
+    conector.criar(instancia)
     banco.gravar_config(con, "instancia", instancia)
     banco.gravar_config(con, "numero_descartavel", "1" if numero_descartavel is True else "0")
-    conector.criar(instancia)
     return ler(con, conector)
