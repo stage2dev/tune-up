@@ -33,11 +33,12 @@ Checks in `qa.json`:
 
 | name | fails when |
 | --- | --- |
-| `png_size` | PNG is not `--width` x `--height` (default 1080x1350) |
-| `layout_allow_count` | any `data-layout-allow-*` in the source |
+| `png_size` | not a whole PNG (every chunk up to `IEND`, CRCs, IDAT inflates to exactly what IHDR needs) or not `--width` x `--height` (default 1080x1350) |
+| `layout_allow_count` | anything that can silence the layout audit: `data-layout-allow\|ignore\|bleed\|boundary\|check*` (also on an ancestor), `layoutAllow`-style dataset names, `dataset`, `setAttribute` |
+| `no_script` | any `<script` in the post source (the post is CSS only; post QA only) |
 | `no_gsap` | the word `gsap` anywhere in the source |
 | `network_lint` | `http(s)://`, `//host` in src/href/url(), `url(http`, `fetch(`, `XMLHttpRequest`, `WebSocket`, `EventSource`, `sendBeacon`, `import(` |
-| `hyperframes_check` | check not strict, browser skipped, `ok` false, or any error/warning finding |
+| `hyperframes_check` | check not strict, browser skipped, `ok` false, any error/warning finding, `saved.report` not under `--source` (check of another piece), check JSON older than a source file (source edited after the check); for video also `layout.duration` not `--duration` |
 
 How the check reports problems: text that leaves its box gives a layout
 `text_box_overflow` error; text past the canvas edge gives a
@@ -88,11 +89,17 @@ Checks in `qa.json` (plus `layout_allow_count`, `no_gsap`, `network_lint` and
 | `video_size` | not `--width` x `--height` (default 1080x1920) |
 | `duration` | more than 0.2 s away from `--duration` (default 10) |
 | `fps` | `r_frame_rate` is not `--fps` (default 30) |
+| `frames` | frames decoded by `ffprobe -count_frames` not `--duration` x `--fps` (a cut MP4 keeps its header duration) |
 | `codec` | not h264 yuv420p |
 | `faststart` | `moov` box is not before `mdat` |
 | `no_audio` | any audio stream |
-| `blackdetect` | a black span of 0.5 s or more (`blackdetect=d=0.5:pix_th=0.10`) |
-| `freezedetect` | a still span of 2 s or more (`freezedetect=n=-60dB:d=2`) |
+| `blackdetect` | a black span of 0.5 s or more (`blackdetect=d=0.5:pix_th=0.10`), or ffmpeg reports `partial file` / `Invalid data` |
+| `freezedetect` | a still span of 2 s or more (`freezedetect=n=-60dB:d=2`), or the same damage lines |
+
+Tool paths are not options: `qa_video.py` and `reserva_slides.py` take
+`ffmpeg`/`ffprobe` from `PATH`, `video_ou_reserva.py` takes HyperFrames from
+`STUDIO_HYPERFRAMES_BIN` or `../node`. An option would let a session point
+it at `python3` and a file it wrote.
 
 `hyperframes check --strict` does not catch a black second: the fixture
 `tests/fixtures/defect-black-second` passes the check and fails only
@@ -158,7 +165,11 @@ same list (checked by `tests/test_regras_bash.py`). Allowed, nothing else:
 - `<abs path>/tune-up-studio[/<version>]/node/node_modules/.bin/hyperframes`
   with `render`, `check`, `lint`, `validate`, `inspect`, `snapshot`, `info`,
   `compositions` (no `--describe`, no `--docker`); the binary must not be
-  under `{trabalho}`, so a script the session wrote cannot pass as it.
+  under `{trabalho}`, so a script the session wrote cannot pass as it. Other
+  names of the same folder are refused too: any path with a `/trabalhos/`
+  segment (covers `/tmp` vs `/private/tmp` and `/System/Volumes/Data/...`)
+  and anything under `/proc/`, `/dev/` or `/System/Volumes/`. This is still a
+  text match, not the exact install path; see the limits below.
 - `ffmpeg` where every `-i` comes right after `-protocol_whitelist file,pipe`.
 - `ffprobe`.
 - `python3 -I <abs path>/tune-up-studio[/<version>]/scripts/` with
@@ -167,7 +178,9 @@ same list (checked by `tests/test_regras_bash.py`). Allowed, nothing else:
 Every argument is either an option without `/`, a relative path without `:`,
 or a path inside `{trabalho}`. No `..`, `//`, `~`, quotes, `$`, `;`, `&`,
 `|`, redirects or newlines. Limits: `npx` and a bare `hyperframes` are refused
-(both can resolve a binary planted in `{trabalho}`); the content of the filter
+(both can resolve a binary planted in `{trabalho}`); an alias of `{trabalho}`
+not listed above (a symlinked parent, a bind mount) is not caught, the exact
+plugin path would need a marker resolved by the core; the content of the filter
 graph file is not inspected (a `movie=` source there is stopped only by the
 sandbox network block); an action that puts `Bash` in `permitir` turns on the
 core's compound/script lock, which refuses `python3` and absolute-path

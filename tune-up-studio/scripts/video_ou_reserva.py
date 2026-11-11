@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Render a video with HyperFrames; when it is missing or fails, fall back to the FFmpeg slide reserve.
 
-The HyperFrames binary comes from --hyperframes, else STUDIO_HYPERFRAMES_BIN, else the
-pinned install in ../node. Writes the MP4 and <out>.engine.json with
+The HyperFrames binary comes from STUDIO_HYPERFRAMES_BIN, else the pinned install in
+../node (no command-line option: a session could point it at a file it wrote). Writes the MP4 and <out>.engine.json with
 {"engine": "hyperframes" | "reserve", "reason": ...}. The reserve MP4 also carries the
 reserve tag (see reserva_slides.MARK), so qa_video.py --engine reserve can check it.
 
@@ -69,12 +69,12 @@ def main(argv=None):
     p.add_argument("--source", required=True, help="HyperFrames composition folder (fonte/)")
     p.add_argument("--slides", required=True, help="folder with slide PNGs for the reserve")
     p.add_argument("--out", required=True, help="MP4 to write")
-    p.add_argument("--hyperframes", default=os.environ.get("STUDIO_HYPERFRAMES_BIN") or DEFAULT_BIN)
     p.add_argument("--duration", type=float, default=10.0)
     p.add_argument("--fps", type=int, default=30)
-    p.add_argument("--ffmpeg", default=shutil.which("ffmpeg") or "ffmpeg")
     args = p.parse_args(argv)
-    record = run(args.source, args.slides, args.out, args.hyperframes, args.duration, args.fps, args.ffmpeg)
+    binary = os.environ.get("STUDIO_HYPERFRAMES_BIN") or DEFAULT_BIN
+    record = run(args.source, args.slides, args.out, binary, args.duration, args.fps,
+                 shutil.which("ffmpeg") or "ffmpeg")
     print(json.dumps(record, ensure_ascii=False))
     return 0 if record["engine"] else 1
 

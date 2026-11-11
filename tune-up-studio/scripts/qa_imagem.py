@@ -13,6 +13,7 @@ import os
 import re
 import struct
 import sys
+import zlib
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 SKIP_DIRS = {".hyperframes", "node_modules", ".git"}
@@ -36,16 +37,70 @@ NETWORK_PATTERNS = [
     ("dynamic import(", re.compile(r"\bimport\s*\(")),
 ]
 GSAP_RE = re.compile(r"gsap", re.I)
-LAYOUT_ALLOW_RE = re.compile(r"data-layout-allow-[a-z-]+", re.I)
+# Every way seen to silence the layout audit: the data-layout-* attributes (on the
+# element or any ancestor) and setting them from script (dataset / setAttribute).
+LAYOUT_ALLOW_RE = re.compile(
+    r"data-layout-(?:allow|ignore|bleed|boundary|check)[\w-]*|"
+    r"\blayout(?:Allow|Ignore|Bleed|Boundary|Check)\w*|\bdataset\b|setAttribute", re.I)
+SCRIPT_RE = re.compile(r"<script\b", re.I)
+PNG_CHANNELS = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}
+ADAM7 = ((0, 0, 8, 8), (4, 0, 8, 8), (0, 4, 4, 8), (2, 0, 4, 4), (0, 2, 2, 4), (1, 0, 2, 2), (0, 1, 1, 2))
+
+
+def png_raw_size(width, height, depth, ctype, interlace):
+    """Bytes the inflated IDAT must hold (filter byte + packed pixels per row)."""
+    if ctype not in PNG_CHANNELS or depth not in (1, 2, 4, 8, 16):
+        raise ValueError("unsupported PNG color type %d / depth %d" % (ctype, depth))
+    bits = depth * PNG_CHANNELS[ctype]
+
+    def rows(w, h):
+        return h * (1 + (w * bits + 7) // 8) if w and h else 0
+    if not interlace:
+        return rows(width, height)
+    return sum(rows((width - x + dx - 1) // dx if width > x else 0,
+                    (height - y + dy - 1) // dy if height > y else 0) for x, y, dx, dy in ADAM7)
 
 
 def png_size(path):
-    """Return (width, height) from the IHDR chunk, or raise ValueError."""
+    """Return (width, height) of a whole PNG, or raise ValueError.
+
+    Walks every chunk up to IEND checking the CRCs, then inflates the IDAT data
+    and requires exactly the size IHDR promises, so a cut or damaged file fails.
+    """
     with open(path, "rb") as f:
-        head = f.read(24)
-    if len(head) < 24 or head[:8] != PNG_SIGNATURE or head[12:16] != b"IHDR":
+        data = f.read()
+    if data[:8] != PNG_SIGNATURE or data[12:16] != b"IHDR":
         raise ValueError("not a PNG file")
-    return struct.unpack(">II", head[16:24])
+    pos, ihdr, idat = 8, None, []
+    while True:
+        if pos + 12 > len(data):
+            raise ValueError("truncated PNG: no IEND chunk")
+        length, kind = struct.unpack(">I4s", data[pos:pos + 8])
+        end = pos + 12 + length
+        if end > len(data):
+            raise ValueError("truncated PNG: %s chunk cut" % kind.decode("latin-1"))
+        body = data[pos + 4:pos + 8 + length]
+        if zlib.crc32(body) != struct.unpack(">I", data[end - 4:end])[0]:
+            raise ValueError("bad CRC in %s chunk" % kind.decode("latin-1"))
+        if kind == b"IHDR" and length == 13:
+            ihdr = struct.unpack(">IIBBBBB", body[4:])
+        elif kind == b"IDAT":
+            idat.append(body[4:])
+        elif kind == b"IEND":
+            break
+        pos = end
+    if ihdr is None:
+        raise ValueError("bad IHDR chunk")
+    width, height, depth, ctype, _, _, interlace = ihdr
+    want = png_raw_size(width, height, depth, ctype, interlace)
+    inflater = zlib.decompressobj()
+    try:
+        raw = inflater.decompress(b"".join(idat), want + 1)
+    except zlib.error as exc:
+        raise ValueError("bad IDAT data: %s" % exc)
+    if len(raw) != want or not inflater.eof:
+        raise ValueError("IDAT holds %d bytes, IHDR needs %d" % (len(raw), want))
+    return width, height
 
 
 def source_files(folder):
@@ -81,14 +136,35 @@ def result(name, ok, details):
 def check_png(png, width, height):
     try:
         w, h = png_size(png)
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, struct.error) as exc:
         return result("png_size", False, ["%s: %s" % (png, exc)])
     ok = (w, h) == (width, height)
     return result("png_size", ok, ["%dx%d (expected %dx%d)" % (w, h, width, height)])
 
 
-def check_strict_json(path):
-    """Green only if the strict check ran in a browser and found nothing above info."""
+def newest_mtime(folder):
+    return max([os.path.getmtime(p) for p in source_files(folder)] or [0.0])
+
+
+def check_binding(data, path, source, duration):
+    """Problems tying this check JSON to the source folder (and the video length)."""
+    problems = []
+    if source is not None:
+        root = os.path.realpath(source)
+        report = (data.get("saved") or {}).get("report") if isinstance(data.get("saved"), dict) else None
+        if not isinstance(report, str) or not os.path.realpath(report).startswith(root + os.sep):
+            problems.append("check was not run on this source: saved.report=%r, source=%s" % (report, root))
+        elif os.path.getmtime(path) < newest_mtime(source):
+            problems.append("source changed after the check; run check again")
+    if duration is not None:
+        got = (data.get("layout") or {}).get("duration") if isinstance(data.get("layout"), dict) else None
+        if not isinstance(got, (int, float)) or abs(got - duration) > 0.2:
+            problems.append("check layout.duration=%r (expected %g)" % (got, duration))
+    return problems
+
+
+def check_strict_json(path, source=None, duration=None):
+    """Green only if the strict check ran in a browser on `source` and found nothing above info."""
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
@@ -111,6 +187,7 @@ def check_strict_json(path):
                     finding.get("selector"), finding.get("message")))
     if data.get("ok") is not True:
         problems.append("check reported ok=false")
+    problems += check_binding(data, path, source, duration)
     return result("hyperframes_check", not problems, problems or ["ok"])
 
 
@@ -126,7 +203,9 @@ def run(source, png, check_json, width, height):
         checks.append(result("no_gsap", not gsap, gsap or ["ok"]))
         net = scan(source, NETWORK_PATTERNS, strip_xmlns=True)
         checks.append(result("network_lint", not net, net or ["ok"]))
-    checks.append(check_strict_json(check_json))
+        script = scan(source, [("script", SCRIPT_RE)])  # the post is CSS only
+        checks.append(result("no_script", not script, script or ["ok"]))
+    checks.append(check_strict_json(check_json, source))
     return {"ok": all(c["ok"] for c in checks), "checks": checks}
 
 

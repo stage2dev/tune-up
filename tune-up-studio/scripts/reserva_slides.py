@@ -102,11 +102,10 @@ def main(argv=None):
     p.add_argument("--fps", type=int, default=30)
     p.add_argument("--xfade", type=float, default=0.5, help="crossfade seconds")
     p.add_argument("--zoom", type=float, default=0.06, help="zoom gained over one slide (0.06 = 6%%)")
-    p.add_argument("--ffmpeg", default=shutil.which("ffmpeg") or "ffmpeg")
-    args = p.parse_args(argv)
+    args = p.parse_args(argv)  # no tool-path option: a session could point it at its own file
     try:
         ok, msg = render(args.slides, args.out, args.width, args.height, args.duration, args.fps,
-                         args.xfade, args.zoom, args.ffmpeg)
+                         args.xfade, args.zoom, shutil.which("ffmpeg") or "ffmpeg")
     except (OSError, ValueError) as exc:
         print("reserva_slides: %s" % exc, file=sys.stderr)
         return 2

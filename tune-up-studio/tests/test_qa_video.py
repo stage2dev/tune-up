@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(STUDIO, "scripts"))
 sys.path.insert(0, HERE)
 
 import qa_video  # noqa: E402
-from test_qa_imagem import clean_check  # noqa: E402
+from test_qa_imagem import bound, clean_check  # noqa: E402
 
 FIXTURES = os.path.join(HERE, "fixtures")
 VIDEO_SOURCE = os.path.join(STUDIO, "exemplos", "forno-miudo", "video-9x16", "fonte")
@@ -40,7 +40,7 @@ class VideoChecks(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.check = os.path.join(self.tmp, "check.json")
         with open(self.check, "w", encoding="utf-8") as f:
-            json.dump(clean_check(), f)
+            json.dump(bound(clean_check(layout={"ok": True, "findings": [], "duration": 3}), VIDEO_SOURCE), f)
 
     def tearDown(self):
         shutil.rmtree(self.tmp)
@@ -89,7 +89,7 @@ class VideoChecks(unittest.TestCase):
     def test_wrong_duration_size_and_fps(self):
         video = self.make("ok.mp4", self.moving())
         rep = qa_video.run(VIDEO_SOURCE, video, self.check, 1080, 1920, 10.0, 24.0, FFMPEG, FFPROBE)
-        self.assertEqual(self.failed(rep), ["duration", "fps", "video_size"])
+        self.assertEqual(self.failed(rep), ["duration", "fps", "frames", "hyperframes_check", "video_size"])
 
     def test_source_defects_still_counted(self):
         video = self.make("ok.mp4", self.moving())
@@ -97,6 +97,37 @@ class VideoChecks(unittest.TestCase):
         self.assertIn("layout_allow_count", self.failed(rep))
         rep = self.report(video, source=os.path.join(FIXTURES, "defect-external-fetch"))
         self.assertIn("network_lint", self.failed(rep))
+
+    def test_truncated_clip_is_caught(self):
+        # Observed by review: faststart keeps moov (and the duration) up front, so a cut
+        # file probes fine and ffmpeg exits 0 after decoding only part of the frames.
+        video = self.make("ok.mp4", self.moving())
+        cut = os.path.join(self.tmp, "cut.mp4")
+        with open(video, "rb") as f, open(cut, "wb") as g:
+            g.write(f.read()[:int(os.path.getsize(video) * 0.4)])
+        rep = self.report(cut)
+        self.assertFalse(rep["ok"])
+        self.assertIn("frames", self.failed(rep))
+
+    def test_check_of_another_piece_fails(self):
+        video = self.make("ok.mp4", self.moving())
+        post = os.path.join(STUDIO, "exemplos", "forno-miudo", "post-4x5", "fonte")
+        with open(self.check, "w", encoding="utf-8") as f:
+            json.dump(bound(clean_check(layout={"ok": True, "findings": [], "duration": 5}), post), f)
+        self.assertEqual(self.failed(self.report(video)), ["hyperframes_check"])
+
+    def test_tool_paths_are_not_options(self):
+        # A session could point --ffprobe at python3 and run a file it wrote.
+        for opt in ("--ffprobe", "--ffmpeg"):
+            with self.subTest(opt), self.assertRaises(SystemExit) as ctx:
+                with open(os.devnull, "w") as devnull:
+                    err, sys.stderr = sys.stderr, devnull
+                    try:
+                        qa_video.main(["--source", VIDEO_SOURCE, "--video", "v.mp4",
+                                       "--check-json", self.check, opt, "python3"])
+                    finally:
+                        sys.stderr = err
+                self.assertEqual(ctx.exception.code, 2)
 
     def test_main_exit_codes(self):
         video = self.make("ok.mp4", self.moving())

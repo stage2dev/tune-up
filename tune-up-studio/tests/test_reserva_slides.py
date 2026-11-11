@@ -119,5 +119,23 @@ class Fallback(unittest.TestCase):
         self.assertIsNone(rec["video"])
 
 
+
+class ToolOptions(unittest.TestCase):
+    def test_tool_paths_are_not_options(self):
+        # A session could point these at python3 or a file it wrote; tools come from PATH / ../node.
+        cases = [(reserva_slides.main, ["--slides", "s", "--out", "v.mp4", "--ffmpeg", "python3"]),
+                 (video_ou_reserva.main, ["--source", "f", "--slides", "s", "--out", "v.mp4", "--ffmpeg", "x"]),
+                 (video_ou_reserva.main, ["--source", "f", "--slides", "s", "--out", "v.mp4", "--hyperframes", "x"])]
+        for main, argv in cases:
+            with self.subTest(argv=argv[-2]), open(os.devnull, "w") as devnull:
+                err, sys.stderr = sys.stderr, devnull
+                try:
+                    with self.assertRaises(SystemExit) as ctx:
+                        main(argv)
+                finally:
+                    sys.stderr = err
+                self.assertEqual(ctx.exception.code, 2)
+
+
 if __name__ == "__main__":
     unittest.main()

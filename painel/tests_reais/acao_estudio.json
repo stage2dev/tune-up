@@ -27,13 +27,13 @@
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "\\.\\.|//|/\\./|--(?:describe|docker)\\b",
-          "motivo": "Bash do estúdio: sem '..', '//', snapshot --describe nem render --docker"
+          "entrada": "\\.\\.|//|/\\./|--(?:describe|docker|ffmpeg|ffprobe|hyperframes)\\b",
+          "motivo": "Bash do estúdio: sem '..', '//', snapshot --describe, render --docker nem caminho de ferramenta nos scripts"
         },
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "^(?=/)(?!(?!(?i:{trabalho}))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/node/node_modules/\\.bin/hyperframes +(?:render|check|lint|validate|inspect|snapshot|info|compositions)(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
+          "entrada": "^(?=/)(?!(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/node/node_modules/\\.bin/hyperframes +(?:render|check|lint|validate|inspect|snapshot|info|compositions)(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
           "motivo": "hyperframes: só render, check, lint, validate, inspect, snapshot, info e compositions, saída em {trabalho}"
         },
         {
@@ -51,8 +51,8 @@
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "^python3(?= |\\Z)(?! +-I(?: +-B)? +(?!(?i:{trabalho}))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/scripts/(?:qa_video|qa_imagem|reserva_slides|video_ou_reserva)\\.py(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
-          "motivo": "python3: só os scripts do estúdio (com -I), sem '-c' nem script gravado em {trabalho}"
+          "entrada": "^python3(?= |\\Z)(?! +-I(?: +-B)? +(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/scripts/(?:qa_video|qa_imagem|reserva_slides|video_ou_reserva)\\.py(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
+          "motivo": "python3: só os scripts do estúdio (com -I), sem '-c' nem script gravado em {trabalho} (nem por outro nome dela)"
         }
       ],
       "permitir": [

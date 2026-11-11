@@ -25,6 +25,8 @@ BLACK_FILTER = "blackdetect=d=0.5:pix_th=0.10"
 FREEZE_FILTER = "freezedetect=n=-60dB:d=2"
 BLACK_RE = re.compile(r"black_start:\s*([\d.]+)\s+black_end:\s*([\d.]+)\s+black_duration:\s*([\d.]+)")
 FREEZE_RE = re.compile(r"lavfi\.freezedetect\.freeze_(start|duration|end):\s*([\d.]+)")
+# ffmpeg exits 0 on a cut MP4 after decoding part of it; these lines give it away.
+DAMAGE_RE = re.compile(r"partial file|Invalid data", re.I)
 
 
 def run_tool(cmd, timeout=300):
@@ -39,7 +41,7 @@ def run_tool(cmd, timeout=300):
 
 
 def probe(video, ffprobe):
-    code, out, err = run_tool([ffprobe, "-v", "error", "-print_format", "json",
+    code, out, err = run_tool([ffprobe, "-v", "error", "-print_format", "json", "-count_frames",
                                "-show_streams", "-show_format", video])
     if code != 0:
         raise ValueError("ffprobe failed (%d): %s" % (code, err.strip()[:300]))
@@ -98,6 +100,13 @@ def stream_checks(data, video, width, height, duration, fps):
     rate = fps_of(v)
     checks.append(result("fps", abs(rate - fps) < 0.01,
                          ["r_frame_rate=%s (expected %g)" % (v.get("r_frame_rate"), fps)]))
+    try:
+        frames = int(v.get("nb_read_frames"))
+    except (TypeError, ValueError):
+        frames = -1
+    want = int(round(duration * fps))
+    checks.append(result("frames", abs(frames - want) <= max(1, int(fps * 0.2)),
+                         ["%d frames decoded (expected %d)" % (frames, want)]))
     checks.append(result("codec", v.get("codec_name") == "h264" and v.get("pix_fmt") == "yuv420p",
                          ["%s %s (expected h264 yuv420p)" % (v.get("codec_name"), v.get("pix_fmt"))]))
     try:
@@ -112,10 +121,10 @@ def stream_checks(data, video, width, height, duration, fps):
 
 
 def detect(video, ffmpeg, flt):
-    """Run one ffmpeg detection filter; return (ok_to_parse, stderr)."""
+    """Run one ffmpeg detection filter; return (ok_to_parse, stderr). A damaged file is not ok."""
     code, _, err = run_tool([ffmpeg, "-hide_banner", "-nostats", "-i", video, "-an",
                              "-vf", flt, "-f", "null", "-"])
-    return code == 0, err
+    return code == 0 and not DAMAGE_RE.search(err), err
 
 
 def check_black(video, ffmpeg):
@@ -158,7 +167,8 @@ def run(source, video, check_json, width, height, duration, fps, ffmpeg, ffprobe
         checks.append(result("no_gsap", not gsap, gsap or ["ok"]))
         net = scan(source, NETWORK_PATTERNS, strip_xmlns=True)
         checks.append(result("network_lint", not net, net or ["ok"]))
-    checks.append(check_reserve_tag(data) if engine == "reserve" else check_strict_json(check_json))
+    checks.append(check_reserve_tag(data) if engine == "reserve"
+                  else check_strict_json(check_json, source, duration))
     return {"ok": all(c["ok"] for c in checks), "checks": checks}
 
 
@@ -173,14 +183,13 @@ def main(argv=None):
     p.add_argument("--height", type=int, default=1920)
     p.add_argument("--duration", type=float, default=10.0)
     p.add_argument("--fps", type=float, default=30.0)
-    p.add_argument("--ffmpeg", default=shutil.which("ffmpeg") or "ffmpeg")
-    p.add_argument("--ffprobe", default=shutil.which("ffprobe") or "ffprobe")
     p.add_argument("--out", help="also write the report to this file")
     args = p.parse_args(argv)
     if args.engine == "hyperframes" and not args.check_json:
         p.error("--check-json is required with --engine hyperframes")
     report = run(args.source, args.video, args.check_json, args.width, args.height,
-                 args.duration, args.fps, args.ffmpeg, args.ffprobe, args.engine)
+                 args.duration, args.fps, shutil.which("ffmpeg") or "ffmpeg",
+                 shutil.which("ffprobe") or "ffprobe", args.engine)
     text = json.dumps(report, ensure_ascii=False, indent=2)
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:

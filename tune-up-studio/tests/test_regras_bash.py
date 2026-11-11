@@ -85,6 +85,9 @@ DENIED = [
     "python3 -I " + WORK + "/tune-up-studio/scripts/qa_video.py",
     PY + "qa_video.py --out /tmp/qa.json",
     PY + "outro.py",
+    PY + "qa_video.py --source fonte --video v.mp4 --check-json c.json --ffprobe python3",
+    PY + "reserva_slides.py --slides s --out v.mp4 --ffmpeg python3",
+    PY + "video_ou_reserva.py --source fonte --slides s --out v.mp4 --hyperframes x",
     "FFMPEG " + WL + "s1.png out.mp4",
     " ffmpeg -filters",
     "cat /etc/hosts",
@@ -93,10 +96,17 @@ DENIED = [
 ]
 
 
-def hook_conf():
+# A work folder whose path fits the plugin pattern (no space), to try other names for it.
+REAL = "/private/tmp/p/.tune-up/painel/dados/trabalhos/abc"
+ALIASES = ["/tmp/p/.tune-up/painel/dados/trabalhos/abc",
+           "/System/Volumes/Data/private/tmp/p/.tune-up/painel/dados/trabalhos/abc",
+           "/proc/self/cwd", "/proc/123/cwd", "/dev/fd/3", "/private/tmp/p/.tune-up/painel/dados/trabalhos/abc"]
+
+
+def hook_conf(work=WORK):
     with open(FIXTURE, encoding="utf-8") as f:
         acao = catalogo.validar_acao(json.load(f)["acoes"][0])
-    return travas.config_gancho(trabalho.resolver_travas(acao, WORK))
+    return travas.config_gancho(trabalho.resolver_travas(acao, work))
 
 
 class RulesFile(unittest.TestCase):
@@ -129,6 +139,17 @@ class Decide(unittest.TestCase):
 
     def test_other_tools_untouched(self):
         self.assertIsNone(travas.decidir(self.conf, "Read", {"file_path": WORK + "/fonte/index.html"}, WORK))
+
+    def test_other_names_of_the_work_folder_are_denied(self):
+        conf = hook_conf(REAL)
+        for base in ALIASES:
+            for cmd in ("python3 -I " + base + "/tune-up-studio/scripts/qa_video.py --source fonte",
+                        base + "/tune-up-studio/node/node_modules/.bin/hyperframes render fonte"):
+                with self.subTest(cmd=cmd):
+                    got = travas.decidir(conf, "Bash", {"command": cmd}, REAL)
+                    self.assertIsNotNone(got, cmd)
+                    self.assertEqual(got[0], "deny", cmd)
+        self.assertIsNone(travas.decidir(conf, "Bash", {"command": PY + "qa_video.py --source fonte"}, REAL))
 
     def test_long_command_is_fast(self):
         cmd = "ffmpeg " + " ".join([WL + "s%d.png" % i for i in range(60)]) + " out.mp4 x"
