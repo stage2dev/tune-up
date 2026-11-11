@@ -82,7 +82,8 @@ function Atividade({ eventos, erros, ativa }: { eventos: EventoExecucao[]; erros
 
 interface Props {
   itens: ItemConversa[];
-  trabalhando: boolean;
+  /** Frase do fim ("trabalhando… lendo arquivos"); null = nao esta trabalhando. */
+  trabalhando: string | null;
   /** Algo para o fim da conversa (aviso de "precisa de voce", "sumiu"...). */
   rodape?: ReactNode;
 }
@@ -116,18 +117,18 @@ export function Baloes({ itens, trabalhando, rodape }: Props) {
 
   const ultimo = itens[itens.length - 1];
   return (
-    <div className="relative">
+    <div className="relative flex-1 min-h-0">
       <div
         ref={caixa}
         onScroll={aoRolar}
         role="log"
         aria-live="polite"
         aria-label="Conversa"
-        className="grid grid-cols-1 gap-3 content-start overflow-y-auto overflow-x-hidden h-[min(62vh,680px)] rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
+        className="grid grid-cols-1 gap-3 content-start overflow-y-auto overflow-x-hidden h-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
       >
         {itens.map((it) =>
           it.tipo === 'atividade' ? (
-            <Atividade key={it.chave} eventos={it.eventos} erros={it.erros} ativa={trabalhando && it === ultimo} />
+            <Atividade key={it.chave} eventos={it.eventos} erros={it.erros} ativa={!!trabalhando && it === ultimo} />
           ) : (
             <Balao key={it.chave} dono={it.tipo === 'dono'} quem={it.tipo === 'dono' ? 'Você' : 'Claude'} ts={it.ts} erro={it.tipo === 'claude' && it.erro}>
               <TextoFala texto={it.texto} />
@@ -137,7 +138,7 @@ export function Baloes({ itens, trabalhando, rodape }: Props) {
         {trabalhando && (
           <p role="status" className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)] px-1">
             <span className="w-2 h-2 rounded-full bg-[var(--color-accent)] hud-dot-pulse" aria-hidden="true" />
-            O Claude está trabalhando…
+            {trabalhando}
           </p>
         )}
         {rodape}

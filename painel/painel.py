@@ -319,7 +319,8 @@ def fazer_handler(app):
                 if m and m.group(2) == "abrir":
                     return self._json(200, app.lancador.abrir(m.group(1)))
                 if m and m.group(2) == "responder":
-                    ex = app.lancador.responder(m.group(1), corpo.get("texto"))
+                    ex = app.lancador.responder(m.group(1), corpo.get("texto"),
+                                                interromper=corpo.get("interromper") is True)
                     app.estado.invalidar()
                     return self._json(200, {"execucao": para_tela(ex)})
                 m = RE_ROTA_MODULO_ACAO.match(caminho)

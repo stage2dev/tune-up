@@ -65,6 +65,21 @@ export interface Execucao {
   esforco?: string;
   /** true quando da para mandar outra mensagem (POST /api/execucoes/{id}/responder). */
   pode_responder?: boolean;
+  /** true quando a sessao trabalha ou espera e da para mandar com `interromper: true`. */
+  pode_interromper?: boolean;
+  /** Espera presa no terminal (pedido de permissao): mandar mensagem cancela o pedido, nao aprova. */
+  espera_terminal?: boolean;
+  /** Opcoes da pergunta que a sessao escreveu (so com pode_responder). */
+  pergunta?: PerguntaChat;
+}
+
+export interface PerguntaChat {
+  perguntas: {
+    pergunta: string;
+    cabecalho: string;
+    multipla: boolean;
+    opcoes: { rotulo: string; descricao: string }[];
+  }[];
 }
 
 export type TipoEvento = 'usuario' | 'assistente' | 'ferramenta' | 'resultado' | 'subagente' | 'sistema';

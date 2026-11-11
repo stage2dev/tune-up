@@ -107,8 +107,10 @@ export const useModelos = () =>
 export function useResponder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, texto }: { id: string; texto: string }) =>
-      apiPost<{ execucao: Execucao }>(`/api/execucoes/${encodeURIComponent(id)}/responder`, { texto }).then((r) => r.execucao),
+    mutationFn: ({ id, texto, interromper }: { id: string; texto: string; interromper?: boolean }) =>
+      apiPost<{ execucao: Execucao }>(`/api/execucoes/${encodeURIComponent(id)}/responder`, interromper ? { texto, interromper: true } : { texto }).then(
+        (r) => r.execucao,
+      ),
     onSuccess: (e) => {
       // Troca a execucao na lista ja (sem esperar os 3 s) e religa a busca de eventos, que tinha parado no fim.
       qc.setQueryData<Execucao[]>(chaves.execucoes, (l) => l?.map((x) => (x.id === e.id ? e : x)));

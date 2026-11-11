@@ -2,6 +2,17 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## 2.6.0
+
+The panel chat no longer needs the terminal.
+
+- One screen: `/` and `/conversa/:id` draw the same chat (conversation list, conversation, box at the bottom) with a "who is working" side panel that shows the main session and its sub-agents live.
+- Questions come to the chat. In chat levels (and actions with `"perguntas_no_chat": true`) the guard hook denies `AskUserQuestion`, stores the options and tells the session to ask in text and end its turn; the run then carries `pergunta` and `pode_responder`. Option buttons only fill the box; the person sends. Measured on CLI 2.1.322: a session blocked on `AskUserQuestion` has not written the question to the transcript yet, and a turn that ends with a written question shows as `blocked` + `idle`.
+- Send a message while the session works or waits: `POST .../responder {texto, interromper: true}` (`pode_interromper`) stops its turn and wakes the same session with the message. On a permission prompt stuck in the terminal (`espera_terminal`) this cancels the prompt; the screen says so and keeps "open in terminal". The refusal for changed module rules covers this path too.
+- The stored question is untrusted: read without blocking, regular files only, 64 KB cap, masked like everything else shown from a session, and dropped when it is older than the current turn or the session moved on.
+- "Working" after a reply now ends as soon as the session has answered, not after a fixed wait. The CLI's automatic "No response requested." line is hidden.
+- `painel/web/dist` rebuilt.
+
 ## 2.5.0
 
 The panel closes the token door, masks what it shows and lets modules act.
