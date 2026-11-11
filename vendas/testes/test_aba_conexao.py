@@ -133,7 +133,7 @@ class TesteAgir(Aba):
             "conectar_instancia", "modo_webhook", "abrir_conversa", "enviar_mensagem", "assumir_conversa",
             "devolver_ia", "liberar_saida", "reenviar_envio", "descartar_envio", "ia_chave", "ia_config",
             "ia_apagar_chave", "ia_modo", "aprovar_rascunho", "editar_rascunho", "descartar_rascunho",
-            "ia_automatico_conversa", "ia_rascunho_conversa"]))
+            "ia_automatico_conversa", "ia_rascunho_conversa", "leads_filtrar", "leads_importar"]))
         self.assertEqual(self.falso.chamadas, [])
 
     def test_servico_de_outro_projeto_recusado(self):

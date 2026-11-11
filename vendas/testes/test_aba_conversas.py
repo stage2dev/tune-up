@@ -39,7 +39,7 @@ class Conversas(Aba):
     def aba(self):
         r = self.mod.montar(self.ctx, base=self.base)
         self.assertEqual(r["avisos"], [])
-        self.assertEqual([a["id"] for a in r["abas"]], ["conexao", "conversas", "ia"])
+        self.assertEqual([a["id"] for a in r["abas"]], ["conexao", "conversas", "ia", "leads"])
         return r["abas"][1]["blocos"]
 
     def agir(self, acao, **dados):
