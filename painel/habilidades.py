@@ -41,7 +41,7 @@ _cache = {}
 
 def ler_skill(caminho):
     """(nome do frontmatter ou None, descrição) de um SKILL.md; None se não for arquivo comum legível."""
-    if RE_CONTROLE.search(caminho):
+    if RE_CONTROLE.search(caminho) or os.path.islink(caminho):  # islink: onde não há O_NOFOLLOW (Windows)
         return None
     try:
         fd = os.open(caminho, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
