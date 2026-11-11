@@ -38,6 +38,10 @@ _spec = importlib.util.spec_from_file_location("tune_up_vendas_disparos", os.pat
     os.path.abspath(__file__)), "abas", "disparos.py"))
 disparos = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(disparos)
+_spec = importlib.util.spec_from_file_location("tune_up_vendas_candidatos", os.path.join(os.path.dirname(
+    os.path.abspath(__file__)), "abas", "candidatos.py"))
+candidatos = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(candidatos)
 pasta = cliente.pasta
 VIVO_S = cliente.VIVO_S
 porta_do_painel = cliente.porta_do_painel
@@ -53,7 +57,8 @@ INFO = {
     "icone": "pessoas",
     "acoes": ["modo_webhook", "conectar_instancia", "abrir_conversa", "enviar_mensagem", "assumir_conversa",
               "devolver_ia", "liberar_saida", "reenviar_envio", "descartar_envio"] + list(conversas.ACOES_RASCUNHO)
-             + ["ia_automatico_conversa", "ia_rascunho_conversa"] + list(ia.ACOES) + list(leads.ACOES) + list(disparos.ACOES),
+             + ["ia_automatico_conversa", "ia_rascunho_conversa"] + list(ia.ACOES) + list(leads.ACOES) + list(disparos.ACOES)
+             + list(candidatos.ACOES),
     "negar": [
         "Bash(*127.0.0.1:%d*)" % PORTA,
         "Bash(*localhost:%d*)" % PORTA,
@@ -115,6 +120,8 @@ def agir(ctx, acao, dados, base=None):
         return leads.agir(ctx, cliente, acao, dados, base)
     if acao in disparos.ACOES:
         return disparos.agir(ctx, cliente, acao, dados, base)
+    if acao in candidatos.ACOES:
+        return candidatos.agir(ctx, cliente, acao, dados, base)
     if acao != "modo_webhook":
         return {"ok": False, "mensagem": "Ação desconhecida."}
     modo = (dados or {}).get("modo")

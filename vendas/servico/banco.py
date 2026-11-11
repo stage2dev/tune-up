@@ -163,6 +163,21 @@ MIGRACOES = [
         "ALTER TABLE campanhas ADD COLUMN id_cliente TEXT",
         "CREATE UNIQUE INDEX campanhas_id_cliente ON campanhas(id_cliente) WHERE id_cliente IS NOT NULL",
     ],
+    # 12: candidatos do buscador de leads (só dado de empresa; a revisão do dono vem depois)
+    [
+        """CREATE TABLE candidatos (
+            id INTEGER PRIMARY KEY,
+            nome TEXT NOT NULL,
+            site TEXT,
+            telefone TEXT,
+            url_da_fonte TEXT,
+            nicho TEXT,
+            cidade TEXT,
+            estado TEXT NOT NULL DEFAULT 'novo',
+            criado_em TEXT NOT NULL)""",
+        "CREATE UNIQUE INDEX candidatos_telefone ON candidatos(telefone) WHERE telefone IS NOT NULL",
+        "CREATE UNIQUE INDEX candidatos_nome ON candidatos(nome, ifnull(cidade, ''), ifnull(nicho, ''))",
+    ],
 ]
 VERSAO = len(MIGRACOES)
 PARECE_SEGREDO = re.compile(r"chave|senha|token|segredo|secret|key|password", re.I)
