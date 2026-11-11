@@ -15,6 +15,8 @@ export type Bloco =
   | BlocoFormulario
   | BlocoConversa
   | BlocoImagem
+  | BlocoGaleria
+  | BlocoMidia
   | { tipo: string; [k: string]: unknown }; // desconhecido: a tela mostra um aviso discreto
 
 /** Blocos interativos. O envio chama POST /api/modulos/<id>/acao (ver ReqAcaoModulo). */
@@ -34,7 +36,12 @@ export interface BlocoFormulario {
   id?: string;
   titulo?: string;
   descricao?: string;
-  acao: string;
+  /** Comando do módulo (POST /api/modulos/<id>/acao). Use este OU `catalogo`. */
+  acao?: string;
+  /** Id de uma ação do catálogo; cada campo.id é o nome de um parâmetro dela. Com `confirmar: true` na ação, a tela pede confirmação. */
+  catalogo?: string;
+  /** Texto do diálogo de confirmação de um comando do módulo. */
+  confirmar?: string;
   botao: string;
   campos: CampoFormulario[];
   dados_fixos?: Record<string, unknown>;
@@ -64,6 +71,23 @@ export interface BlocoImagem {
   titulo?: string;
   data_uri: string;
   alt: string;
+  legenda?: string;
+}
+
+/** Arquivos vêm de GET /api/modulos/<id>/arquivo?c=<arquivo> (pasta declarada em INFO["midia"]; png, jpg, webp, mp4, webm).
+ *  A tela só pede arquivos com essas extensões; o servidor responde 404 para o resto. */
+export interface BlocoGaleria {
+  tipo: 'galeria';
+  titulo?: string;
+  itens: { arquivo: string; rotulo?: string; selo?: { texto: string; tom: Tom } }[];
+  vazio?: string;
+}
+/** Uma imagem, ou um vídeo com controles (decidido pela extensão de `arquivo`). */
+export interface BlocoMidia {
+  tipo: 'midia';
+  titulo?: string;
+  arquivo: string;
+  alt?: string;
   legenda?: string;
 }
 

@@ -139,11 +139,69 @@ export interface AlertaModulo {
   texto: string;
 }
 
-export interface Bloco {
-  tipo: string;
-  titulo?: string;
-  [campo: string]: unknown;
+// Blocos: copiados de contrato/blocos.d.ts. Um bloco de tipo desconhecido (versao mais nova do pacote) cai em BlocoDesconhecido.
+export type Tom = TomBloco;
+export type BlocoKpis = { tipo: 'kpis'; titulo?: string; itens: { rotulo: string; valor: string | number | null; detalhe?: string; tom?: Tom }[] };
+export type BlocoTabela = { tipo: 'tabela'; titulo?: string; colunas: { id: string; rotulo: string; alinhar?: 'esq' | 'dir' }[];
+  linhas: Record<string, string | number | null>[]; vazio?: string };
+export type BlocoLista = { tipo: 'lista'; titulo?: string; itens: { titulo: string; detalhe?: string; selo?: { texto: string; tom: Tom } }[]; vazio?: string };
+export type BlocoSerie = { tipo: 'serie'; titulo?: string; unidade?: string; series: { nome: string; pontos: { x: string; y: number | null }[] }[]; vazio?: string };
+export type BlocoTexto = { tipo: 'texto'; titulo?: string; texto: string };
+export type BlocoAcoes = { tipo: 'acoes'; titulo?: string; grupo: string };
+export interface CampoFormulario {
+  id: string;
+  rotulo: string;
+  tipo: 'texto' | 'texto_longo' | 'escolha' | 'segredo';
+  opcoes?: { valor: string; rotulo: string }[];
+  valor?: string;
+  obrigatorio?: boolean;
+  ajuda?: string;
 }
+export interface BlocoFormulario {
+  tipo: 'formulario';
+  id?: string;
+  titulo?: string;
+  descricao?: string;
+  /** Comando do modulo (POST /api/modulos/<id>/acao). Use este OU `catalogo`. */
+  acao?: string;
+  /** Id de uma acao do catalogo; cada campo.id e o nome de um parametro dela. */
+  catalogo?: string;
+  /** Texto do dialogo de confirmacao de um comando do modulo (uma acao do catalogo usa o proprio `confirmar`). */
+  confirmar?: string;
+  botao: string;
+  campos: CampoFormulario[];
+  dados_fixos?: Record<string, unknown>;
+}
+export interface MensagemConversa {
+  id: string;
+  de: 'contato' | 'eu' | 'ia';
+  texto: string;
+  quando: string;
+  estado?: 'pendente' | 'enviado' | 'falhou' | 'incerto' | 'negado';
+  nota?: string;
+}
+export interface BlocoConversa {
+  tipo: 'conversa';
+  id?: string;
+  titulo?: string;
+  mensagens: MensagemConversa[];
+  enviar?: { acao: string; dados_fixos?: Record<string, unknown>; rotulo?: string };
+  botoes?: { rotulo: string; acao: string; dados?: Record<string, unknown>; confirmar?: string }[];
+  vazio?: string;
+}
+export interface BlocoImagem { tipo: 'imagem'; titulo?: string; data_uri: string; alt: string; legenda?: string }
+export interface BlocoGaleria {
+  tipo: 'galeria';
+  titulo?: string;
+  /** `arquivo` e relativo a pasta de midia do modulo; png, jpg, webp, mp4 ou webm. */
+  itens: { arquivo: string; rotulo?: string; selo?: { texto: string; tom: Tom } }[];
+  vazio?: string;
+}
+export interface BlocoMidia { tipo: 'midia'; titulo?: string; arquivo: string; alt?: string; legenda?: string }
+export interface BlocoDesconhecido { tipo: string; titulo?: string; [campo: string]: unknown }
+export type Bloco =
+  | BlocoKpis | BlocoTabela | BlocoLista | BlocoSerie | BlocoTexto | BlocoAcoes
+  | BlocoFormulario | BlocoConversa | BlocoImagem | BlocoGaleria | BlocoMidia | BlocoDesconhecido;
 
 /** Corpo e resposta de POST /api/modulos/<id>/acao (blocos formulario e conversa). */
 export interface ReqAcaoModulo {

@@ -1,9 +1,8 @@
 // Bloco "imagem": mostra uma imagem embutida (ex.: QR code). So png e jpeg; o resto vira o aviso de bloco desconhecido.
-import type { Bloco } from '../../api/tipos';
 import { Cartao } from '../../componentes';
-import { imagemSegura, textoOuNada } from './interativos';
+import { imagemSegura, textoOuNada, type BlocoCru } from './interativos';
 
-export function Imagem({ b, desconhecido }: { b: Bloco; desconhecido: () => React.ReactNode }) {
+export function Imagem({ b, desconhecido }: { b: BlocoCru; desconhecido: () => React.ReactNode }) {
   if (!imagemSegura(b.data_uri)) return <>{desconhecido()}</>;
   const legenda = textoOuNada(b.legenda);
   return (

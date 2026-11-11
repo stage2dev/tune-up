@@ -1,10 +1,9 @@
 // Bloco "conversa": fio de mensagens, caixa de envio e botoes de acao (com confirmacao na propria tela).
 import { useLayoutEffect, useRef, useState } from 'react';
-import type { Bloco } from '../../api/tipos';
 import { Botao, Cartao, EstadoVazio } from '../../componentes';
 import { CLASSE_CAMPO } from './Formulario';
 import { dataHora } from './formato';
-import { copiaDoBotao, criarEnviador, dadosDaMensagem, estaNoFim, itens, textoOuNada, type BotaoCopia } from './interativos';
+import { copiaDoBotao, criarEnviador, dadosDaMensagem, estaNoFim, itens, textoOuNada, type BlocoCru, type BotaoCopia } from './interativos';
 import { AvisoEnvio, useEnvio } from './useEnvio';
 
 const QUEM = { contato: 'Contato', eu: 'Você', ia: 'IA' } as const;
@@ -17,7 +16,7 @@ function quando(q: unknown): string {
   return d === 'sem dado' ? q : d;
 }
 
-export function Conversa({ b, moduloId }: { b: Bloco; moduloId?: string }) {
+export function Conversa({ b, moduloId }: { b: BlocoCru; moduloId?: string }) {
   const mensagens = itens(b.mensagens);
   const enviar = b.enviar && typeof b.enviar === 'object' ? (b.enviar as Record<string, unknown>) : null;
   const botoes = itens(b.botoes).filter((x) => typeof x.acao === 'string' && typeof x.rotulo === 'string');
