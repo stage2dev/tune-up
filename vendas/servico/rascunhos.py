@@ -5,6 +5,7 @@ sobre o padrão do projeto (config ia_modo_padrao, 'rascunho' se faltar). Um ras
 conversa; passa de 24 h e deixa de poder ser aprovado; opt-out depois do rascunho = negado no portão."""
 import datetime
 import json
+import logging
 import re
 import sqlite3
 
@@ -15,6 +16,8 @@ MODOS_IA = ("rascunho", "automatico")
 PADRAO = "ia_modo_padrao"
 VALIDADE = datetime.timedelta(hours=24)
 TEXTO_MAX = saida.CARACTERES_MAX
+OCUPADO = "Este rascunho está sendo enviado agora. Aguarde e atualize a conversa."
+LOG = logging.getLogger(__name__)
 ROTA = re.compile(r"^/(?:rascunhos/(\d{1,12})/(aprovar|descartar)|conversas/(\d{1,12})/modo-ia)$")
 
 
@@ -64,6 +67,10 @@ def guardar(con, conversa_id, gatilho_id, texto, permitidos=(), segredos=(), ree
     quando = banco.agora()
     con.execute("BEGIN IMMEDIATE")
     try:
+        if con.execute("SELECT 1 FROM rascunhos WHERE conversa_id = ? AND estado = 'aprovando'",
+                       (conversa_id,)).fetchone() is not None:
+            con.execute("ROLLBACK")   # o dono está enviando o anterior: este texto não sabe disso, o dono decide
+            return saida._barrar(con, conversa_id, "rascunho_em_aprovacao")
         con.execute("UPDATE rascunhos SET estado = 'substituido', decidido_em = ? WHERE conversa_id = ? "
                     "AND estado = 'pendente'", (quando, conversa_id))
         cur = con.execute("INSERT INTO rascunhos (conversa_id, mensagem_id, texto, criado_em) VALUES (?, ?, ?, ?)",
@@ -81,20 +88,56 @@ def guardar(con, conversa_id, gatilho_id, texto, permitidos=(), segredos=(), ree
     return {"estado": "rascunho", "motivo": None, "rascunho_id": cur.lastrowid, "baloes": []}
 
 
-def _fechar(con, rascunho_id, estado):
-    return con.execute("UPDATE rascunhos SET estado = ?, decidido_em = ? WHERE id = ? AND estado = 'pendente'",
-                       (estado, banco.agora(), rascunho_id)).rowcount
+def _fechar(con, rascunho_id, estado, de="pendente"):
+    return con.execute("UPDATE rascunhos SET estado = ?, decidido_em = ? WHERE id = ? AND estado = ?",
+                       (estado, banco.agora(), rascunho_id, de)).rowcount
+
+
+def _decidir(con, rascunho_id, estado):
+    """Fecha o rascunho travado ('aprovando'); a trava é desta aprovação, então 0 linhas é defeito e vai para o log."""
+    if estado == "pendente":   # não saiu (teto, recusa): volta para o dono decidir de novo
+        n = con.execute("UPDATE rascunhos SET estado = 'pendente' WHERE id = ? AND estado = 'aprovando'",
+                        (rascunho_id,)).rowcount
+    else:
+        n = _fechar(con, rascunho_id, estado, "aprovando")
+    if n != 1:
+        banco.registrar_evento(con, "rascunho_sem_trava", json.dumps({"rascunho_id": rascunho_id, "estado": estado}))
+        LOG.error("rascunho %d: a trava sumiu ao fechar como %s", rascunho_id, estado)
+
+
+def _travar(con, rascunho_id, final, chave):
+    """Numa transação: confere a tentativa anterior e passa o rascunho de pendente a 'aprovando' com o texto final.
+    None = travou; senão (código, objeto) da recusa."""
+    con.execute("BEGIN IMMEDIATE")
+    try:
+        antes = con.execute("SELECT conteudo FROM envios WHERE chave_dedupe = ? AND estado <> 'negado'",
+                            (chave,)).fetchone()
+        if antes is not None and antes["conteudo"] != final:
+            con.execute("ROLLBACK")
+            return 409, {"erro": "Este rascunho já foi tentado com o texto anterior. Aprove sem editar para tentar de "
+                                 "novo, ou descarte e escreva uma mensagem nova."}
+        n = con.execute("UPDATE rascunhos SET estado = 'aprovando', texto = ? WHERE id = ? AND estado = 'pendente'",
+                        (final, rascunho_id)).rowcount
+        con.execute("COMMIT")
+    except BaseException:
+        con.execute("ROLLBACK")
+        raise
+    return None if n == 1 else (409, {"erro": OCUPADO})
 
 
 def aprovar(app, con, rascunho_id, texto=None, agora=None):
-    """(código, objeto). Texto novo = o dono editou. O portão decide e dedupa; o rascunho só vira 'aprovado' quando
-    a mensagem saiu (ou pode ter saído); recusa passageira (teto) deixa pendente, opt-out o encerra."""
+    """(código, objeto). Texto novo = o dono editou. Antes do portão o rascunho é travado ('aprovando'): descartar,
+    outra aprovação e um rascunho novo da IA esperam por ela. O portão decide e dedupa; o rascunho só vira 'aprovado'
+    quando a mensagem saiu (ou pode ter saído); recusa passageira (teto) devolve a pendente, opt-out o encerra.
+    Tentativa anterior com outro texto (falhou) não é reenviada com o texto velho: 409."""
     agora = agora or datetime.datetime.now(UTC)
     r = con.execute("SELECT d.id, d.estado, d.texto, d.criado_em, k.telefone FROM rascunhos d JOIN conversas c ON "
                     "c.id = d.conversa_id JOIN contatos k ON k.id = c.contato_id WHERE d.id = ?",
                     (rascunho_id,)).fetchone()
     if r is None:
         return 404, {"erro": "Rascunho não encontrado."}
+    if r["estado"] == "aprovando":
+        return 409, {"erro": OCUPADO}
     if r["estado"] not in ("pendente", "aprovado"):
         return 409, {"erro": "Este rascunho já foi decidido (%s)." % r["estado"]}
     if r["estado"] == "pendente" and _expirado(r["criado_em"], agora):
@@ -108,15 +151,28 @@ def aprovar(app, con, rascunho_id, texto=None, agora=None):
         final = texto.strip()
         if not final or len(final) > TEXTO_MAX:
             return 400, {"erro": "Mensagem vazia ou longa demais."}
-        if r["estado"] == "pendente":
-            con.execute("UPDATE rascunhos SET texto = ? WHERE id = ? AND estado = 'pendente'", (final, rascunho_id))
-    res = portao.enviar_rascunho_aprovado(con, app.conector, instancia, r["telefone"], final, rascunho_id,
-                                          agora=agora)
-    res = conversas.depois_de_duplicado(app, con, instancia, res, False)
-    if res["estado"] in ("enviado", "incerto", "enviando", "duplicado"):
-        _fechar(con, rascunho_id, "aprovado")
-    elif res["estado"] == "negado" and res["motivo"] == "optout":
-        _fechar(con, rascunho_id, "negado")
+    travou = r["estado"] == "pendente"
+    if travou:
+        recusa = _travar(con, rascunho_id, final, "rascunho_aprovado:%d" % rascunho_id)
+        if recusa is not None:
+            return recusa
+    elif final != r["texto"]:   # já aprovado: o portão só dedupa, um texto diferente nunca sai por aqui
+        return 409, {"erro": "Este rascunho já foi enviado com outro texto."}
+    try:
+        res = portao.enviar_rascunho_aprovado(con, app.conector, instancia, r["telefone"], final, rascunho_id,
+                                              agora=agora)
+        res = conversas.depois_de_duplicado(app, con, instancia, res, False)
+    except BaseException:
+        if travou:
+            _decidir(con, rascunho_id, "pendente")
+        raise
+    if travou:
+        if res["estado"] in ("enviado", "incerto", "enviando", "duplicado"):
+            _decidir(con, rascunho_id, "aprovado")
+        elif res["estado"] == "negado" and res["motivo"] == "optout":
+            _decidir(con, rascunho_id, "negado")
+        else:
+            _decidir(con, rascunho_id, "pendente")
     return 200, {"estado": res["estado"], "motivo": res["motivo"], "envio_id": res.get("envio_id")}
 
 
@@ -124,8 +180,10 @@ def descartar(con, rascunho_id):
     if _fechar(con, rascunho_id, "descartado") == 1:
         return 200, {"estado": "descartado"}
     achou = con.execute("SELECT estado FROM rascunhos WHERE id = ?", (rascunho_id,)).fetchone()
-    return (404, {"erro": "Rascunho não encontrado."}) if achou is None else (
-        409, {"erro": "Este rascunho já foi decidido (%s)." % achou["estado"]})
+    if achou is None:
+        return 404, {"erro": "Rascunho não encontrado."}
+    return 409, {"erro": OCUPADO if achou["estado"] == "aprovando" else
+                 "Este rascunho já foi decidido (%s)." % achou["estado"]}
 
 
 def executar(app, con, metodo, caminho, query, corpo):

@@ -127,6 +127,25 @@ MIGRACOES = [
         "CREATE UNIQUE INDEX rascunhos_gatilho ON rascunhos(conversa_id, mensagem_id)",
         "CREATE UNIQUE INDEX rascunhos_pendente ON rascunhos(conversa_id) WHERE estado = 'pendente'",
     ],
+    # 9: 'aprovando' = a aprovação travou o rascunho e está no portão (descartar e rascunho novo esperam por ela);
+    # o SQLite não muda CHECK, então a tabela é refeita com os mesmos dados
+    [
+        """CREATE TABLE rascunhos_9 (
+            id INTEGER PRIMARY KEY,
+            conversa_id INTEGER NOT NULL REFERENCES conversas(id),
+            mensagem_id INTEGER NOT NULL REFERENCES mensagens(id),
+            texto TEXT NOT NULL,
+            estado TEXT NOT NULL DEFAULT 'pendente' CHECK (estado IN ('pendente', 'aprovando', 'aprovado',
+                'descartado', 'substituido', 'expirado', 'negado')),
+            criado_em TEXT NOT NULL,
+            decidido_em TEXT)""",
+        "INSERT INTO rascunhos_9 (id, conversa_id, mensagem_id, texto, estado, criado_em, decidido_em) "
+        "SELECT id, conversa_id, mensagem_id, texto, estado, criado_em, decidido_em FROM rascunhos",
+        "DROP TABLE rascunhos",
+        "ALTER TABLE rascunhos_9 RENAME TO rascunhos",
+        "CREATE UNIQUE INDEX rascunhos_gatilho ON rascunhos(conversa_id, mensagem_id)",
+        "CREATE UNIQUE INDEX rascunhos_pendente ON rascunhos(conversa_id) WHERE estado IN ('pendente', 'aprovando')",
+    ],
 ]
 VERSAO = len(MIGRACOES)
 PARECE_SEGREDO = re.compile(r"chave|senha|token|segredo|secret|key|password", re.I)
