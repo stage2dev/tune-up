@@ -24,6 +24,19 @@ APROVAVEL = ("terminou", "precisa_de_voce")  # parada (teto, erro) ou ainda roda
 INDISPONIVEL = "A lista de peças não está disponível agora. Tente de novo em instantes."
 BLOCO = 64 * 1024
 FORMATO_VIDEO = "reel 9:16 %s s"
+MOTIVOS = {"png": "falta a imagem", "png_size": "imagem no tamanho errado", "png_fresh": "o desenho mudou depois da imagem",
+           "video_size": "vídeo no tamanho errado", "duration": "vídeo com a duração errada", "fps": "vídeo travado",
+           "frames": "vídeo travado", "codec": "vídeo num formato que o Instagram não aceita",
+           "faststart": "vídeo demora a começar", "no_audio": "o vídeo tem som", "video_stream": "o vídeo não abre",
+           "video_fresh": "o desenho mudou depois do vídeo", "engine_reserve": "o vídeo não veio do jeito pedido",
+           "engine_hyperframes": "o vídeo não veio do jeito pedido",
+           "layout_allow_count": "texto pode sair do quadro", "no_gsap": "usa animação proibida",
+           "network_lint": "busca coisas na internet", "no_script": "o desenho tem código",
+           "fonte": "arquivos do desenho com problema", "atalho": "pasta da peça com atalho",
+           "conferencia_da_sessao": "a conferência do Claude não passou", "quadros": "número de quadros errado",
+           "legenda": "falta a legenda", "formato": "formato desconhecido", "video": "falta o vídeo",
+           "ffprobe": "falta o ffprobe para conferir o vídeo", "probe": "o vídeo não abre",
+           "conferir": "não consegui conferir"}
 
 
 def _agora():
@@ -114,7 +127,7 @@ def pecas(ctx):
                 item["selo"] = selo.calcular(p, e["acao"], e.get("params") or {})
             except (OSError, ValueError, MemoryError) as erro:  # pasta sumiu ou mudou no meio: vermelho, com o motivo
                 item["selo"] = {"ok": False, "linha": "PRECISA DO SEU OLHO: não consegui conferir (%s)"
-                                % type(erro).__name__, "arquivos": []}
+                                % type(erro).__name__, "arquivos": [], "falhas": ["conferir"]}
         out.append(item)
     return out
 
@@ -134,10 +147,36 @@ def _nome(arquivo):
     return "quadro %s" % m.group(1) if m else "vídeo"
 
 
+def _motivos(falhas):
+    """Nomes das checagens -> texto simples ("falta a legenda, imagem no tamanho errado")."""
+    return ", ".join(dict.fromkeys(MOTIVOS.get(f, "não passou na conferência") for f in falhas or []))[:300]
+
+
 def _texto_selo(s):
     if s["ok"]:
         return "Pronto para aprovar."
-    return "Precisa do seu olho (%s)." % s["linha"].replace("PRECISA DO SEU OLHO: ", "", 1)[:300]
+    return "Precisa do seu olho: %s." % (_motivos(s.get("falhas")) or "não consegui conferir")
+
+
+def _selo_da_peca(i):
+    """Selo da fila: o que a pessoa precisa saber em duas palavras."""
+    if i["aprovado"]:
+        return "aprovada", "bom"
+    if i["recusado"]:
+        return "recusada", "neutro"
+    if i["palavra"] == "rodando":
+        return "fazendo agora", "neutro"
+    if i["tom"] == "ruim":
+        return "parou", "ruim"
+    if i["selo"] and i["selo"]["ok"]:
+        return "Pronto para aprovar", "bom"
+    return "Precisa do seu olho", "atencao"
+
+
+def _so_a_legenda(copy):
+    """Só a seção "## Legenda" do copy.md (sem o contador "(104/125)"); sem a seção, o texto inteiro."""
+    m = re.search(r"^##\s*Legenda[^\n]*\n(.*?)(?=^##\s|\Z)", copy, re.M | re.S | re.I)
+    return (m.group(1).strip() if m else "") or copy
 
 
 def _galeria(item, titulo=None):
@@ -145,15 +184,18 @@ def _galeria(item, titulo=None):
     return {"tipo": "galeria", "titulo": titulo or _titulo(item), "vazio": "Nenhum arquivo para mostrar.",
             "itens": [{"arquivo": "trabalhos/%s/%s" % (item["id"], a["c"]), "rotulo": _nome(a["nome"]),
                        "selo": {"texto": "pronto", "tom": "bom"} if not a["falhas"]
-                       else {"texto": "precisa do seu olho: " + ", ".join(a["falhas"])[:120], "tom": "ruim"}}
+                       else {"texto": "precisa do seu olho: " + _motivos(a["falhas"])[:120], "tom": "ruim"}}
                       for a in s["arquivos"]]}
 
 
 def aba_fila(lista):
     if lista is None:
         return [{"tipo": "texto", "texto": "A fila não está disponível nesta tela."}]
-    itens = [{"titulo": _titulo(i), "selo": {"texto": i["palavra"], "tom": i["tom"]},
+    itens = [{"titulo": _titulo(i), "selo": dict(zip(("texto", "tom"), _selo_da_peca(i))),
               "detalhe": "O Claude ainda está trabalhando. A tela se atualiza sozinha." if i["palavra"] == "rodando"
+              else "Aprovada. Os arquivos estão na pasta de aprovados." if i["aprovado"]
+              else "Recusada." if i["recusado"]
+              else "Parou antes de terminar. Peça de novo na aba Novo." if i["tom"] == "ruim"
               else _texto_selo(i["selo"]) if i["selo"] else ""} for i in lista]
     return [{"tipo": "lista", "titulo": "Peças do estúdio", "itens": itens,
              "vazio": "Nada na fila. Peça uma peça na aba Novo."}]
@@ -184,17 +226,15 @@ def aba_aprovacao(lista):
     blocos = []
     for i in espera:  # cada arquivo em tamanho cheio e a legenda que vai junto, antes dos botões
         t, fixos = _titulo(i), {"trabalho": i["id"], "confirmar": True}
-        blocos += [{"tipo": "midia", "titulo": "%s: %s" % (t, _nome(a["nome"])),
+        blocos += [{"tipo": "midia", "titulo": t if a["nome"] == "video.mp4" else "%s: %s" % (t, _nome(a["nome"])),
                     "arquivo": "trabalhos/%s/%s" % (i["id"], a["c"]), "alt": "%s, %s" % (t, _nome(a["nome"]))}
                    for a in i["selo"]["arquivos"]]
         texto = selo.legenda(i["pasta"]) if selo.tipo(i["e"].get("acao")) == "post" else None
-        if texto:
-            blocos.append({"tipo": "texto", "titulo": "Legenda que vai junto", "texto": texto})
-        blocos += [{"tipo": "formulario", "titulo": "Aprovar: %s" % t, "acao": "peca.aprovar", "botao": "Aprovar",
-                    "campos": [], "dados_fixos": fixos,
-                    "confirmar": "Aprovar %s? Os arquivos vão para a pasta de aprovados." % t.lower()},
-                   {"tipo": "formulario", "titulo": "Recusar: %s" % t, "acao": "peca.recusar", "botao": "Recusar",
-                    "campos": [], "dados_fixos": fixos, "confirmar": "Recusar %s?" % t.lower()}]
+        descricao = ("Legenda que vai junto:\n\n" + _so_a_legenda(texto)) if texto else "Vídeo vertical, sem som."
+        blocos.append({"tipo": "formulario", "titulo": "Aprovar ou recusar?", "descricao": descricao,
+                       "acao": "peca.aprovar", "botao": "Aprovar", "campos": [], "dados_fixos": fixos,
+                       "confirmar": "Aprovar %s? Os arquivos vão para a pasta de aprovados." % t.lower(),
+                       "secundario": {"acao": "peca.recusar", "botao": "Recusar", "confirmar": "Recusar %s?" % t.lower()}})
     return blocos
 
 

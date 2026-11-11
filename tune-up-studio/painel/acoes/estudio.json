@@ -4,7 +4,7 @@
       "id": "estudio.post",
       "grupo": "estudio",
       "titulo": "Criar post ou carrossel",
-      "descricao": "Escreve o texto, monta cada quadro com a marca aprovada, tira a foto de cada um e confere. Os PNG ficam na pasta do trabalho para você olhar.",
+      "descricao": "Escreve o texto, monta cada quadro com a sua marca e confere. Quando ficar pronto, aparece na aba Aprovação.",
       "risco": "rascunho",
       "confirmar": false,
       "modelos": [
@@ -122,7 +122,7 @@
       "id": "estudio.video",
       "grupo": "estudio",
       "titulo": "Criar vídeo (slides)",
-      "descricao": "Escreve o roteiro em cenas, monta o vídeo vertical com a marca aprovada a partir de quadros parados (sem servidor local) e confere. O MP4 e a folha de quadros ficam na pasta do trabalho.",
+      "descricao": "Escreve o roteiro em cenas, monta um vídeo vertical em slides com a sua marca e confere. Quando ficar pronto, aparece na aba Aprovação.",
       "risco": "rascunho",
       "confirmar": false,
       "modelos": [
@@ -220,7 +220,7 @@
       "id": "estudio.video-motion",
       "grupo": "estudio",
       "titulo": "Criar vídeo com movimento",
-      "descricao": "Igual ao vídeo em slides, mas renderiza a animação inteira. Só aparece quando o painel.json liga estudio.video_rede_local: o render abre uma porta local e a página pode falar com serviços desta máquina.",
+      "descricao": "Igual ao vídeo em slides, mas com movimento dentro das cenas. Para montar o vídeo, o computador abre uma porta local e a página pode falar com outros programas desta máquina.",
       "risco": "rascunho",
       "confirmar": false,
       "modelos": [

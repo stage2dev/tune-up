@@ -17,8 +17,11 @@ marca.redescobrir -> marca.aprovar (com o sha curto que a aba Marca mostra) -> P
 estudio.post -> espera um estado final -> galeria pela rota de mídia -> peca.aprovar (2ª vez = 409)
 -> confere <dados>/aprovados/<id>/manifesto.json contra o sha256 dos arquivos. Com --mp4, copia o
 vídeo para um trabalho de teste e pede a rota com e sem Range. Com --segurar, espera esse arquivo
-existir antes de limpar (para tirar capturas da tela com o painel no ar). No fim: parar pela rota,
-`claude rm`, derruba o painel e apaga o projeto. Sai com 1 se algum passo falhou.
+existir antes de limpar (para tirar capturas da tela com o painel no ar). Com --pela-tela, nada disso
+roda pelo HTTP: o painel fica no ar até o --segurar, um navegador (ex.: puppeteer) faz o fluxo inteiro
+clicando, e no fim cada <dados>/aprovados/*/manifesto.json é conferido contra o sha256 dos arquivos.
+No fim: parar pela rota e `claude rm` de toda execução, derruba o painel e apaga o projeto. Sai com 1
+se algum passo falhou.
 """
 import argparse
 import hashlib
@@ -193,6 +196,40 @@ def aprovar_peca(tela, tid, dados):
     checar(bool(man.get("arquivos")), "manifesto lista arquivos")
 
 
+def conferir_manifestos(dados):
+    """Fluxo pela tela: cada peça aprovada tem manifesto com o sha256 dos bytes copiados."""
+    base = os.path.join(dados, "aprovados")
+    nomes = sorted(n for n in os.listdir(base) if not n.startswith(".")) if os.path.isdir(base) else []
+    checar(bool(nomes), "a tela aprovou alguma peça (%s)" % nomes)
+    for n in nomes:
+        with open(os.path.join(base, n, "manifesto.json"), encoding="utf-8") as f:
+            man = json.load(f)
+        print("  manifesto %s:" % n, json.dumps({k: man.get(k) for k in ("acao", "formato", "selo", "aprovado_em")},
+                                                ensure_ascii=False)[:300])
+        for a in man.get("arquivos") or []:
+            with open(os.path.join(base, n, a["nome"]), "rb") as f:
+                sha = hashlib.sha256(f.read()).hexdigest()
+            checar(sha == a.get("sha256"), "sha256 de %s/%s bate com o manifesto (%s)" % (n, a["nome"], sha[:16]))
+
+
+def uso_das_sessoes(execucoes):
+    """Estado, tempo, voltas e tokens de cada sessão (do .jsonl que o `claude agents` aponta)."""
+    import glob
+    from prova_video_bg import uso_e_ferramentas
+    r = subprocess.run(["claude", "agents", "--json", "--all"], capture_output=True, text=True, timeout=60)
+    try:
+        sids = {str(a.get("id")): a.get("sessionId") for a in json.loads(r.stdout)}
+    except (ValueError, AttributeError):
+        sids = {}
+    for e in execucoes:
+        achado = glob.glob(os.path.expanduser("~/.claude/projects/*/%s.jsonl" % sids.get(e.get("id")))) \
+            if sids.get(e.get("id")) else []
+        uso = uso_e_ferramentas(achado[0]) if achado else None
+        print("  execução %s | %s | %s | %s -> %s | voltas %s | tokens %s" % (
+            e.get("id"), e.get("acao"), e.get("estado"), e.get("iniciada_em"), e.get("terminou_em"),
+            uso[1] if uso else "?", (uso[0], sum(uso[0].values())) if uso else "não achei o .jsonl"))
+
+
 def mp4_com_range(tela, dados, mp4):
     tid = "0123456789ab"
     pasta = os.path.join(dados, "trabalhos", tid)
@@ -222,6 +259,7 @@ def principal():
     ap.add_argument("--sem-sessao", action="store_true", help="não dispara a sessão real (sem cota)")
     ap.add_argument("--espera", type=int, default=900, help="segundos no máximo para a sessão")
     ap.add_argument("--segurar", default=None, help="espera este arquivo existir antes de limpar")
+    ap.add_argument("--pela-tela", action="store_true", help="o navegador faz o fluxo; aqui só sobe, segura e confere")
     ap.add_argument("--servir", nargs=2, metavar=("PROJETO", "PORTA"), help=argparse.SUPPRESS)
     arg = ap.parse_args()
     if arg.servir:
@@ -229,7 +267,7 @@ def principal():
     saida = os.path.realpath(arg.saida)
     os.makedirs(saida, exist_ok=True)
     projeto = tempfile.mkdtemp(prefix="prova-tela-", dir=os.path.expanduser("~"))
-    proc, ex, tela = None, None, None
+    proc, ex, tela, todas = None, None, None, []
     try:
         shutil.copytree(EXEMPLO, projeto, dirs_exist_ok=True,  # sem as peças prontas; a marca vem pela tela
                         ignore=shutil.ignore_patterns("post-4x5", "video-9x16", "reserva-9x16", ".hyperframes"))
@@ -252,14 +290,15 @@ def principal():
         else:
             return checar(False, "painel não subiu (veja painel.log)") and 1
         tela.token = s.get("token")
-        print("painel:", tela.base, "| projeto:", projeto)
+        print("painel:", tela.base, "| projeto:", projeto, "| dados:", dados, flush=True)
         cod2, _, _ = tela.pedir("GET", "/api/sessao", cab={"Sec-Fetch-Site": "cross-site"})
         checar(bool(tela.token) and cod2 == 403, "token só sai com same-origin (cross-site -> %s)" % cod2)
         _, mods = tela.json("GET", "/api/modulos")
         checar("estudio" in json.dumps(mods), "módulo estudio ligado pelo painel.json")
         checar(set(tela.abas()) == {"novo", "fila", "galeria", "aprovacao", "marca", "ambiente"}, "6 abas do estúdio")
-        aprovar_marca(tela)
-        if not arg.sem_sessao:
+        if not arg.pela_tela:
+            aprovar_marca(tela)
+        if not arg.sem_sessao and not arg.pela_tela:
             ex = disparar(tela, arg.espera)
             if ex and ex.get("trabalho"):
                 galeria(tela, ex["trabalho"], saida)
@@ -270,11 +309,17 @@ def principal():
             print("painel no ar em %s; crie %s para limpar" % (tela.base, arg.segurar), flush=True)
             while not os.path.exists(arg.segurar):
                 time.sleep(2)
+        if arg.pela_tela:
+            conferir_manifestos(dados)
+            todas = [e for e in tela.json("GET", "/api/execucoes")[1].get("execucoes") or []]
+            uso_das_sessoes(todas)
     finally:
-        if ex and tela:
-            cod, r = tela.json("POST", "/api/execucoes/%s/parar" % ex["id"], {})
+        for e in ([ex] if ex else []) + todas:
+            if not tela:
+                break
+            cod, r = tela.json("POST", "/api/execucoes/%s/parar" % e["id"], {})
             print("parar ->", cod, json.dumps(r, ensure_ascii=False)[:160])
-            r = subprocess.run(["claude", "rm", ex["id"]], capture_output=True, text=True, timeout=60)
+            r = subprocess.run(["claude", "rm", e["id"]], capture_output=True, text=True, timeout=60)
             print("claude rm ->", r.returncode, (r.stdout + r.stderr).strip()[:160])
         if proc:
             proc.terminate()

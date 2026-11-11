@@ -46,9 +46,9 @@ def run_tool(cmd, timeout=300):
     return p.returncode, p.stdout.decode("utf-8", "replace"), p.stderr.decode("utf-8", "replace")
 
 
-def probe(video, ffprobe):
+def probe(video, ffprobe, timeout=300):
     code, out, err = run_tool([ffprobe, "-v", "error", "-print_format", "json", "-count_frames",
-                               "-show_streams", "-show_format", video])
+                               "-show_streams", "-show_format", video], timeout)
     if code != 0:
         raise ValueError("ffprobe failed (%d): %s" % (code, err.strip()[:300]))
     data = json.loads(out)

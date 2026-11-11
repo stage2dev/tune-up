@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { Bloco } from '../../api/tipos';
-import { Cartao, EstadoVazio, Selo } from '../../componentes';
+import { Botao, Cartao, EstadoVazio, Selo } from '../../componentes';
 import type { Tom } from '../../componentes/Selo';
 import { BotoesDoGrupo } from './BotaoAcao';
 import { Conversa } from './Conversa';
@@ -163,9 +163,16 @@ function Serie({ b }: { b: BlocoCru }) {
   );
 }
 
-function Texto({ b }: { b: BlocoCru }) {
+function Texto({ b, aoIrAba }: { b: BlocoCru; aoIrAba?: (aba: string) => void }) {
   const t = texto(b.texto);
-  return <Moldura b={b}>{t ? <p className="text-sm whitespace-pre-line break-words">{t}</p> : <Vazio />}</Moldura>;
+  const ir = b.ir_para && typeof b.ir_para === 'object' ? (b.ir_para as Record<string, unknown>) : null;
+  const aba = ir ? texto(ir.aba) : undefined;
+  return (
+    <Moldura b={b}>
+      {t ? <p className="text-sm whitespace-pre-line break-words">{t}</p> : <Vazio />}
+      {aba && aoIrAba && <Botao className="mt-3" onClick={() => aoIrAba(aba)}>{texto(ir?.rotulo) ?? 'Abrir'}</Botao>}
+    </Moldura>
+  );
 }
 
 function Acoes({ b }: { b: BlocoCru }) {
@@ -189,7 +196,7 @@ function Desconhecido({ tipo }: { tipo: string }) {
   );
 }
 
-export function RenderBloco({ bloco, moduloId }: { bloco: Bloco; moduloId?: string }) {
+export function RenderBloco({ bloco, moduloId, aoIrAba }: { bloco: Bloco; moduloId?: string; aoIrAba?: (aba: string) => void }) {
   const b = bloco as BlocoCru; // vem de um pacote de projeto: cada bloco le os campos com cuidado
   switch (b?.tipo) {
     case 'kpis':
@@ -201,7 +208,7 @@ export function RenderBloco({ bloco, moduloId }: { bloco: Bloco; moduloId?: stri
     case 'serie':
       return <Serie b={b} />;
     case 'texto':
-      return <Texto b={b} />;
+      return <Texto b={b} aoIrAba={aoIrAba} />;
     case 'acoes':
       return <Acoes b={b} />;
     case 'formulario':
@@ -219,14 +226,14 @@ export function RenderBloco({ bloco, moduloId }: { bloco: Bloco; moduloId?: stri
   }
 }
 
-export function Blocos({ blocos, moduloId }: { blocos: Bloco[]; moduloId?: string }) {
+export function Blocos({ blocos, moduloId, aoIrAba }: { blocos: Bloco[]; moduloId?: string; aoIrAba?: (aba: string) => void }) {
   if (!Array.isArray(blocos) || blocos.length === 0) {
     return <Cartao><EstadoVazio titulo="Esta aba está vazia" texto="O módulo ainda não trouxe nada para mostrar aqui." /></Cartao>;
   }
   const chaves = chavesDosBlocos(blocos as BlocoCru[]);
   return (
     <div className="grid gap-3 grid-cols-[minmax(0,1fr)]">
-      {blocos.map((b, i) => <RenderBloco key={chaves[i]} bloco={b} moduloId={moduloId} />)}
+      {blocos.map((b, i) => <RenderBloco key={chaves[i]} bloco={b} moduloId={moduloId} aoIrAba={aoIrAba} />)}
     </div>
   );
 }

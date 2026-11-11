@@ -244,6 +244,11 @@ class TesteAcoesDeModulo(unittest.TestCase):
         modulos.agir(self.cfg, "loja", "salvar", {})
         modulos.montar(self.cfg, "loja")
         self.assertEqual(self.mod.MONTAR[0], 3)  # a ação esqueceu o cache da tela
+        modulos.montar(self.cfg, "loja", pulso=(("a", "rodando"),))
+        modulos.montar(self.cfg, "loja", pulso=(("a", "rodando"),))
+        self.assertEqual(self.mod.MONTAR[0], 4)
+        modulos.montar(self.cfg, "loja", pulso=(("a", "terminou"),))
+        self.assertEqual(self.mod.MONTAR[0], 5)  # a sessão terminou: a fila não espera os 30 s
 
     def test_negar_dos_modulos_chega_na_sessao(self):
         import lancador

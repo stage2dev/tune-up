@@ -146,7 +146,7 @@ export type BlocoTabela = { tipo: 'tabela'; titulo?: string; colunas: { id: stri
   linhas: Record<string, string | number | null>[]; vazio?: string };
 export type BlocoLista = { tipo: 'lista'; titulo?: string; itens: { titulo: string; detalhe?: string; selo?: { texto: string; tom: Tom } }[]; vazio?: string };
 export type BlocoSerie = { tipo: 'serie'; titulo?: string; unidade?: string; series: { nome: string; pontos: { x: string; y: number | null }[] }[]; vazio?: string };
-export type BlocoTexto = { tipo: 'texto'; titulo?: string; texto: string };
+export type BlocoTexto = { tipo: 'texto'; titulo?: string; texto: string; ir_para?: { aba: string; rotulo: string } };
 export type BlocoAcoes = { tipo: 'acoes'; titulo?: string; grupo: string };
 export interface CampoFormulario {
   id: string;
@@ -171,6 +171,8 @@ export interface BlocoFormulario {
   botao: string;
   campos: CampoFormulario[];
   dados_fixos?: Record<string, unknown>;
+  /** Segundo botao no mesmo cartao (ex.: Recusar ao lado de Aprovar): outro comando do modulo, mesmos campos. */
+  secundario?: { acao: string; botao: string; confirmar?: string };
 }
 export interface MensagemConversa {
   id: string;

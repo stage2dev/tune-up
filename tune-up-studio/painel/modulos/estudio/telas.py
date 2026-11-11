@@ -61,23 +61,24 @@ CONFIANCA = {"alta": "alta", "media": "média", "baixa": "baixa"}
 
 def aba_novo(ctx, aprovada, pronto=True):
     """Um formulário por ação do estúdio (vídeo com movimento só se o projeto ligou a chave dele)."""
-    falta = []
     if not pronto:
-        falta.append({"tipo": "texto", "titulo": "Estúdio não preparado",
-                      "texto": "Antes de criar peças, prepare o estúdio na aba 1. Ambiente."})
+        return [{"tipo": "texto", "titulo": "Passo 1 de 3: preparar o estúdio",
+                 "texto": "Antes de criar peças, prepare o estúdio. É só uma vez.",
+                 "ir_para": {"aba": "ambiente", "rotulo": "Ir para 1. Ambiente"}}]
     if not aprovada:
-        falta.append({"tipo": "texto", "titulo": "Marca não aprovada",
-                      "texto": "Antes de criar peças, confira e aprove a marca na aba 2. Marca."})
-    if falta:
-        return falta
-    blocos = []
+        return [{"tipo": "texto", "titulo": "Passo 2 de 3: aprovar a marca",
+                 "texto": "Antes de criar peças, confira as cores e as fontes da sua marca e aprove.",
+                 "ir_para": {"aba": "marca", "rotulo": "Ir para 2. Marca"}}]
+    blocos = [{"tipo": "texto", "titulo": "Passo 3 de 3: pedir uma peça",
+               "texto": "Escreva o que a peça precisa dizer e clique em Começar. Quando ficar pronta, ela aparece "
+                        "na aba Aprovação."}]
     for a in _acoes():
         if a.get("so_com") and not _ligada(ctx.get("config"), a["so_com"]):
             continue
         blocos.append({"tipo": "formulario", "titulo": a.get("titulo") or a["id"], "descricao": a.get("descricao", ""),
                        "catalogo": a["id"], "botao": "Começar",
                        "campos": [_campo(p) for p in a.get("params") or [] if isinstance(p, dict) and p.get("nome")]})
-    if not any(b["catalogo"] == "estudio.video-motion" for b in blocos):
+    if not any(b.get("catalogo") == "estudio.video-motion" for b in blocos):
         blocos.append({"tipo": "texto", "texto": "Vídeo com movimento está desligado neste projeto: o vídeo sai em "
                        "slides, sem movimento dentro das cenas."})
     return blocos
@@ -96,7 +97,8 @@ def aba_marca(m, sha, aprovada):
                "travado": "sim" if v.get("travado") else "não"}
               for k, v in sorted(campos.items()) if isinstance(v, dict)]
     blocos = [{"tipo": "texto", "titulo": "Marca %s" % estado,
-               "texto": "Confira os campos abaixo." if aprovada else "Passo 2 de 3: confira os campos abaixo e aprove."},
+               "texto": "Confira os campos abaixo." if aprovada else "Passo 2 de 3: confira os campos abaixo e aprove."}
+              | ({"ir_para": {"aba": "novo", "rotulo": "Ir para 3. Novo"}} if aprovada else {}),
               {"tipo": "tabela", "titulo": "Campos", "colunas": [
                   {"id": "campo", "rotulo": "Campo"}, {"id": "valor", "rotulo": "Valor"},
                   {"id": "fonte", "rotulo": "De onde veio"}, {"id": "confianca", "rotulo": "Confiança"},

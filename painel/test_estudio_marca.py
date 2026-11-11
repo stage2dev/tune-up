@@ -117,7 +117,23 @@ class TesteMarca(Base):
         texto = json.dumps(abas["marca"], ensure_ascii=False)
         for esperado in ("#112233", "Forno", "a.css:1", self.sha(), "data:image/png;base64,"):
             self.assertIn(esperado, texto)
-        self.assertIn("Marca não aprovada", json.dumps(abas["novo"], ensure_ascii=False))
+        self.assertIn("Passo 1 de 3", json.dumps(abas["novo"], ensure_ascii=False))  # sem estúdio preparado, o 1º passo
+
+    def test_novo_mostra_o_passo_que_falta_e_depois_os_formularios(self):
+        with open(os.path.join(os.path.dirname(os.path.dirname(REAL)), os.pardir, os.pardir, ".claude-plugin",
+                               "plugin.json"), encoding="utf-8") as f:
+            versao = json.load(f)["version"]
+        escrever(os.path.join(self.cfg["dados_dir"], "ambiente.json"), json.dumps({"pronto": True, "estudio": versao}))
+
+        def novo():
+            abas = modulos.montar(self.cfg, "estudio", usar_cache=False)[1]["abas"]
+            self.assertEqual([a["id"] for a in abas], ["ambiente", "marca", "novo", "fila", "galeria", "aprovacao"])
+            return next(a for a in abas if a["id"] == "novo")["blocos"]
+        self.assertEqual((novo()[0]["titulo"][:12], novo()[0]["ir_para"]["aba"]), ("Passo 2 de 3", "marca"))
+        self.aprovar()
+        blocos = novo()
+        self.assertTrue(blocos[0]["titulo"].startswith("Passo 3 de 3"))
+        self.assertIn("estudio.post", [b.get("catalogo") for b in blocos])
 
     def test_redescobrir_le_de_novo_e_derruba_aprovacao(self):
         self.aprovar()

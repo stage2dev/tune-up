@@ -210,9 +210,11 @@ class TestModulo(Base):
         with mock.patch.object(mod, "_versao", return_value="0.2.0"):  # o plugin foi atualizado
             a = mod.montar({"dados": self.dados})["alertas"][0]
         self.assertEqual(a["nivel"], "atencao")
-        self.assertIn("0.1.0", a["texto"])
-        pe.gravar(self.dados, {"versao": 1, "pronto": False, "estado": "preparando", "gravado_em": "agora"})
-        self.assertIn("Preparando o estúdio", mod.montar({"dados": self.dados})["alertas"][0]["texto"])
+        self.assertIn("outra versão", a["texto"])
+        pe.gravar(self.dados, {"versao": 1, "pronto": False, "estado": "preparando", "gravado_em": "2026-11-11T08:23:00-03:00"})
+        texto = mod.montar({"dados": self.dados})["alertas"][0]["texto"]
+        self.assertIn("Preparando o estúdio desde as 08:23", texto)  # hora legível, sem data ISO nem caminho de log
+        self.assertNotIn("2026-11-11T", texto)
 
 
 if __name__ == "__main__":

@@ -271,7 +271,9 @@ def fazer_handler(app):
             m = RE_ROTA_MODULO.match(caminho)
             if m:
                 fresco = (query.get("fresco") or ["0"])[0] in ("1", "true")
-                return self._json(*modulos.montar(app.cfg, urllib.parse.unquote(m.group(1)), usar_cache=not fresco))
+                pulso = tuple((e.get("id"), e.get("estado")) for e in app.lancador.execucoes())  # fim de sessão aparece já
+                return self._json(*modulos.montar(app.cfg, urllib.parse.unquote(m.group(1)), usar_cache=not fresco,
+                                                  pulso=pulso))
             m = RE_ROTA_MODULO_ARQ.match(caminho)
             if m:
                 return self._arquivo(urllib.parse.unquote(m.group(1)), (query.get("c") or [None])[0])

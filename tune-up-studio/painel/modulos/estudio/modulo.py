@@ -63,12 +63,17 @@ def montar(ctx):
     falta = ctx.get("dono_faltando")
     aprovada = m is not None and callable(falta) and not falta(["estudio.marca"])
     lista = pecas.pecas(ctx)
-    ambiente = [{"tipo": "texto", "texto": a["texto"]} for a in r["alertas"]]
+    amb = _ambiente(ctx["dados"]) if ctx.get("dados") else None
+    pronto = bool(amb) and amb.get("pronto") is True and amb.get("estudio") == _versao()
+    texto = r["alertas"][0]["texto"] if amb else ("Clique em Preparar. O estúdio baixa as ferramentas dele "
+                                                  "(cerca de 100 MB), uma vez só.")
+    ambiente = [{"tipo": "texto", "titulo": "Passo 1 de 3: preparar o estúdio", "texto": texto}
+                | ({"ir_para": {"aba": "marca", "rotulo": "Ir para 2. Marca"}} if pronto else {})]
+    if pronto and aprovada:  # tudo pronto: nenhum aviso no topo de toda aba (nem número no menu)
+        r["alertas"], ambiente[0]["texto"] = [], "Estúdio pronto."
     ambiente.append({"tipo": "formulario", "titulo": "Preparar estúdio", "acao": "preparar", "botao": "Preparar",
                      "campos": [], "dados_fixos": {"confirmar": True},
                      "confirmar": "Isto baixa o HyperFrames pela internet (cerca de 100 MB). Continuar?"})
-    amb = _ambiente(ctx["dados"]) if ctx.get("dados") else None
-    pronto = bool(amb) and amb.get("pronto") is True and amb.get("estudio") == _versao()
     # na ordem do fluxo: preparar, aprovar a marca, pedir, acompanhar, ver e aprovar
     r["abas"] = [{"id": "ambiente", "titulo": "1. Ambiente", "blocos": ambiente},
                  {"id": "marca", "titulo": "2. Marca", "blocos": telas.aba_marca(m, sha, aprovada)},
@@ -82,22 +87,27 @@ def montar(ctx):
 def _montar_ambiente(ctx):
     amb = _ambiente(ctx["dados"]) if ctx.get("dados") else None
     if amb is None:
-        return {"alertas": [{"nivel": "info", "texto": "Passo 1 de 3: o estúdio ainda não foi preparado. "
+        return {"alertas": [{"nivel": "info", "texto": "O estúdio ainda não foi preparado. "
                                          "Abra a aba 1. Ambiente e use Preparar."}]}
     if amb.get("estado") == "preparando":
-        return {"alertas": [{"nivel": "info", "texto": "Preparando o estúdio (desde %s). Se nada mudar em 20 min, "
-                             "o Preparar parou: veja dados/ambiente.log e use Preparar estúdio de novo."
-                             % amb.get("gravado_em", "")}]}
+        return {"alertas": [{"nivel": "info", "texto": "Preparando o estúdio%s. Leva alguns minutos; a tela se "
+                             "atualiza sozinha. Se nada mudar em 20 min, use Preparar de novo." % _desde(amb)}]}
     if amb.get("pronto") is True and amb.get("estudio") != _versao():
-        return {"alertas": [{"nivel": "atencao", "texto": "Estúdio preparado para a versão %s do plugin; esta é a %s. "
-                             "Use Preparar estúdio de novo." % (amb.get("estudio"), _versao())}]}
+        return {"alertas": [{"nivel": "atencao", "texto": "O estúdio foi preparado para outra versão do plugin. "
+                             "Use Preparar de novo."}]}
     if amb.get("pronto") is True:
-        return {"alertas": [{"nivel": "info", "texto": "Estúdio pronto."}]}
+        return {"alertas": [{"nivel": "info", "texto": "Estúdio pronto. Próximo passo: aprovar a marca."}]}
     faltas = [i.get("texto", "") for i in amb.get("verificacao") or [] if isinstance(i, dict) and i.get("nivel") == "erro"]
     faltas += ["%s falhou" % p.get("passo", "") for p in amb.get("passos") or [] if isinstance(p, dict) and not p.get("ok")]
     if amb.get("erro"):
         faltas.append(str(amb["erro"]))
     return {"alertas": [{"nivel": "atencao", "texto": "Estúdio não está pronto: " + "; ".join(faltas)[:450]}]}
+
+
+def _desde(amb):
+    """" desde as 08:23" de um ISO gravado_em, ou "" (nada de data técnica na tela)."""
+    m = pecas.RE_DATA.match(str(amb.get("gravado_em") or ""))
+    return " desde as %s:%s" % m.groups()[2:] if m else ""
 
 
 def _travar(dados):
@@ -172,7 +182,7 @@ def _marca_editar(ctx, dados):
     dm._gravar(caminho, json.dumps(obj, ensure_ascii=False, indent=2) + "\n")  # O_EXCL|O_NOFOLLOW no .tmp
     # a marca mudou: a aprovação anterior deixa de valer até o dono aprovar de novo
     ctx["gravar_dono"]("marca", {"aprovado": False})
-    return {"feito": True, "mensagem": "Campo %s salvo e travado. Aprove a marca de novo." % campo}
+    return {"feito": True, "mensagem": "%s salvo. Aprove a marca de novo." % telas.ROTULOS.get(campo, campo)}
 
 
 def _marca_redescobrir(ctx, dados):
@@ -217,4 +227,4 @@ def agir(ctx, acao, dados):
         subprocess.Popen([sys.executable, "-I", SCRIPT, "--dados", pasta, "--projeto", ctx.get("raiz") or pasta,
                           "--sim", "--trava-herdada"], stdin=nada, stdout=log, stderr=subprocess.STDOUT,
                          cwd=pasta, start_new_session=True, pass_fds=(trava.fileno(),))
-    return {"feito": True, "mensagem": "Preparando o estúdio em segundo plano. Atualize a tela para ver o resultado."}
+    return {"feito": True, "mensagem": "Preparando o estúdio. Leva alguns minutos; a tela se atualiza sozinha."}

@@ -79,7 +79,7 @@ class TesteSelo(BasePecas):
         escrever(os.path.join(self.dados, "trabalhos", TID_V, "q1", "qa.json"), json.dumps({"ok": True, "checks": []}))
         abas = self.abas()
         self.assertIn("Pronto para aprovar", abas["galeria"])
-        self.assertIn("png_size", abas["galeria"])  # o 1:1 ficou vermelho pelo tamanho
+        self.assertIn("imagem no tamanho errado", abas["galeria"])  # o 1:1 ficou vermelho pelo tamanho
         self.assertIn("peca.aprovar", abas["aprovacao"])
         self.assertIn(TID, abas["aprovacao"])
         self.assertNotIn(TID_V, abas["aprovacao"])
@@ -92,7 +92,7 @@ class TesteSelo(BasePecas):
         self.assertNotIn(TID, self.abas()["aprovacao"])
         self.assertIs(self.agir("peca.aprovar")[1]["resultado"]["feito"], False)
         os.remove(os.path.join(p, "final.json"))  # sessão cortada antes da conferência final
-        self.assertIn("conferencia_da_sessao", self.abas()["galeria"])
+        self.assertIn("a conferência do Claude não passou", self.abas()["galeria"])
         self.assertIs(self.agir("peca.aprovar")[1]["resultado"]["feito"], False)
         self.assertFalse(os.path.exists(os.path.join(self.dados, "aprovados", TID)))
 
@@ -113,7 +113,7 @@ class TesteSelo(BasePecas):
         fora = os.path.join(self.tmp, "fora")
         shutil.move(os.path.join(p, "q1"), fora)
         os.symlink(fora, os.path.join(p, "q1"))
-        self.assertIn("q1 não é pasta", self.abas()["galeria"])
+        self.assertIn("pasta da peça com atalho", self.abas()["galeria"])
         self.assertIs(self.agir("peca.aprovar")[1]["resultado"]["feito"], False)
 
     def test_gsap_url_e_layout_allow_na_fonte_ficam_vermelhos(self):
@@ -125,31 +125,44 @@ class TesteSelo(BasePecas):
             os.utime(os.path.join(p, "q1", "fonte", "index.html"), (antes, antes))
         texto = self.abas()["galeria"]
         self.assertNotIn("Pronto para aprovar", texto)
-        for nome in ("no_gsap", "network_lint", "layout_allow_count"):
+        for nome in ("usa animação proibida", "busca coisas na internet", "texto pode sair do quadro"):
             self.assertIn(nome, texto)
+        for tecnico in ("no_gsap", "network_lint", "layout_allow_count", "PRONTO:", "PRECISA DO SEU OLHO:"):
+            self.assertNotIn(tecnico, texto)  # a tela fala a língua do dono
 
     def test_fonte_mais_nova_que_o_png_e_atalho_ficam_vermelhos(self):
         p = self.post()
         os.utime(os.path.join(p, "q1", "fonte", "index.html"), None)
         os.utime(os.path.join(p, "q1", "snap", "frame-00-at-0s.png"), (time.time() - 120,) * 2)
-        self.assertIn("png_fresh", self.abas()["galeria"])
+        self.assertIn("o desenho mudou depois da imagem", self.abas()["galeria"])
         if hasattr(os, "symlink") and os.name != "nt":
             os.symlink("/etc/hosts", os.path.join(p, "q1", "fonte", "x.html"))
-            self.assertIn("q1: fonte", self.abas()["galeria"])  # a fonte com atalho não é lida
+            self.assertIn("arquivos do desenho com problema", self.abas()["galeria"])  # a fonte com atalho não é lida
 
     def test_fila_mostra_estado_em_palavras(self):
         p = self.post(estado="precisa_de_voce")
         escrever(os.path.join(p, "final.json"), json.dumps({"linha": "PRECISA DO SEU OLHO: 0 de 1 verdes"}))
         self.execucao(TID_V, estado="rodando")
         fila = self.abas()["fila"]
-        self.assertIn("precisa do seu olho", fila)
-        self.assertIn("rodando", fila)
+        self.assertIn("Precisa do seu olho", fila)
+        self.assertIn("fazendo agora", fila)
         self.assertNotIn("travad", fila)
 
 
 class TesteAprovar(BasePecas):
+    def test_cartao_mostra_so_a_secao_legenda_do_copy(self):
+        p = self.post()
+        escrever(os.path.join(p, "copy.md"), "# Copy — post 4:5\n\n## Quadro 1\n- Título (32/40): X\n\n"
+                 "## Legenda (17/125)\nPão saindo às 7h.\n\n## Chamada para ação\nReserve")
+        cartao = [b for b in json.loads(self.abas()["aprovacao"])["blocos"] if b["tipo"] == "formulario"][0]
+        self.assertEqual(cartao["descricao"], "Legenda que vai junto:\n\nPão saindo às 7h.")
+
     def test_aprovar_grava_manifesto_com_sha_do_servidor_e_segunda_vez_409(self):
         p = self.post()
+        cartao = [b for b in json.loads(self.abas()["aprovacao"])["blocos"] if b["tipo"] == "formulario"]
+        self.assertEqual(len(cartao), 1)  # Aprovar e Recusar no mesmo cartão, com a legenda antes dos botões
+        self.assertEqual((cartao[0]["acao"], cartao[0]["secundario"]["acao"]), ("peca.aprovar", "peca.recusar"))
+        self.assertIn("Legenda do post.", cartao[0]["descricao"])
         cod, corpo = self.agir("peca.aprovar")
         self.assertEqual((cod, corpo["resultado"]["feito"]), (200, True), corpo)
         destino = os.path.join(self.dados, "aprovados", TID)

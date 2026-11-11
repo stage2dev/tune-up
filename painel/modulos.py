@@ -36,7 +36,7 @@ MAX_ALERTAS = 50
 _lock = threading.Lock()
 _lock_import = threading.Lock()  # um import de módulo por vez (mexe em sys.path/sys.modules)
 _carregados = {}   # caminho -> (mtime, módulo)
-_cache = {}        # id -> (quando, código, dado)
+_cache = {}        # id -> (quando, código, dado, pulso)
 _rodando = {}      # id -> thread
 _lock_agir = threading.Lock()  # trava das ações, separada da de montar
 _agindo = {}       # id -> thread de agir()
@@ -231,15 +231,15 @@ def _rodar_montar(mod, ctx, mid, tempo):
     return caixa.get("dado")
 
 
-def montar(cfg, mid, usar_cache=True, tempo=TEMPO_LIMITE):
-    """(código, corpo) de GET /api/modulos/<id>."""
+def montar(cfg, mid, usar_cache=True, tempo=TEMPO_LIMITE, pulso=None):
+    """(código, corpo) de GET /api/modulos/<id>; `pulso` diferente do guardado vence o cache (sessão começou/terminou)."""
     agora = time.monotonic()
     with _lock:
         geracao = _geracao.get(mid, 0)
     if usar_cache:
         with _lock:
             item = _cache.get(mid)
-        if item and agora - item[0] < TTL:
+        if item and agora - item[0] < TTL and item[3] == pulso:
             return item[1], item[2]
     try:
         mod = carregar(cfg, mid)
@@ -250,7 +250,7 @@ def montar(cfg, mid, usar_cache=True, tempo=TEMPO_LIMITE):
     if codigo in (200, 500):
         with _lock:
             if _geracao.get(mid, 0) == geracao:  # uma ação no meio deixou este resultado velho
-                _cache[mid] = (time.monotonic(), codigo, corpo)
+                _cache[mid] = (time.monotonic(), codigo, corpo, pulso)
     return codigo, corpo
 
 

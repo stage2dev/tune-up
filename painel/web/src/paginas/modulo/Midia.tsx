@@ -75,6 +75,7 @@ export function Midia({ b, moduloId }: { b: BlocoCru; moduloId?: string }) {
         <ArquivoDeMidia key={url} tipo={tipo} url={url} rotulo={tipo === 'video' ? textoOuNada(b.alt) ?? legenda : typeof b.alt === 'string' ? b.alt : ''}
           classe={tipo === 'video' ? 'max-w-full max-h-[70vh] rounded-lg bg-black' : 'max-w-full max-h-[70vh] h-auto rounded-lg'} />
         {legenda && <figcaption className="text-xs text-[var(--color-text-secondary)] break-words text-center">{legenda}</figcaption>}
+        <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm underline text-[var(--color-accent)]">Abrir o arquivo inteiro</a>
       </figure>
     </Cartao>
   );

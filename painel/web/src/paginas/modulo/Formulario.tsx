@@ -1,5 +1,5 @@
 // Bloco "formulario": campos declarados pelo modulo + um botao que chama uma acao do modulo.
-import { useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useId, useRef, useState, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { useAcoes, useIniciarExecucao } from '../../api/ganchos';
 import type { Acao } from '../../api/tipos';
@@ -71,7 +71,10 @@ type Disparar = (valores: Record<string, string>) => Promise<void>;
 
 function FormularioBase({ b, moduloId, acaoCat, disparar }: { b: BlocoCru; moduloId?: string; acaoCat: Acao | null; disparar: Disparar | null }) {
   const campos = lerCampos(b.campos);
-  const acao = acaoCat ? acaoCat.id : textoOuNada(b.acao);
+  const sec = !acaoCat && b.secundario && typeof b.secundario === 'object' ? (b.secundario as Record<string, unknown>) : null;
+  const acaoSec = sec ? textoOuNada(sec.acao) : undefined; // segundo botao no mesmo cartao (Recusar ao lado de Aprovar)
+  const [usarSec, setUsarSec] = useState(false);
+  const acao = acaoCat ? acaoCat.id : usarSec ? acaoSec : textoOuNada(b.acao);
   const [editados, setEditados] = useState<Record<string, string>>({}); // so o que a pessoa mexeu: a releitura de 15 s nao apaga
   const [invalidos, setInvalidos] = useState<string[]>([]); // campos que faltavam no ultimo envio
   const [pedindo, setPedindo] = useState<Record<string, string> | null>(null); // valores lidos, esperando o "sim" do dialogo
@@ -80,12 +83,13 @@ function FormularioBase({ b, moduloId, acaoCat, disparar }: { b: BlocoCru; modul
   const formRef = useRef<HTMLFormElement>(null);
   const { enviar, enviando: enviandoModulo, ok, erro } = useEnvio(moduloId);
   const enviando = enviandoModulo || disparando;
-  const textoConfirmar = textoDeConfirmacao(acaoCat, b.confirmar);
+  const textoConfirmar = textoDeConfirmacao(acaoCat, usarSec ? sec?.confirmar : b.confirmar);
   const faltando = camposFaltando(campos, editados); // segredo nunca esta em `editados`: so e checado no envio
-  const idBase = `form-${moduloId ?? 'm'}`;
+  const idBase = `form-${moduloId ?? 'm'}-${useId()}`; // dois formularios na mesma aba (post e video): ids e rotulos nao se cruzam
 
-  async function executar(lidos: Record<string, string>) {
-    if (!acao || emVoo.current) return;
+  async function executar(lidos: Record<string, string>, secundario = usarSec) {
+    const qual = acaoCat ? acaoCat.id : secundario ? acaoSec : textoOuNada(b.acao);
+    if (!qual || emVoo.current) return;
     if (disparar) {
       emVoo.current = true;
       setDisparando(true);
@@ -98,7 +102,7 @@ function FormularioBase({ b, moduloId, acaoCat, disparar }: { b: BlocoCru; modul
       }
       return;
     }
-    const feito = await enviar(acao, dadosDoFormulario(b.dados_fixos, campos, lidos));
+    const feito = await enviar(qual, dadosDoFormulario(b.dados_fixos, campos, lidos));
     setPedindo(null);
     if (feito) {
       setEditados((v) => semSegredos(campos, v));
@@ -107,17 +111,19 @@ function FormularioBase({ b, moduloId, acaoCat, disparar }: { b: BlocoCru; modul
     }
   }
 
-  async function aoEnviar(e: FormEvent) {
+  async function aoEnviar(e: { preventDefault: () => void }, secundario = false) {
     e.preventDefault();
-    if (enviando || !acao) return;
-    const form = e.currentTarget as HTMLFormElement;
+    const form = formRef.current;
+    if (enviando || !form || !(secundario ? acaoSec : acaoCat ? acaoCat.id : textoOuNada(b.acao))) return;
+    setUsarSec(secundario);
     const lidos = { ...editados }; // segredos lidos do DOM so agora
     for (const c of campos) if (c.tipo === 'segredo') lidos[c.id] = String(new FormData(form).get(c.id) ?? '');
     const falta = camposFaltando(campos, lidos);
     setInvalidos(falta);
     if (falta.length > 0) return;
-    if (textoConfirmar) setPedindo(lidos);
-    else await executar(lidos);
+    const confirmar = textoDeConfirmacao(acaoCat, secundario ? sec?.confirmar : b.confirmar);
+    if (confirmar) setPedindo(lidos);
+    else await executar(lidos, secundario);
   }
 
   return (
@@ -129,7 +135,11 @@ function FormularioBase({ b, moduloId, acaoCat, disparar }: { b: BlocoCru; modul
           <Entrada key={c.id} c={c} idBase={idBase} valor={valorDoCampo(c, editados)} invalido={invalidos.includes(c.id) && (c.tipo === 'segredo' || faltando.includes(c.id))} aoMudar={(v) => setEditados((x) => ({ ...x, [c.id]: v }))} />
         ))}
         <div className="flex flex-wrap items-center gap-3">
-          <Botao type="submit" enviando={enviando && pedindo === null} textoEnviando={acaoCat ? 'Começando…' : 'Enviando…'} disabled={!acao}>{textoOuNada(b.botao) ?? 'Enviar'}</Botao>
+          <Botao type="submit" enviando={enviando && pedindo === null && !usarSec} textoEnviando={acaoCat ? 'Começando…' : 'Enviando…'} disabled={!acaoCat && !textoOuNada(b.acao)}>{textoOuNada(b.botao) ?? 'Enviar'}</Botao>
+          {acaoSec && (
+            <Botao variante="secundario" enviando={enviando && pedindo === null && usarSec} disabled={enviando}
+              onClick={(e) => void aoEnviar(e, true)}>{textoOuNada(sec?.botao) ?? 'Recusar'}</Botao>
+          )}
           <AvisoEnvio ok={ok} erro={erro} />
         </div>
       </form>

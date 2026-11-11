@@ -29,6 +29,7 @@ MAX_MP4 = 300 * 1024 * 1024
 MAX_JSON = 1024 * 1024
 MAX_LEGENDA = 20000
 MAX_CACHE = 200
+TEMPO_FFPROBE = 8  # a tela tem 20 s para montar; um MP4 que trava o ffprobe fica vermelho
 VIDEOS = {"estudio.video": "reserve", "estudio.video-motion": "hyperframes"}
 _lock = threading.Lock()
 _qa = {}
@@ -150,14 +151,14 @@ def _post(qi, pasta, params):
     try:
         largura, altura = qi.format_size(params.get("formato"))
     except (OSError, ValueError, KeyError, StopIteration):
-        return {"ok": False, "linha": "PRECISA DO SEU OLHO: formato desconhecido", "arquivos": []}
+        return {"ok": False, "linha": "PRECISA DO SEU OLHO: formato desconhecido", "arquivos": [], "falhas": ["formato"]}
     nomes = sorted((int(m.group(1)), n) for n in os.listdir(pasta) for m in [RE_QUADRO.match(n)] if m)
     arquivos = []
     for _, n in nomes:
         png, fonte = os.path.join(pasta, n, STILL), os.path.join(pasta, n, "fonte")
         if not (_pasta_real(os.path.join(pasta, n)) and _pasta_real(os.path.join(pasta, n, "snap"))):
             arquivos.append({"c": "/".join([n, "snap", "frame-00-at-0s.png"]), "nome": n + ".png",
-                             "falhas": ["%s não é pasta" % n]})  # atalho no meio do caminho: nada é lido
+                             "falhas": ["atalho"]})  # atalho no meio do caminho: nada é lido
             continue
         ruim = comum(png, MAX_PNG)
         checks = [qi.result("png", False, [ruim])] if ruim else [qi.check_png(png, largura, altura)]
@@ -186,7 +187,8 @@ def _post(qi, pasta, params):
         linha = "PRECISA DO SEU OLHO: %d de %d verdes, %s" % (verdes, len(arquivos), "; ".join(
             ["%s: %s" % (a["nome"][:-4], ", ".join(a["falhas"])) for a in arquivos if a["falhas"]] + extra)
             or "nenhum quadro")
-    return {"ok": ok, "linha": linha, "arquivos": arquivos}
+    falhas = [f for a in arquivos for f in a["falhas"]] + extra + ([] if arquivos else ["quadros"])
+    return {"ok": ok, "linha": linha, "arquivos": arquivos, "falhas": list(dict.fromkeys(falhas))}
 
 
 def _reels(qi):
@@ -211,7 +213,7 @@ def _video(qi, qv, pasta, acao, params):
         checks.append(qi.result("ffprobe", False, ["ffprobe não está instalado"]))
     elif not checks:
         try:
-            dado = qv.probe(video, ffprobe)
+            dado = qv.probe(video, ffprobe, TEMPO_FFPROBE)
             checks += qv.stream_checks(dado, video, largura, altura, duracao, 30.0)
         except (ValueError, OSError) as e:
             checks.append(qi.result("probe", False, [str(e)[:300]]))
@@ -226,7 +228,8 @@ def _video(qi, qv, pasta, acao, params):
         checks.append(qv.check_fresh(video, fonte, None))
     falhas = [c["name"] for c in checks if not c["ok"]]
     linha = "PRECISA DO SEU OLHO: %s" % ", ".join(falhas) if falhas else "PRONTO: vídeo verde"
-    return {"ok": not falhas, "linha": linha, "arquivos": [{"c": "video.mp4", "nome": "video.mp4", "falhas": falhas}]}
+    return {"ok": not falhas, "linha": linha, "falhas": falhas,
+            "arquivos": [{"c": "video.mp4", "nome": "video.mp4", "falhas": falhas}]}
 
 
 def tipo(acao):
@@ -234,7 +237,8 @@ def tipo(acao):
 
 
 def calcular(pasta, acao, params):
-    """{"ok", "linha", "arquivos": [{"c" (relativo à pasta), "nome", "falhas"}]}; em cache pela assinatura."""
+    """{"ok", "linha", "falhas" (nomes das checagens vermelhas), "arquivos": [{"c" (relativo à pasta), "nome", "falhas"}]};
+    em cache pela assinatura."""
     chave = (acao, json.dumps(params or {}, sort_keys=True, ensure_ascii=False), assinatura(pasta))
     with _lock:
         item = _cache.get(pasta)
@@ -246,7 +250,7 @@ def calcular(pasta, acao, params):
     elif tipo(acao) == "video":
         selo = _video(qi, qv, pasta, acao, params or {})
     else:
-        selo = {"ok": False, "linha": "PRECISA DO SEU OLHO: ação desconhecida", "arquivos": []}
+        selo = {"ok": False, "linha": "PRECISA DO SEU OLHO: ação desconhecida", "arquivos": [], "falhas": ["acao"]}
     with _lock:
         if len(_cache) >= MAX_CACHE:
             _cache.clear()

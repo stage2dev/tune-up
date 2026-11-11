@@ -10,7 +10,7 @@ export type Bloco =
       vazio?: string }
   | { tipo: 'serie'; titulo?: string; unidade?: string;
       series: { nome: string; pontos: { x: string; y: number | null }[] }[]; vazio?: string }
-  | { tipo: 'texto'; titulo?: string; texto: string }
+  | { tipo: 'texto'; titulo?: string; texto: string; /** Botão que abre outra aba do mesmo módulo. */ ir_para?: { aba: string; rotulo: string } }
   | { tipo: 'acoes'; titulo?: string; grupo: string }
   | BlocoFormulario
   | BlocoConversa
@@ -45,6 +45,8 @@ export interface BlocoFormulario {
   botao: string;
   campos: CampoFormulario[];
   dados_fixos?: Record<string, unknown>;
+  /** Segundo botão no mesmo cartão (ex.: Recusar ao lado de Aprovar): outro comando do módulo, mesmos campos. */
+  secundario?: { acao: string; botao: string; confirmar?: string };
 }
 export interface MensagemConversa {
   id: string;
