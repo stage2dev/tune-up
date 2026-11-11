@@ -23,6 +23,7 @@ RE_CONTROLE = re.compile("[\x00-\x1f\x7f-\x9f​-‏  ‪-‮⁦-⁩﻿]")
 RE_CAMPO = re.compile(r"\{([a-z_][a-z0-9_]{0,30})\}")
 
 RE_GRUPO = re.compile(r"^[a-z0-9_-]{1,40}$")
+RE_SO_COM = re.compile(r"^[a-z][a-z0-9_]{0,40}(?:\.[a-z][a-z0-9_]{0,40}){0,3}$")  # chave do painel.json
 RISCOS = ("leitura", "rascunho", "codigo", "credito")
 TIPOS = ("fase", "parte", "texto", "escolha", "texto_longo")
 TEXTO_MAX, TEXTO_PADRAO = 2000, 500
@@ -135,6 +136,9 @@ def validar_acao(a):
         raise ValueError("ação %s: %s" % (a["id"], e))
     if requer and not caixa["sandbox"]:  # sessão sem sandbox grava o arquivo de aprovação por vias indiretas
         raise ValueError("ação %s: requer aprovação do dono e precisa de sandbox ligado" % a["id"])
+    so_com = a.get("so_com")
+    if so_com is not None and not (isinstance(so_com, str) and RE_SO_COM.match(so_com)):
+        raise ValueError("ação %s: so_com precisa ser uma chave do painel.json (ex.: estudio.video_rede_local)" % a["id"])
     equipe = a.get("equipe") if isinstance(a.get("equipe"), str) else ""
     if RE_CONTROLE.search(equipe):
         raise ValueError("ação %s: equipe com caractere de controle" % a["id"])
@@ -145,6 +149,7 @@ def validar_acao(a):
             "params": params, "modelos": _modelos(a), "esforco": esforco, "equipe": equipe.strip()[:60],
             "_prompt": prompt.strip(), "_nome": nome_sessao, "_travas": trv, "_substitui": a.get("substitui") is True,
             "_requer": requer,  # pré-condição: aprovação do dono (dono.py), conferida ao disparar
+            "_so_com": so_com,  # a ação só existe no projeto que liga esta chave (catalogo_do_projeto)
             **tetos, **caixa}
 
 
@@ -207,11 +212,28 @@ def carregar_catalogo(pastas):
     return acoes, avisos
 
 
+def chave_ligada(bruto, chave):
+    """`chave` do painel.json é true: "a.b" vale como chave plana "a.b" ou como {"a": {"b": true}}."""
+    if not isinstance(bruto, dict):
+        return False
+    if bruto.get(chave) is True:
+        return True
+    no = bruto
+    for parte in chave.split("."):
+        no = no.get(parte) if isinstance(no, dict) else None
+    return no is True
+
+
 def catalogo_do_projeto(cfg):
-    """Núcleo, pacote do projeto e, por último, as ações de plugins aceitos (extensoes.py)."""
+    """Núcleo, pacote do projeto e, por último, as ações de plugins aceitos (extensoes.py).
+
+    Ação com `so_com` (ex.: a do vídeo com render local, que precisa de `rede_local`) só entra
+    quando o painel.json do projeto liga essa chave: fora dela não aparece nem dispara.
+    """
     import extensoes
     pastas, avisos = extensoes.pastas_de_acoes(cfg)
     acoes, av = carregar_catalogo([cfg["acoes_dir"], cfg.get("acoes_pacote_dir")] + pastas)
+    acoes = [a for a in acoes if not a.get("_so_com") or chave_ligada(cfg.get("bruto"), a["_so_com"])]
     return acoes, avisos + av
 
 

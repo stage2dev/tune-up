@@ -3,7 +3,10 @@
 
 Standard library plus ffprobe/ffmpeg. It does not run Chrome: it probes the
 MP4, runs ffmpeg blackdetect and freezedetect, scans the composition source
-folder and reads the JSON of `hyperframes check <dir> --json --strict`.
+folder and reads the `check --strict` report HyperFrames saved under
+`<source>/.hyperframes/` (never a copy the session wrote). The report carries a
+final line in `linha` (PRONTO / PRECISA DO SEU OLHO) and, with --sheet, a
+contact sheet PNG of the MP4 (one frame per second, 5 per row).
 
 Exit code: 0 all green, 1 at least one check failed, 2 bad usage.
 """
@@ -149,6 +152,22 @@ def check_reserve_tag(data):
     return result("engine_reserve", tag == MARK, ["comment=%r (expected %r)" % (tag, MARK)])
 
 
+def contact_sheet(video, out, duration, ffmpeg):
+    """One frame per second of the MP4 in a 5-column grid PNG. Return the check result."""
+    count = max(1, int(round(duration)))
+    rows = (count + 4) // 5
+    code, _, err = run_tool([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", video, "-an",
+                             "-vf", "fps=1,scale=216:384,tile=5x%d" % rows, "-frames:v", "1", out])
+    ok = code == 0 and os.path.isfile(out)
+    return result("contact_sheet", ok, [out if ok else "ffmpeg failed: %s" % err.strip()[-300:]])
+
+
+def final_line(report, engine):
+    if report["ok"]:
+        return "PRONTO: video verde (%s)" % engine
+    return "PRECISA DO SEU OLHO: %s" % ", ".join(c["name"] for c in report["checks"] if not c["ok"])
+
+
 def run(source, video, check_json, width, height, duration, fps, ffmpeg, ffprobe, engine="hyperframes"):
     data = {}
     try:
@@ -167,8 +186,9 @@ def run(source, video, check_json, width, height, duration, fps, ffmpeg, ffprobe
         checks.append(result("no_gsap", not gsap, gsap or ["ok"]))
         net = scan(source, NETWORK_PATTERNS, strip_xmlns=True)
         checks.append(result("network_lint", not net, net or ["ok"]))
-    checks.append(check_reserve_tag(data) if engine == "reserve"
-                  else check_strict_json(check_json, source, duration))
+    if engine == "reserve":  # the slides are snapshots of the same composition: it is checked too
+        checks.append(check_reserve_tag(data))
+    checks.append(check_strict_json(check_json, source, duration))
     return {"ok": all(c["ok"] for c in checks), "checks": checks}
 
 
@@ -176,20 +196,24 @@ def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--source", required=True, help="composition folder (fonte/)")
     p.add_argument("--video", required=True, help="rendered MP4")
-    p.add_argument("--check-json", help="output of check --json --strict (required unless --engine reserve)")
+    p.add_argument("--check-json", help="optional: output of check --json --strict; only its saved.report "
+                                         "path is used (default: newest report HyperFrames saved)")
     p.add_argument("--engine", choices=("hyperframes", "reserve"), default="hyperframes",
-                   help="reserve: slide video from reserva_slides.py, checked by its tag instead of check JSON")
+                   help="reserve: slide video from reserva_slides.py, also checked for the reserve tag")
     p.add_argument("--width", type=int, default=1080)
     p.add_argument("--height", type=int, default=1920)
     p.add_argument("--duration", type=float, default=10.0)
     p.add_argument("--fps", type=float, default=30.0)
     p.add_argument("--out", help="also write the report to this file")
+    p.add_argument("--sheet", help="also write a contact sheet PNG of the MP4 here")
     args = p.parse_args(argv)
-    if args.engine == "hyperframes" and not args.check_json:
-        p.error("--check-json is required with --engine hyperframes")
+    ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
     report = run(args.source, args.video, args.check_json, args.width, args.height,
-                 args.duration, args.fps, shutil.which("ffmpeg") or "ffmpeg",
-                 shutil.which("ffprobe") or "ffprobe", args.engine)
+                 args.duration, args.fps, ffmpeg, shutil.which("ffprobe") or "ffprobe", args.engine)
+    if args.sheet:
+        report["checks"].append(contact_sheet(args.video, args.sheet, args.duration, ffmpeg))
+        report["ok"] = all(c["ok"] for c in report["checks"])
+    report["linha"] = final_line(report, args.engine)
     text = json.dumps(report, ensure_ascii=False, indent=2)
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:

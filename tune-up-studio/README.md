@@ -75,7 +75,7 @@ positive list that enforces this for studio actions.
 | strict check | `hyperframes check <fonte> --json --strict > check.json` |
 | render reel | `hyperframes render <fonte> -o <OUT>/video.mp4 --fps 30 --quality delivery` |
 | QA still | `python3 -I scripts/qa_imagem.py --source <fonte> --png <png> --check-json check.json --out qa.json` |
-| QA reel | `python3 -I scripts/qa_video.py --source <fonte> --video <mp4> --check-json check.json --out qa.json` |
+| QA reel | `python3 -I scripts/qa_video.py --source <fonte> --video <mp4> --out qa.json --sheet folha.png` |
 | reserve reel | `python3 -I scripts/video_ou_reserva.py --source <fonte> --slides <png dir> --out <mp4>` |
 
 Details, the check list and the measured behavior of CSS-only animation are in
@@ -158,6 +158,33 @@ refuses, and then the JSON has no `saved.report` (the QA fails); the action sets
 `HYPERFRAMES_HISTORY_ROOT=.hyperframes_history` (relative, so it lands in the
 work folder). The snapshot file name has `-`, which the Bash list only accepts
 after the absolute work-folder path, so the skill passes `--png` that way.
+
+### Real actions `estudio.video` and `estudio.video-motion` (PROVISIONAL, 2026-11-11)
+
+Two actions, one skill (`skills/video`). `estudio.video` makes the reel from
+still slides of the composition (`snapshot` + `reserva_slides.py`), so it needs
+no local port and runs with plain `"sandbox": true`. `estudio.video-motion`
+renders the full animation, which needs `"sandbox": {"rede_local": true}`; it
+carries `"so_com": "estudio.video_rede_local"`, so the panel only lists and
+fires it when the project's `painel.json` sets `{"estudio": {"video_rede_local":
+true}}`. Off by default: with the key on, any local service without
+authentication is reachable from the rendered page (see `scripts/README.md`).
+
+Measured by `painel/tests_reais/prova_video_acao.py` (same harness as the post:
+throwaway project, brand approved by the module command, real action fired by
+the panel launcher with `claude --bg`, sandbox on, skip permissions off), model
+**opus**, one run each, one machine (macOS). Tokens are almost all cache reads.
+
+| piece | action | wall clock | turns | tokens (input / cache creation / cache read / output) | QA final line | fix rounds |
+| --- | --- | --- | --- | --- | --- | --- |
+| reel 15 s | `estudio.video` (key off; the catalog listed only post and video) | 129 s | 15 | 30 / 73,110 / 1,204,228 / 10,723 (1,288,091) | `PRONTO: video verde (reserve)` | 1 (strict check exit 1, fixed) |
+| reel 10 s | `estudio.video-motion` (key on) | 144 s | 16 | 32 / 75,390 / 1,289,426 / 12,689 (1,377,537) | `PRONTO: video verde (hyperframes)` | 1 (strict check exit 1, fixed) |
+
+Both sessions ended on their own (`done`). The motion session tried `grep` on
+the check report twice and the hook refused it; the skill now says to read the
+findings from the command output. Without a session, the same steps by hand on
+the example brand: 10 s render 5.3 s wall, 15 s reserve (5 slides) 2.5 s wall,
+both QA green.
 
 ## Proposed caps per action (PROVISIONAL, to be revised in Parts 5 and 6)
 

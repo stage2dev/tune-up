@@ -104,6 +104,7 @@ A tela inicial é um chat: a pessoa escreve o pedido e escolhe o **nível**. Cad
 - `esforco`: `low`, `medium`, `high`, `xhigh` ou `max` (vira `--effort`).
 - `equipe`: texto curto para a tela ("1 a 2 agentes").
 - `requer`: `"<modulo>.<chave>"` ou lista de até 8. O servidor recusa disparar (409) enquanto a entrada em `<dados>/<modulo>-dono.json` não tiver `"aprovado": true`; arquivo ausente, ilegível ou atalho conta como sem aprovação. Só um comando de módulo grava esse arquivo (ver Módulos); o que a sessão escreve em outro lugar (ex. `marca.json`) não libera nada. Ação com `requer` sem `sandbox` ligado é recusada no catálogo, com aviso. Sessões sem sandbox do mesmo projeto (dev, chat com pular permissões) têm o disco do dono: a aprovação só é garantida contra sessões com sandbox.
+- `so_com`: chave do `painel.json` (ex. `"estudio.video_rede_local"`, vale `{"estudio": {"video_rede_local": true}}` ou a chave plana). Sem ela valendo `true`, a ação some do catálogo do projeto: não aparece na tela e o disparo responde que ela não existe. Serve para a ação que precisa de `"sandbox": {"rede_local": true}` ficar desligada até o dono ligar.
 
 | nível | modelo · esforço | o que a sessão faz |
 |---|---|---|

@@ -70,16 +70,23 @@ Measured with `tests/fixtures/defect-external-fetch` (URL built as
 ## qa_video.py: silent reel (9:16, 1080x1920, 10 s)
 
 ```sh
-# 1. strict check as JSON
-npx --no-install hyperframes check <fonte> --json --strict > check.json
+# 1. strict check (HyperFrames saves the report under <fonte>/.hyperframes/)
+npx --no-install hyperframes check <fonte> --json --strict
 
 # 2. render (about 10 s of wall time for the example on macOS)
 npx --no-install hyperframes render <fonte> -o <OUT>/video.mp4 --fps 30 --quality delivery
 
 # 3. QA report (exit 0 green, 1 failed); needs ffmpeg and ffprobe on PATH
 python3 scripts/qa_video.py --source <fonte> --video <OUT>/video.mp4 \
-  --check-json check.json --out qa.json
+  --out qa.json --sheet <OUT>/folha.png
 ```
+
+The check verdict comes from the newest report HyperFrames saved under
+`<fonte>/.hyperframes/artifacts/checks/` (or the one `--check-json` names in
+`saved.report`), never from a copy the session wrote. `--sheet` writes a contact
+sheet of the MP4 (one frame per second, 5 per row) and adds the `contact_sheet`
+check. The report ends with `linha`: `PRONTO: video verde (<engine>)` or
+`PRECISA DO SEU OLHO: <failed checks>`.
 
 Checks in `qa.json` (plus `layout_allow_count`, `no_gsap`, `network_lint` and
 `hyperframes_check`, shared with `qa_imagem.py`):
@@ -116,6 +123,14 @@ it at `python3` and a file it wrote.
   delays of 3.3 s, 3.7 s and 6.6 s, a seek before the delay showed the end
   state, while delays up to 0.8 s held the start state. Late entrances in the
   example run over the whole 10 s with no delay and use keyframe percentages.
+- A clip's CSS animation clock starts at its own `data-start` (measured on
+  2026-11-11: an entry of 1 s on clips starting at 0, 3 and 6 s was half done
+  at 0.5, 3.5 and 6.6 s). The video skill gives every element its own clip
+  and one animation as long as the clip, with no delay.
+- A clip with child elements gives the `nested_structure_needs_subcomposition`
+  lint warning (fails `--strict`); `check` also warns `first_frame_empty` when
+  frame 0 shows only the background and `line_unread` when the last line is
+  on screen under 2 s.
 - Lines that replace each other (captions) are clips: `class="clip"`,
   `data-start`, `data-duration` and an `id`. Caption lines stacked in one box
   with opacity-only fades failed `check` with `content_overlap`; without an
@@ -155,11 +170,13 @@ preceded by `-protocol_whitelist file,pipe`. The MP4 carries
 STUDIO_HYPERFRAMES_BIN=/path/that/does/not/exist \
   python3 scripts/video_ou_reserva.py --source <fonte> --slides <png dir> --out <OUT>/video.mp4
 # -> <OUT>/video.mp4 and <OUT>/video.mp4.engine.json {"engine": "reserve", ...}
-python3 scripts/qa_video.py --engine reserve --source <slide sources> --video <OUT>/video.mp4
+python3 scripts/qa_video.py --engine reserve --source <composition> --video <OUT>/video.mp4
 ```
 
-`--engine reserve` replaces the HyperFrames check JSON (there is no
-composition) with a check of the reserve tag. The example slides are in
+`--engine reserve` adds a check of the reserve tag and still needs the strict
+check of the composition the slides were snapshotted from (the video skill makes
+the slides with `snapshot --at <one time per scene>` of that composition). The
+older example slides are in
 `exemplos/forno-miudo/reserva-9x16/fonte/`; they were turned into PNGs with
 headless Chrome (`--screenshot --window-size=1080,1920`,
 `--host-resolver-rules="MAP * ~NOTFOUND"`). Measured on macOS: 3 slides, 10 s,

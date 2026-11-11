@@ -137,6 +137,28 @@ class VideoChecks(unittest.TestCase):
         self.assertEqual(qa_video.main(base), 0)
         self.assertEqual(qa_video.main(base[:-4] + ["--duration", "10"]), 1)
 
+    def test_main_reads_saved_report_writes_sheet_and_line(self):
+        # The session never passes a copy of the check: the newest saved report is read.
+        video = self.make("ok.mp4", self.moving())
+        sheet, out = os.path.join(self.tmp, "folha.png"), os.path.join(self.tmp, "qa.json")
+        base = ["--source", VIDEO_SOURCE, "--video", video, "--width", str(W), "--height", str(H),
+                "--out", out, "--sheet", sheet]
+        with open(os.devnull, "w") as devnull:
+            old, sys.stdout = sys.stdout, devnull
+            try:
+                good = qa_video.main(base + ["--duration", "3"])
+                bad = qa_video.main(base + ["--duration", "10"])
+            finally:
+                sys.stdout = old
+        self.assertEqual((good, bad), (0, 1))
+        with open(out, encoding="utf-8") as f:
+            rep = json.load(f)
+        self.assertTrue(rep["linha"].startswith("PRECISA DO SEU OLHO: duration"))
+        self.assertIn("contact_sheet", [c["name"] for c in rep["checks"] if c["ok"]])
+        with open(sheet, "rb") as f:
+            self.assertEqual(f.read(8), b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(qa_video.final_line({"ok": True, "checks": []}, "reserve"), "PRONTO: video verde (reserve)")
+
 
 class Pure(unittest.TestCase):
     def test_atoms_order(self):

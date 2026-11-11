@@ -14,10 +14,12 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 STUDIO = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(STUDIO, "scripts"))
+sys.path.insert(0, HERE)
 
 import qa_video  # noqa: E402
 import reserva_slides  # noqa: E402
 import video_ou_reserva  # noqa: E402
+from test_qa_imagem import SAVED, bound, clean_check  # noqa: E402
 
 SLIDES_SOURCE = os.path.join(STUDIO, "exemplos", "forno-miudo", "reserva-9x16", "fonte")
 FFMPEG, FFPROBE = shutil.which("ffmpeg"), shutil.which("ffprobe")
@@ -78,6 +80,7 @@ class Fallback(unittest.TestCase):
             subprocess.run([FFMPEG, "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
                             "testsrc2=s=540x960:r=1", "-vf", "hue=h=%d" % (i * 120), "-frames:v", "1",
                             os.path.join(cls.slides, "s%d.png" % i)], check=True)
+        bound(clean_check(layout={"ok": True, "findings": [], "duration": 10}), SLIDES_SOURCE)
 
     @classmethod
     def tearDownClass(cls):
@@ -111,6 +114,20 @@ class Fallback(unittest.TestCase):
                         "-movflags", "+faststart", out], check=True)
         failed = [c["name"] for c in self.qa(out)["checks"] if not c["ok"]]
         self.assertEqual(failed, ["engine_reserve"])
+
+    def test_reserve_still_needs_the_composition_check(self):
+        out = os.path.join(self.tmp, "r.mp4")
+        video_ou_reserva.run("fonte", self.slides, out, "/nonexistent/hyperframes", ffmpeg=FFMPEG)
+        mine = os.path.join(os.path.realpath(SLIDES_SOURCE), "")
+        saved = [r for r in SAVED if r.startswith(mine) and os.path.exists(r)]
+        for report in saved:
+            os.rename(report, report + ".off")
+        try:
+            failed = [c["name"] for c in self.qa(out)["checks"] if not c["ok"]]
+        finally:
+            for report in saved:
+                os.rename(report + ".off", report)
+        self.assertEqual(failed, ["hyperframes_check"])
 
     def test_both_engines_failing_reports_none(self):
         with tempfile.TemporaryDirectory() as empty:
