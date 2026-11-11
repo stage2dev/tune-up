@@ -69,12 +69,14 @@ def ativar(con, campanha_id):
     return tem is not None and _mudar(con, campanha_id, "rascunho", "ativa")
 
 
-def fria(con, contato_id):
-    """True se o contato é frio: base legal fora de modelo.FRIO_BASES ou nunca recebeu nada."""
+def fria(con, contato_id, instancia=None):
+    """True se o contato é frio: base legal fora de modelo.FRIO_BASES ou nunca recebeu nada DESTA instância (sem
+    `instancia`, a da config; envio de outro número não esquenta o contato para este)."""
+    instancia = instancia or banco.ler_config(con, "instancia")
     return con.execute(
         "SELECT 1 FROM contatos ct WHERE ct.id = ? AND (ct.base_legal IS NULL OR ct.base_legal NOT IN (?, ?) OR NOT "
-        "EXISTS (SELECT 1 FROM envios e WHERE e.contato_id = ct.id AND e.estado IN (%s)))"
-        % ",".join("?" * len(ATIVOS)), (contato_id,) + modelo.FRIO_BASES + ATIVOS).fetchone() is not None
+        "EXISTS (SELECT 1 FROM envios e WHERE e.contato_id = ct.id AND e.instancia = ? AND e.estado IN (%s)))"
+        % ",".join("?" * len(ATIVOS)), (contato_id,) + modelo.FRIO_BASES + (instancia,) + ATIVOS).fetchone() is not None
 
 
 def ativar_com_regras(con, campanha_id, permitidos=()):

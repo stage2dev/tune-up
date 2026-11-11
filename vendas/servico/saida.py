@@ -17,6 +17,7 @@ Nada sai (1, 2, 3, texto vazio, 5) = a conversa fica "precisa de você" (como o 
 import difflib
 import json
 import re
+import sys
 import unicodedata
 from urllib.parse import urlsplit
 
@@ -199,7 +200,11 @@ def preparar(texto, permitidos, segredos=(), reescrever=None):
     if tem_segredo(texto, segredos):
         return None, "segredo"   # sem reescrita: o rascunho não volta ao modelo
     if ferramenta_como_texto(texto):
-        texto = (reescrever(texto, PEDIDO_REESCRITA) if reescrever else None) or ""
+        try:
+            texto = (reescrever(texto, PEDIDO_REESCRITA) if reescrever else None) or ""
+        except Exception as e:   # reescrita quebrou: barrado (quem chama marca "precisa de você"), só o tipo no log
+            print("vendas: saída: reescrita falhou: %s" % type(e).__name__, file=sys.stderr)
+            return None, "reescrita_falhou"
         if not texto or ferramenta_como_texto(texto):
             return None, "ferramenta_como_texto"
         if tem_segredo(texto, segredos):

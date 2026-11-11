@@ -17,7 +17,7 @@ import argparse  # noqa: E402
 import secrets  # noqa: E402
 import shlex  # noqa: E402
 
-from servico import pasta  # noqa: E402
+from servico import pasta, travas  # noqa: E402
 from servico.conectores.evolution import VAR_CHAVE, VAR_URL  # noqa: E402
 
 MODELO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "evolution", "compose.exemplo.yml")
@@ -83,7 +83,7 @@ def _gravar(caminho, texto, exclusivo):
     finally:
         os.close(fd)
     if not exclusivo:
-        os.replace(alvo, caminho)
+        travas.substituir(alvo, caminho)
     pasta.arquivo_privado(caminho)
     return caminho
 

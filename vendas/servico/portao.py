@@ -181,6 +181,15 @@ def _motivo(con, origem, numero, contato_id, confirmar_optout, agora, ignorar=No
     return _motivo_teto(con, origem, contato_id, agora, inicio_dia, local.date(), ignorar, instancia)
 
 
+def _campanha_parada(con, campanha_id, contato_id):
+    """Campanha: reconfere NA RESERVA que ela segue 'ativa' e o contato segue 'pendente' nela (o dono pode ter
+    pausado entre a escolha do contato e o envio). 'campanha_parada' ou None."""
+    ok = con.execute("SELECT 1 FROM campanhas c JOIN campanha_contatos cc ON cc.campanha_id = c.id WHERE c.id = ? "
+                     "AND cc.contato_id = ? AND c.estado = 'ativa' AND cc.estado = 'pendente'",
+                     (campanha_id, contato_id)).fetchone()
+    return None if ok else "campanha_parada"
+
+
 def _contato_de(con, origem, numero):
     if origem == "teste_audio":
         return None  # o dono não vira contato
@@ -216,7 +225,8 @@ def _reservar(con, origem, numero, tipo, conteudo, partes, confirmar_optout, ago
         if ocupada is not None:
             con.execute("COMMIT")
             return _resultado("duplicado", ocupada["id"], "chave_ocupada"), None
-        motivo = _motivo(con, origem, canonico, contato_id, confirmar_optout, agora, instancia=instancia)
+        motivo = (_campanha_parada(con, partes[0], contato_id) if origem == "campanha" else None) or _motivo(
+            con, origem, canonico, contato_id, confirmar_optout, agora, instancia=instancia)
         estado = "negado" if motivo else "pendente"
         envio_id = banco.registrar_envio(con, chave, origem, estado=estado, motivo=motivo, contato_id=contato_id,
                                          telefone=canonico, tipo=tipo, conteudo=conteudo, quando=_iso(agora),
@@ -338,8 +348,10 @@ def reenviar(con, conector, instancia, envio_id, confirmar_optout=False, agora=N
         if linha["estado"] not in ("incerto", "falhou") or not linha["conteudo"] or not linha["telefone"]:
             con.execute("COMMIT")
             return _resultado(linha["estado"], envio_id, "nao_reenviavel")
-        motivo = _motivo(con, linha["origem"], linha["telefone"], linha["contato_id"], confirmar_optout, momento,
-                         ignorar=envio_id, instancia=instancia)
+        motivo = (_campanha_parada(con, linha["chave_dedupe"].split(":")[1], linha["contato_id"])
+                  if linha["origem"] == "campanha" else None) or _motivo(
+            con, linha["origem"], linha["telefone"], linha["contato_id"], confirmar_optout, momento, ignorar=envio_id,
+            instancia=instancia)
         if motivo is None:
             cur = con.execute("UPDATE envios SET estado = 'pendente', motivo = NULL, tentado_em = ?, instancia = ? "
                               "WHERE id = ? AND estado IN ('incerto', 'falhou')", (_iso(momento), instancia, envio_id))

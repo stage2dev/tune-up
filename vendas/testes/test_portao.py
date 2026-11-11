@@ -13,7 +13,7 @@ from unittest import mock  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from servico import banco, pasta, portao  # noqa: E402
+from servico import banco, campanha, pasta, portao  # noqa: E402
 from servico.conectores.falso import ConectorFalso  # noqa: E402
 
 UTC = datetime.timezone.utc
@@ -37,6 +37,7 @@ class Base(unittest.TestCase):
         banco.gravar_config(self.con, "numero_dono", DONO)
         self.c = ConectorFalso()
         self.n = 0
+        self.campanhas = {}
 
     def numero(self, origem):
         return DONO if origem == "teste_audio" else CLIENTE
@@ -50,13 +51,25 @@ class Base(unittest.TestCase):
             return portao.enviar_rascunho_aprovado(*a, "oi", chave, agora=agora)
         if origem == "ia":
             return portao.enviar_ia(*a, "oi", 1, chave, 1, agora=agora)
-        if origem == "campanha":
-            return portao.enviar_campanha(*a, "oi", chave, 0, agora=agora)
+        if origem == "campanha":   # a reserva exige campanha 'ativa' com o contato 'pendente': uma por chave
+            return portao.enviar_campanha(*a, "oi", self.campanha_ativa(chave, numero), 0, agora=agora)
         if origem == "audio_ia":
             return portao.enviar_audio_ia(*a, "a.ogg", 1, chave, 1, agora=agora)
         if origem == "teste_audio":
             return portao.enviar_teste_audio(*a, "a.ogg", chave, agora=agora)
         return portao.enviar_confirmacao_sair(*a, "Pronto, você não recebe mais mensagens.", agora=agora)
+
+    def campanha_ativa(self, chave, numero):
+        contato = banco.salvar_contato(self.con, numero)
+        cid = self.campanhas.get(chave)
+        if cid is None:
+            cid = campanha.criar(self.con, "teste %s" % chave, "Oi", [contato])
+            self.assertTrue(campanha.ativar(self.con, cid))
+            self.campanhas[chave] = cid
+        else:
+            self.con.execute("INSERT OR IGNORE INTO campanha_contatos (campanha_id, contato_id, ordem) "
+                             "VALUES (?, ?, 1)", (cid, contato))
+        return cid
 
     def encher(self, n, quando, origem="manual", numero=None):
         """n envios já feitos (estado enviado) no instante dado."""

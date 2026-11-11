@@ -80,7 +80,7 @@ class Agendador:
                                  instancia=instancia)
         if linha is None:
             return OCIOSO_S
-        if banco.ler_config(con, "numero_descartavel") != "1" and campanha.fria(con, linha["contato_id"]):
+        if banco.ler_config(con, "numero_descartavel") != "1" and campanha.fria(con, linha["contato_id"], instancia):
             campanha.pausar_por(con, linha["campanha_id"], "sem_numero_descartavel")   # a trava vale também no envio
             return OCIOSO_S
         try:
@@ -111,6 +111,8 @@ class Agendador:
 
     def _depois(self, con, agora, linha, r):
         """Grava o resultado e decide a espera. Teto do número todo = espera global sem marcar o contato."""
+        if r.get("motivo") == "campanha_parada":   # pausada/concluída entre a escolha e a reserva: nada a gravar
+            return OCIOSO_S
         if r["estado"] == "pulado" and r["motivo"] in modelo.DA_CAMPANHA:   # modelo, empresa ou links.json
             campanha.pausar_por(con, linha["campanha_id"], r["motivo"])
             print("vendas: agendador: campanha pausada: %s" % r["motivo"], file=sys.stderr)

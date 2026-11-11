@@ -92,14 +92,12 @@ def preco(tab, modelo):
 
 
 def custo_usd(par, usage):
-    """Custo de UMA resposta pela usage (prompt_tokens e completion_tokens), ou None sem usage legível."""
+    """Custo de UMA resposta pela usage (prompt_tokens e completion_tokens), ou None sem usage legível: usage {} ou
+    sem os dois inteiros = None (quem chama cobra o pior caso; 0 liberaria a reserva e furaria o teto)."""
     if not isinstance(usage, dict):
         return None
-    try:
-        entrada, saida = int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0)
-    except (TypeError, ValueError):
-        return None
-    if entrada < 0 or saida < 0:
+    entrada, saida = usage.get("prompt_tokens"), usage.get("completion_tokens")
+    if not all(isinstance(v, int) and not isinstance(v, bool) and v >= 0 for v in (entrada, saida)):
         return None
     return (entrada * par[0] + saida * par[1]) / 1000000.0
 

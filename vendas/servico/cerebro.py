@@ -6,6 +6,7 @@ enviar) e a conversa fica "precisa de você". Aqui nada envia: quem chama decide
 import json
 import os
 import re
+import sys
 from urllib.parse import urlsplit
 
 from servico import banco, chave, conhecimento, openai_cliente, precos
@@ -59,8 +60,9 @@ def ferramentas(links):
     return lista
 
 
-def marcar_precisa_de_voce(con, conversa_id, motivo, desligar=False):
-    """desligar=True: a IA também sai da conversa (modo humano) até o dono devolver na tela; o motivo fica guardado."""
+def marcar_precisa_de_voce(con, conversa_id, motivo, desligar=False, erro=None):
+    """desligar=True: a IA também sai da conversa (modo humano) até o dono devolver na tela; o motivo fica guardado.
+    erro: só o NOME do tipo da exceção (nunca a mensagem, que pode trazer dado do lead ou chave)."""
     if desligar:
         cur = con.execute("UPDATE conversas SET precisa_de_voce = 1, modo = 'humano', motivo_humano = ? WHERE id = ?",
                           (motivo, conversa_id))
@@ -68,7 +70,10 @@ def marcar_precisa_de_voce(con, conversa_id, motivo, desligar=False):
         cur = con.execute("UPDATE conversas SET precisa_de_voce = 1 WHERE id = ?", (conversa_id,))
     if cur.rowcount != 1:
         raise banco.EscritaSemEfeito("conversa %r não existe" % conversa_id)
-    banco.registrar_evento(con, "ia_precisa_de_voce", json.dumps({"conversa_id": conversa_id, "motivo": motivo}))
+    dados = {"conversa_id": conversa_id, "motivo": motivo}
+    if erro:
+        dados["erro"] = erro
+    banco.registrar_evento(con, "ia_precisa_de_voce", json.dumps(dados))
 
 
 class Cerebro:
@@ -84,10 +89,11 @@ class Cerebro:
         r = {"texto": None, "links": [], "precisa_de_voce": False, "motivo": None, "chamadas": 0, "custo_usd": 0.0}
         try:
             return self._responder(con, conversa_id, mensagens, r)
-        except Exception:
+        except Exception as e:
             if con.in_transaction:
                 con.execute("ROLLBACK")
-            return self._parar(con, conversa_id, r, "erro_interno", True)
+            print("vendas: cérebro: erro_interno: %s" % type(e).__name__, file=sys.stderr)
+            return self._parar(con, conversa_id, r, "erro_interno", True, type(e).__name__)
 
     def _responder(self, con, conversa_id, mensagens, r):
         segredo = chave.ler(self.pasta_dados)
@@ -115,6 +121,8 @@ class Cerebro:
                 msg = None
             if msg is None or not isinstance(chamadas, list):
                 return self._parar(con, conversa_id, r, "resposta_invalida")
+            if resposta["choices"][0].get("finish_reason") == "length":   # cortada no teto de saída: nada sai
+                return self._parar(con, conversa_id, r, "resposta_cortada")
             if not chamadas:
                 texto = msg.get("content")
                 if not isinstance(texto, str) or not texto.strip():
@@ -169,8 +177,8 @@ class Cerebro:
             return None
         return novo.strip() if isinstance(novo, str) and novo.strip() else None
 
-    def _parar(self, con, conversa_id, r, motivo, desligar=False):
-        marcar_precisa_de_voce(con, conversa_id, motivo, desligar)
+    def _parar(self, con, conversa_id, r, motivo, desligar=False, erro=None):
+        marcar_precisa_de_voce(con, conversa_id, motivo, desligar, erro)
         r.update({"texto": None, "links": [], "precisa_de_voce": True, "motivo": motivo})
         return r
 

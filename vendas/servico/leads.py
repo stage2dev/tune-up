@@ -102,6 +102,10 @@ def importar(con, bruto, origem, escolha, texto_livre=None):
         banco.registrar_evento(con, "leads_importados", json.dumps(
             {"importados": importados, "mesclados": mesclados, "recusados": recusados}))
         con.execute("COMMIT")
+    except csv.Error:   # caractere nulo, campo grande demais, aspas quebradas: recusa limpa, nada entra
+        con.execute("ROLLBACK")
+        raise Recusa("O CSV está malformado (caractere nulo, campo grande demais ou aspas quebradas). Confira o "
+                     "arquivo e tente de novo.")
     except BaseException:
         if con.in_transaction:
             con.execute("ROLLBACK")

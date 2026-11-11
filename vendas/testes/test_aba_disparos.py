@@ -111,9 +111,10 @@ class TesteBlocos(Disparos):
         itens = {i["rotulo"]: i["valor"] for i in self.blocos_de("kpis", "#%d " % cid)[0]["itens"]}
         self.assertEqual((itens["Enviadas"], itens["Incertas"], itens["Na fila"], itens["Negadas"],
                           itens["Saíram (opt-out)"], itens["Responderam"]), (2, 1, 1, 2, 2, 0))
-        motivos = {i["titulo"]: i["detalhe"] for i in self.blocos_de("lista", "por motivo")[0]["itens"]}
-        self.assertEqual(motivos["saiu da lista (opt-out)"], "2 contato(s), situação: negado")
-        self.assertEqual(motivos["fora da janela 09:00-19:00 (espera abrir)"], "1 contato(s), situação: pendente")
+        # lista exata: um item por motivo (dois contatos com opt-out = UM item com 2), maior contagem primeiro
+        motivos = [(i["titulo"], i["detalhe"]) for i in self.blocos_de("lista", "por motivo")[0]["itens"]]
+        self.assertEqual(motivos, [("saiu da lista (opt-out)", "2 contato(s), situação: negado"),
+                                   ("fora da janela 09:00-19:00 (espera abrir)", "1 contato(s), situação: pendente")])
 
     def test_hoje_janela_e_aquecimento(self):
         itens = {i["rotulo"]: i for i in self.blocos_de("kpis", "Hoje")[0]["itens"]}
@@ -165,8 +166,11 @@ class TesteAtivar(Disparos):
         self.pronto()
         self.campanha(self.contatos(1))   # consentimento, mas nunca recebeu nada: continua frio
         self.assertIn("pode banir", self.botoes()[0]["confirmar"])
-        self.sql("INSERT INTO envios (chave_dedupe, contato_id, estado, origem, criado_em) VALUES ('k', 1, "
-                 "'enviado', 'manual', ?)", (banco.agora(),))
+        self.sql("gravar", "instancia", "loja")
+        self.sql("INSERT INTO envios (chave_dedupe, contato_id, estado, origem, criado_em, instancia) VALUES ('k', 1, "
+                 "'enviado', 'manual', ?, 'outra')", (banco.agora(),))
+        self.assertIn("pode banir", self.botoes()[0]["confirmar"])   # recebeu de OUTRO número: frio para este
+        self.sql("UPDATE envios SET instancia = 'loja' WHERE chave_dedupe = 'k'")
         self.assertNotIn("pode banir", self.botoes()[0]["confirmar"])
 
     def test_sem_confirmar_nada_muda(self):

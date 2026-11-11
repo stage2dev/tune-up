@@ -3,6 +3,7 @@ Trava: flock LOCK_EX|LOCK_NB em POSIX, msvcrt.locking LK_NBLCK no Windows; nunca
 import errno
 import os
 import secrets
+import time
 
 
 try:
@@ -58,6 +59,18 @@ class TravaDoProcesso:
             self.fd = None
 
 
+def substituir(origem, destino, tentativas=3, pausa=0.1):
+    """os.replace; no Windows, PermissionError (antivírus ou indexador segurando o arquivo) tenta de novo até
+    `tentativas` vezes com uma pausa curta. Fora do Windows, sem nova tentativa."""
+    for n in range(tentativas):
+        try:
+            return os.replace(origem, destino)
+        except PermissionError:
+            if os.name != "nt" or n == tentativas - 1:
+                raise
+            time.sleep(pausa)
+
+
 def gravar_segredo(caminho, valor):
     """Grava o segredo de forma atômica: temporário 0600 (criado já com esse modo) na mesma pasta + os.replace.
     Falha no meio = o arquivo antigo fica inteiro e o temporário é apagado."""
@@ -73,7 +86,7 @@ def gravar_segredo(caminho, valor):
             os.close(fd)
         if os.name != "nt":
             os.chmod(temp, 0o600)
-        os.replace(temp, caminho)
+        substituir(temp, caminho)
     finally:
         if os.path.exists(temp):
             os.remove(temp)
