@@ -9,7 +9,8 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
-from servico import banco, portao, telefone
+from servico import banco, instancia, portao, telefone
+from servico.conectores.base import ErroConector
 
 CORPO_MAX = 1024 * 1024
 HOSTS = ("127.0.0.1", "localhost")
@@ -168,6 +169,8 @@ def fazer_handler(app):
             caminho = self._caminho()
             if not self._host():
                 return
+            if caminho == "/instancia":
+                return self._instancia()
             if caminho == "/saude":
                 return self._json(200, {"ok": True, "servico": "tune-up-vendas", "desde": app.desde,
                                         "marca": app.marca})
@@ -197,6 +200,8 @@ def fazer_handler(app):
                 return self._enviar()
             if self._caminho() == "/modo-webhook":
                 return self._modo_webhook()
+            if self._caminho() == "/instancia":
+                return self._instancia()
             if not achado:
                 self.close_connection = True
                 return self._erro(404, "Rota desconhecida.")
@@ -272,6 +277,33 @@ def fazer_handler(app):
             finally:
                 con.close()
             self._json(200, {"webhook_modo": modo, "webhook_validos_seguidos": seguidos})
+
+        def _instancia(self):
+            """GET: estado + QR (lido na hora). POST: cria/conecta; sem `numero_descartavel` true fica false."""
+            if not igual(self.headers.get(CAB_TOKEN), app.token):
+                self.close_connection = True
+                return self._erro(403, "Token de envio errado. Recarregue a tela.")
+            corpo = None
+            if self.command == "POST":
+                corpo = self._corpo_json()
+                if corpo is None:
+                    return
+            if app.conector is None:
+                return self._erro(503, "WhatsApp não configurado no serviço.")
+            con = app.abrir()
+            try:
+                if corpo is None:
+                    return self._json(200, instancia.ler(con, app.conector))
+                try:
+                    r = instancia.conectar(con, app.conector, corpo.get("instancia"),
+                                           corpo.get("numero_descartavel"))
+                except ValueError:
+                    return self._erro(400, "Nome de instância inválido (letras, números, _ e -, até 64).")
+                except ErroConector:
+                    return self._erro(502, instancia.ERRO_CONECTOR)
+            finally:
+                con.close()
+            self._json(200, r)
 
         def _enviar(self):
             """Envio manual da tela: origem 'manual' fixada aqui; 'origem' no corpo é ignorada."""

@@ -18,6 +18,10 @@ _spec = importlib.util.spec_from_file_location("tune_up_vendas_cliente", os.path
     os.path.abspath(__file__)), "cliente.py"))
 cliente = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(cliente)  # toda ação da tela fala com o serviço por cliente.chamar
+_spec = importlib.util.spec_from_file_location("tune_up_vendas_conexao", os.path.join(os.path.dirname(
+    os.path.abspath(__file__)), "abas", "conexao.py"))
+conexao = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(conexao)
 pasta = cliente.pasta
 VIVO_S = cliente.VIVO_S
 porta_do_painel = cliente.porta_do_painel
@@ -31,7 +35,7 @@ INFO = {
     "id": "vendas",
     "titulo": "Vendas",
     "icone": "pessoas",
-    "acoes": ["modo_webhook"],
+    "acoes": ["modo_webhook", "conectar_instancia"],
     "negar": [
         "Bash(*127.0.0.1:%d*)" % PORTA,
         "Bash(*localhost:%d*)" % PORTA,
@@ -81,6 +85,8 @@ def agir(ctx, acao, dados, base=None):
     """modo_webhook: pede ao serviço DESTE projeto a troca do modo do segredo do webhook (cliente.chamar confere
     porta, batimento e marca antes do token). Quem confere os 20 válidos seguidos é o serviço. Repetir o mesmo
     modo não muda nada. O token de envio nunca volta no resultado."""
+    if acao == "conectar_instancia":
+        return conexao.agir_conectar(ctx, cliente, dados, base)
     if acao != "modo_webhook":
         return {"ok": False, "mensagem": "Ação desconhecida."}
     modo = (dados or {}).get("modo")
@@ -133,5 +139,8 @@ def montar(ctx, base=None):
                  "texto": ("O serviço de Vendas está parado. Ele só liga por um comando seu, digitado num "
                            "terminal (nunca por uma sessão do Claude). Comando: %s . Para a Evolution local "
                            "(Docker), prepare antes os arquivos com: %s" % (comando(ctx), comando_evolution(ctx)))}
-    blocos = [bloco] + (blocos_webhook(webhook) if rodando and webhook else [])
+    blocos = [bloco, conexao.bloco_evolution(ctx, cliente, comando_evolution(ctx), base)]
+    if rodando:  # QR e estado lidos na hora, a cada montar: nada de cache aqui
+        blocos += conexao.blocos_instancia(*conexao.ler_instancia(ctx, cliente, base))
+        blocos += blocos_webhook(webhook) if webhook else []
     return {"avisos": avisos, "abas": [{"id": "conexao", "titulo": "Conexão", "blocos": blocos}]}
