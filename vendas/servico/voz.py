@@ -49,14 +49,21 @@ def _categoria_no_cache(app, voz_id):
     return next((v.get("categoria") for v in (cache[2] if cache else []) if v.get("voice_id") == voz_id), None)
 
 
-def _clonada_pela_lista(app, voz_id):
-    """A lista da conta marca a voz como clonada? Pede a lista (cache de 10 min) se há chave; lista fora = None."""
+def _lista_respondeu(app):
+    """Pede a lista da conta (cache de 10 min) se há chave. False = sem chave ou ElevenLabs fora."""
     segredo = chave.ler(app.pasta_dados, ARQUIVO_CHAVE)
-    if segredo:
-        try:
-            vozes(app, segredo)
-        except voz_cliente.ErroVoz:
-            pass
+    if not segredo:
+        return False
+    try:
+        vozes(app, segredo)
+    except voz_cliente.ErroVoz:
+        return False
+    return True
+
+
+def _clonada_pela_lista(app, voz_id):
+    """A lista da conta marca a voz como clonada? None = lista fora ou voz fora da lista (não dá para saber)."""
+    _lista_respondeu(app)
     categoria = _categoria_no_cache(app, voz_id)
     return None if categoria is None else categoria in CATEGORIAS_CLONADAS
 
@@ -108,9 +115,13 @@ def consentimento(con, voz_id):
 
 
 def _config(app, con):
-    """A voz que a lista da conta (em cache) marca como clonada é clonada mesmo com voz_clonada = 0."""
+    """A voz que a lista da conta (em cache) marca como clonada é clonada mesmo com voz_clonada = 0, e a marca fica
+    gravada (vale depois de reiniciar, sem cache)."""
     voz_id = banco.ler_config(con, "voz_id")
-    clonada = banco.ler_config(con, "voz_clonada") == "1" or _categoria_no_cache(app, voz_id) in CATEGORIAS_CLONADAS
+    clonada = banco.ler_config(con, "voz_clonada") == "1"
+    if not clonada and voz_id and _categoria_no_cache(app, voz_id) in CATEGORIAS_CLONADAS:
+        banco.gravar_config(con, "voz_clonada", "1")
+        clonada = True
     return {"voz_id": voz_id, "clonada": clonada,
             "modelo": banco.ler_config(con, "voz_modelo") or MODELO_PADRAO,
             "formato": banco.ler_config(con, "voz_formato") or FORMATO_PADRAO}
@@ -151,6 +162,11 @@ def _gerar_e_enviar(app, con, origem, numero, texto, mandar):
     if not texto or len(texto) > LIMITE_TEXTO:
         return {"estado": "erro", "erro": "O texto do áudio tem de ter de 1 a %d caracteres." % LIMITE_TEXTO}
     cfg = _config(app, con)
+    if cfg["voz_id"] and not cfg["clonada"] and _categoria_no_cache(app, cfg["voz_id"]) is None:
+        if not _lista_respondeu(app):   # sem a lista não dá para saber se a voz é clonada: nada é gerado
+            return {"estado": "desligada", "erro": "Não consegui a lista de vozes da ElevenLabs para conferir se a "
+                    "voz é clonada. Nada foi enviado; tente de novo em instantes."}
+        cfg = _config(app, con)
     lista = avisos(app, con, cfg)
     if lista:
         return {"estado": "desligada", "erro": lista[0], "avisos": lista}
@@ -224,6 +240,9 @@ def _salvar_config(app, con, corpo):
     if not isinstance(corpo.get("clonada", False), bool):
         return 400, {"erro": "Marque se a voz é clonada (sim ou não)."}
     pela_lista = _clonada_pela_lista(app, voz_id)   # a lista da conta manda: "cloned" com "não" segue clonada
+    if pela_lista is None and not corpo.get("clonada"):   # sem a lista, "não" seria palpite: falha fechada
+        return 409, {"erro": "Não consegui conferir na lista de vozes da sua conta ElevenLabs se esta voz é de "
+                     "catálogo. Salve de novo quando a lista voltar, ou marque que a voz é clonada."}
     clonada = bool(corpo.get("clonada")) or bool(pela_lista)
     con.execute("BEGIN IMMEDIATE")
     try:
@@ -289,7 +308,9 @@ def executar(app, con, metodo, caminho, query, corpo):
         if not segredo:
             return 409, {"erro": "Cole a chave da ElevenLabs primeiro."}
         try:
-            return 200, {"vozes": vozes(app, segredo)}
+            lista = vozes(app, segredo)
+            _config(app, con)   # grava voz_clonada = 1 se a lista marca a voz salva como clonada
+            return 200, {"vozes": lista}
         except voz_cliente.ErroVoz as e:
             return 502, {"erro": e.mensagem, "codigo": e.codigo}
     if metodo != "POST" or corpo is None or sub is None:

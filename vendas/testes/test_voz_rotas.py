@@ -28,6 +28,7 @@ class TesteRotasVoz(Base):
         super().setUp()
         self.falsa = ElevenLabsFalsa()
         self.addCleanup(self.falsa.fechar)
+        self.falsa.vozes = (200, {"voices": [{"voice_id": "VozCatalogo0001", "name": "Ana", "category": "premade"}]})
         self.app.elevenlabs_url = self.falsa.url
         self.app.conector = ConectorFalso()
         con = banco.abrir(self.pasta)

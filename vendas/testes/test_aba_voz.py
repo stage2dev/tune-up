@@ -200,7 +200,7 @@ class TesteListaDeVozes(AbaVoz):
         self.assertEqual(len(self.falsa.pedidos_get), 1)
 
     def test_valor_salvo_fora_da_lista_nao_some(self):
-        self.configurar("OutraVoz00001")
+        self.configurar("OutraVoz00001", "sim")   # fora da lista, "não" é recusado (não dá para conferir)
         campo = self.form("voz_config")["campos"][0]
         self.assertEqual(campo["valor"], "OutraVoz00001")
         self.assertIn("fora da lista", campo["opcoes"][0]["rotulo"])

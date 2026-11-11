@@ -121,5 +121,71 @@ class TesteNumeroDoDono(AbaVoz):
         self.assertIn("voz_dono", self.mod.INFO["acoes"])
 
 
+class TesteListaForaFalhaFechada(AbaVoz):
+    """Sem a lista da conta não dá para saber se a voz é clonada: 'Não' não grava e nada é gerado."""
+    def reiniciar_com_voz(self, voz_id):
+        """Config velha (voz_clonada = 0) e serviço reiniciado (cache de vozes vazio)."""
+        con = banco.abrir(self.pasta)
+        try:
+            banco.gravar_config(con, "voz_id", voz_id)
+            banco.gravar_config(con, "voz_clonada", "0")
+        finally:
+            con.close()
+        self.app.cache_vozes = None
+
+    def audio_ia(self):
+        con = banco.abrir(self.pasta)
+        try:
+            return voz.enviar_audio_ia(self.app, con, OUTRO, "Oi tudo bem", 1, "msg-1", 1)
+        finally:
+            con.close()
+
+    def test_lista_fora_no_salvar_recusa_o_nao(self):
+        self.assertTrue(self.agir("voz_chave", chave=CHAVE)["ok"])
+        self.falsa.vozes = (503, {"detail": "fora"})
+        r = self.agir("voz_config", voz_id=CLONADA, clonada="nao", teto_caracteres_dia="5000")
+        self.assertFalse(r["ok"], r)
+        self.assertIn("lista", r["mensagem"])
+        self.assertIsNone(self.config("voz_id"))
+        self.assertTrue(self.agir("voz_config", voz_id=CLONADA, clonada="sim", teto_caracteres_dia="5000")["ok"])
+        self.assertEqual(self.config("voz_clonada"), "1")
+
+    def test_voz_fora_da_lista_com_nao_recusada(self):
+        self.assertTrue(self.agir("voz_chave", chave=CHAVE)["ok"])
+        r = self.agir("voz_config", voz_id="OutraVoz00001", clonada="nao", teto_caracteres_dia="5000")
+        self.assertFalse(r["ok"], r)
+        self.assertIsNone(self.config("voz_id"))
+
+    def test_reinicio_com_lista_fora_nao_gera_audio(self):
+        self.configurar()
+        self.reiniciar_com_voz(CLONADA)
+        self.falsa.vozes = (503, {"detail": "fora"})
+        r = self.audio_ia()
+        self.assertEqual(r["estado"], "desligada", r)
+        self.assertEqual((self.falsa.pedidos, self.app.conector.envios()), ([], 0))
+
+    def test_reinicio_com_lista_de_volta_grava_clonada(self):
+        self.configurar()
+        self.reiniciar_com_voz(CLONADA)
+        r = self.audio_ia()
+        self.assertEqual(r["estado"], "desligada", r)
+        self.assertEqual((self.falsa.pedidos, self.app.conector.envios()), ([], 0))
+        self.assertEqual(self.config("voz_clonada"), "1")
+        self.app.cache_vozes = None
+        self.falsa.vozes = (503, {"detail": "fora"})
+        self.assertTrue(self.agir("voz_consentimento", nome="Fulana", data="2026-01-02", texto=TEXTO,
+                                  confirmo="sim")["ok"])
+        self.assertEqual(self.audio_ia()["estado"] in ("enviado", "falhou", "incerto"), True)
+        self.assertTrue(self.falsa.pedidos[0]["corpo"]["text"].startswith(voz.AVISO_IA))
+
+    def test_estado_grava_clonada_quando_o_cache_mostra(self):
+        self.configurar()
+        self.reiniciar_com_voz(CLONADA)
+        self.blocos()   # a aba pede a lista (cloned) e o GET /voz grava a marca
+        self.app.cache_vozes = None
+        self.falsa.vozes = (503, {"detail": "fora"})
+        self.assertEqual(self.config("voz_clonada"), "1")
+
+
 if __name__ == "__main__":
     unittest.main()
