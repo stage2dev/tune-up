@@ -10,6 +10,9 @@ DEPOIS do commit, fora da transação.
 - Mensagem com mais de 30 min: sem IA, marca "precisa de você" (a subida busca o que chegou com o serviço parado).
 - fromMe: eco de envio nosso (pelo id devolvido ou texto igual em até 5 s) nunca pausa a IA; fromMe que não casa é o
   dono respondendo do celular: grava e pausa a IA da conversa por 15 min.
+- Webhook com segredo errado (modo "registra e conta"): grava, marca "precisa de você" e grava optout_em do SAIR, mas
+  sem efeito para fora: sem confirmação, sem gancho, sem pausa e sem escrever no mapa de @lid.
+- Subida: a janela a buscar (recuperar_desde) fica guardada até a busca dar certo; só a mais antiga vale.
 Nenhum telefone ou texto vai para log."""
 import datetime
 import json
@@ -29,6 +32,7 @@ ECO = datetime.timedelta(seconds=5)
 PAUSA_DONO = datetime.timedelta(minutes=15)
 FOLGA_SUBIDA = datetime.timedelta(minutes=2)
 CONFIRMACAO_SAIR = "Pronto, você não vai mais receber mensagens deste número."
+JANELA = "recuperar_desde"   # config: início do que ainda falta buscar no conector (some só depois da busca)
 
 _gancho = None
 
@@ -76,10 +80,11 @@ def _evento(con, motivo, ev):
         {"motivo": motivo, "id_externo": ev.get("id_externo")}))
 
 
-def _resolver(con, ev):
-    """Telefone do contato da conversa: direto, pela alternativa do @lid ou pelo mapa aprendido. None = sem como."""
+def _resolver(con, ev, confiavel):
+    """Telefone do contato da conversa: direto, pela alternativa do @lid ou pelo mapa aprendido. None = sem como.
+    Só evento confiável ensina o mapa (um forjado trocaria o contato das próximas mensagens desse @lid)."""
     lid, numero = ev.get("lid"), ev.get("remetente")
-    if lid and numero:
+    if lid and numero and confiavel:
         banco._exigir(con.execute("INSERT INTO lids (lid, telefone, criado_em) VALUES (?, ?, ?) ON CONFLICT(lid) "
                                   "DO UPDATE SET telefone = excluded.telefone", (lid, numero, banco.agora())))
     if not numero and lid:
@@ -111,20 +116,21 @@ def _envio_ecoado(con, ev, numero, momento):
     return linha["id"] if linha else None
 
 
-def _de_mim(con, ev, numero, conversa_id, momento):
-    envio_id = _envio_ecoado(con, ev, numero, momento)
+def _de_mim(con, ev, numero, conversa_id, momento, confiavel):
+    envio_id = _envio_ecoado(con, ev, numero, momento) if confiavel else None
     banco.registrar_mensagem(con, conversa_id, "saida", ev.get("texto"), ev["id_externo"], ev["tipo"], envio_id)
-    if envio_id is None:   # o dono respondeu do celular: a IA desta conversa espera
+    if envio_id is None and confiavel:   # o dono respondeu do celular: a IA desta conversa espera
         _marcar(con, conversa_id, "pausada_ate", _iso(momento + PAUSA_DONO))
 
 
-def processar(con, ev, agora, depois):
-    """Uma mensagem traduzida, dentro da transação do chamador. Acrescenta em `depois` o que roda após o commit."""
+def processar(con, ev, agora, depois, confiavel=True):
+    """Uma mensagem traduzida, dentro da transação do chamador. Acrescenta em `depois` o que roda após o commit.
+    confiavel=False (webhook com segredo errado): grava, mas nada vai para `depois` e nada pausa nem ensina o mapa."""
     if ev.get("grupo") or not ev.get("id_externo"):
         return
     if con.execute("SELECT 1 FROM mensagens WHERE id_externo = ?", (ev["id_externo"],)).fetchone():
         return   # webhook repetido (ou já buscado na subida)
-    numero = _resolver(con, ev)
+    numero = _resolver(con, ev, confiavel)
     if not numero:
         return _evento(con, "lid_sem_alternativa" if ev.get("lid") else "sem_remetente", ev)
     try:
@@ -134,11 +140,15 @@ def processar(con, ev, agora, depois):
     conversa_id = banco.abrir_conversa(con, banco.salvar_contato(con, numero))
     momento = _momento(ev, agora)
     if ev.get("fromMe"):
-        return _de_mim(con, ev, numero, conversa_id, momento)
+        return _de_mim(con, ev, numero, conversa_id, momento, confiavel)
     tipo = ev.get("tipo") or "outro"
     mensagem_id = banco.registrar_mensagem(con, conversa_id, "entrada", ev.get("texto"), ev["id_externo"], tipo)
     if mensagem_id is None:
         return
+    if not confiavel:   # o dono confere; opt-out é conservador e vale, mas sem confirmação para fora
+        if tipo == "texto" and e_saida(ev.get("texto")):
+            banco.marcar_optout(con, numero, _iso(momento))
+        return _marcar(con, conversa_id, "precisa_de_voce", 1)
     if tipo == "texto" and e_saida(ev.get("texto")):   # antes de tudo: vale até para mensagem velha
         banco.marcar_optout(con, numero, _iso(momento))
         depois.append(("sair", numero))
@@ -173,7 +183,7 @@ def executar_depois(con, conector, depois):
             _avisar(acao[0], e)
 
 
-def gravar(con, eventos, agora=None):
+def gravar(con, eventos, agora=None, confiavel=True):
     """Grava os eventos de mensagem numa transação própria (ou na do chamador). Devolve a lista `depois`."""
     agora = agora or datetime.datetime.now(UTC)
     depois = []
@@ -183,7 +193,7 @@ def gravar(con, eventos, agora=None):
     try:
         for ev in sorted((e for e in eventos if e.get("tipo_evento") == "mensagem"),
                          key=lambda e: e.get("timestamp") or 0):
-            processar(con, ev, agora, depois)
+            processar(con, ev, agora, depois, confiavel)
         if propria:
             con.execute("COMMIT")
     except BaseException:
@@ -206,24 +216,58 @@ class Recebimento:
             return None
         conector = self.obter_conector()
         eventos = conector.traduzir_evento(corpo) if conector is not None else evolution.traduzir(corpo)
-        depois = gravar(con, eventos)
+        depois = gravar(con, eventos, confiavel=bool(segredo_ok))
         return lambda c: executar_depois(c, conector, depois)
 
-    def recuperar(self, con, desde, agora=None):
-        """Subida: busca no conector o que chegou desde a última vida do serviço e grava como se fosse webhook."""
-        conector, instancia = self.obter_conector(), banco.ler_config(con, "instancia")
-        if conector is None or not instancia or desde is None:
+    def recuperar(self, con, agora=None):
+        """Subida: busca no conector o que chegou desde a janela guardada e grava como se fosse webhook. A janela
+        some na MESMA transação da gravação, só depois de a busca dar certo. Sem conector ou sem instância levanta
+        RecuperacaoPendente (a janela fica). Devolve quantas mensagens vieram."""
+        valor = banco.ler_config(con, JANELA)
+        desde = _ler_momento(valor)
+        if desde is None:
             return 0
+        conector, instancia = self.obter_conector(), banco.ler_config(con, "instancia")
+        if conector is None:
+            raise RecuperacaoPendente("sem_conector")
+        if not instancia:
+            raise RecuperacaoPendente("sem_instancia")
         agora = agora or datetime.datetime.now(UTC)
         eventos = conector.mensagens_desde(instancia, desde - FOLGA_SUBIDA, agora)
-        executar_depois(con, conector, gravar(con, eventos, agora))
+        con.execute("BEGIN IMMEDIATE")
+        try:
+            depois = gravar(con, eventos, agora)
+            con.execute("DELETE FROM config WHERE chave = ? AND valor = ?", (JANELA, valor))
+            con.execute("COMMIT")
+        except BaseException:
+            if con.in_transaction:
+                con.execute("ROLLBACK")
+            raise
+        executar_depois(con, conector, depois)
         return len(eventos)
+
+
+class RecuperacaoPendente(Exception):
+    """Ainda não dá para buscar o que chegou com o serviço parado (motivo: sem_conector ou sem_instancia)."""
+
+
+def guardar_janela(con):
+    """Subida, ANTES do 1º batimento: guarda o início do que falta buscar, só se ainda não houver um (uma subida que
+    não buscou não pode empurrar a janela para frente)."""
+    if banco.ler_config(con, JANELA):
+        return
+    desde = ultima_vida(con)
+    if desde is not None:
+        banco.gravar_config(con, JANELA, _iso(desde))
 
 
 def ultima_vida(con):
     """Último sinal de vida do serviço antes desta subida: batimento que ficou (queda) ou parado_em (saída limpa)."""
     linha = con.execute("SELECT em FROM batimento WHERE id = 1").fetchone()
-    valor = linha["em"] if linha else banco.ler_config(con, "parado_em")
+    return _ler_momento(linha["em"] if linha else banco.ler_config(con, "parado_em"))
+
+
+def _ler_momento(valor):
     try:
         momento = datetime.datetime.fromisoformat(valor) if valor else None
     except ValueError:

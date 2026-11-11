@@ -13,6 +13,7 @@ if __name__ == "__main__":
     sys.dont_write_bytecode = True
 
 import argparse  # noqa: E402
+import itertools  # noqa: E402
 import secrets  # noqa: E402
 import signal  # noqa: E402
 import threading  # noqa: E402
@@ -25,6 +26,7 @@ PAINEL = "http://127.0.0.1:8787"
 BATIMENTO_S = 3
 ARQUIVO_TOKEN = "token_envio"
 ARQUIVO_SEGREDO = "segredo_webhook"
+ESPERAS_RECUPERAR = (5, 15, 30, 60)   # segundos entre tentativas de buscar o que chegou parado (a última repete)
 
 
 def argumentos(argv):
@@ -76,7 +78,7 @@ def rodar(args, avisar=print):
     try:
         con = banco.abrir(pasta_dados)
         try:
-            ultima_vida = recebimento.ultima_vida(con)  # antes do 1º batimento desta subida
+            recebimento.guardar_janela(con)  # antes do 1º batimento desta subida; só some quando a busca der certo
             incertos = portao.pendentes_para_incerto(con)  # caiu no meio de um envio: o dono decide, sem reenvio
             banco.bater(con)
         finally:
@@ -110,7 +112,7 @@ def rodar(args, avisar=print):
         batimento.start()
         atendente = threading.Thread(target=servidor.serve_forever, kwargs={"poll_interval": 0.2}, daemon=True)
         atendente.start()
-        threading.Thread(target=recuperar, args=(app, ultima_vida), daemon=True).start()
+        threading.Thread(target=recuperar, args=(app, parar), daemon=True).start()
         avisar("serviço de Vendas em http://127.0.0.1:%d (painel %s); Ctrl+C para parar" % (app.porta, painel),
                flush=True)
         while not parar.wait(0.5):
@@ -126,20 +128,31 @@ def rodar(args, avisar=print):
         trava.soltar()
 
 
-def recuperar(app, desde):
-    """Subida: busca no conector o que chegou com o serviço parado (o webhook pode chegar junto; dedupe por id)."""
-    con = app.abrir()
-    try:
-        app.despachar.recuperar(con, desde)
-    except Exception as e:
-        print("vendas: não consegui buscar as mensagens de quando o serviço estava parado (%s)" % type(e).__name__,
-              file=sys.stderr)
+def recuperar(app, parar, esperas=ESPERAS_RECUPERAR):
+    """Subida: busca no conector o que chegou com o serviço parado (o webhook pode chegar junto; dedupe por id).
+    Falhou ou falta conector/instância: evento + aviso (uma vez por motivo) e tenta de novo com espera crescente até
+    dar certo ou o serviço parar. A janela continua guardada para a próxima subida. Devolve True se buscou."""
+    avisados = set()
+    for tentativa in itertools.count():
+        con = app.abrir()
         try:
-            banco.registrar_evento(con, "recuperacao_falhou", type(e).__name__)
-        except Exception:
-            pass
-    finally:
-        con.close()
+            app.despachar.recuperar(con)
+            return True
+        except Exception as e:
+            pendente = isinstance(e, recebimento.RecuperacaoPendente)
+            tipo, motivo = ("recuperacao_pendente", str(e)) if pendente else ("recuperacao_falhou", type(e).__name__)
+            if (tipo, motivo) not in avisados:
+                avisados.add((tipo, motivo))
+                print("vendas: ainda não busquei as mensagens de quando o serviço estava parado (%s); tento de novo"
+                      % motivo, file=sys.stderr)
+                try:
+                    banco.registrar_evento(con, tipo, motivo)
+                except Exception:
+                    pass
+        finally:
+            con.close()
+        if parar.wait(esperas[min(tentativa, len(esperas) - 1)]):
+            return False
 
 
 def conector(pasta_dados, porta, segredo, avisar=print):

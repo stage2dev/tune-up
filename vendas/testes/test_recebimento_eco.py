@@ -10,6 +10,7 @@ import datetime  # noqa: E402
 import http.client  # noqa: E402
 import json  # noqa: E402
 import os  # noqa: E402
+import socket  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
 import unittest  # noqa: E402
@@ -97,6 +98,15 @@ class TesteEco(Base):
 
 
 class TesteSubida(Base):
+    def janela(self, desde):
+        banco.gravar_config(self.con, recebimento.JANELA, desde.isoformat())
+
+    def app(self, conector):
+        app = rotas.App(self.pasta, 0, "http://127.0.0.1:18787", "t" * 43, "s" * 43)
+        app.despachar = recebimento.Recebimento(lambda: app.conector)
+        app.conector = conector
+        return app
+
     def test_o_que_chegou_parado(self):
         agora = datetime.datetime.now(UTC)
         ts = int(agora.timestamp())
@@ -104,7 +114,8 @@ class TesteSubida(Base):
                            corpo("P2", "ainda tem?", de="5511900000002", ts=ts - 40 * 60),
                            corpo("P3", "oi", de="5511900000003", ts=ts - 5 * 60),
                            corpo("P4", "muito antigo", de="5511900000004", ts=ts - 5 * 3600)]
-        n = self.rec.recuperar(self.con, agora - datetime.timedelta(hours=2), agora)
+        self.janela(agora - datetime.timedelta(hours=2))
+        n = self.rec.recuperar(self.con, agora)
         self.assertEqual(n, 3)   # P4 é de antes da última vida do serviço
         self.assertIsNotNone(self.um("SELECT optout_em FROM contatos WHERE telefone = ?", "5511900000001")[0])
         self.assertEqual(self.confirmacoes(), 1)
@@ -112,11 +123,13 @@ class TesteSubida(Base):
         self.assertEqual([m for _, m in self.ia],
                          [self.um("SELECT id FROM mensagens WHERE id_externo = 'P3'")[0]])
         self.assertIsNone(self.conversa("5511900000004"))
-        self.rec.recuperar(self.con, agora - datetime.timedelta(hours=2), agora)   # de novo: dedupe
+        self.assertIsNone(banco.ler_config(self.con, recebimento.JANELA))   # buscou: a janela some
+        self.janela(agora - datetime.timedelta(hours=2))
+        self.rec.recuperar(self.con, agora)   # de novo: dedupe
         self.assertEqual((self.contar("mensagens"), self.confirmacoes(), len(self.ia)), (3, 1, 1))
 
-    def test_sem_ultima_vida_nao_busca(self):
-        self.assertEqual(self.rec.recuperar(self.con, None), 0)
+    def test_sem_janela_nao_busca(self):
+        self.assertEqual(self.rec.recuperar(self.con), 0)
         self.assertEqual([n for n, _ in self.c.chamadas], [])
 
     def test_ultima_vida_batimento_ou_parado_em(self):
@@ -126,25 +139,79 @@ class TesteSubida(Base):
         self.con.execute("INSERT INTO batimento (id, pid, em) VALUES (1, 1, '2026-11-10T13:00:00+00:00')")
         self.assertEqual(recebimento.ultima_vida(self.con).hour, 13)   # queda: vale o batimento que ficou
 
+    def test_janela_guardada_fica_a_mais_antiga(self):
+        banco.gravar_config(self.con, "parado_em", "2026-11-08T10:00:00+00:00")
+        recebimento.guardar_janela(self.con)
+        banco.gravar_config(self.con, "parado_em", "2026-11-10T10:00:00+00:00")   # subida seguinte, sem buscar
+        recebimento.guardar_janela(self.con)
+        self.assertEqual(banco.ler_config(self.con, recebimento.JANELA), "2026-11-08T10:00:00+00:00")
+
+    def test_porta_ocupada_nao_gasta_a_janela(self):
+        agora = datetime.datetime.now(UTC)
+        self.con.execute("INSERT INTO batimento (id, pid, em) VALUES (1, 999999, ?)",
+                         ((agora - datetime.timedelta(days=2)).isoformat(timespec="seconds"),))   # queda há 2 dias
+        ocupada = socket.socket()
+        self.addCleanup(ocupada.close)
+        ocupada.bind(("127.0.0.1", 0))
+        ocupada.listen(1)
+        args = servico_mod.argumentos(["--projeto", os.path.join(self.tmp, "projeto"), "--porta",
+                                       str(ocupada.getsockname()[1]), "--base", os.path.join(self.tmp, "dados")])
+        self.assertEqual(servico_mod.rodar(args, avisar=lambda *a, **k: None), 4)
+        desde = datetime.datetime.fromisoformat(banco.ler_config(self.con, recebimento.JANELA) or "2000-01-01T00:00:00+00:00")
+        self.assertLess(abs((agora - desde) - datetime.timedelta(days=2)), datetime.timedelta(seconds=5))
+        self.c.perdidos = [corpo("P1", "sair", ts=int(agora.timestamp()) - 86400)]   # SAIR de ontem
+        self.assertEqual(self.rec.recuperar(self.con, agora), 1)
+        self.assertIsNotNone(self.um("SELECT optout_em FROM contatos")[0])
+
     def test_subida_do_servico_grava_optout_do_sair_recebido_parado(self):
-        app = rotas.App(self.pasta, 0, "http://127.0.0.1:18787", "t" * 43, "s" * 43)
-        app.despachar = recebimento.Recebimento(lambda: app.conector)
-        app.conector = self.c
         agora = datetime.datetime.now(UTC)
         self.c.perdidos = [corpo("P1", "Sair", ts=int(agora.timestamp()) - 600)]
-        servico_mod.recuperar(app, agora - datetime.timedelta(minutes=20))
+        self.janela(agora - datetime.timedelta(minutes=20))
+        self.assertTrue(servico_mod.recuperar(self.app(self.c), threading.Event()))
         self.assertIsNotNone(self.um("SELECT optout_em FROM contatos")[0])
         self.assertEqual(self.confirmacoes(), 1)
 
-    def test_falha_na_busca_vira_evento_sem_derrubar(self):
+    def test_falha_na_busca_guarda_a_janela_e_tenta_de_novo(self):
+        teste = self
+
+        class Volta(ConectorFalso):
+            def mensagens_desde(self, *a):
+                self.tentativas = getattr(self, "tentativas", 0) + 1
+                if not teste.contar("eventos", "tipo = 'recuperacao_falhou'"):
+                    raise evolution.NaoEnviado("fora do ar")
+                return super().mensagens_desde(*a)
+        agora = datetime.datetime.now(UTC)
+        c = Volta()
+        c.perdidos = [corpo("P1", "sair", ts=int(agora.timestamp()) - 600)]
+        self.janela(agora - datetime.timedelta(minutes=20))
+        self.assertTrue(servico_mod.recuperar(self.app(c), threading.Event(), esperas=(0,)))
+        self.assertEqual(self.contar("eventos", "tipo = 'recuperacao_falhou'"), 1)
+        self.assertEqual(c.tentativas, 2)
+        self.assertIsNotNone(self.um("SELECT optout_em FROM contatos")[0])
+        self.assertIsNone(banco.ler_config(self.con, recebimento.JANELA))
+
+    def test_falha_com_o_servico_parando_nao_apaga_a_janela(self):
         class Quebrado(ConectorFalso):
             def mensagens_desde(self, *a):
                 raise evolution.NaoEnviado("fora do ar")
-        app = rotas.App(self.pasta, 0, "http://127.0.0.1:18787", "t" * 43, "s" * 43)
-        app.despachar = recebimento.Recebimento(lambda: app.conector)
-        app.conector = Quebrado()
-        servico_mod.recuperar(app, datetime.datetime.now(UTC))
+        self.janela(datetime.datetime.now(UTC))
+        parar = threading.Event()
+        parar.set()
+        self.assertFalse(servico_mod.recuperar(self.app(Quebrado()), parar))
         self.assertEqual(self.contar("eventos", "tipo = 'recuperacao_falhou'"), 1)
+        self.assertIsNotNone(banco.ler_config(self.con, recebimento.JANELA))
+
+    def test_sem_conector_ou_instancia_vira_evento_e_guarda_a_janela(self):
+        self.janela(datetime.datetime.now(UTC))
+        parar = threading.Event()
+        parar.set()
+        self.assertFalse(servico_mod.recuperar(self.app(None), parar))
+        self.con.execute("DELETE FROM config WHERE chave = 'instancia'")
+        self.assertFalse(servico_mod.recuperar(self.app(self.c), parar))
+        motivos = [d for (d,) in self.con.execute(
+            "SELECT dados FROM eventos WHERE tipo = 'recuperacao_pendente' ORDER BY id")]
+        self.assertEqual(motivos, ["sem_conector", "sem_instancia"])
+        self.assertIsNotNone(banco.ler_config(self.con, recebimento.JANELA))
 
 
 class TesteFindMessages(unittest.TestCase):
@@ -186,7 +253,7 @@ class TesteRota(Base):
             h.close()
             self.assertEqual(r.status, 200)
         self.assertEqual(self.contar("contatos", "optout_em IS NOT NULL"), 2)
-        self.assertEqual((self.c.envios(), self.confirmacoes()), (2, 2))
+        self.assertEqual((self.c.envios(), self.confirmacoes()), (1, 1))   # inválido: sem confirmação para fora
         self.assertEqual(banco.ler_config(self.con, "webhook_validos"), "1")
 
 
