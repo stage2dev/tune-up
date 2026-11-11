@@ -27,6 +27,7 @@ const ITENS: ItemMenu[] = [
 ];
 
 function Navegacao({ aoEscolher }: { aoEscolher?: () => void }) {
+  const { pathname } = useLocation();
   const estado = useEstado();
   const modulos = useModulos();
   const extras: ItemMenu[] = (modulos.data?.modulos ?? []).map((m) => ({
@@ -56,7 +57,7 @@ function Navegacao({ aoEscolher }: { aoEscolher?: () => void }) {
             onClick={aoEscolher}
             className={({ isActive }) =>
               `relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                isActive
+                isActive || (para === '/' && pathname.startsWith('/conversa/'))
                   ? 'bg-[var(--color-accent-subtle)] text-[var(--color-accent)] font-medium before:content-[""] before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-[var(--color-accent)]'
                   : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text)]'
               }`

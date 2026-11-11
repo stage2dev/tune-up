@@ -99,12 +99,15 @@ def validar_travas(acao):
 
 # ---------------------------------------------------------------- argv da sessão
 
-def config_gancho(acao, protegidos=(), liberados=()):
+def config_gancho(acao, protegidos=(), liberados=(), perguntas_dir=None):
     trv = acao.get("_travas") or {}
     leve = acao.get("risco") in RISCO_LEVE
-    return {"v": 1, "falha": "deny" if leve else "ask", "forte": "deny" if leve else "ask",
+    conf = {"v": 1, "falha": "deny" if leve else "ask", "forte": "deny" if leve else "ask",
             "prot": [p for p in protegidos if p], "lib": [p for p in liberados if p],
             "n": trv.get("regras_negar") or [], "p": trv.get("regras_permitir") or []}
+    if perguntas_dir and acao.get("_perguntas_chat"):
+        conf["perg"] = perguntas_dir  # pergunta de múltipla escolha vai para o chat, não para o terminal
+    return conf
 
 
 def _codificar(conf):
@@ -119,11 +122,11 @@ def _decodificar(texto):
     return conf
 
 
-def settings_da_sessao(acao, protegidos=(), liberados=(), python=None, este_arquivo=None):
+def settings_da_sessao(acao, protegidos=(), liberados=(), python=None, este_arquivo=None, perguntas_dir=None):
     """Texto JSON para `--settings`. Sem segredo: só regra e o caminho deste gancho."""
     python = python or sys.executable or "python3"
     este_arquivo = este_arquivo or os.path.abspath(__file__)
-    conf = config_gancho(acao, protegidos, liberados)
+    conf = config_gancho(acao, protegidos, liberados, perguntas_dir)
     comando = " ".join(shlex.quote(x) for x in (python, "-I", "-B", este_arquivo, _codificar(conf)))
     cfg = {"hooks": {"PreToolUse": [{"matcher": "*", "hooks": [
         {"type": "command", "command": comando, "timeout": 15}]}]}}
@@ -144,7 +147,8 @@ def argv_travas(acao, cfg=None):
     cfg = cfg or {}
     protegidos = [cfg.get("painel_dir"), cfg.get("pacote_dir"), cfg.get("arquivo")]
     liberados = [os.path.join(cfg["pacote_dir"], "dados")] if cfg.get("pacote_dir") else []
-    return ["--settings", settings_da_sessao(acao, protegidos, liberados)]
+    perguntas = os.path.join(cfg["dados_dir"], "perguntas") if cfg.get("dados_dir") else None
+    return ["--settings", settings_da_sessao(acao, protegidos, liberados, perguntas_dir=perguntas)]
 
 
 # ---------------------------------------------------------------- o gancho
@@ -236,6 +240,54 @@ def decidir(conf, ferramenta, entrada):
     return None
 
 
+RE_SESSAO_GANCHO = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+FERR_PERGUNTA = "AskUserQuestion"
+MOTIVO_PERGUNTA = ("esta sessão roda no chat do painel, sem terminal. Não use AskUserQuestion: escreva a pergunta "
+                   "como texto na sua resposta (com as opções numeradas, a recomendada primeiro) e TERMINE a vez. "
+                   "O dono responde pelo chat e a conversa continua")
+
+
+def limpar_perguntas(entrada):
+    """Entrada do AskUserQuestion -> lista curta e limpa para a tela."""
+    out = []
+    for q in (entrada.get("questions") if isinstance(entrada, dict) else None) or []:
+        if not isinstance(q, dict) or not isinstance(q.get("question"), str) or not q["question"].strip():
+            continue
+        opcoes = []
+        for o in q.get("options") or []:
+            if isinstance(o, dict) and isinstance(o.get("label"), str) and o["label"].strip():
+                opcoes.append({"rotulo": o["label"].strip()[:120],
+                               "descricao": str(o.get("description") or "").strip()[:300]})
+        out.append({"pergunta": q["question"].strip()[:500], "cabecalho": str(q.get("header") or "").strip()[:40],
+                    "multipla": q.get("multiSelect") is True, "opcoes": opcoes[:6]})
+    return out[:4]
+
+
+def guardar_pergunta(pasta, sessao_id, entrada):
+    """Grava <pasta>/<sessionId>.json (0600, troca atômica). Falha aqui nunca libera a ferramenta."""
+    perguntas = limpar_perguntas(entrada)
+    if not perguntas or not isinstance(sessao_id, str) or not RE_SESSAO_GANCHO.match(sessao_id):
+        return False
+    try:
+        os.makedirs(pasta, mode=0o700, exist_ok=True)
+        tmp = os.path.join(pasta, ".%s.%d.tmp" % (sessao_id, os.getpid()))
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"perguntas": perguntas}, f, ensure_ascii=False)
+        os.replace(tmp, os.path.join(pasta, sessao_id + ".json"))
+        return True
+    except OSError:
+        return False
+
+
+def esquecer_pergunta(pasta, sessao_id):
+    if isinstance(sessao_id, str) and RE_SESSAO_GANCHO.match(sessao_id):
+        try:
+            os.unlink(os.path.join(pasta, sessao_id + ".json"))
+        except OSError:
+            pass
+
+
 def principal(argv, stdin, stdout):
     falha = "deny"
     try:
@@ -243,6 +295,12 @@ def principal(argv, stdin, stdout):
         falha = conf.get("falha") if conf.get("falha") in DECISOES else "deny"
         dados = json.load(stdin)
         resposta = decidir(conf, str(dados.get("tool_name") or ""), dados.get("tool_input") or {})
+        if isinstance(conf.get("perg"), str) and conf["perg"]:
+            if dados.get("tool_name") == FERR_PERGUNTA:
+                guardar_pergunta(conf["perg"], dados.get("session_id"), dados.get("tool_input") or {})
+                resposta = "deny", MOTIVO_PERGUNTA
+            else:  # usou outra ferramenta: seguiu em frente, a pergunta antiga não vale mais
+                esquecer_pergunta(conf["perg"], dados.get("session_id"))
     except Exception as erro:  # nunca libera no escuro
         resposta = falha, "a trava do painel falhou: " + type(erro).__name__
     if resposta:

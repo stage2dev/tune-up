@@ -18,6 +18,7 @@ RE_SESSAO = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
 CORTE = 600
 CORTE_INTEIRO = 12000  # falas do chat (?inteiro=1)
 CORTE_ALVO = 160
+SEM_RESPOSTA = "No response requested."
 LER_POR_VEZ = 4 * 1024 * 1024
 LINHA_MAX = 2 * 1024 * 1024
 MAX_EVENTOS = 300
@@ -129,6 +130,8 @@ def eventos_da_linha(obj, corte_fala=CORTE):
         for b in conteudo:
             if not isinstance(b, dict):
                 continue
+            if b.get("type") == "text" and str(b.get("text") or "").strip() == SEM_RESPOSTA:
+                continue  # fala automática do CLI quando a vez foi interrompida
             if b.get("type") == "text" and str(b.get("text") or "").strip():
                 out.append(("assistente", cortar(b["text"], corte_fala), {}))
             elif b.get("type") == "tool_use":

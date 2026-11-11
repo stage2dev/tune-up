@@ -3,8 +3,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
 import { Layout } from './Layout';
 import Inicio from './paginas/Inicio';
-import Chat from './paginas/chat/Chat';
-import Conversa from './paginas/chat/Conversa';
+import TelaChat from './paginas/chat/TelaChat';
 import Fases from './paginas/dev/Fases';
 import Execucoes from './paginas/dev/Execucoes';
 import ExecucaoDetalhe from './paginas/dev/ExecucaoDetalhe';
@@ -17,8 +16,8 @@ export function App() {
     <BrowserRouter>
       <Routes>
         <Route element={<Layout />}>
-          <Route index element={<Chat />} />
-          <Route path="conversa/:id" element={<Conversa />} />
+          <Route index element={<TelaChat />} />
+          <Route path="conversa/:id" element={<TelaChat />} />
           <Route path="resumo" element={<Inicio />} />
           <Route path="fases" element={<Fases />} />
           <Route path="execucoes" element={<Execucoes />} />

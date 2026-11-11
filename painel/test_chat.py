@@ -345,6 +345,171 @@ class TesteResponder(Base):
                     "ls plans/phases | sort > /tmp/x"):
             self.assertIsNone(decide("chat.completo", cmd), cmd)  # o plano precisa disso
 
+    def test_interromper_manda_na_mesma_sessao(self):
+        lc = self.lanc(max_execucoes=1)
+        i = lc.iniciar("chat.x", {"pedido": "um"})["id"]
+        ex = lc.execucao(i)  # rodando, com sessionId já aprendido
+        self.assertEqual((ex["estado"], ex["pode_responder"], ex["pode_interromper"]), ("rodando", False, True))
+        with self.assertRaises(lancador.ErroAcao) as e:
+            lc.responder(i, "espera")
+        self.assertEqual(e.exception.codigo, 409)
+        # CLI falso: stop numa sessão trabalhando deixa state=stopped; a retomada acorda a mesma
+        ex = lc.responder(i, "muda de ideia", interromper=True)  # não esbarra no teto: a vaga já é dela
+        self.assertEqual((ex["id"], ex["estado"]), (i, "rodando"))
+        chamadas = [c[0] for c in self.cli.chamadas]
+        self.assertIn(["claude", "stop", i], chamadas)
+        self.assertEqual([c for c in chamadas if c[1:3] == ["--bg", "--resume"]][0][-1], "muda de ideia")
+        # esperando no terminal também aceita
+        self.cli.agentes[0].update(state="blocked", status="waiting")
+        self.t[0] += lancador.GRACA + 1
+        lc.esquecer_agentes()
+        self.assertTrue(lc.execucao(i)["pode_interromper"])
+        self.cli.agentes[0].pop("status")
+        self.cli.agentes[0]["state"] = "stopped"
+        self.assertEqual(lc.responder(i, "Azul", interromper=True)["id"], i)
+
+    def test_pergunta_vai_para_o_chat(self):
+        import io
+        import travas
+        lc, i = self.comecar()
+        sid = i + "-1111-2222-3333-444455556666"
+        cmd = self.bg()[0]
+        conf = json.loads(cmd[cmd.index("--settings") + 1])
+        gancho = conf["hooks"]["PreToolUse"][0]["hooks"][0]["command"].split()[-1]
+        entrada = {"tool_name": "AskUserQuestion", "session_id": sid, "tool_input": {"questions": [
+            {"question": "Qual cor?", "header": "Cor", "multiSelect": False,
+             "options": [{"label": "Azul", "description": "cor azul"}, {"label": "Verde"}, {"label": ""}, "lixo"]},
+            {"question": ""}, "lixo"]}}
+        saida = io.StringIO()
+        travas.principal(["travas.py", gancho], io.StringIO(json.dumps(entrada)), saida)
+        resp = json.loads(saida.getvalue())["hookSpecificOutput"]
+        self.assertEqual(resp["permissionDecision"], "deny")
+        self.assertIn("chat", resp["permissionDecisionReason"])
+        arq = os.path.join(self.tmp, "dados", "perguntas", sid + ".json")
+        self.assertEqual(oct(os.stat(arq).st_mode & 0o777), "0o600")
+        self.assertNotIn("pergunta", lc.execucao(i))  # ainda rodando: a pergunta só aparece quando dá para responder
+        self.cli.agentes[0].update(state="blocked", status="waiting", waitingFor="input needed")
+        lc.esquecer_agentes()  # preso no terminal (permissão): não é resposta de texto comum
+        self.assertEqual((lc.execucao(i)["estado"], lc.execucao(i)["pode_responder"]), ("precisa_de_voce", False))
+        self.cli.agentes[0].pop("waitingFor")
+        self.cli.agentes[0].update(state="blocked", status="idle")  # a vez acabou com a pergunta escrita
+        lc.esquecer_agentes()
+        self.assertEqual((lc.execucao(i)["estado"], lc.execucao(i)["pode_responder"]), ("precisa_de_voce", True))
+        self.assertEqual(lc.execucao(i)["pergunta"], {"perguntas": [
+            {"pergunta": "Qual cor?", "cabecalho": "Cor", "multipla": False,
+             "opcoes": [{"rotulo": "Azul", "descricao": "cor azul"}, {"rotulo": "Verde", "descricao": ""}]}]})
+        lc.responder(i, "Azul")
+        self.assertFalse(os.path.exists(arq))
+        # sessionId fora do formato não vira nome de arquivo; ação fora do chat não barra a pergunta
+        ruim = dict(entrada, session_id="../../fuga")
+        travas.principal(["travas.py", gancho], io.StringIO(json.dumps(ruim)), io.StringIO())
+        self.assertEqual(os.listdir(os.path.join(self.tmp, "dados", "perguntas")), [])
+        fora = catalogo.validar_acao({"id": "a.b", "grupo": "dev", "risco": "leitura", "prompt": "/x"})
+        self.assertNotIn("perg", travas.config_gancho(fora, perguntas_dir="/tmp/x"))
+        self.assertIsNone(travas.decidir(travas.config_gancho(fora), "AskUserQuestion", entrada["tool_input"]))
+
+    def _com_pergunta(self, conteudo=None, bruto=None):
+        """Sessão que terminou a vez com pergunta; devolve (lançador, id, caminho do arquivo)."""
+        lc, i = self.comecar()
+        sid = i + "-1111-2222-3333-444455556666"
+        pasta = os.path.join(self.tmp, "dados", "perguntas")
+        os.makedirs(pasta, exist_ok=True)
+        arq = os.path.join(pasta, sid + ".json")
+        if bruto is not None or conteudo is not None:
+            with open(arq, "w", encoding="utf-8") as f:
+                f.write(bruto if bruto is not None else json.dumps(conteudo))
+        self.cli.agentes[0].update(state="blocked", status="idle")
+        lc.esquecer_agentes()
+        return lc, i, arq
+
+    def test_pergunta_sai_mascarada(self):
+        lc, i, _arq = self._com_pergunta({"perguntas": [{"pergunta": "Mando para joao.silva@cliente.com.br?",
+                                                         "opcoes": [{"rotulo": "Ligar 11 98765-4321",
+                                                                     "descricao": "chave sk-abcdefghijklmnopqrstu"}]}]})
+        texto = json.dumps(lc.execucao(i)["pergunta"], ensure_ascii=False)
+        for cru in ("joao.silva", "98765", "abcdefghijklmnop"):
+            self.assertNotIn(cru, texto)
+
+    def test_arquivo_de_pergunta_ruim_nunca_derruba_a_lista(self):
+        lc, i, arq = self._com_pergunta()
+        for bruto in ('{"perguntas": 5}', '{"perguntas": [{"pergunta": "x", "opcoes": 7}]}', "[1]", "{quebrado",
+                      '{"perguntas": [5, {"pergunta": "", "opcoes": [{"rotulo": "A"}]}]}', "x" * 70000):
+            with open(arq, "w", encoding="utf-8") as f:
+                f.write(bruto)
+            ex = lc.execucao(i)  # não levanta
+            self.assertTrue(ex["pode_responder"], bruto[:20])
+            if "opcoes\": 7" not in bruto:
+                self.assertNotIn("pergunta", ex, bruto[:20])
+            os.unlink(arq)
+        if hasattr(os, "mkfifo"):  # um FIFO no lugar do arquivo não pode prender o painel
+            os.mkfifo(arq)
+            import threading
+            feito = []
+            t = threading.Thread(target=lambda: feito.append(lc.execucao(i)), daemon=True)
+            t.start()
+            t.join(5)
+            self.assertTrue(feito, "ficou preso lendo o FIFO")
+            self.assertNotIn("pergunta", feito[0])
+            os.unlink(arq)
+        if hasattr(os, "symlink"):
+            alvo = os.path.join(self.tmp, "fora.json")
+            with open(alvo, "w") as f:
+                json.dump({"perguntas": [{"pergunta": "de fora", "opcoes": [{"rotulo": "A"}]}]}, f)
+            os.symlink(alvo, arq)
+            self.assertNotIn("pergunta", lc.execucao(i))
+
+    def test_pergunta_velha_nao_volta(self):
+        import io
+        import travas
+        boa = {"perguntas": [{"pergunta": "Qual?", "opcoes": [{"rotulo": "A"}]}]}
+        # 1) gravada antes do começo desta vez (antes da última resposta)
+        lc, i, arq = self._com_pergunta(boa)
+        self.assertIn("pergunta", lc.execucao(i))
+        lc.registro.atualizar(i, respondida_ts=os.path.getmtime(arq) + 60)
+        self.assertNotIn("pergunta", lc.execucao(i))
+        lc.registro.atualizar(i, respondida_ts=0)
+        # 2) a conversa seguiu muito depois da pergunta
+        sid = i + "-1111-2222-3333-444455556666"
+        pasta = os.path.join(self.tmp, "proj", transcricao.pasta_do_projeto(self.tmp))
+        os.makedirs(pasta, exist_ok=True)
+        conversa = os.path.join(pasta, sid + ".jsonl")
+        open(conversa, "w").close()
+        os.utime(conversa, (os.path.getmtime(arq) + 5, os.path.getmtime(arq) + 5))
+        self.assertIn("pergunta", lc.execucao(i))  # perguntou e parou logo depois: vale
+        os.utime(conversa, (os.path.getmtime(arq) + lancador.PERGUNTA_VALE + 5,) * 2)
+        self.assertNotIn("pergunta", lc.execucao(i))
+        # 3) o gancho apaga a pergunta quando a sessão usa outra ferramenta
+        cmd = self.bg()[-1]
+        gancho = json.loads(cmd[cmd.index("--settings") + 1])["hooks"]["PreToolUse"][0]["hooks"][0]["command"].split()[-1]
+        travas.principal(["travas.py", gancho], io.StringIO(json.dumps(
+            {"tool_name": "Read", "session_id": sid, "tool_input": {"file_path": "/tmp/x"}})), io.StringIO())
+        self.assertFalse(os.path.exists(arq))
+
+    def test_pedido_preso_no_terminal_e_avisado(self):
+        lc, i = self.comecar()
+        self.cli.agentes[0].update(state="blocked", status="waiting", waitingFor="permission")
+        lc.esquecer_agentes()
+        ex = lc.execucao(i)
+        self.assertEqual((ex["estado"], ex["pode_responder"], ex["pode_interromper"], ex["espera_terminal"]),
+                         ("precisa_de_voce", False, True, True))
+        self.cli.agentes[0].pop("waitingFor")
+        self.cli.agentes[0].update(state="blocked", status="idle")
+        lc.esquecer_agentes()
+        ex = lc.execucao(i)
+        self.assertEqual((ex["pode_responder"], ex["espera_terminal"]), (True, False))
+        # respondida: a linha velha "blocked" sem processo não volta a aparecer como espera
+        self.t[0] += 500
+        lc.responder(i, "Azul")
+        self.cli.agentes[0].pop("status", None)
+        self.cli.agentes[0]["state"] = "blocked"
+        lc.esquecer_agentes()
+        self.assertEqual(lc.execucao(i)["estado"], "rodando")
+
+    def test_fala_automatica_de_interrupcao_some(self):
+        linha = {"type": "assistant", "message": {"content": [{"type": "text", "text": "No response requested."},
+                                                              {"type": "text", "text": "Azul"}]}}
+        self.assertEqual([e[1] for e in transcricao.eventos_da_linha(linha)], ["Azul"])
+
     def test_copia_na_primeira_tentativa_e_refeita(self):
         lc, i = self.comecar()
         self.terminar(i)
