@@ -195,6 +195,51 @@ class TesteMidia(unittest.TestCase):
             self.assertEqual(self.arq(c)[0], 404, c)
         self.assertEqual(self.pedir("GET", "/api/modulos/galeria/arquivo")[0], 404)
 
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "FIFO só existe em POSIX")
+    def test_fifo_com_extensao_de_midia_nao_trava(self):
+        cano = os.path.join(self.tmp, ".tune-up", "painel-projeto", "dados", "pecas", "cano.mp4")
+        os.mkfifo(cano)
+        res = []
+        t = threading.Thread(target=lambda: res.append(midia.abrir(self.cfg, "galeria", "cano.mp4", None)),
+                             daemon=True)
+        try:
+            t.start()
+            t.join(3)
+            presa = t.is_alive()
+            if presa:  # destrava a thread presa no open (há leitor: o open de escrita não bloqueia)
+                os.close(os.open(cano, os.O_WRONLY | os.O_NONBLOCK))
+                t.join(3)
+            self.assertFalse(presa, "abrir() ficou preso no open da FIFO")
+            self.assertEqual(res[0][0], 404)
+        finally:
+            os.remove(cano)
+
+    def test_conexao_abortada_no_meio_so_fecha(self):
+        """Erro de socket depois dos cabeçalhos: nada de segunda resposta (500) dentro do corpo."""
+        import socket
+        original = midia.Aberto.blocos
+
+        def blocos(_self):
+            yield b"abc"
+            raise ConnectionAbortedError("o navegador fechou")
+        midia.Aberto.blocos = blocos
+        try:
+            with socket.create_connection(("127.0.0.1", self.porta), timeout=5) as s:
+                s.sendall(b"GET /api/modulos/galeria/arquivo?c=v.mp4 HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n"
+                          b"Connection: close\r\n\r\n" % self.porta)
+                resp = b""
+                while True:
+                    pedaco = s.recv(65536)
+                    if not pedaco:
+                        break
+                    resp += pedaco
+        finally:
+            midia.Aberto.blocos = original
+        self.assertTrue(resp.startswith(b"HTTP/1."), resp[:40])
+        self.assertEqual(resp.count(b"HTTP/1."), 1, resp)
+        self.assertNotIn(b" 500 ", resp)
+        self.assertTrue(resp.endswith(b"\r\n\r\nabc"), resp[-40:])
+
 
 class TesteIntervalo(unittest.TestCase):
     def test_tabela(self):

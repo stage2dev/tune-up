@@ -100,6 +100,14 @@ export function tipoDaMidia(c: unknown): 'imagem' | 'video' | null {
 /** URL da rota de midia do modulo (GET /api/modulos/<id>/arquivo?c=<caminho>). */
 export const urlDoArquivo = (moduloId: string, c: string): string => `/api/modulos/${encodeURIComponent(moduloId)}/arquivo?c=${encodeURIComponent(c)}`;
 
+export const CONFIRMAR_PADRAO = 'Quer mesmo começar? Você poderá parar a qualquer momento na tela da execução.';
+/** Texto do dialogo antes de enviar, ou undefined = envia direto. Acao do catalogo com `confirmar` sempre pede,
+ *  mesmo com a descricao vazia (texto padrao); sem acao do catalogo vale o `confirmar` do bloco. */
+export function textoDeConfirmacao(acaoCat: { confirmar: boolean; descricao: string } | null, doBloco: unknown): string | undefined {
+  if (acaoCat) return acaoCat.confirmar ? (textoOuNada(acaoCat.descricao) ?? CONFIRMAR_PADRAO) : undefined;
+  return textoOuNada(doBloco);
+}
+
 const COM_ESTADO = ['formulario', 'conversa'];
 /** Chave estavel do bloco: o que ele digita nao migra para outro quando a lista reordena. Indice so para blocos sem estado. */
 export function chaveDoBloco(b: { tipo?: unknown; [k: string]: unknown }, i: number): string {

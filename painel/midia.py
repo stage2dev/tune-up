@@ -115,8 +115,10 @@ def abrir(cfg, mid, c, cab_range):
     real = os.path.realpath(os.path.join(pasta, *partes))
     if not _dentro(real, pasta):
         return 404, {"erro": "Arquivo não encontrado."}, {}
-    try:  # O_NOFOLLOW fecha a troca do último nome por atalho entre o realpath e o open
-        fd = os.open(real, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0))
+    try:  # O_NOFOLLOW fecha a troca do último nome por atalho entre o realpath e o open;
+        # O_NONBLOCK: FIFO com nome de mídia não prende a thread no open (o fstat abaixo recusa)
+        fd = os.open(real, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+                     | getattr(os, "O_NONBLOCK", 0))
     except OSError:
         return 404, {"erro": "Arquivo não encontrado."}, {}
     f = os.fdopen(fd, "rb")

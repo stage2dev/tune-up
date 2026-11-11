@@ -31,6 +31,7 @@ import posixpath
 import re
 import shlex
 import sys
+import unicodedata
 
 RISCO_LEVE = ("leitura", "rascunho")
 DECISOES = ("deny", "ask")
@@ -79,6 +80,12 @@ FIM_LIB = "/\\ \t\n'\""  # depois do liberado: separador, espaço, aspas ou fim 
 # barra, mas o Claude Code soma regra Edit de deny ao denyWrite do sandbox e calaria o próprio hyperframes.
 RE_HF = re.compile(r"(^|/)\.hyperframes[. ]*(/|$)")
 MOTIVO_HF = "relatório do hyperframes (.hyperframes/) só o próprio hyperframes grava"
+
+
+def _dobrado(texto):
+    """NFKC + casefold antes de casar RE_HF/RE_DONO: o APFS dobra a caixa e `.hyperframeſ` (U+017F) cai em
+    `.hyperframes`; `(?i)` do re não dobra ligadura (`ﬆ` = `st`). Só soma proteção."""
+    return unicodedata.normalize("NFKC", texto).casefold()
 
 
 # ---------------------------------------------------------------- validação (usada pelo catálogo)
@@ -281,10 +288,11 @@ def _protegido_normal(texto, conf, comando, cwd=""):
     if not comando:
         norm = caminho_comparavel(texto, sc)
         return (_protegido(norm, conf, forma) or CAMINHO_CONFIG.search(RE_UNIDADE.sub("", norm)) is not None
-                or RE_DONO.search(norm) is not None)
+                or RE_DONO.search(_dobrado(norm)) is not None)
     for norm in {_bash_comparavel(texto, sc), _bash_comparavel(texto, sc, escape=True)}:
         pp = PONTO_PONTO.search(norm) is not None
-        if (_protegido(norm, conf, forma, sem_lib=pp) or _disfarcado(norm, conf, forma) or RE_DONO.search(norm)
+        if (_protegido(norm, conf, forma, sem_lib=pp) or _disfarcado(norm, conf, forma)
+                or RE_DONO.search(_dobrado(norm))
                 or cwd and _protegido(_resolvidos(norm, cwd, sc), conf, forma,
                                       sem_lib=pp and re.search(r"\b(cd|pushd)\b", norm))):
             return True
@@ -340,7 +348,7 @@ def _em_hyperframes(caminho, cwd):
         alvos.append(os.path.realpath(os.path.join(cwd if isinstance(cwd, str) else "", caminho)))
     except (OSError, ValueError):
         pass
-    return any(RE_HF.search(caminho_comparavel(a, True)) for a in alvos)
+    return any(RE_HF.search(caminho_comparavel(_dobrado(a), True)) for a in alvos)
 
 
 def decidir(conf, ferramenta, entrada, cwd=""):

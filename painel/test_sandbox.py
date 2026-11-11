@@ -149,6 +149,20 @@ class TesteHyperframes(unittest.TestCase):
                       self.TRAB + "/q1/.hyperframes/../saida.png"):
             self.assertIsNone(travas.decidir(g, "Write", {"file_path": livre}, self.TRAB), livre)
 
+    def test_letra_unicode_nao_disfarca(self):
+        """`ſ` (U+017F) e ligaduras: o APFS dobra a caixa e grava em `.hyperframes/`; o gancho dobra antes de casar."""
+        g = gancho(settings(fixture()))
+        for alvo in (self.TRAB + "/q1/.hyperframeſ/check.json", self.TRAB + "/q1/.HYPERFRAMEſ/x.json",
+                     ".hyperframeſ./x.json"):
+            self.assertEqual(travas.decidir(g, "Write", {"file_path": alvo}, self.TRAB), ("deny", travas.MOTIVO_HF),
+                             alvo)
+        for alvo in (DADOS + "/eﬆudio-dono.json", DADOS + "/aprovadoſ/x/manifesto.json"):
+            self.assertEqual(travas.decidir(g, "Write", {"file_path": alvo}, self.TRAB)[0], "deny", alvo)
+        simples = gancho(settings(catalogo.validar_acao(SIMPLES), pasta=None))  # sem a lista positiva de Bash
+        self.assertEqual(travas.decidir(simples, "Bash", {"command": "echo 1 > eﬆudio-dono.json"}, "/w")[0],
+                         "deny")
+        self.assertIsNone(travas.decidir(g, "Write", {"file_path": self.TRAB + "/q1/peças/capa.png"}, self.TRAB))
+
     def test_bash_e_leitura_seguem(self):
         g = gancho(settings(catalogo.validar_acao(dict(SIMPLES, sandbox=True)), pasta=None))
         self.assertIsNone(travas.decidir(g, "Bash", {"command": "echo {} > .hyperframes/check.json"}))

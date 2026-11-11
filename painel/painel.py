@@ -293,7 +293,7 @@ def fazer_handler(app):
                 if self.command != "HEAD":
                     for pedaco in r.blocos():
                         self.wfile.write(pedaco)
-            except (BrokenPipeError, ConnectionResetError):
+            except OSError:  # cabeçalhos já foram: nada de 500 no meio do corpo, só fecha
                 self.close_connection = True  # o navegador pulou para outro trecho do vídeo
             finally:
                 r.fechar()

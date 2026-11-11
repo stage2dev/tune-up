@@ -1,5 +1,6 @@
 // Blocos "galeria" (grade de miniaturas) e "midia" (uma imagem ou um video com controles).
 // Os arquivos vem da rota GET /api/modulos/<id>/arquivo?c=: so png, jpg, webp, mp4 e webm, sempre dentro da pasta do modulo.
+import { useState, type ReactElement } from 'react';
 import { Cartao, EstadoVazio, Selo } from '../../componentes';
 import type { Tom } from '../../componentes/Selo';
 import { itens, tipoDaMidia, textoOuNada, urlDoArquivo, type BlocoCru } from './interativos';
@@ -8,6 +9,30 @@ const TOM_SELO: Record<string, Tom> = { neutro: 'neutro', bom: 'ok', atencao: 'a
 
 function Aviso({ b, texto }: { b: BlocoCru; texto: string }) {
   return <Cartao titulo={textoOuNada(b.titulo)}><EstadoVazio titulo="Nada para mostrar" texto={texto} /></Cartao>;
+}
+
+interface PropsMidia { tipo: 'imagem' | 'video'; url: string; rotulo?: string; classe: string; miniatura?: boolean }
+
+/** Parte pura (testavel sem DOM): a tag com onError ligado, ou o aviso de erro no lugar da imagem quebrada. */
+export function conteudoDaMidia({ tipo, url, rotulo, classe, miniatura, falhou, aoFalhar }: PropsMidia & { falhou: boolean; aoFalhar: () => void }): ReactElement {
+  if (falhou) {
+    return (
+      <div role="alert" className={`grid w-full place-items-center rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 text-center text-xs text-[var(--color-error)] break-words ${miniatura ? 'aspect-square' : 'min-h-32'}`}>
+        Não deu para carregar este arquivo{rotulo ? ` (${rotulo})` : ''}. Ele pode ter sido apagado ou movido.
+      </div>
+    );
+  }
+  if (tipo === 'video') {
+    return miniatura
+      ? <video src={url} preload="metadata" muted playsInline aria-label={rotulo} className={classe} onError={aoFalhar} />
+      : <video src={url} controls preload="metadata" playsInline aria-label={rotulo} className={classe} onError={aoFalhar} />;
+  }
+  return <img src={url} alt={rotulo ?? ''} {...(miniatura ? { loading: 'lazy' as const } : {})} className={classe} onError={aoFalhar} />;
+}
+
+function ArquivoDeMidia(p: PropsMidia) {
+  const [falhou, setFalhou] = useState(false);
+  return conteudoDaMidia({ ...p, falhou, aoFalhar: () => setFalhou(true) });
 }
 
 export function Galeria({ b, moduloId }: { b: BlocoCru; moduloId?: string }) {
@@ -24,11 +49,8 @@ export function Galeria({ b, moduloId }: { b: BlocoCru; moduloId?: string }) {
           const seloTexto = selo ? textoOuNada(selo.texto) : undefined;
           return (
             <li key={`${String(i.arquivo)}#${k}`} className="min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] overflow-hidden">
-              {tipoDaMidia(i.arquivo) === 'video' ? (
-                <video src={url} preload="metadata" muted playsInline aria-label={rotulo} className="w-full aspect-square object-cover bg-black" />
-              ) : (
-                <img src={url} alt={rotulo} loading="lazy" className="w-full aspect-square object-cover" />
-              )}
+              <ArquivoDeMidia key={url} tipo={tipoDaMidia(i.arquivo) ?? 'imagem'} url={url} rotulo={rotulo} miniatura
+                classe={`w-full aspect-square object-cover${tipoDaMidia(i.arquivo) === 'video' ? ' bg-black' : ''}`} />
               <div className="p-2 grid gap-1 min-w-0">
                 <span className="text-xs break-words">{rotulo}</span>
                 {seloTexto && <span><Selo estado={seloTexto} rotulo={seloTexto} tom={TOM_SELO[String(selo?.tom)] ?? 'neutro'} /></span>}
@@ -50,11 +72,8 @@ export function Midia({ b, moduloId }: { b: BlocoCru; moduloId?: string }) {
   return (
     <Cartao titulo={textoOuNada(b.titulo)}>
       <figure className="grid justify-items-center gap-2 m-0">
-        {tipo === 'video' ? (
-          <video src={url} controls preload="metadata" playsInline aria-label={textoOuNada(b.alt) ?? legenda} className="max-w-full max-h-[70vh] rounded-lg bg-black" />
-        ) : (
-          <img src={url} alt={typeof b.alt === 'string' ? b.alt : ''} className="max-w-full max-h-[70vh] h-auto rounded-lg" />
-        )}
+        <ArquivoDeMidia key={url} tipo={tipo} url={url} rotulo={tipo === 'video' ? textoOuNada(b.alt) ?? legenda : typeof b.alt === 'string' ? b.alt : ''}
+          classe={tipo === 'video' ? 'max-w-full max-h-[70vh] rounded-lg bg-black' : 'max-w-full max-h-[70vh] h-auto rounded-lg'} />
         {legenda && <figcaption className="text-xs text-[var(--color-text-secondary)] break-words text-center">{legenda}</figcaption>}
       </figure>
     </Cartao>

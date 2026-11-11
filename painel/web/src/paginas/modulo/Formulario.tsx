@@ -5,7 +5,7 @@ import { useAcoes, useIniciarExecucao } from '../../api/ganchos';
 import type { Acao } from '../../api/tipos';
 import { Botao, Cartao, Dialogo, Erro, Esqueleto, useAvisos } from '../../componentes';
 import { caminhoDaExecucao, dispararAcao, ROTULO_RISCO, TEXTO_RISCO } from './acoes';
-import { camposFaltando, dadosDoFormulario, lerCampos, semSegredos, textoOuNada, valorDoCampo, type BlocoCru, type CampoLido } from './interativos';
+import { camposFaltando, dadosDoFormulario, lerCampos, semSegredos, textoDeConfirmacao, textoOuNada, valorDoCampo, type BlocoCru, type CampoLido } from './interativos';
 import { AvisoEnvio, useEnvio } from './useEnvio';
 
 export const CLASSE_CAMPO =
@@ -80,7 +80,7 @@ function FormularioBase({ b, moduloId, acaoCat, disparar }: { b: BlocoCru; modul
   const formRef = useRef<HTMLFormElement>(null);
   const { enviar, enviando: enviandoModulo, ok, erro } = useEnvio(moduloId);
   const enviando = enviandoModulo || disparando;
-  const textoConfirmar = acaoCat ? (acaoCat.confirmar ? acaoCat.descricao : undefined) : textoOuNada(b.confirmar);
+  const textoConfirmar = textoDeConfirmacao(acaoCat, b.confirmar);
   const faltando = camposFaltando(campos, editados); // segredo nunca esta em `editados`: so e checado no envio
   const idBase = `form-${moduloId ?? 'm'}`;
 

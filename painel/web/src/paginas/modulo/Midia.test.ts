@@ -7,7 +7,8 @@ import type { Acao, Bloco } from '../../api/tipos';
 import { chaves } from '../../api/ganchos';
 import { ProvedorAvisos } from '../../componentes';
 import { Blocos } from './Blocos';
-import { chaveDoBloco, tipoDaMidia, urlDoArquivo } from './interativos';
+import { chaveDoBloco, CONFIRMAR_PADRAO, textoDeConfirmacao, tipoDaMidia, urlDoArquivo } from './interativos';
+import { conteudoDaMidia } from './Midia';
 
 const acao: Acao = { id: 'x.pedir', grupo: 'g', titulo: 'Pedir peça', descricao: 'Cria uma peça.', risco: 'rascunho', confirmar: true,
   params: [{ nome: 'pedido', rotulo: 'Pedido', tipo: 'texto', obrigatorio: true }] };
@@ -77,6 +78,25 @@ describe('bloco midia', () => {
   });
 });
 
+describe('midia que nao carrega', () => {
+  it('com falha mostra o aviso de erro, sem tag de imagem ou video', () => {
+    for (const tipo of ['imagem', 'video'] as const) {
+      const h = renderToStaticMarkup(conteudoDaMidia({ tipo, url: '/x', rotulo: 'Capa', falhou: true, aoFalhar: () => {}, classe: '' }));
+      expect(h).not.toMatch(/<(img|video)/);
+      expect(h).toContain('Não deu para carregar');
+      expect(h).toContain('role="alert"');
+    }
+  });
+  it('sem falha liga o onError da tag ao aoFalhar', () => {
+    const aoFalhar = () => {};
+    for (const tipo of ['imagem', 'video'] as const) {
+      const el = conteudoDaMidia({ tipo, url: '/x', rotulo: 'Capa', falhou: false, aoFalhar, classe: '' });
+      expect((el.props as { onError?: unknown }).onError).toBe(aoFalhar);
+      expect(el.type).toBe(tipo === 'video' ? 'video' : 'img');
+    }
+  });
+});
+
 describe('bloco formulario ligado a acao do catalogo', () => {
   const b: Bloco = { tipo: 'formulario', titulo: 'Novo pedido', catalogo: 'x.pedir', botao: 'Pedir', campos: [
     { id: 'pedido', rotulo: 'Pedido', tipo: 'texto_longo', obrigatorio: true },
@@ -99,6 +119,14 @@ describe('bloco formulario ligado a acao do catalogo', () => {
     const h = html([b], []);
     expect(h).toContain('A ação “x.pedir” não existe neste projeto.');
     expect(h).not.toContain('<form');
+  });
+  it('acao com confirmar pede o dialogo mesmo sem descricao; sem confirmar nao pede', () => {
+    expect(textoDeConfirmacao({ ...acao, descricao: '' }, undefined)).toBe(CONFIRMAR_PADRAO);
+    expect(textoDeConfirmacao({ ...acao, descricao: '   ' }, undefined)).toBe(CONFIRMAR_PADRAO);
+    expect(textoDeConfirmacao(acao, undefined)).toBe('Cria uma peça.');
+    expect(textoDeConfirmacao({ ...acao, confirmar: false }, 'do bloco')).toBeUndefined();
+    expect(textoDeConfirmacao(null, 'Apagar tudo?')).toBe('Apagar tudo?');
+    expect(textoDeConfirmacao(null, '')).toBeUndefined();
   });
   it('chave do bloco com estado muda com a acao do catalogo', () => {
     expect(chaveDoBloco({ ...b }, 0)).toContain('x.pedir');
