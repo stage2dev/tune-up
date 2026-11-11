@@ -103,7 +103,7 @@ A tela inicial é um chat: a pessoa escreve o pedido e escolhe o **nível**. Cad
 - `modelos`: apelido do CLI ou lista em ordem de preferência (`["fable", "opus"]`). A sessão sai com o primeiro que a licença tem; o último é a reserva e nunca é sondado. Sem o campo, vale o modelo padrão do CLI.
 - `esforco`: `low`, `medium`, `high`, `xhigh` ou `max` (vira `--effort`).
 - `equipe`: texto curto para a tela ("1 a 2 agentes").
-- `requer`: `"<modulo>.<chave>"` ou lista de até 8. O servidor recusa disparar (409) enquanto a entrada em `<dados>/<modulo>-dono.json` não tiver `"aprovado": true`; arquivo ausente, ilegível ou atalho conta como sem aprovação. Só um comando de módulo grava esse arquivo (ver Módulos); o que a sessão escreve em outro lugar (ex. `marca.json`) não libera nada.
+- `requer`: `"<modulo>.<chave>"` ou lista de até 8. O servidor recusa disparar (409) enquanto a entrada em `<dados>/<modulo>-dono.json` não tiver `"aprovado": true`; arquivo ausente, ilegível ou atalho conta como sem aprovação. Só um comando de módulo grava esse arquivo (ver Módulos); o que a sessão escreve em outro lugar (ex. `marca.json`) não libera nada. Ação com `requer` sem `sandbox` ligado é recusada no catálogo, com aviso. Sessões sem sandbox do mesmo projeto (dev, chat com pular permissões) têm o disco do dono: a aprovação só é garantida contra sessões com sandbox.
 
 | nível | modelo · esforço | o que a sessão faz |
 |---|---|---|

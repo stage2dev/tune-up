@@ -28,7 +28,8 @@ agir = _m.agir
 ''' % REAL
 # ação de teste mínima: o estúdio real só ganha ação com `requer` no item 5.1
 ACAO = catalogo.validar_acao({"id": "estudio.teste", "grupo": "estudio", "titulo": "Teste", "risco": "leitura",
-                              "prompt": "/x", "requer": "estudio.marca", "params": []})
+                              "prompt": "/x", "requer": "estudio.marca", "sandbox": True,
+                              "params": []})
 MARCA = {"versao": 1, "modo": "marca", "campos": {
     "nome": {"valor": "Forno", "fonte": "package.json:2", "confianca": "media", "travado": False},
     "cores.primary": {"valor": "#112233", "fonte": "a.css:1", "confianca": "alta", "travado": False}}}

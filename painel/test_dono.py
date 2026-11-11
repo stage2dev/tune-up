@@ -43,7 +43,7 @@ def agir(ctx, acao, dados):
 
 ACOES = {"acoes": [
     {"id": "estudio.post", "grupo": "estudio", "titulo": "Post", "risco": "leitura", "prompt": "/x",
-     "requer": "estudio.marca", "params": []},
+     "requer": "estudio.marca", "sandbox": True, "params": []},
     {"id": "t.leve", "grupo": "dev", "titulo": "Leve", "risco": "leitura", "prompt": "/y", "params": []},
 ]}
 
@@ -120,6 +120,21 @@ class TesteDono(Base):
             catalogo.validar_acao(a)
         self.assertEqual(catalogo.validar_acao(ACOES["acoes"][0])["_requer"], ["estudio.marca"])
         self.assertNotIn("_requer", catalogo.publica(catalogo.validar_acao(ACOES["acoes"][0])))
+
+    def test_requer_sem_sandbox_e_recusado_com_aviso(self):
+        for sb in (False, None):
+            a = dict(ACOES["acoes"][0])
+            a.pop("sandbox", None) if sb is None else a.update(sandbox=sb)
+            with self.assertRaises(ValueError, msg=repr(sb)) as e:
+                catalogo.validar_acao(a)
+            self.assertIn("sandbox", str(e.exception))
+        self.assertTrue(catalogo.validar_acao(dict(ACOES["acoes"][0], sandbox={"rede_local": False}))["sandbox"])
+        escrever(os.path.join(self.tmp, "acoes", "t.json"),
+                 json.dumps({"acoes": [dict(ACOES["acoes"][0], sandbox=False)]}))
+        acoes, avisos = catalogo.carregar_catalogo(os.path.join(self.tmp, "acoes"))
+        self.assertEqual(acoes, [])
+        self.assertEqual(len(avisos), 1)
+        self.assertIn("estudio.post", avisos[0])
 
 
 class TesteComando(Base):

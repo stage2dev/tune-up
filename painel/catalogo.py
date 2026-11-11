@@ -133,6 +133,8 @@ def validar_acao(a):
         requer = dono.validar_requer(a.get("requer"))
     except ValueError as e:
         raise ValueError("ação %s: %s" % (a["id"], e))
+    if requer and not caixa["sandbox"]:  # sessão sem sandbox grava o arquivo de aprovação por vias indiretas
+        raise ValueError("ação %s: requer aprovação do dono e precisa de sandbox ligado" % a["id"])
     equipe = a.get("equipe") if isinstance(a.get("equipe"), str) else ""
     if RE_CONTROLE.search(equipe):
         raise ValueError("ação %s: equipe com caractere de controle" % a["id"])
