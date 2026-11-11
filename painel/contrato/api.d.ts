@@ -431,6 +431,24 @@ export interface RespModulo {
   avisos: string[];
 }
 
+/** POST /api/modulos/<id>/envio?destino=<chave> — corpo = bytes crus da imagem (não é JSON nem multipart).
+ *  Só para chave declarada em INFO["envios"] = { chave: { pasta (relativa a <dados>), tipos: ('png'|'jpeg'|'webp')[],
+ *  max_bytes (teto 8 MB), max_arquivos (teto 500), gancho?: boolean } }. Mesmas defesas de todo POST (token, Origin,
+ *  Sec-Fetch-Site, Host), sem exigir Content-Type. Content-Length obrigatório (411) e conferido antes de ler (413).
+ *  Tipo pelos bytes; SVG, GIF, outro tipo, cabeçalho mentiroso ou mais de 8192 px de lado / 40 Mpx: 415.
+ *  404 módulo ou chave fora da declaração; 409 pasta com atalho, limite de arquivos; 500 declaração inválida.
+ *  201 arquivo novo; 200 o mesmo conteúdo já estava lá (repetido: true, nada duplicado, gancho não roda de novo). */
+export interface RespEnvioModulo {
+  ok: true;
+  caminho: string; // relativo a <dados>: "<pasta>/<sha256 curto>.png|.jpg|.webp"
+  c: string | null; // para GET /api/modulos/<id>/arquivo?c=; null se a pasta não está em INFO["midia"]
+  tipo: 'png' | 'jpeg' | 'webp';
+  largura: number;
+  altura: number;
+  repetido: boolean;
+  avisos: string[]; // gancho que falhou (o arquivo já foi guardado)
+}
+
 // ---------------------------------------------------------------- módulos do núcleo que faltam ou quebram
 /** /api/acompanhamento e /api/agentes quando o módulo falta (503) ou quebra (500). */
 export interface ErroModulo extends Erro {

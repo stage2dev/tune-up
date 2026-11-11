@@ -4,7 +4,7 @@ Uso: python3 painel.py [--port 8787] [--projeto PASTA] [--plans-dir PASTA]
 Rotas: veja contrato/api.d.ts. O núcleo é genérico: o que é do projeto vem de
 <raiz>/.tune-up/painel.json e do pacote do projeto (veja config.py). Todo POST exige X-Painel-Token (nasce a cada
 subida), Origin do próprio endereço, Sec-Fetch-Site same-origin (ou ausente),
-Content-Type application/json e corpo até 32 KB.
+Content-Type application/json e corpo até 32 KB (o envio de imagem tem regras próprias: envio.py).
 """
 import sys
 
@@ -23,6 +23,7 @@ import urllib.parse  # noqa: E402
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer  # noqa: E402
 
 import config  # noqa: E402
+import envio  # noqa: E402
 import estaticos  # noqa: E402
 import extensoes  # noqa: E402
 import habilidades  # noqa: E402
@@ -42,6 +43,7 @@ RE_ROTA_EXEC = re.compile(r"^/api/execucoes/([^/]{1,40})/(eventos|parar|abrir|re
 RE_ROTA_MODULO = re.compile(r"^/api/modulos/([^/]{1,80})$")
 RE_ROTA_MODULO_ACAO = re.compile(r"^/api/modulos/([^/]{1,80})/acao$")
 RE_ROTA_MODULO_ARQ = re.compile(r"^/api/modulos/([^/]{1,80})/arquivo$")
+RE_ROTA_MODULO_ENVIO = re.compile(r"^/api/modulos/([^/]{1,80})/envio$")
 RE_SESSAO = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 CSP = ("default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
@@ -188,15 +190,19 @@ def fazer_handler(app):
                     return False
             return True
 
-        def _post_ok(self):
+        def _chamador_ok(self):
             if (self.headers.get("Sec-Fetch-Site") or "same-origin") != "same-origin":
                 self._erro(403, "Pedido de outro site recusado.")
-                return None
-            if self.headers.get("Origin") not in app.origens():
+            elif self.headers.get("Origin") not in app.origens():
                 self._erro(403, "Pedido de outra origem recusado.")
-                return None
-            if not app.token_ok(self.headers.get("X-Painel-Token")):
+            elif not app.token_ok(self.headers.get("X-Painel-Token")):
                 self._erro(403, "Chave do painel errada. Recarregue a página.")
+            else:
+                return True
+            return False
+
+        def _post_ok(self):
+            if not self._chamador_ok():
                 return None
             tipo = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
             if tipo != "application/json":
@@ -334,10 +340,14 @@ def fazer_handler(app):
         def do_POST(self):
             if not self._origem_ok():
                 return
+            partes = urllib.parse.urlsplit(self.path)
+            m = RE_ROTA_MODULO_ENVIO.match(partes.path)
+            if m:  # corpo cru da imagem, fora do teto de 32 KB do JSON (envio.py)
+                return self._envio(urllib.parse.unquote(m.group(1)), urllib.parse.parse_qs(partes.query))
             corpo = self._post_ok()
             if corpo is None:
                 return
-            caminho = urllib.parse.urlsplit(self.path).path
+            caminho = partes.path
             try:
                 if caminho == "/api/execucoes":
                     ex = app.lancador.iniciar(corpo.get("acao"), corpo.get("params"), corpo.get("habilidades"))
@@ -365,6 +375,16 @@ def fazer_handler(app):
             except lanc.ErroAcao as e:
                 extra = {"execucao_id": e.execucao_id} if e.execucao_id else {}
                 return self._erro(e.codigo, e.mensagem, **extra)
+            except Exception as e:
+                return self._erro(500, "Erro inesperado no painel (%s)." % type(e).__name__)
+
+        def _envio(self, mid, query):
+            self.close_connection = True  # recusa antes de ler deixa bytes no socket
+            if not self._chamador_ok():
+                return
+            try:
+                return self._json(*envio.receber(app.cfg, mid, (query.get("destino") or [None])[0],
+                                                 self.headers, self.rfile))
             except Exception as e:
                 return self._erro(500, "Erro inesperado no painel (%s)." % type(e).__name__)
 
