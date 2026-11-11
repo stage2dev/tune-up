@@ -5,7 +5,9 @@ caminho de arquivo): tamanho do PNG, ffprobe do MP4, contagem de `data-layout-al
 gsap, lint de rede e MP4/PNG não mais velho que a fonte. O servidor nunca abre no Chrome um HTML
 escrito pela sessão. O final.json (post) / qa.json (vídeo) da sessão só baixa o selo: vermelho ou
 ausente = vermelho; verde não sobe nada (é o único lugar onde o check com Chrome rodou). Post: 1 quadro;
-carrossel: de 2 até os quadros pedidos; legenda (copy.md) obrigatória. Atalho, FIFO ou arquivo grande
+carrossel: de 2 até os quadros pedidos; legenda (copy.md) obrigatória. Anúncio: cada peça a<N> do plano de
+scripts/anuncio.py no tamanho dela, textos.json nos limites com a URL pedida e a planilha de export/ igual à
+que o script monta dos textos (tudo Paused). Atalho, FIFO ou arquivo grande
 demais dentro da peça = vermelho (nada é seguido nem lido). O resultado fica em cache pela assinatura
 (nome, tamanho e mtime de tudo na pasta). Python 3.9, só biblioteca padrão.
 """
@@ -43,7 +45,7 @@ def _scripts():
             antes_path, antes_mod, achados = list(sys.path), set(sys.modules), {}
             try:
                 sys.path.insert(0, SCRIPTS)  # qa_video importa qa_imagem e reserva_slides pelo nome
-                for nome in ("qa_imagem", "qa_video"):
+                for nome in ("qa_imagem", "qa_video", "anuncio"):
                     spec = importlib.util.spec_from_file_location("estudio_" + nome, os.path.join(SCRIPTS, nome + ".py"))
                     mod = importlib.util.module_from_spec(spec)
                     spec.loader.exec_module(mod)
@@ -56,6 +58,11 @@ def _scripts():
                         del sys.modules[n]
             _qa.update(achados)
         return _qa["qa_imagem"], _qa["qa_video"]
+
+
+def script_anuncio():
+    _scripts()
+    return _qa["anuncio"]
 
 
 def assinatura(pasta):
@@ -153,21 +160,7 @@ def _post(qi, pasta, params):
     except (OSError, ValueError, KeyError, StopIteration):
         return {"ok": False, "linha": "PRECISA DO SEU OLHO: formato desconhecido", "arquivos": [], "falhas": ["formato"]}
     nomes = sorted((int(m.group(1)), n) for n in os.listdir(pasta) for m in [RE_QUADRO.match(n)] if m)
-    arquivos = []
-    for _, n in nomes:
-        png, fonte = os.path.join(pasta, n, STILL), os.path.join(pasta, n, "fonte")
-        if not (_pasta_real(os.path.join(pasta, n)) and _pasta_real(os.path.join(pasta, n, "snap"))):
-            arquivos.append({"c": "/".join([n, "snap", "frame-00-at-0s.png"]), "nome": n + ".png",
-                             "falhas": ["atalho"]})  # atalho no meio do caminho: nada é lido
-            continue
-        ruim = comum(png, MAX_PNG)
-        checks = [qi.result("png", False, [ruim])] if ruim else [qi.check_png(png, largura, altura)]
-        checks += _fonte(qi, fonte, True)
-        if not ruim and not _fonte_ruim(fonte):
-            checks.append(qi.result("png_fresh", os.path.getmtime(png) >= qi.newest_mtime(fonte),
-                                    ["a fonte mudou depois do PNG"]))
-        arquivos.append({"c": "/".join([n, "snap", "frame-00-at-0s.png"]), "nome": n + ".png",
-                         "falhas": [c["name"] for c in checks if not c["ok"]]})
+    arquivos = [_quadro(qi, pasta, n, n + ".png", largura, altura) for _, n in nomes]
     extra = [_sessao(qi, os.path.join(pasta, "final.json"))]
     try:
         maximo = max(2, int(params.get("quadros") or 10))
@@ -189,6 +182,59 @@ def _post(qi, pasta, params):
             or "nenhum quadro")
     falhas = [f for a in arquivos for f in a["falhas"]] + extra + ([] if arquivos else ["quadros"])
     return {"ok": ok, "linha": linha, "arquivos": arquivos, "falhas": list(dict.fromkeys(falhas))}
+
+
+def _quadro(qi, pasta, n, nome, largura, altura):
+    """{"c", "nome", "falhas"} do PNG <n>/snap/... no tamanho pedido, com as checagens de texto da fonte."""
+    png, fonte = os.path.join(pasta, n, STILL), os.path.join(pasta, n, "fonte")
+    rel = "/".join([n, "snap", "frame-00-at-0s.png"])
+    if not (_pasta_real(os.path.join(pasta, n)) and _pasta_real(os.path.join(pasta, n, "snap"))):
+        return {"c": rel, "nome": nome, "falhas": ["atalho"]}  # atalho no meio do caminho: nada é lido
+    ruim = comum(png, MAX_PNG)
+    checks = [qi.result("png", False, [ruim])] if ruim else [qi.check_png(png, largura, altura)]
+    checks += _fonte(qi, fonte, True)
+    if not ruim and not _fonte_ruim(fonte):
+        checks.append(qi.result("png_fresh", os.path.getmtime(png) >= qi.newest_mtime(fonte),
+                                ["a fonte mudou depois do PNG"]))
+    return {"c": rel, "nome": nome, "falhas": [c["name"] for c in checks if not c["ok"]]}
+
+
+def textos(pasta, params):
+    """(textos.json conferido, None) ou (None, nome da falha); a URL tem de ser a pedida no formulário."""
+    an = script_anuncio()
+    plataforma = (params or {}).get("plataforma")
+    if plataforma not in an.PLANOS or comum(os.path.join(pasta, "textos.json"), MAX_JSON):
+        return None, "plataforma" if plataforma not in an.PLANOS else "textos"
+    t, erro = an.ler_textos(pasta)
+    if erro or an.conferir(t, plataforma):
+        return None, "textos"
+    return (t, None) if t.get("url") == (params or {}).get("url") else (None, "url")
+
+
+def _anuncio(qi, pasta, params):
+    an = script_anuncio()
+    try:
+        plano = an.plano(params.get("plataforma"))
+    except (OSError, ValueError, KeyError, StopIteration):
+        return {"ok": False, "linha": "PRECISA DO SEU OLHO: plataforma desconhecida", "arquivos": [],
+                "export": [], "falhas": ["plataforma"]}
+    arquivos = [_quadro(qi, pasta, p["id"], p["nome"], p["largura"], p["altura"]) for p in plano["pecas"]]
+    extra = [] if _sessao(qi, os.path.join(pasta, "final.json"))["ok"] else ["conferencia_da_sessao"]
+    t, falha = textos(pasta, params)
+    planilha = "/".join(["export", plano["export"]])
+    if falha:
+        extra.append(falha)
+    elif comum(os.path.join(pasta, "export", plano["export"]), MAX_JSON) or not _pasta_real(
+            os.path.join(pasta, "export")) or an.conferir_export(pasta, plano["plataforma"], t):
+        extra.append("export")  # falta, é atalho, ou não é exatamente a que o script monta dos textos
+    verdes = sum(1 for a in arquivos if not a["falhas"])
+    ok = verdes == len(arquivos) and not extra
+    linha = "PRONTO: %d de %d peças verdes, textos e planilha ok" % (verdes, verdes) if ok else \
+        "PRECISA DO SEU OLHO: %d de %d verdes, %s" % (verdes, len(arquivos), "; ".join(
+            ["%s: %s" % (a["nome"], ", ".join(a["falhas"])) for a in arquivos if a["falhas"]] + extra))
+    falhas = [f for a in arquivos for f in a["falhas"]] + extra
+    return {"ok": ok, "linha": linha, "arquivos": arquivos, "falhas": list(dict.fromkeys(falhas)),
+            "export": [{"c": planilha, "nome": plano["export"]}], "textos": t}
 
 
 def _reels(qi):
@@ -233,7 +279,8 @@ def _video(qi, qv, pasta, acao, params):
 
 
 def tipo(acao):
-    return "post" if acao == "estudio.post" else "video" if acao in VIDEOS else None
+    return "post" if acao == "estudio.post" else "video" if acao in VIDEOS else \
+        "anuncio" if acao == "estudio.anuncio" else None
 
 
 def calcular(pasta, acao, params):
@@ -249,6 +296,8 @@ def calcular(pasta, acao, params):
         selo = _post(qi, pasta, params or {})
     elif tipo(acao) == "video":
         selo = _video(qi, qv, pasta, acao, params or {})
+    elif tipo(acao) == "anuncio":
+        selo = _anuncio(qi, pasta, params or {})
     else:
         selo = {"ok": False, "linha": "PRECISA DO SEU OLHO: ação desconhecida", "arquivos": [], "falhas": ["acao"]}
     with _lock:

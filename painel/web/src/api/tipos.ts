@@ -17,6 +17,8 @@ export interface ParamAcao {
   max?: number;
   /** So em 'texto': true aceita quebra de linha (caixa grande). */
   linhas?: boolean;
+  /** So em 'texto' sem linhas: o servidor exige https:// sem espaco. */
+  formato?: 'url';
   ajuda?: string;
 }
 

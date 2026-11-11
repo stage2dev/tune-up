@@ -23,6 +23,9 @@ RE_CONTROLE = re.compile("[\x00-\x1f\x7f-\x9f​-‏  ‪-‮⁦-⁩﻿]")
 RE_CAMPO = re.compile(r"\{([a-z_][a-z0-9_]{0,30})\}")
 
 RE_GRUPO = re.compile(r"^[a-z0-9_-]{1,40}$")
+# tipo texto com "formato": "url": endereço https sem espaço nem aspas (o mesmo do estúdio, scripts/anuncio.py)
+RE_URL = re.compile(r"^https://[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?(?::[0-9]{1,5})?"
+                    r"(?:[/?#][A-Za-z0-9._~%/?#&=+,:@!*-]*)?$")
 RE_SO_COM = re.compile(r"^[a-z][a-z0-9_]{0,40}(?:\.[a-z][a-z0-9_]{0,40}){0,3}$")  # chave do painel.json
 RISCOS = ("leitura", "rascunho", "codigo", "credito")
 TIPOS = ("fase", "parte", "texto", "escolha", "texto_longo")
@@ -66,6 +69,10 @@ def _validar_param(p):
         out["max"] = mx if ok else TEXTO_PADRAO
         if linhas:
             out["linhas"] = True
+        if p.get("formato") is not None:
+            if p["formato"] != "url" or linhas:
+                raise ValueError("parâmetro %s: formato inválido (só \"url\", sem linhas)" % p["nome"])
+            out["formato"] = "url"
     if p["tipo"] == "texto_longo":
         mx = p.get("max")
         out["max"] = mx if isinstance(mx, int) and not isinstance(mx, bool) and 1 <= mx <= ARQUIVO_MAX else ARQUIVO_MAX
@@ -258,6 +265,8 @@ def _erro_valor(p, v):
         return "O campo \"%s\" não pode começar com \"-\"." % rot
     if p["tipo"] in ("texto", "texto_longo") and len(v) > p.get("max", TEXTO_PADRAO):
         return "O campo \"%s\" passou de %d letras." % (rot, p.get("max", TEXTO_PADRAO))
+    if p.get("formato") == "url" and not RE_URL.match(v):
+        return "O campo \"%s\" precisa ser um endereço que começa com https:// e não tem espaço." % rot
     if p["tipo"] == "escolha" and v not in p["opcoes"]:
         return "Escolha uma das opções do campo \"%s\"." % rot
     if p["tipo"] == "fase" and not RE_FASE.match(v):

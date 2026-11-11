@@ -1,5 +1,6 @@
 // Blocos "galeria" (grade de miniaturas) e "midia" (uma imagem ou um video com controles).
 // Os arquivos vem da rota GET /api/modulos/<id>/arquivo?c=: so png, jpg, webp, mp4 e webm, sempre dentro da pasta do modulo.
+// Uma planilha .csv vira so um link de download (o servidor a manda como anexo, nunca para mostrar).
 import { useState, type ReactElement } from 'react';
 import { Cartao, EstadoVazio, Selo } from '../../componentes';
 import type { Tom } from '../../componentes/Selo';
@@ -63,9 +64,22 @@ export function Galeria({ b, moduloId }: { b: BlocoCru; moduloId?: string }) {
   );
 }
 
+/** true se o arquivo e uma planilha .csv (vira link de download). */
+export const ehPlanilha = (c: unknown): boolean => typeof c === 'string' && c.toLowerCase().endsWith('.csv');
+
 export function Midia({ b, moduloId }: { b: BlocoCru; moduloId?: string }) {
   const tipo = tipoDaMidia(b.arquivo);
   if (!moduloId) return <Aviso b={b} texto="Esta mídia precisa estar dentro de um módulo." />;
+  if (ehPlanilha(b.arquivo)) {
+    const nome = String(b.arquivo).split('/').pop() ?? '';
+    return (
+      <Cartao titulo={textoOuNada(b.titulo)}>
+        <a href={urlDoArquivo(moduloId, String(b.arquivo))} download={nome} className="text-sm underline text-[var(--color-accent)] break-words">
+          {textoOuNada(b.legenda) ?? `Baixar ${nome}`}
+        </a>
+      </Cartao>
+    );
+  }
   if (!tipo) return <Aviso b={b} texto="Este arquivo não é uma imagem (png, jpg, webp) nem um vídeo (mp4, webm)." />;
   const url = urlDoArquivo(moduloId, String(b.arquivo));
   const legenda = textoOuNada(b.legenda);

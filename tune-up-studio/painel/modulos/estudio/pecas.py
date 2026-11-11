@@ -36,7 +36,12 @@ MOTIVOS = {"png": "falta a imagem", "png_size": "imagem no tamanho errado", "png
            "conferencia_da_sessao": "a conferência do Claude não passou", "quadros": "número de quadros errado",
            "legenda": "falta a legenda", "formato": "formato desconhecido", "video": "falta o vídeo",
            "ffprobe": "falta o ffprobe para conferir o vídeo", "probe": "o vídeo não abre",
-           "conferir": "não consegui conferir"}
+           "conferir": "não consegui conferir", "textos": "títulos ou descrições fora dos limites",
+           "url": "o endereço não é o que você pediu", "export": "a planilha não é a que o estúdio monta",
+           "plataforma": "plataforma desconhecida"}
+PLATAFORMAS = {"google": ("Google", "google-ads", "Importe no Google Ads Editor: tudo entra pausado."),
+               "meta": ("Meta", "meta-ads", "Planilha da Meta EXPERIMENTAL: o formato de importação não foi "
+                        "conferido numa fonte oficial. Confira tudo no Gerenciador de Anúncios.")}
 
 
 def _agora():
@@ -84,7 +89,7 @@ def pasta(ctx, tid):
 
 def _linha_da_sessao(p, tipo):
     """A linha final que a sessão escreveu (só para o rótulo da fila; nunca decide o selo)."""
-    d = _ler_json(os.path.join(p, "final.json" if tipo == "post" else "qa.json")) if p else None
+    d = _ler_json(os.path.join(p, "qa.json" if tipo == "video" else "final.json")) if p else None
     return str((d or {}).get("linha") or "")
 
 
@@ -135,16 +140,19 @@ def pecas(ctx):
 def _titulo(item):
     """"Post de 11/11 às 08:23" (tipo da peça + quando começou)."""
     e = item["e"]
-    tipo = "Vídeo" if selo.tipo(e.get("acao")) == "video" else (
+    plat = PLATAFORMAS.get((e.get("params") or {}).get("plataforma"), ("",))[0]
+    tipo = "Vídeo" if selo.tipo(e.get("acao")) == "video" else ("Anúncio " + plat).strip() \
+        if selo.tipo(e.get("acao")) == "anuncio" else (
         "Carrossel" if str((e.get("params") or {}).get("formato") or "").startswith("carrossel") else "Post")
     m = RE_DATA.match(str(e.get("iniciada_em") or ""))
     return "%s de %s/%s às %s:%s" % ((tipo,) + m.groups()[1::-1] + m.groups()[2:]) if m else tipo
 
 
 def _nome(arquivo):
-    """"q2.png" -> "quadro 2"; o vídeo é "vídeo"."""
+    """"q2.png" -> "quadro 2"; "a1_1200x628.png" -> "peça 1200x628"; o vídeo é "vídeo"."""
     m = re.match(r"^q(\d+)\.png$", arquivo)
-    return "quadro %s" % m.group(1) if m else "vídeo"
+    a = re.match(r"^a\d+_(\d+x\d+)\.png$", arquivo)
+    return "quadro %s" % m.group(1) if m else "peça %s" % a.group(1) if a else "vídeo"
 
 
 def _motivos(falhas):
@@ -177,6 +185,31 @@ def _so_a_legenda(copy):
     """Só a seção "## Legenda" do copy.md (sem o contador "(104/125)"); sem a seção, o texto inteiro."""
     m = re.search(r"^##\s*Legenda[^\n]*\n(.*?)(?=^##\s|\Z)", copy, re.M | re.S | re.I)
     return (m.group(1).strip() if m else "") or copy
+
+
+def _textos(t, plataforma):
+    """Os textos do anúncio em palavras, para conferir antes de aprovar."""
+    nomes = {"titulos": "Títulos", "descricoes": "Descrições", "caminhos": "Caminhos",
+             "textos_principais": "Textos principais"}
+    partes = ["Endereço: %s" % t.get("url")]
+    for k, rotulo in nomes.items():
+        if t.get(k):
+            partes.append("%s (%d):\n%s" % (rotulo, len(t[k]), "\n".join("- " + x for x in t[k])))
+    return "\n\n".join(partes + ["Nada é publicado. " + PLATAFORMAS.get(plataforma, ("", "", ""))[2]])
+
+
+def _baixar(ctx, lista):
+    """Link da planilha de cada anúncio já aprovado (a rota só serve .csv de aprovados/)."""
+    blocos = []
+    for i in lista:
+        if not i["aprovado"] or selo.tipo(i["e"].get("acao")) != "anuncio":
+            continue
+        m = _ler_json(os.path.join(ctx["dados"], "aprovados", i["id"], "manifesto.json")) or {}
+        for x in m.get("export") or []:
+            if isinstance(x, dict) and re.match(r"^[a-z-]+\.csv$", str(x.get("nome") or "")):
+                blocos.append({"tipo": "midia", "titulo": "Planilha: %s (aprovado)" % _titulo(i),
+                               "arquivo": "aprovados/%s/%s" % (i["id"], x["nome"]), "legenda": "Baixar " + x["nome"]})
+    return blocos
 
 
 def _galeria(item, titulo=None):
@@ -215,14 +248,15 @@ def aba_galeria(lista):
     return blocos
 
 
-def aba_aprovacao(lista):
+def aba_aprovacao(lista, ctx=None):
     if lista is None:
         return [{"tipo": "texto", "texto": INDISPONIVEL}]
     espera = [i for i in lista if i["selo"] and i["selo"]["ok"] and not i["aprovado"] and not i["recusado"]
               and i["e"].get("estado") in APROVAVEL]
+    baixar = _baixar(ctx, lista) if ctx and ctx.get("dados") else []
     if not espera:
         return [{"tipo": "texto", "texto": "Nenhuma peça pronta esperando você. Peça uma na aba Novo; "
-                 "as já aprovadas ficam na Galeria."}]
+                 "as já aprovadas ficam na Galeria."}] + baixar
     blocos = []
     for i in espera:  # cada arquivo em tamanho cheio e a legenda que vai junto, antes dos botões
         t, fixos = _titulo(i), {"trabalho": i["id"], "confirmar": True}
@@ -231,11 +265,13 @@ def aba_aprovacao(lista):
                    for a in i["selo"]["arquivos"]]
         texto = selo.legenda(i["pasta"]) if selo.tipo(i["e"].get("acao")) == "post" else None
         descricao = ("Legenda que vai junto:\n\n" + _so_a_legenda(texto)) if texto else "Vídeo vertical, sem som."
+        if selo.tipo(i["e"].get("acao")) == "anuncio":
+            descricao = _textos(i["selo"]["textos"], (i["e"].get("params") or {}).get("plataforma"))
         blocos.append({"tipo": "formulario", "titulo": "Aprovar ou recusar?", "descricao": descricao,
                        "acao": "peca.aprovar", "botao": "Aprovar", "campos": [], "dados_fixos": fixos,
                        "confirmar": "Aprovar %s? Os arquivos vão para a pasta de aprovados." % t.lower(),
                        "secundario": {"acao": "peca.recusar", "botao": "Recusar", "confirmar": "Recusar %s?" % t.lower()}})
-    return blocos
+    return blocos + baixar
 
 
 def _achar(ctx, dados):
@@ -291,10 +327,11 @@ def aprovar(ctx, dados):
     os.makedirs(pasta_ap, mode=0o700, exist_ok=True)
     tmp = tempfile.mkdtemp(prefix=".aprovando-", dir=pasta_ap)  # nome com ponto: a rota de mídia não serve
     try:
-        arquivos = []
-        for a in s["arquivos"]:
+        arquivos, export = [], []
+        for a in s["arquivos"] + s.get("export", []):
             n, sha = _copiar(os.path.join(p, *a["c"].split("/")), os.path.join(tmp, a["nome"]))
-            arquivos.append({"nome": a["nome"], "origem": a["c"], "bytes": n, "sha256": sha})
+            (export if a in s.get("export", []) else arquivos).append(
+                {"nome": a["nome"], "origem": a["c"], "bytes": n, "sha256": sha})
         if selo.assinatura(p) != antes:  # algo mudou na pasta durante a cópia: não aprova o que não foi conferido
             raise OSError("a peça mudou durante a aprovação")
         params = e.get("params") or {}
@@ -304,6 +341,10 @@ def aprovar(ctx, dados):
                      else FORMATO_VIDEO % params.get("duracao"),
                      "legenda": _so_a_legenda(copy) if copy else None, "copy": copy, "selo": _texto_selo(s),
                      "arquivos": arquivos, "aprovado_em": _agora()}
+        if selo.tipo(e["acao"]) == "anuncio":  # textos já conferidos pelo selo; nada foi publicado
+            plat = params.get("plataforma")
+            manifesto.update(plataforma=PLATAFORMAS[plat][1], formato="anúncio %s" % plat, textos=s["textos"],
+                             export=export, experimental=plat == "meta", publicado=False)
         with open(os.path.join(tmp, "manifesto.json"), "x", encoding="utf-8") as f:  # por último
             json.dump(manifesto, f, ensure_ascii=False, indent=1)
         os.replace(tmp, destino)  # pasta com o mesmo nome já existe: falha (POSIX e Windows)

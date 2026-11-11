@@ -84,7 +84,8 @@ export interface BlocoGaleria {
   itens: { arquivo: string; rotulo?: string; selo?: { texto: string; tom: Tom } }[];
   vazio?: string;
 }
-/** Uma imagem, ou um vídeo com controles (decidido pela extensão de `arquivo`). */
+/** Uma imagem, ou um vídeo com controles (decidido pela extensão de `arquivo`). `.csv`: só um link de download,
+ *  servido como anexo e só de pasta que o módulo lista em INFO["baixar"]. */
 export interface BlocoMidia {
   tipo: 'midia';
   titulo?: string;

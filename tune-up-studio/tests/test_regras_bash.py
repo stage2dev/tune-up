@@ -44,6 +44,9 @@ ALLOWED = [
     PY + "video_ou_reserva.py --source fonte --slides slides --out video.mp4",
     PY + "fontes.py",
     PY + "fontes.py --trabalho " + WORK,
+    PY + "anuncio.py --plano google",
+    PY + "anuncio.py --exportar " + WORK + " --plataforma meta",
+    PY + "anuncio.py --final " + WORK + " --plataforma google --out final.json",
 ]
 
 DENIED = [
@@ -88,6 +91,8 @@ DENIED = [
     PY + "qa_video.py --out /tmp/qa.json",
     PY + "outro.py",
     PY + "fontes.py --trabalho /tmp/outro",
+    PY + "anuncio.py --exportar /tmp/outro --plataforma google",
+    "python3 -I " + WORK + "/tune-up-studio/scripts/anuncio.py --plano google",
     PY + "fontes.py 'system-ui, sans-serif'",
     "python3 -I " + WORK + "/tune-up-studio/scripts/fontes.py",
     PY + "qa_video.py --source fonte --video v.mp4 --check-json c.json --ffprobe python3",

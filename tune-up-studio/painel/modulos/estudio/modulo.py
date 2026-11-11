@@ -29,6 +29,7 @@ except ImportError:
 
 PECA = {"trabalho": "texto", "confirmar": "booleano"}
 INFO = {"id": "estudio", "titulo": "Estúdio", "icone": "clapperboard", "midia": ["trabalhos", "aprovados"],
+        "baixar": ["aprovados"],  # a planilha do anúncio (.csv) sai como download, só depois de aprovada
         "acoes": ["preparar", "marca.aprovar", "marca.editar", "marca.redescobrir", "peca.aprovar", "peca.recusar"],
         "esquemas": {"preparar": {"confirmar": "booleano"}, "marca.aprovar": {"confirmar": "booleano", "sha256": "texto"},
                      "marca.editar": {"campo": "texto", "valor": "texto"}, "marca.redescobrir": {"confirmar": "booleano"},
@@ -80,7 +81,7 @@ def montar(ctx):
                  {"id": "novo", "titulo": "3. Novo", "blocos": telas.aba_novo(ctx, aprovada, pronto)},
                  {"id": "fila", "titulo": "Fila", "blocos": pecas.aba_fila(lista)},
                  {"id": "galeria", "titulo": "Galeria", "blocos": pecas.aba_galeria(lista)},
-                 {"id": "aprovacao", "titulo": "Aprovação", "blocos": pecas.aba_aprovacao(lista)}]
+                 {"id": "aprovacao", "titulo": "Aprovação", "blocos": pecas.aba_aprovacao(lista, ctx)}]
     return r
 
 

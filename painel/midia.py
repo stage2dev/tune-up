@@ -6,7 +6,8 @@ O módulo declara INFO["midia"] = "pasta" (relativa ao <dados> do módulo) ou um
   invertida, byte nulo, caminho absoluto ou letra de unidade;
 - o caminho real (realpath) tem de ficar dentro da pasta real, que fica dentro de <dados>;
 - abre com O_NOFOLLOW (onde existe) e confere com fstat que é arquivo comum;
-- só png, jpg/jpeg, webp, mp4 e webm;
+- só png, jpg/jpeg, webp, mp4 e webm; .csv só dentro de uma pasta que o módulo lista em INFO["baixar"]
+  (sempre um nome de INFO["midia"]) e sai como download (text/csv + Content-Disposition: attachment);
 - Range: um intervalo dá 206 com Content-Range; fora do arquivo dá 416; sintaxe que não
   entendemos ou vários intervalos dão 200 com o arquivo inteiro (RFC 9110 deixa ignorar).
 O arquivo vai em blocos, nunca inteiro na memória. Python 3.9, só biblioteca padrão.
@@ -19,6 +20,8 @@ import modulos
 
 TIPOS = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp",
          ".mp4": "video/mp4", ".webm": "video/webm"}
+BAIXAR = {".csv": "text/csv; charset=utf-8"}  # nunca mostrado no navegador: sai como anexo
+RE_NOME_ANEXO = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$")
 BLOCO = 64 * 1024
 MAX_C = 400
 RE_RANGE = re.compile(r"^bytes=(\d{0,18})-(\d{0,18})$")
@@ -27,12 +30,14 @@ RE_RANGE = re.compile(r"^bytes=(\d{0,18})-(\d{0,18})$")
 class Aberto:
     """Arquivo pronto para enviar: codigo (200/206), tipo, inicio, tamanho do trecho, total."""
 
-    def __init__(self, f, codigo, tipo, inicio, tamanho, total):
+    def __init__(self, f, codigo, tipo, inicio, tamanho, total, anexo=None):
         self.f, self.codigo, self.tipo = f, codigo, tipo
-        self.inicio, self.tamanho, self.total = inicio, tamanho, total
+        self.inicio, self.tamanho, self.total, self.anexo = inicio, tamanho, total, anexo
 
     def cabecalhos(self):
         cab = {"Accept-Ranges": "bytes"}
+        if self.anexo:
+            cab["Content-Disposition"] = 'attachment; filename="%s"' % self.anexo
         if self.codigo == 206:
             cab["Content-Range"] = "bytes %d-%d/%d" % (self.inicio, self.inicio + self.tamanho - 1, self.total)
         return cab
@@ -90,6 +95,18 @@ def pasta_do_modulo(cfg, mid, c=None):
     return pasta, partes_c
 
 
+def _baixavel(cfg, mid, c):
+    """True se `c` começa por uma pasta de INFO["baixar"] (lista de nomes de pasta de mídia)."""
+    decl = getattr(modulos.carregar(cfg, mid), "INFO", None)
+    decl = decl.get("baixar") if isinstance(decl, dict) else None
+    partes_c = _segmentos_ok(c) or []
+    for d in decl if isinstance(decl, list) else []:
+        p = _segmentos_ok(d)
+        if p and len(partes_c) > len(p) and partes_c[:len(p)] == p:
+            return True
+    return False
+
+
 def _intervalo(valor, total):
     """(inicio, fim) inclusivo, None = arquivo inteiro, ou "416"."""
     if not valor:
@@ -118,8 +135,10 @@ def abrir(cfg, mid, c, cab_range):
     except modulos.ErroModulo as e:
         return e.codigo, {"erro": e.mensagem}, {}
     ext = os.path.splitext(partes[-1])[1].lower() if partes else ""
-    if not partes or ext not in TIPOS:
+    tipos = dict(TIPOS, **BAIXAR) if ext in BAIXAR and _baixavel(cfg, mid, c) else TIPOS
+    if not partes or ext not in tipos:
         return 404, {"erro": "Arquivo não encontrado."}, {}
+    anexo = (partes[-1] if RE_NOME_ANEXO.match(partes[-1]) else "arquivo" + ext) if ext in BAIXAR else None
     real = os.path.realpath(os.path.join(pasta, *partes))
     if not _dentro(real, pasta):
         return 404, {"erro": "Arquivo não encontrado."}, {}
@@ -141,8 +160,8 @@ def abrir(cfg, mid, c, cab_range):
             f.close()
             return 416, {"erro": "Trecho fora do arquivo."}, {"Content-Range": "bytes */%d" % total}
         if r is None:
-            return Aberto(f, 200, TIPOS[ext], 0, total, total)
-        return Aberto(f, 206, TIPOS[ext], r[0], r[1] - r[0] + 1, total)
+            return Aberto(f, 200, tipos[ext], 0, total, total, anexo)
+        return Aberto(f, 206, tipos[ext], r[0], r[1] - r[0] + 1, total, anexo)
     except BaseException:
         f.close()
         raise

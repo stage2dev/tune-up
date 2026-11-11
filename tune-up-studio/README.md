@@ -77,6 +77,9 @@ positive list that enforces this for studio actions.
 | QA still | `python3 -I scripts/qa_imagem.py --source <fonte> --png <png> --check-json check.json --out qa.json` |
 | QA reel | `python3 -I scripts/qa_video.py --source <fonte> --video <mp4> --out qa.json --sheet folha.png` |
 | reserve reel | `python3 -I scripts/video_ou_reserva.py --source <fonte> --slides <png dir> --out <mp4>` |
+| ad sizes and limits | `python3 -I scripts/anuncio.py --plano google` |
+| ad sheet (all Paused) | `python3 -I scripts/anuncio.py --exportar <work folder> --plataforma google` |
+| ad final QA | `python3 -I scripts/anuncio.py --final <work folder> --plataforma google --out final.json` |
 
 Details, the check list and the measured behavior of CSS-only animation are in
 `scripts/README.md`. Tests (no Chrome, no network): `python3 -m unittest
@@ -185,6 +188,58 @@ the check report twice and the hook refused it; the skill now says to read the
 findings from the command output. Without a session, the same steps by hand on
 the example brand: 10 s render 5.3 s wall, 15 s reserve (5 slides) 2.5 s wall,
 both QA green.
+
+### Real action `estudio.anuncio` (PROVISIONAL, 2026-11-11)
+
+One skill (`skills/anuncio`), one deterministic script (`scripts/anuncio.py`).
+The form asks for the briefing, the platform (`google` or `meta`) and the
+landing URL (the panel refuses anything that is not `https://` without spaces).
+The session makes one master image and the adaptations the platform needs
+(Google: 1.91:1 1200x628 and 1:1 1200x1200 from `google-ads-pmax-imagem`;
+Meta: 4:5 1440x1800 and 9:16 1080x1920), each rendered and checked by
+`qa_imagem.py` at its own size; writes `textos.json`; and runs
+`anuncio.py --exportar`, which checks counts, lengths, required fields and the
+URL, and only then writes the sheet. The script never judges claims: the skill
+forbids promises of results and prices that are not in the briefing. Nothing
+is published, no ad API is called, nothing is spent.
+
+- `export/google-ads-editor.csv`: one campaign row (Search), one ad group row
+  and one responsive search ad row, all `Paused`; names come from the work id.
+  No budget column is filled: set it in the Editor.
+- `export/meta-experimental.csv`: EXPERIMENTAL. Column names and status values
+  were not checked against an official Meta source; every status is `PAUSED`
+  and the image column names the master PNG. The 5-variation cap is ours, not
+  a Meta number.
+
+**The Google Ads Editor CSV format is NOT confirmed by an official source.**
+The research read the Editor help page (import only stages local drafts;
+nothing goes live until "Post"; `Status` accepts `Paused`; English headers),
+but not the exact column names, encoding or the rows a new campaign needs. The
+columns used (`Campaign`, `Campaign Status`, `Ad Group`, `Ad Group Status`,
+`Ad type`, `Status`, `Headline 1..15`, `Description 1..4`, `Path 1..2`,
+`Final URL`) are an assumption. Criterion C12 (the owner imports the CSV in
+the Editor and sees a paused draft) **depends on the owner's test**.
+
+The server seal re-checks every piece at its planned size, the texts against
+the limits and the URL the owner typed, and that the sheet is byte for byte
+the one `anuncio.py` makes from `textos.json` (so it is all `Paused`). Approval
+copies the PNGs and the sheet; `manifesto.json` lists the sheet under
+`export` with its sha256, plus the texts, `experimental` and
+`publicado: false`. The Approval tab shows the texts before approving and,
+once approved, a download link: the media route serves `.csv` only from
+`aprovados/` (the module's `INFO["baixar"]`) as `text/csv` with
+`Content-Disposition: attachment`.
+
+Measured by `painel/tests_reais/prova_anuncio_bg.py` (same harness as the
+post), model **opus**, Google, one run, one machine (macOS):
+
+| piece | wall clock | turns | tokens (input / cache creation / cache read / output) | QA final line | fix rounds |
+| --- | --- | --- | --- | --- | --- |
+| ad, Google, 2 images + 15 titles + 4 descriptions | 369 s (idle from 189 s; the harness waits for the transcript to go quiet) | 10 | 18 / 86,535 / 662,586 / 9,472 (758,611) | `PRONTO: 2 de 2 pecas verdes, textos e planilha ok` | 1 (1:1 piece) |
+
+The server seal said "Pronto para aprovar" for that run. Without a session,
+the same steps by hand: both pieces green, sheet written, approved over HTTP,
+CSV downloaded as an attachment (805 bytes) and 404 from the work folder.
 
 ## Proposed caps per action (PROVISIONAL, to be revised in Parts 5 and 6)
 

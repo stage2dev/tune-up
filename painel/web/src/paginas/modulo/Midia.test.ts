@@ -34,6 +34,17 @@ describe('arquivos de midia: logica', () => {
   });
 });
 
+describe('bloco midia com planilha', () => {
+  it('csv vira link de download pela rota, sem img nem video', () => {
+    const h = html([{ tipo: 'midia', titulo: 'Planilha', arquivo: 'aprovados/x/google-ads-editor.csv', legenda: 'Baixar a planilha' }]);
+    expect(h).toContain('href="/api/modulos/estudio/arquivo?c=aprovados%2Fx%2Fgoogle-ads-editor.csv"');
+    expect(h).toContain('download="google-ads-editor.csv"');
+    expect(h).toContain('Baixar a planilha');
+    expect(h).not.toContain('<img');
+    expect(h).not.toContain('<video');
+  });
+});
+
 describe('bloco galeria', () => {
   it('grade com miniatura pela rota, rotulo e selo', () => {
     const h = html([{ tipo: 'galeria', titulo: 'Peças', itens: [

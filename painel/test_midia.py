@@ -51,8 +51,12 @@ class TesteMidia(unittest.TestCase):
                  'INFO = {"midia": "../modulos"}\ndef montar(ctx):\n    return {}\n')
         escrever(os.path.join(pac, "modulos", "atalho", "modulo.py"),
                  'INFO = {"midia": "link"}\ndef montar(ctx):\n    return {}\n')
+        escrever(os.path.join(pac, "modulos", "planilha", "modulo.py"),
+                 'INFO = {"midia": ["rascunho", "aprovados"], "baixar": ["aprovados"]}\ndef montar(ctx):\n    return {}\n')
         escrever(os.path.join(t, ".tune-up", "painel.json"), json.dumps(
-            {"nome": "Midia", "modulos": ["galeria", "sem_midia", "sobe", "atalho"]}))
+            {"nome": "Midia", "modulos": ["galeria", "sem_midia", "sobe", "atalho", "planilha"]}))
+        for pasta in ("rascunho", "aprovados", "pecas"):
+            escrever(os.path.join(pac, "dados", pasta, "x", "google-ads-editor.csv"), "Campaign,Status\r\nA,Paused\r\n")
         pecas = os.path.join(pac, "dados", "pecas")
         os.makedirs(os.path.join(pecas, "sub"))
         for nome, dado in (("v.mp4", VIDEO), ("a.png", b"\x89PNG-falso"), ("sub/b.webm", b"webm"),
@@ -86,6 +90,21 @@ class TesteMidia(unittest.TestCase):
         if rng is not None:
             cab["Range"] = rng
         return self.pedir(metodo, "/api/modulos/%s/arquivo?c=%s" % (mid, c), cab=cab)
+
+    # ---- planilha .csv: só de pasta em INFO["baixar"], como anexo
+    def test_csv_de_aprovados_sai_como_anexo_text_csv(self):
+        st, cab, dados = self.arq("aprovados/x/google-ads-editor.csv", mid="planilha")
+        self.assertEqual((st, dados), (200, b"Campaign,Status\r\nA,Paused\r\n"))
+        self.assertEqual(cab["content-type"], "text/csv; charset=utf-8")
+        self.assertEqual(cab["content-disposition"], 'attachment; filename="google-ads-editor.csv"')
+        self.assertEqual(cab["x-content-type-options"], "nosniff")
+
+    def test_csv_fora_de_baixar_ou_sem_declaracao_404(self):
+        self.assertEqual(self.arq("rascunho/x/google-ads-editor.csv", mid="planilha")[0], 404)  # mídia, não baixar
+        self.assertEqual(self.arq("x/google-ads-editor.csv")[0], 404)  # módulo sem "baixar"
+        self.assertEqual(self.arq("aprovados/x/../x/google-ads-editor.csv", mid="planilha")[0], 404)
+        st, cab, _ = self.arq("aprovados/x/a.png", mid="planilha")  # outra extensão segue a regra de mídia
+        self.assertEqual(st, 404)
 
     # ---- C10: caminho
     def test_c10_ponto_ponto_404(self):

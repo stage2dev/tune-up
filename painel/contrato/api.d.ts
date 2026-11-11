@@ -150,6 +150,7 @@ export interface ParamAcao {
   opcoes?: string[]; // só em 'escolha'
   max?: number; // só em 'texto' (padrão 500, teto 2000; com `linhas`, teto 6000)
   linhas?: boolean; // só em 'texto': true aceita quebra de linha (caixa grande na tela)
+  formato?: 'url'; // só em 'texto' sem linhas: o servidor exige https:// sem espaço
   ajuda?: string;
 }
 
