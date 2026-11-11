@@ -6,7 +6,8 @@ ficar dentro de <pacote>/modulos/<id>/ (atalho para fora é recusado). O módulo
 expõe INFO = {"id","titulo","icone"} e montar(ctx) -> dict; ctx = {"raiz",
 "pacote","dados","config","hoje"}. montar() roda com tempo limite, exceção vira
 erro só daquele módulo e a resposta passa por uma conferência mínima de forma.
-Opcional: INFO["acoes"] (lista de nomes) + agir(ctx, acao, dados) -> dict, e INFO["negar"]
+Opcional: INFO["acoes"] (lista de nomes) + agir(ctx, acao, dados) -> dict, INFO["esquemas"]
+({acao: {campo: tipo}}: campo fora do esquema ou de outro tipo dá 400) e INFO["negar"]
 (regras de permissão negadas em toda sessão que o painel dispara).
 Os arquivos irmãos do módulo são importados isolados (ver _importar): nome igual a\num do núcleo ou de outro módulo não vaza.
 Python 3.9, só biblioteca padrão.
@@ -20,6 +21,7 @@ import sys
 import threading
 import time
 
+import dono
 import modulos_plugin
 import travas
 
@@ -315,6 +317,28 @@ def _rodar_agir(mod, ctx, mid, acao, dados, tempo):
     return caixa.get("dado")
 
 
+TIPOS_ESQUEMA = {"texto": lambda v: isinstance(v, str) and len(v) <= 2000,
+                 "booleano": lambda v: isinstance(v, bool),
+                 "numero": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and v == v
+                 and abs(v) != float("inf")}
+
+
+def _conferir_esquema(i, mid, acao, dados):
+    """INFO["esquemas"][acao] = {campo: tipo}. Sem esquema para a ação, `dados` passa intacto.
+    Os textos de erro não ecoam nome nem valor de campo (vêm do que foi digitado)."""
+    esquemas = i.get("esquemas") if isinstance(i, dict) else None
+    if esquemas is None or (isinstance(esquemas, dict) and acao not in esquemas):
+        return
+    esquema = esquemas.get(acao) if isinstance(esquemas, dict) else None
+    if not isinstance(esquema, dict) or not all(isinstance(k, str) and t in TIPOS_ESQUEMA
+                                                for k, t in esquema.items()):
+        raise ErroModulo(500, "Esta tela está incompleta.", ["modulo %s: INFO[\"esquemas\"] inválido" % mid])
+    if any(k not in esquema for k in dados):
+        raise ErroModulo(400, "A ação recebeu um campo que não conhece.")
+    if not all(TIPOS_ESQUEMA[esquema[k]](v) for k, v in dados.items()):
+        raise ErroModulo(400, "A ação recebeu um campo com valor do tipo errado.")
+
+
 def agir(cfg, mid, acao, dados, tempo=TEMPO_LIMITE):
     """(código, corpo) de POST /api/modulos/<id>/acao. `dados` vai intacto para agir()."""
     try:
@@ -328,7 +352,11 @@ def agir(cfg, mid, acao, dados, tempo=TEMPO_LIMITE):
             raise ErroModulo(400, "Esta tela não tem essa ação.")
         if not isinstance(dados, dict):
             raise ErroModulo(400, "Os dados da ação precisam ser um objeto.")
-        resultado = _rodar_agir(mod, contexto(cfg), mid, acao, dados, tempo)  # já apagou o cache
+        _conferir_esquema(i, mid, acao, dados)
+        # aprovação do dono (dono.py): só um comando grava, nunca montar() nem a sessão
+        ctx = dict(contexto(cfg), ler_dono=lambda: dono.ler(cfg, mid),
+                   gravar_dono=lambda chave, valor: dono.gravar(cfg, mid, chave, valor))
+        resultado = _rodar_agir(mod, ctx, mid, acao, dados, tempo)  # já apagou o cache
     except ErroModulo as e:
         return e.codigo, e.corpo()
     try:  # a ação já aconteceu: resposta estranha vira 200 com aviso, para ninguém repetir
@@ -373,6 +401,16 @@ def negar_dos_modulos(cfg):
             avisos.append("módulo %s com problema; nenhuma ação roda até corrigir ou desligar: %s"
                           % (mid, "; ".join(e.avisos) or e.mensagem))
     return regras, avisos
+
+
+def antes_de_disparar(cfg, acao, tempo=None):
+    """Conferência dos módulos antes de uma sessão sair: o `requer` da ação (aprovação do dono,
+    dono.py; falta dá ErroModulo(409)) e depois as regras de negar (lista)."""
+    falta = dono.faltando(cfg, acao.get("_requer") or [])
+    if falta:
+        raise ErroModulo(409, "Esta ação precisa da aprovação do dono antes (%s). Aprove na tela do módulo."
+                         % ", ".join(falta))
+    return regras_de_negar(cfg, tempo)
 
 
 def regras_de_negar(cfg, tempo=None):

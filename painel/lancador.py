@@ -278,8 +278,8 @@ class Lancador:
         if not prompt or prompt.startswith("-"):
             raise ErroAcao("O pedido ficou vazio.")
         chave = json.dumps(valores, sort_keys=True, ensure_ascii=False)
-        try:  # INFO["negar"] dos módulos vale em toda ação; lido antes das travas, com tempo limite
-            extra = modulos.regras_de_negar(self.cfg)
+        try:  # `requer` (aprovação do dono) e INFO["negar"] dos módulos; antes das travas, com tempo limite
+            extra = modulos.antes_de_disparar(self.cfg, acao)
         except modulos.ErroModulo as e:  # módulo que não carrega: fecha, não dispara sem as regras
             raise ErroAcao(e.mensagem, e.codigo)
         if extra:

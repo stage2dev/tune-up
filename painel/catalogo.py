@@ -9,6 +9,7 @@ import json
 import os
 import re
 
+import dono
 import sandbox
 import teto
 from travas import validar_travas
@@ -128,6 +129,10 @@ def validar_acao(a):
         caixa = sandbox.validar(a)
     except ValueError as e:
         raise ValueError("ação %s: %s" % (a["id"], e))
+    try:
+        requer = dono.validar_requer(a.get("requer"))
+    except ValueError as e:
+        raise ValueError("ação %s: %s" % (a["id"], e))
     equipe = a.get("equipe") if isinstance(a.get("equipe"), str) else ""
     if RE_CONTROLE.search(equipe):
         raise ValueError("ação %s: equipe com caractere de controle" % a["id"])
@@ -137,6 +142,7 @@ def validar_acao(a):
             "confirmar": bool(a.get("confirmar")) or a["risco"] in ("codigo", "credito"),
             "params": params, "modelos": _modelos(a), "esforco": esforco, "equipe": equipe.strip()[:60],
             "_prompt": prompt.strip(), "_nome": nome_sessao, "_travas": trv, "_substitui": a.get("substitui") is True,
+            "_requer": requer,  # pré-condição: aprovação do dono (dono.py), conferida ao disparar
             **tetos, **caixa}
 
 
