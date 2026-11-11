@@ -15,7 +15,7 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(AQUI))
 
 from servico import banco, cerebro, chave, openai_cliente, pasta, precos  # noqa: E402
-from testes.openai_falsa import OpenAIFalsa, erro, resposta_ferramenta, resposta_texto  # noqa: E402
+from testes.openai_falsa import OpenAIFalsa, erro, escrever_oferta, resposta_ferramenta, resposta_texto  # noqa: E402
 
 CHAVE = "sk-test-" + "A1b2C3d4E5f6G7h8J9k0" + "WXYZ"
 
@@ -36,6 +36,7 @@ class Base(unittest.TestCase):
         chave.gravar(self.pasta, CHAVE)
         banco.gravar_config(self.con, "ia_modelo", "gpt-4o-mini")
         self.cerebro = cerebro.Cerebro(self.pasta, self.projeto, self.falsa.url, tempo=0.5)
+        escrever_oferta(self.projeto)
 
     def links(self, dado):
         os.makedirs(os.path.dirname(cerebro.caminho_links(self.projeto)), exist_ok=True)
@@ -115,7 +116,7 @@ class TesteFerramentas(Base):
     def test_links_no_pacote_do_projeto(self):
         self.assertEqual(cerebro.caminho_links(self.projeto), os.path.join(
             self.projeto, ".tune-up", "painel-projeto", "vendas", "links.json"))
-        os.makedirs(os.path.join(self.projeto, ".tune-up"))
+        os.makedirs(os.path.join(self.projeto, ".tune-up"), exist_ok=True)
         with open(os.path.join(self.projeto, ".tune-up", "painel.json"), "w", encoding="utf-8") as f:
             json.dump({"pacote": "meu-pacote"}, f)
         self.links({"site": "https://exemplo.test/a"})

@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(AQUI))
 from servico import atendente, banco, cerebro, chave, pasta, portao, recebimento  # noqa: E402
 from servico.conectores import evolution  # noqa: E402
 from servico.conectores.falso import ConectorFalso  # noqa: E402
-from testes.openai_falsa import OpenAIFalsa, resposta_texto  # noqa: E402
+from testes.openai_falsa import OpenAIFalsa, escrever_oferta, resposta_texto  # noqa: E402
 
 INST = "loja"
 LEAD = "5511900000001"
@@ -42,6 +42,7 @@ class Base(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp, True)
         projeto = os.path.join(self.tmp, "projeto")
         os.makedirs(projeto)
+        escrever_oferta(projeto)
         self.pasta = pasta.pasta_de_dados(projeto, base=os.path.join(self.tmp, "dados"))
         self.con = banco.abrir(self.pasta)
         self.addCleanup(self.con.close)
@@ -135,7 +136,8 @@ class TesteInjecao(Base):
         self.assertTrue(self.esperar(lambda: len(self.c.entregues) == 1))
         mensagens = self.falsa.chamadas_chat()[0]["corpo"]["messages"]
         sistema = [m["content"] for m in mensagens if m["role"] == "system"]
-        self.assertEqual(sistema, [cerebro.SISTEMA])
+        self.assertEqual(len(sistema), 1)
+        self.assertTrue(sistema[0].startswith(cerebro.SISTEMA))  # regras fixas + conhecimento do projeto
         self.assertNotIn("Ignore previous", sistema[0])
         usuario = [m["content"] for m in mensagens if m["role"] == "user"]
         self.assertEqual(usuario, ["%s\n%s\n%s" % (atendente.ABRE, INJECAO, atendente.FECHA)])

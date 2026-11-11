@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(AQUI))
 
 from servico import banco, cerebro, chave, pasta, portao, saida  # noqa: E402
 from servico.conectores.falso import ConectorFalso  # noqa: E402
-from testes.openai_falsa import OpenAIFalsa, resposta_texto  # noqa: E402
+from testes.openai_falsa import OpenAIFalsa, escrever_oferta, resposta_texto  # noqa: E402
 from testes.test_atendente import Base as BaseAtendente  # noqa: E402
 
 INST = "loja"
@@ -38,6 +38,7 @@ class Base(unittest.TestCase):
         banco.gravar_config(self.con, "ia_modelo", "gpt-4o-mini")
         self.falsa = OpenAIFalsa()
         self.addCleanup(self.falsa.fechar)
+        escrever_oferta(projeto)
         self.cerebro = cerebro.Cerebro(self.pasta, projeto, self.falsa.url, tempo=5)
         self.c = ConectorFalso()
         self.conversa = banco.abrir_conversa(self.con, banco.salvar_contato(self.con, LEAD))

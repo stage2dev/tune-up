@@ -2,7 +2,7 @@
 a chave da OpenAI e salvar modelo + teto diário. Nenhuma resposta leva a chave: só 'configurada' e os 4 últimos."""
 import re
 
-from servico import banco, chave, cerebro, openai_cliente, precos
+from servico import banco, chave, cerebro, conhecimento, openai_cliente, precos
 
 ROTA = re.compile(r"^/ia(?:/(modelos|chave|chave/apagar|config))?$")
 MODELO = re.compile(r"^[A-Za-z0-9._:/-]{1,100}$")
@@ -13,9 +13,13 @@ def estado(app, con):
     modelo = banco.ler_config(con, "ia_modelo")
     tab = precos.tabela(app.pasta_dados)
     _, conhecido = precos.preco(tab, modelo) if modelo else (None, True)
+    saber = conhecimento.ler(app.raiz) if app.raiz else None
     return {"chave": chave.estado(app.pasta_dados), "modelo": modelo, "sugestao": cerebro.SUGESTAO_MODELO,
             "teto_usd": precos.ler_teto(con), "gasto_hoje_usd": round(precos.gasto_hoje(con), 6),
-            "preco_conhecido": conhecido}
+            "preco_conhecido": conhecido,
+            "conhecimento": None if saber is None else {
+                "oferta": bool(saber["oferta"]), "tom": bool(saber["tom"]), "metodos": bool(saber["metodos"]),
+                "links": len(cerebro.ler_links(app.raiz)), "avisos": saber["avisos"]}}
 
 
 def _config(con, corpo):

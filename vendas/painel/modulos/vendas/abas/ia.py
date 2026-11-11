@@ -43,6 +43,20 @@ def blocos(estado, modelos, aviso):
         saida.append({"tipo": "texto", "titulo": "Preço do modelo desconhecido",
                       "texto": "O modelo %s não está na tabela de preços. O gasto é contado pelo preço da entrada "
                                "mais cara da tabela (precos.json na pasta de dados)." % modelo})
+    saber = estado.get("conhecimento")
+    if saber:
+        sim = lambda ok, falta: ("ok" if ok else falta)  # noqa: E731
+        saida.append({"tipo": "kpis", "titulo": "O que a IA sabe", "itens": [
+            {"rotulo": "oferta.md", "valor": sim(saber.get("oferta"), "falta: a IA fica desligada"),
+             "tom": "bom" if saber.get("oferta") else "atencao"},
+            {"rotulo": "tom.md", "valor": sim(saber.get("tom"), "não tem: tom natural e direto")},
+            {"rotulo": "links.json", "valor": "%d link(s)" % saber.get("links", 0) if saber.get("links")
+             else "não tem: a IA não manda link"},
+            {"rotulo": "Métodos de venda", "valor": sim(saber.get("metodos"), "não achei o arquivo do plugin")}]})
+        if saber.get("avisos"):
+            saida.append({"tipo": "texto", "titulo": "Atenção nos arquivos da IA",
+                          "texto": "\n".join(saber["avisos"]) + "\nOs arquivos ficam em .tune-up/<pacote>/vendas/ "
+                                   "(copie os exemplos da pasta conhecimento/exemplos do plugin)."})
     if aviso:
         saida.append({"tipo": "texto", "titulo": "Lista de modelos", "texto": aviso})
     saida.append({"tipo": "formulario", "id": "ia_chave", "titulo": "Trocar a chave da OpenAI" if k.get(

@@ -81,6 +81,7 @@ def conferir_segredo(con, segredo, novo=False):
 
 class App:
     """Estado do serviço que o handler usa: porta, origem do painel, token, segredo e o gancho do webhook."""
+    raiz = None  # raiz do projeto: a subida do serviço põe; sem ela a aba IA não lê oferta.md
     openai_url = openai_cliente.URL_PADRAO  # só a subida do serviço troca (testes), nunca um pedido
 
     def __init__(self, pasta_dados, porta, painel, token, segredo, despachar=guardar_evento, conector=None):

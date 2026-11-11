@@ -97,6 +97,7 @@ def rodar(args, avisar=print):
         app = rotas.App(pasta_dados, args.porta, painel, token, segredo)
         app.despachar = recebimento.Recebimento(lambda: app.conector)
         app.openai_url = args.openai_url
+        app.raiz = raiz
         try:
             servidor = rotas.criar_servidor(app, args.porta)
         except OSError as e:

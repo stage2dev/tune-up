@@ -1,9 +1,19 @@
 """OpenAI FALSA em 127.0.0.1 para os testes: guarda cada pedido (caminho, cabeçalhos, corpo) e responde da fila
 (código, corpo) ou dorme além do tempo limite do cliente. Nunca fala com a rede de verdade."""
 import json
+import os
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+
+def escrever_oferta(projeto, texto="Curso de teste por R$ 100."):
+    """Sem oferta.md a IA fica desligada: os testes do cérebro precisam de uma."""
+    from servico import conhecimento
+    pasta = conhecimento.pasta_vendas(projeto)
+    os.makedirs(pasta, exist_ok=True)
+    with open(os.path.join(pasta, "oferta.md"), "w", encoding="utf-8") as f:
+        f.write(texto)
 
 
 def resposta_texto(texto, entrada=1000, saida=500):
