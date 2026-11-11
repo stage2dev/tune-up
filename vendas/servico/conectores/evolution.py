@@ -144,6 +144,12 @@ class Evolution(base.Conector):
         return _id_externo(self._pedir("POST", self._caminho("message", "sendWhatsAppAudio", instancia),
                                        {"number": numero, "audio": audio}, envio=True))
 
+    def digitando(self, instancia, telefone, ms):
+        base.validar_instancia(instancia)
+        self._pedir("POST", self._caminho("chat", "sendPresence", instancia),
+                    {"number": _numero(telefone), "presence": "composing", "delay": int(ms)})
+        return True
+
     def traduzir_evento(self, corpo):
         return traduzir(corpo)
 

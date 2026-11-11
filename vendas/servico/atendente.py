@@ -11,8 +11,8 @@
 - Filtro de injeção (regex): acerto grava evento e marca "precisa de você", mas a IA ainda responde a partir do dado.
   Limite: a regex só pega frases conhecidas; o que ela não pega depende do modelo respeitar o delimitador.
 - Nenhuma transação de escrita fica aberta durante a rede: a mensagem já foi gravada e commitada pelo recebimento;
-  aqui só há leituras e escritas curtas em autocommit; o envio sai pelo portão (origem 'ia'), que reconfere opt-out,
-  pausa, modo humano e tetos NA HORA DE ENVIAR.
+  aqui só há leituras e escritas curtas em autocommit; o envio passa por servico/saida.py (sanitizador, anti-loop,
+  balões) e sai pelo portão (origem 'ia'), que reconfere opt-out, pausa, modo humano e tetos NA HORA DE ENVIAR.
 - Não responde: modo humano, pausada, opt-out, entrada confiável mais nova que o gatilho, rodada sem gatilho.
   Grupo, fromMe, mídia e mensagem velha nem chegam aqui (o recebimento não chama o gancho).
 - parar(): as esperas acabam sem responder e as threads terminam (join com tempo limite)."""
@@ -23,7 +23,7 @@ import sys
 import threading
 import time
 
-from servico import banco, cerebro, portao
+from servico import banco, cerebro, chave, saida
 
 UTC = datetime.timezone.utc
 ESPERA_S = 12
@@ -147,7 +147,7 @@ class Atendente:
                 self._threads.discard(threading.current_thread())
 
     def responder(self, conversa_id, gatilho_id, agora=None):
-        """Uma rodada (com a trava da conversa já pega). Devolve o resultado do portão ou None."""
+        """Uma rodada (com a trava da conversa já pega). Devolve o resultado de saida.entregar ou None."""
         con = self.abrir()
         try:
             return self._responder(con, conversa_id, gatilho_id, agora or datetime.datetime.now(UTC))
@@ -174,5 +174,7 @@ class Atendente:
         if not r["texto"]:
             return None
         texto = "\n".join([r["texto"]] + [u for u in r["links"] if u not in r["texto"]])
-        return portao.enviar_ia(con, conector, instancia, conversa["telefone"], texto, conversa_id,
-                                gatilho["id_externo"], 1)
+        return saida.entregar(con, conector, instancia, conversa["telefone"], conversa_id, gatilho["id_externo"],
+                              texto, permitidos=list(cerebro.ler_links(self.cerebro.raiz).values()),
+                              segredos=[chave.ler(self.cerebro.pasta_dados)],
+                              reescrever=lambda t, pedido: self.cerebro.reescrever(con, t, pedido))

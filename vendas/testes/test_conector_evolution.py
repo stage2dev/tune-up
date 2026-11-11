@@ -143,6 +143,11 @@ class TestEvolution(unittest.TestCase):
         self.assertEqual(self.con.enviar_texto("loja", "+55 11 90000-0001", "oi"), "ABC123")
         self.assertEqual(self.pedidos[0]["corpo"], {"number": "5511900000001", "text": "oi"})
 
+    def test_digitando_manda_presenca_composing(self):
+        self.resp[("POST", "/chat/sendPresence/loja")] = (201, {})
+        self.assertTrue(self.con.digitando("loja", "+55 11 90000-0001", 1200))
+        self.assertEqual(self.pedidos[0]["corpo"], {"number": "5511900000001", "presence": "composing", "delay": 1200})
+
     def test_enviar_audio_manda_base64_e_devolve_id(self):
         self.resp[("POST", "/message/sendWhatsAppAudio/loja")] = (201, {"key": {"id": "AUD1"}})
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as arq:

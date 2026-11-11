@@ -61,6 +61,11 @@ class Conector:
         """Devolve o id externo da mensagem. Erros: NaoEnviado ou EnvioIncerto."""
         raise NotImplementedError
 
+    def digitando(self, instancia, telefone, ms):
+        """Opcional: presença "digitando" por ms antes de um balão. False = o conector não suporta. Erro aqui
+        nunca impede o envio (quem chama ignora)."""
+        return False
+
     def traduzir_evento(self, corpo):
         raise NotImplementedError
 

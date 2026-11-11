@@ -12,6 +12,7 @@ MODOS = ("ok", "recusar", "aceitar_e_cair", "timeout")
 class ConectorFalso(base.Conector):
     def __init__(self, modo_envio="ok", estado_atual="desconectado", qr_atual=None):
         self.modo_envio = modo_envio
+        self.digitando_falha = False   # True: digitando() levanta (a presença nunca pode impedir o envio)
         self.estado_atual = estado_atual
         self.qr_atual = qr_atual
         self.chamadas = []    # (nome, argumentos) de toda chamada, na ordem
@@ -58,6 +59,12 @@ class ConectorFalso(base.Conector):
 
     def enviar_audio(self, instancia, telefone, caminho_ogg):
         return self._enviar("enviar_audio", instancia, telefone, "audio", caminho_ogg)
+
+    def digitando(self, instancia, telefone, ms):
+        self._anotar("digitando", instancia, telefone, ms)
+        if self.digitando_falha:
+            raise base.NaoEnviado("presença recusada pelo falso", 500)
+        return True
 
     def traduzir_evento(self, corpo):
         self._anotar("traduzir_evento", corpo)

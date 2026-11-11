@@ -137,6 +137,28 @@ class Cerebro:
                                   "content": json.dumps(saida, ensure_ascii=False)})
         return self._parar(con, conversa_id, r, "rodadas")
 
+    def reescrever(self, con, texto, pedido):
+        """UMA chamada SEM ferramentas pedindo outra versão do rascunho. Texto novo ou None (sem chave/modelo, teto,
+        erro, resposta inválida). Não marca nada: quem chama (servico/saida.py) decide."""
+        segredo, modelo = chave.ler(self.pasta_dados), banco.ler_config(con, "ia_modelo")
+        if not segredo or not modelo or precos.no_teto(con):
+            return None
+        corpo = {"model": modelo, "messages": [{"role": "system", "content": SISTEMA + " " + pedido},
+                                               {"role": "user", "content": "Rascunho a reescrever:\n" + texto}]}
+        try:
+            resposta = openai_cliente.pedir(self.base, segredo, "POST", "/v1/chat/completions", corpo, self.tempo)
+        except openai_cliente.ErroOpenAI:
+            return None
+        custo = precos.custo_usd(precos.tabela(self.pasta_dados), modelo,
+                                 resposta.get("usage") if isinstance(resposta, dict) else None)
+        if custo is not None:
+            precos.somar(con, custo)
+        try:
+            novo = resposta["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError):
+            return None
+        return novo.strip() if custo is not None and isinstance(novo, str) and novo.strip() else None
+
     def _parar(self, con, conversa_id, r, motivo):
         marcar_precisa_de_voce(con, conversa_id, motivo)
         r.update({"texto": None, "links": [], "precisa_de_voce": True, "motivo": motivo})
