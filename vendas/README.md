@@ -104,6 +104,14 @@ python3 -B <plugin folder>/servico/evolution_local.py preparar --projeto <projec
 
 **Linux limitation:** the compose maps `host.docker.internal` to the host gateway (`host-gateway`), but on Linux that is the Docker bridge address, and the service listens on `127.0.0.1` only, so the webhook may not reach it. This first release targets macOS only (the compose file was validated with `docker compose config` on macOS with colima; delivery from a running container to the service was not tested end to end). On Linux, the webhook path is not supported yet.
 
+## Conversations: no history import (decision)
+
+The module does **not** import the WhatsApp history or the existing chat list when the number is connected. Only messages that arrive after the instance is connected appear in Conversas. Reasons: privacy (the phone holds personal chats that have nothing to do with sales) and load (a history sync can bring tens of thousands of messages). An empty Conversas list right after reading the QR code is expected; send a message to the number to see it appear.
+
+- The instance is created with `syncFullHistory: false` in `POST /instance/create` (Evolution API v2 setting), and the webhook only subscribes to `MESSAGES_UPSERT`, `SEND_MESSAGE`, `CONNECTION_UPDATE` and `QRCODE_UPDATED` (not `MESSAGES_SET`, the history batch event).
+- A lead's WhatsApp profile name (`pushName`) is kept as `nome_whatsapp` and shown only when the contact has no name from the CSV import; the profile name on the owner's own messages is never stored on the lead.
+- Unread = incoming messages after the owner last opened the conversation on the screen (`POST /conversas/aberta`).
+
 ## Send gate
 
 `servico/portao.py` is the only code that calls a connector's `enviar_texto`/`enviar_audio` (a test scans the source and fails otherwise). Each origin has its own function, so the origin comes from the action, never from a request body:

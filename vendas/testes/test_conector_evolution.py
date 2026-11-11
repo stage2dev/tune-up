@@ -96,6 +96,8 @@ class TestEvolution(unittest.TestCase):
         p = self.pedidos[0]
         self.assertEqual(p["headers"].get("apikey"), CHAVE)
         self.assertEqual(p["corpo"]["instanceName"], "loja")
+        self.assertIs(p["corpo"]["syncFullHistory"], False)   # o histórico antigo do celular não é importado
+        self.assertNotIn("MESSAGES_SET", p["corpo"]["webhook"]["events"])
         gancho = p["corpo"]["webhook"]
         self.assertEqual(gancho["url"], "http://host.docker.internal:8790/webhook/loja")
         self.assertEqual(gancho["headers"]["X-Vendas-Segredo"], SEGREDO)

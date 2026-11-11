@@ -43,7 +43,8 @@ class Conector:
     traduzir_evento(corpo) devolve uma lista de eventos normalizados:
       {"tipo_evento": "mensagem", "direcao": "recebida"|"enviada", "id_externo", "remetente" (dígitos do
        contato da conversa, ou do participante no grupo; None se só houver @lid), "fromMe", "grupo",
-       "tipo" (texto|audio|imagem|documento|outro), "texto", "timestamp" (segundos), "lid", "alternativa"}
+       "tipo" (texto|audio|imagem|documento|outro), "texto", "timestamp" (segundos), "lid", "alternativa",
+       "nome_perfil" (nome do perfil do lead; None em fromMe)}
       {"tipo_evento": "estado", "estado": um de ESTADOS}
       {"tipo_evento": "qr", "qr": data URI png}
     """

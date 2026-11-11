@@ -103,6 +103,7 @@ class Evolution(base.Conector):
         try:
             self._pedir("POST", "/instance/create", {
                 "instanceName": instancia, "integration": "WHATSAPP-BAILEYS", "qrcode": True,
+                "syncFullHistory": False,   # nada do histórico antigo do celular (privacidade e carga)
                 "webhook": self._webhook(instancia)})
         except NaoEnviado as erro:
             if erro.status not in JA_EXISTE:
@@ -271,9 +272,11 @@ def _mensagem(dados, enviada):
         momento = int(dados.get("messageTimestamp"))
     except (TypeError, ValueError):
         momento = None
+    perfil = dados.get("pushName")   # em fromMe é o nome do DONO: nunca vai para o lead
     return {"tipo_evento": "mensagem", "direcao": "enviada" if from_me else "recebida",
             "id_externo": str(chave["id"]), "remetente": remetente, "fromMe": from_me, "grupo": grupo,
-            "tipo": tipo, "texto": texto, "timestamp": momento, "lid": lid, "alternativa": alternativa}
+            "tipo": tipo, "texto": texto, "timestamp": momento, "lid": lid, "alternativa": alternativa,
+            "nome_perfil": perfil if isinstance(perfil, str) and not from_me else None}
 
 
 def traduzir(corpo):

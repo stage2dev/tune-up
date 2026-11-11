@@ -4,11 +4,13 @@ import datetime
 import os
 import re
 import sqlite3
+import unicodedata
 
 from servico import pasta, telefone
 
 ARQUIVO = "vendas.db"
 ESPERA_MS = 5000
+NOME_MAX = 60
 ESTADOS_ENVIO = ("pendente", "enviado", "falhou", "negado", "incerto")
 # estado novo -> estados de onde pode vir; 'enviado' é final (nunca volta para 'negado' ou 'falhou')
 ORIGENS_DO_ENVIO = {"pendente": ("falhou", "incerto"), "enviado": ("pendente", "incerto"),
@@ -208,6 +210,12 @@ MIGRACOES = [
     ],
     # 16: rascunho que a IA quer mandar como áudio (responder_em_audio): o áudio só é gerado na aprovação
     ["ALTER TABLE rascunhos ADD COLUMN como_audio INTEGER NOT NULL DEFAULT 0"],
+    # 17: nome do perfil do WhatsApp (o nome do CSV/dono em `nome` sempre vence) e até qual mensagem o dono já leu
+    [
+        "ALTER TABLE contatos ADD COLUMN nome_whatsapp TEXT",
+        "ALTER TABLE conversas ADD COLUMN lida_ate INTEGER",
+        "CREATE INDEX mensagens_conversa ON mensagens(conversa_id, id)",
+    ],
 ]
 VERSAO = len(MIGRACOES)
 PARECE_SEGREDO = re.compile(r"chave|senha|token|segredo|secret|key|password", re.I)
@@ -284,6 +292,19 @@ def salvar_contato(con, numero, nome=None, origem=None, base_legal=None):
                                                     agora()))
     _exigir(cur)
     return cur.lastrowid
+
+
+def guardar_nome_whatsapp(con, contato_id, nome):
+    """Nome do perfil (pushName) do lead, texto não confiável: sem caracteres de controle/formato, até NOME_MAX.
+    Só grava se o contato não tem nome do CSV/dono. Devolve True se gravou."""
+    if not isinstance(nome, str):
+        return False
+    limpo = " ".join("".join(" " if unicodedata.category(c) in ("Cc", "Cf") else c for c in nome).split())
+    if not limpo:
+        return False
+    cur = con.execute("UPDATE contatos SET nome_whatsapp = ? WHERE id = ? AND nome IS NULL",
+                      (limpo[:NOME_MAX], contato_id))
+    return cur.rowcount == 1   # 0 = o contato tem nome do CSV/dono (não é falha)
 
 
 def marcar_optout(con, numero, quando=None):

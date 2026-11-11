@@ -36,7 +36,7 @@ class TestTraducao(unittest.TestCase):
         self.assertEqual(e, {"tipo_evento": "mensagem", "direcao": "recebida", "id_externo": "M1",
                              "remetente": "5511900000001", "fromMe": False, "grupo": False, "tipo": "texto",
                              "texto": "quero saber o preço", "timestamp": 1700000000, "lid": None,
-                             "alternativa": None})
+                             "alternativa": None, "nome_perfil": "Lead"})
 
     def test_texto_estendido(self):
         e = self.um(upsert({"remoteJid": LEAD, "fromMe": False, "id": "M2"},

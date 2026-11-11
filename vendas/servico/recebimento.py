@@ -6,6 +6,8 @@ DEPOIS do commit, fora da transação.
   optout_em e manda UMA confirmação (portão, origem confirmacao_sair); a IA não é chamada. Frase que só contém a
   palavra (ou "não quero") marca "precisa de você".
 - @lid: usa remoteJidAlt/senderPn (e aprende o mapa lid -> telefone); sem alternativa nem mapa, linha em eventos.
+- Nome do perfil (pushName) do lead vira nome_whatsapp só se o contato não tem nome do CSV/dono; o de fromMe é do
+  dono e é ignorado; webhook sem segredo não grava nome.
 - Áudio, imagem e documento do lead: grava o tipo, marca "precisa de você", sem IA.
 - Mensagem com mais de 30 min: sem IA, marca "precisa de você" (a subida busca o que chegou com o serviço parado).
 - fromMe: eco de envio nosso (pelo id devolvido ou texto igual em até 5 s) nunca pausa a IA; fromMe que não casa é o
@@ -146,6 +148,8 @@ def processar(con, ev, agora, depois, confiavel=True):
     momento = _momento(ev, agora)
     if ev.get("fromMe"):
         return _de_mim(con, ev, numero, conversa_id, momento, confiavel)
+    if confiavel:   # webhook forjado não renomeia o lead
+        banco.guardar_nome_whatsapp(con, contato_id, ev.get("nome_perfil"))
     tipo = ev.get("tipo") or "outro"
     mensagem_id = banco.registrar_mensagem(con, conversa_id, "entrada", ev.get("texto"), ev["id_externo"], tipo,
                                            confiavel=confiavel)
