@@ -11,7 +11,7 @@ import os
 import secrets
 import threading
 
-from servico import banco
+from servico import banco, travas
 
 ARQUIVO = "precos.json"
 TETO_PADRAO_USD = 2.0
@@ -65,8 +65,8 @@ def arquivo_invalido(pasta_dados):
 
 
 def gravar_preco(pasta_dados, modelo, entrada, saida):
-    """Grava o preço do modelo no precos.json (temporário + os.replace). Arquivo inválido = PrecosInvalidos (não
-    apaga o que o dono escreveu à mão)."""
+    """Grava o preço do modelo no precos.json (temporário + travas.substituir). Arquivo inválido = PrecosInvalidos
+    (não apaga o que o dono escreveu à mão)."""
     if not _valor_ok(entrada) or not _valor_ok(saida):
         raise PrecosInvalidos("Preço inválido (maior que 0 e até %d dólares por 1 milhão de tokens)."
                               % PRECO_MAX_USD)
@@ -80,7 +80,7 @@ def gravar_preco(pasta_dados, modelo, entrada, saida):
         try:
             with open(temp, "w", encoding="utf-8") as f:
                 json.dump(atual, f, indent=2, sort_keys=True)
-            os.replace(temp, destino)
+            travas.substituir(temp, destino)   # no Windows tenta de novo se o arquivo está em uso
         finally:
             if os.path.exists(temp):
                 os.remove(temp)

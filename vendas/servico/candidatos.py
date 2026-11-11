@@ -53,9 +53,15 @@ def _texto(valor, limite):
     return limpo or None
 
 
-def _http(valor):
+SEM_ESQUEMA = re.compile(r"^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}(?:[/?#]|$)")  # www.empresa.com[/...]
+
+
+def _http(valor, sem_esquema=False):
+    """URL http(s) com host; `sem_esquema` (só o site): 'www.empresa.com' ganha 'https://'. False = recusada."""
     if valor is None:
         return None
+    if sem_esquema and SEM_ESQUEMA.match(valor):
+        valor = "https://" + valor
     partes = urlsplit(valor)
     return valor if partes.scheme in ("http", "https") and partes.hostname else False
 
@@ -70,7 +76,7 @@ def validar_linha(bruto):
     linha = {"nome": nome, "nicho": _texto(bruto.get("nicho"), LIMITES["nicho"]),
              "cidade": _texto(bruto.get("cidade"), LIMITES["cidade"])}
     for chave in ("site", "url_da_fonte"):
-        url = _http(_texto(bruto.get(chave), LIMITES[chave]))
+        url = _http(_texto(bruto.get(chave), LIMITES[chave]), sem_esquema=chave == "site")
         if url is False:
             raise ValueError("%s precisa ser http ou https" % chave)
         linha[chave] = url

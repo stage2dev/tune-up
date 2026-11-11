@@ -17,7 +17,12 @@ MOTIVOS = {
     "pausada_pelo_dono": "você pausou", "sem_numero_descartavel": "sem número descartável conectado",
     "modelo_invalido": "modelo da mensagem inválido", "sem_empresa": "falta o nome da empresa",
     "sem_identificacao": "a mensagem não identifica a empresa ou a origem", "sem_sair": "a mensagem não ensina a sair",
-    "fuso_invalido": "fuso do projeto inválido"}
+    "fuso_invalido": "fuso do projeto inválido", "campanha_parada": "campanha pausada antes do envio",
+    "contato_fora_da_campanha": "contato saiu da campanha antes do envio", "chave_ocupada": "já registrado antes",
+    "descartado_pelo_dono": "você marcou como não enviado", "nao_incerto": "envio já decidido",
+    "nao_reenviavel": "envio que não pode mais ser reenviado",
+    "pendente_na_subida": "o serviço reiniciou no meio do envio (pode ter saído)",
+    "sem_id_externo": "o WhatsApp não confirmou se saiu"}
 AVISO_FRIO = ("Atenção: tem contato frio (nunca recebeu nada de você ou sem consentimento). Disparo a frio viola a "
               "Política do WhatsApp Business e pode banir o número; só use um número descartável. ")
 CAMPANHAS_NA_TELA = 10
@@ -34,6 +39,10 @@ def motivo_texto(motivo):
         return ""
     if motivo.startswith("5_falhas_seguidas"):
         return "5 falhas seguidas do envio (%s)" % motivo.partition(":")[2]
+    if motivo.startswith("incerto") or motivo.startswith("erro_inesperado"):
+        return "o WhatsApp não confirmou se saiu"
+    if motivo.startswith("nao_enviado"):
+        return "o WhatsApp recusou o envio (não saiu)"
     return MOTIVOS.get(motivo, motivo)
 
 

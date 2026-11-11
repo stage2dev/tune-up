@@ -8,6 +8,7 @@ chave; chave já ocupada = 'duplicado' (sem linha nova, sem conector). Na subida
 nada é reenviado sozinho: só reenviar(), por ação explícita do dono, volta a MESMA linha a 'pendente'."""
 import datetime
 import re
+import sys
 
 from servico import banco, telefone
 from servico.conectores import base
@@ -190,6 +191,27 @@ def _campanha_parada(con, campanha_id, contato_id):
     return None if ok else "campanha_parada"
 
 
+def _campanha_do_reenvio(con, campanha_id, contato_id, envio_id, aceitas):
+    """Reenvio de campanha: a campanha tem de estar num dos estados `aceitas` ('campanha_parada' se não) e o contato
+    ainda apontar para ESTE envio, em 'pendente', 'incerto' ou 'falhou' ('contato_fora_da_campanha' se não)."""
+    c = con.execute("SELECT estado FROM campanhas WHERE id = ?", (campanha_id,)).fetchone()
+    if c is None or c["estado"] not in aceitas:
+        return "campanha_parada"
+    ok = con.execute("SELECT 1 FROM campanha_contatos WHERE campanha_id = ? AND contato_id = ? AND envio_id = ? "
+                     "AND estado IN ('pendente', 'incerto', 'falhou')", (campanha_id, contato_id, envio_id)).fetchone()
+    return None if ok else "contato_fora_da_campanha"
+
+
+def _contato_enviado(con, envio_id):
+    """Reenvio de campanha que saiu: o contato 'incerto'/'falhou' vira 'enviado' (o progresso deixa de contar como
+    incerto). 0 linhas = o contato já mudou (respondeu, ou o agendador grava): só avisa, o envio já saiu."""
+    cur = con.execute("UPDATE campanha_contatos SET estado = 'enviado', motivo = NULL, tentar_depois = NULL "
+                      "WHERE envio_id = ? AND estado IN ('incerto', 'falhou')", (envio_id,))
+    if cur.rowcount != 1:
+        print("vendas: portão: reenvio %d saiu, contato da campanha não estava incerto/falhou" % envio_id,
+              file=sys.stderr)
+
+
 def _contato_de(con, origem, numero):
     if origem == "teste_audio":
         return None  # o dono não vira contato
@@ -335,9 +357,10 @@ def enviar_confirmacao_sair(con, conector, instancia, numero, texto, agora=None)
 def reenviar(con, conector, instancia, envio_id, confirmar_optout=False, agora=None,
              so_se_campanha_ativa=False):
     """Ação explícita do dono: a MESMA linha 'incerto'/'falhou' volta a 'pendente' (sem chave nova) e sai de novo,
-    depois de reconferir a regra da origem. Negado aqui não muda a linha. `so_se_campanha_ativa` (só o agendador):
-    campanha pausada/encerrada ou contato fora de 'pendente' = negado; o dono reenvia mesmo assim (o incerto de
-    campanha deixa o contato 'incerto' e a campanha pode já estar concluída)."""
+    depois de reconferir a regra da origem. Negado aqui não muda a linha. Campanha: o contato tem de apontar para
+    ESTE envio ('pendente', 'incerto' ou 'falhou') e a campanha estar 'ativa' (agendador, `so_se_campanha_ativa`)
+    ou 'ativa'/'concluida' (dono: o incerto de campanha pode deixá-la concluída); pausada = 'campanha_parada'.
+    Reenvio do dono que sai marca o contato 'enviado'."""
     if conector is None or not instancia:
         raise ValueError("portão sem conector ou instância")
     if con.in_transaction:
@@ -351,8 +374,9 @@ def reenviar(con, conector, instancia, envio_id, confirmar_optout=False, agora=N
         if linha["estado"] not in ("incerto", "falhou") or not linha["conteudo"] or not linha["telefone"]:
             con.execute("COMMIT")
             return _resultado(linha["estado"], envio_id, "nao_reenviavel")
-        motivo = (_campanha_parada(con, linha["chave_dedupe"].split(":")[1], linha["contato_id"])
-                  if so_se_campanha_ativa and linha["origem"] == "campanha" else None) or _motivo(
+        aceitas = ("ativa",) if so_se_campanha_ativa else ("ativa", "concluida")
+        motivo = (_campanha_do_reenvio(con, linha["chave_dedupe"].split(":")[1], linha["contato_id"], envio_id,
+                                       aceitas) if linha["origem"] == "campanha" else None) or _motivo(
             con, linha["origem"], linha["telefone"], linha["contato_id"], confirmar_optout, momento, ignorar=envio_id,
             instancia=instancia)
         if motivo is None:
@@ -367,7 +391,10 @@ def reenviar(con, conector, instancia, envio_id, confirmar_optout=False, agora=N
         raise
     if motivo:
         return _resultado("negado", envio_id, motivo)
-    return _entregar(con, conector, instancia, envio_id, linha["tipo"], linha["telefone"], linha["conteudo"])
+    r = _entregar(con, conector, instancia, envio_id, linha["tipo"], linha["telefone"], linha["conteudo"])
+    if r["estado"] == "enviado" and linha["origem"] == "campanha" and not so_se_campanha_ativa:
+        _contato_enviado(con, envio_id)   # o agendador grava o contato pelo campanha.registrar
+    return r
 
 
 def descartar(con, envio_id):

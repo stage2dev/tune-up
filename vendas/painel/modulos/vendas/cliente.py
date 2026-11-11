@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 import pathlib
+import socket
 import sqlite3
 import urllib.error
 import urllib.request
@@ -14,6 +15,8 @@ VIVO_S = 15  # batimento mais velho que isso = serviço parado (o serviço bate 
 TEMPO_REDE_S = 5  # toda chamada ao serviço tem tempo limite próprio (o painel não para a thread do agir)
 TEMPO_ENVIO_S = 18  # envio espera o conector (até 15 s) e cabe nos 20 s do agir do painel
 SEM_RESPOSTA = "O serviço de Vendas não respondeu. Ligue-o e tente de novo."
+PROCESSANDO = ("O serviço de Vendas ainda está processando o pedido. Atualize a tela em alguns segundos para ver "
+               "o resultado antes de tentar de novo.")
 
 PLUGIN = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 _spec = importlib.util.spec_from_file_location("tune_up_vendas_pasta", os.path.join(PLUGIN, "servico", "pasta.py"))
@@ -59,6 +62,22 @@ def porta_do_painel(ctx):
     return porta if isinstance(porta, int) and 1024 <= porta <= 65535 else 8787
 
 
+def _batimento_fresco(raiz, base, agora=None):
+    try:
+        bate = ler(raiz, base, "SELECT em FROM batimento WHERE id = 1")
+        quando = datetime.datetime.fromisoformat(bate[0][0]) if bate else None
+    except (sqlite3.Error, ValueError, TypeError):
+        return False
+    agora = agora or datetime.datetime.now(datetime.timezone.utc)
+    return quando is not None and abs((agora - quando).total_seconds()) <= VIVO_S
+
+
+def _tempo_esgotado(erro):
+    """Tempo limite na leitura (socket.timeout) ou na conexão (URLError com socket.timeout dentro)."""
+    return isinstance(erro, socket.timeout) or (isinstance(erro, urllib.error.URLError)
+                                                and isinstance(erro.reason, socket.timeout))
+
+
 def endereco(ctx, base=None, agora=None):
     """URL base do serviço DESTE projeto, conferida. Recusa sem raiz, sem banco, batimento velho, porta inválida
     ou marca diferente (outro projeto naquela porta)."""
@@ -99,9 +118,15 @@ def chamar(ctx, metodo, caminho, corpo=None, base=None, tempo=None):
         if codigo != 200 or not isinstance(r, dict) or not isinstance(r.get("token"), str):
             raise Recusa("O serviço não liberou o pedido (%d). Confira se ele foi ligado com --painel deste "
                          "painel." % codigo)
-        cab = {"X-Vendas-Token": r["token"]}
-        if corpo is not None:
-            cab["Content-Type"] = "application/json"
-        return pedir(metodo, url + caminho, cab, corpo, tempo)
     except (OSError, ValueError):
+        raise Recusa(SEM_RESPOSTA)
+    cab = {"X-Vendas-Token": r["token"]}
+    if corpo is not None:
+        cab["Content-Type"] = "application/json"
+    try:
+        return pedir(metodo, url + caminho, cab, corpo, tempo)
+    except (OSError, ValueError) as e:
+        # tempo esgotado com o serviço vivo: o pedido pode estar no meio (envio esperando o conector), não parado
+        if _tempo_esgotado(e) and _batimento_fresco(ctx["raiz"], base):
+            raise Recusa(PROCESSANDO)
         raise Recusa(SEM_RESPOSTA)

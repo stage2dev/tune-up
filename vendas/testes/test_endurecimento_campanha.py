@@ -7,6 +7,7 @@ import sys
 sys.dont_write_bytecode = True
 
 import contextlib  # noqa: E402
+import csv  # noqa: E402
 import datetime  # noqa: E402
 import io  # noqa: E402
 import json  # noqa: E402
@@ -179,10 +180,13 @@ class TesteCsvMalformado(Importa):
         self.assertEqual(self.contatos(), [])
 
     def test_caractere_nulo_nunca_derruba_a_conexao(self):
-        codigo, r = self.csv("nome,telefone\nA\x00na,+55 11 90000-0001\n")
-        self.assertIn(codigo, (200, 400))   # 3.9 recusa o NUL; 3.11+ aceita: nunca conexão caída
-        if codigo == 400:
-            self.assertIn("CSV está malformado", r["erro"])
+        # 3.9 recusa o NUL com csv.Error; 3.11+ aceita. O leitor é forçado a recusar para provar o caminho da recusa
+        with mock.patch.object(csv, "reader", side_effect=csv.Error("line contains NUL")) as leitor:
+            codigo, r = self.csv("nome,telefone\nA\x00na,+55 11 90000-0001\n")
+        self.assertTrue(leitor.called)
+        self.assertEqual(codigo, 400)
+        self.assertIn("CSV está malformado", r["erro"])
+        self.assertEqual(self.contatos(), [])
 
 
 class TesteCsvMalformadoComando(test_leads_aba.Aba):

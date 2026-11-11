@@ -6,6 +6,7 @@ já ocupada volta 'duplicado' e o contato fica com o estado do envio. 'incerto' 
 (prova de que não saiu) volta depois de ESPERA_FALHA_S pelo portao.reenviar, que reconfere as regras na reserva,
 até campanha.TENTATIVAS_FALHOU vezes; número inexistente (numero_invalido) nunca volta."""
 import datetime
+import json
 import random
 import sys
 import threading
@@ -111,7 +112,13 @@ class Agendador:
 
     def _depois(self, con, agora, linha, r):
         """Grava o resultado e decide a espera. Teto do número todo = espera global sem marcar o contato."""
-        if r.get("motivo") == "campanha_parada":   # pausada/concluída entre a escolha e a reserva: nada a gravar
+        if r.get("motivo") in ("campanha_parada", "contato_fora_da_campanha"):   # mudou entre a escolha e a reserva
+            c = con.execute("SELECT estado FROM campanhas WHERE id = ?", (linha["campanha_id"],)).fetchone()
+            if c is not None and c["estado"] == "ativa":   # não parou: avisa em vez de esperar calado
+                banco.registrar_evento(con, "campanha_parada_mas_ativa", json.dumps(
+                    {"campanha_id": linha["campanha_id"], "contato_id": linha["contato_id"], "motivo": r["motivo"]}))
+                print("vendas: agendador: portão disse %s com a campanha %d ativa" % (r["motivo"],
+                      linha["campanha_id"]), file=sys.stderr)
             return OCIOSO_S
         if r["estado"] == "pulado" and r["motivo"] in modelo.DA_CAMPANHA:   # modelo, empresa ou links.json
             campanha.pausar_por(con, linha["campanha_id"], r["motivo"])

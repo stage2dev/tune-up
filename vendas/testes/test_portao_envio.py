@@ -164,6 +164,7 @@ class TesteReenviar(Base):
     def test_reenviar_reconfere_a_regra(self):
         self.c.modo_envio = "aceitar_e_cair"
         envio_id = self.mandar("campanha")["envio_id"]
+        self.con.execute("UPDATE campanha_contatos SET envio_id = ?", (envio_id,))   # o que campanha.registrar grava
         banco.marcar_optout(self.con, CLIENTE)
         r = portao.reenviar(self.con, self.c, INST, envio_id, agora=AGORA)
         self.assertEqual((r["estado"], r["motivo"]), ("negado", "optout"))
