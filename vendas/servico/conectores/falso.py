@@ -18,6 +18,7 @@ class ConectorFalso(base.Conector):
         self.entregues = []   # {"id_externo", "instancia", "telefone", "tipo", "conteudo"} do que chegou "lá"
         self._trava = threading.Lock()
         self._contador = 0
+        self.perdidos = []    # corpos de webhook que "chegaram com o serviço parado" (mensagens_desde devolve)
 
     def _anotar(self, nome, *argumentos):
         with self._trava:
@@ -61,6 +62,12 @@ class ConectorFalso(base.Conector):
     def traduzir_evento(self, corpo):
         self._anotar("traduzir_evento", corpo)
         return evolution.traduzir(corpo)
+
+    def mensagens_desde(self, instancia, desde, ate):
+        self._anotar("mensagens_desde", instancia, desde, ate)
+        inicio, fim = desde.timestamp(), ate.timestamp()
+        eventos = [e for corpo in self.perdidos for e in evolution.traduzir(corpo) if e["tipo_evento"] == "mensagem"]
+        return [e for e in eventos if e["timestamp"] is not None and inicio <= e["timestamp"] <= fim]
 
     def envios(self):
         """Quantas chamadas de envio chegaram ao conector (entregues ou não)."""

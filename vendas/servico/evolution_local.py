@@ -49,6 +49,7 @@ def _texto_env(chave, senha, porta_servico, porta_evolution):
         "DATABASE_PROVIDER=postgresql",
         "DATABASE_CONNECTION_URI=postgresql://evolution:%s@postgres:5432/evolution?schema=public" % senha,
         "DATABASE_CONNECTION_CLIENT_NAME=evolution",
+        "DATABASE_SAVE_DATA_NEW_MESSAGE=true",  # a subida do serviço busca em /chat/findMessages o que perdeu
         "CACHE_REDIS_ENABLED=true",
         "CACHE_REDIS_URI=redis://redis:6379/6",
         "CACHE_LOCAL_ENABLED=false",

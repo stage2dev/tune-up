@@ -17,7 +17,7 @@ import secrets  # noqa: E402
 import signal  # noqa: E402
 import threading  # noqa: E402
 
-from servico import banco, evolution_local, pasta, portao, rotas, travas  # noqa: E402
+from servico import banco, evolution_local, pasta, portao, recebimento, rotas, travas  # noqa: E402
 from servico.conectores import evolution  # noqa: E402
 
 PORTA = 8791
@@ -76,6 +76,7 @@ def rodar(args, avisar=print):
     try:
         con = banco.abrir(pasta_dados)
         try:
+            ultima_vida = recebimento.ultima_vida(con)  # antes do 1º batimento desta subida
             incertos = portao.pendentes_para_incerto(con)  # caiu no meio de um envio: o dono decide, sem reenvio
             banco.bater(con)
         finally:
@@ -88,6 +89,7 @@ def rodar(args, avisar=print):
         segredo_novo = travas.ler_segredo(caminho_segredo) is None
         segredo = travas.ler_ou_criar_segredo(caminho_segredo)
         app = rotas.App(pasta_dados, args.porta, painel, token, segredo)
+        app.despachar = recebimento.Recebimento(lambda: app.conector)
         try:
             servidor = rotas.criar_servidor(app, args.porta)
         except OSError as e:
@@ -108,6 +110,7 @@ def rodar(args, avisar=print):
         batimento.start()
         atendente = threading.Thread(target=servidor.serve_forever, kwargs={"poll_interval": 0.2}, daemon=True)
         atendente.start()
+        threading.Thread(target=recuperar, args=(app, ultima_vida), daemon=True).start()
         avisar("serviço de Vendas em http://127.0.0.1:%d (painel %s); Ctrl+C para parar" % (app.porta, painel),
                flush=True)
         while not parar.wait(0.5):
@@ -121,6 +124,22 @@ def rodar(args, avisar=print):
         parar.set()
         _limpar(pasta_dados, caminho_token)
         trava.soltar()
+
+
+def recuperar(app, desde):
+    """Subida: busca no conector o que chegou com o serviço parado (o webhook pode chegar junto; dedupe por id)."""
+    con = app.abrir()
+    try:
+        app.despachar.recuperar(con, desde)
+    except Exception as e:
+        print("vendas: não consegui buscar as mensagens de quando o serviço estava parado (%s)" % type(e).__name__,
+              file=sys.stderr)
+        try:
+            banco.registrar_evento(con, "recuperacao_falhou", type(e).__name__)
+        except Exception:
+            pass
+    finally:
+        con.close()
 
 
 def conector(pasta_dados, porta, segredo, avisar=print):
@@ -154,6 +173,7 @@ def _limpar(pasta_dados, caminho_token):
         pass
     con = banco.abrir(pasta_dados)
     try:
+        banco.gravar_config(con, "parado_em", banco.agora())  # a próxima subida busca o que chegou depois disso
         banco.parar_batimento(con)
     finally:
         con.close()

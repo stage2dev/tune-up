@@ -98,6 +98,12 @@ MIGRACOES = [
         "INSERT INTO tentativas (envio_id, origem, estado, em) "
         "SELECT id, origem, estado, COALESCE(tentado_em, criado_em) FROM envios WHERE estado <> 'negado'",
     ],
+    # 5: recebimento: mensagem de saída ligada ao envio que ela ecoa (um eco por envio) e mapa @lid -> telefone
+    [
+        "ALTER TABLE mensagens ADD COLUMN envio_id INTEGER REFERENCES envios(id)",
+        "CREATE UNIQUE INDEX mensagens_envio ON mensagens(envio_id) WHERE envio_id IS NOT NULL",
+        "CREATE TABLE lids (lid TEXT PRIMARY KEY, telefone TEXT NOT NULL, criado_em TEXT NOT NULL)",
+    ],
 ]
 VERSAO = len(MIGRACOES)
 PARECE_SEGREDO = re.compile(r"chave|senha|token|segredo|secret|key|password", re.I)
@@ -200,11 +206,12 @@ def abrir_conversa(con, contato_id):
     return cur.lastrowid
 
 
-def registrar_mensagem(con, conversa_id, direcao, texto, id_externo=None, tipo="texto"):
+def registrar_mensagem(con, conversa_id, direcao, texto, id_externo=None, tipo="texto", envio_id=None):
     """Grava a mensagem. Devolve o id, ou None se o id_externo já existe (webhook repetido)."""
     try:
-        cur = con.execute("INSERT INTO mensagens (conversa_id, id_externo, direcao, tipo, texto, criado_em) "
-                          "VALUES (?, ?, ?, ?, ?, ?)", (conversa_id, id_externo, direcao, tipo, texto, agora()))
+        cur = con.execute("INSERT INTO mensagens (conversa_id, id_externo, direcao, tipo, texto, criado_em, envio_id) "
+                          "VALUES (?, ?, ?, ?, ?, ?, ?)", (conversa_id, id_externo, direcao, tipo, texto, agora(),
+                                                           envio_id))
     except sqlite3.IntegrityError as erro:
         if _unico(erro):
             return None

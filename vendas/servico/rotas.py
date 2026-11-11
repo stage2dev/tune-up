@@ -43,7 +43,8 @@ def igual(recebido, esperado):
 
 
 def guardar_evento(con, instancia, corpo, segredo_ok):
-    """Gancho padrão do webhook: guarda o evento cru. Itens seguintes trocam por quem traduz e responde."""
+    """Despachante padrão do webhook (testes): guarda o evento cru. O serviço usa recebimento.Recebimento, que pode
+    devolver uma função para rodar depois do commit, fora da transação."""
     banco.registrar_evento(con, "webhook", json.dumps(
         {"instancia": instancia, "segredo_ok": segredo_ok, "corpo": corpo}, ensure_ascii=False))
 
@@ -223,11 +224,11 @@ def fazer_handler(app):
                 if corpo is None:
                     return
                 if not segredo_ok:
-                    app.despachar(con, instancia, corpo, False)
+                    depois = app.despachar(con, instancia, corpo, False)
                 else:  # o válido só conta se o evento foi guardado: os dois na mesma transação
                     con.execute("BEGIN IMMEDIATE")
                     try:
-                        app.despachar(con, instancia, corpo, True)
+                        depois = app.despachar(con, instancia, corpo, True)
                         banco.somar_config(con, "webhook_validos")
                         banco.somar_config(con, "webhook_validos_seguidos")
                         con.execute("COMMIT")
@@ -235,6 +236,8 @@ def fazer_handler(app):
                         if con.in_transaction:
                             con.execute("ROLLBACK")
                         raise
+                if callable(depois):  # o que fala para fora (portão, gancho da IA) roda depois do commit
+                    depois(con)
             finally:
                 con.close()
             self._json(200, {"ok": True})

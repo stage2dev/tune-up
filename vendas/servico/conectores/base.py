@@ -63,3 +63,8 @@ class Conector:
 
     def traduzir_evento(self, corpo):
         raise NotImplementedError
+
+    def mensagens_desde(self, instancia, desde, ate):
+        """Eventos de mensagem (mesmo formato de traduzir_evento) com momento entre desde e ate (datetime UTC):
+        o que chegou com o serviço parado. Erros: ErroConector."""
+        raise NotImplementedError

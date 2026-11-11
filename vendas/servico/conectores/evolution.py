@@ -4,6 +4,7 @@ Erros: NaoEnviado (recusa de conexão, 3xx/4xx) e EnvioIncerto (timeout ou queda
 resposta sem id). No envio, 400 é EnvioIncerto: a Evolution também devolve 400 quando a mensagem já saiu e o passo
 seguinte (gravar no banco, transcrever) falhou; só é NaoEnviado se o corpo provar número inexistente. Nenhuma mensagem de erro carrega a chave, o texto enviado ou o corpo da resposta."""
 import base64
+import datetime
 import http.client
 import json
 import re
@@ -22,7 +23,9 @@ TEMPO_LIMITE_S = 15
 EVENTOS_WEBHOOK = ["MESSAGES_UPSERT", "SEND_MESSAGE", "CONNECTION_UPDATE", "QRCODE_UPDATED"]
 ESTADO_EVOLUTION = {"open": "conectado", "connecting": "aguardando_qr"}  # close, refused e o resto: desconectado
 PREFIXO_PNG = "data:image/png;base64,"
-JA_EXISTE = (400, 403, 409)  # nome em uso; 401 (chave errada) e o resto sobem como erro
+JA_EXISTE = (400, 403, 409)
+POR_PAGINA = 100   # em /chat/findMessages, "offset" é o tamanho da página
+PAGINAS_MAX = 50  # nome em uso; 401 (chave errada) e o resto sobem como erro
 
 
 class _SemRedirecionar(urllib.request.HTTPRedirectHandler):
@@ -139,6 +142,33 @@ class Evolution(base.Conector):
 
     def traduzir_evento(self, corpo):
         return traduzir(corpo)
+
+    def mensagens_desde(self, instancia, desde, ate):
+        """POST /chat/findMessages com where.messageTimestamp {gte, lte} (datas ISO), página a página. Só acha o
+        que a Evolution gravou no banco dela (DATABASE_SAVE_DATA_NEW_MESSAGE=true)."""
+        base.validar_instancia(instancia)
+        filtro = {"messageTimestamp": {"gte": _iso_z(desde), "lte": _iso_z(ate)}}
+        eventos, pagina = [], 1
+        while pagina <= PAGINAS_MAX:
+            dados = self._pedir("POST", self._caminho("chat", "findMessages", instancia),
+                                {"where": filtro, "page": pagina, "offset": POR_PAGINA})
+            bloco = dados.get("messages") if isinstance(dados, dict) else None
+            registros = bloco.get("records") if isinstance(bloco, dict) else None
+            if not isinstance(registros, list) or not registros:
+                break
+            eventos.extend(e for e in (_mensagem(r, False) for r in registros) if e)
+            try:
+                paginas = int(bloco.get("pages") or 0)
+            except (TypeError, ValueError):
+                paginas = 0
+            if pagina >= paginas:
+                break
+            pagina += 1
+        return eventos
+
+
+def _iso_z(momento):
+    return momento.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _numero(telefone):
