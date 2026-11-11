@@ -9,8 +9,8 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
-from servico import (banco, campanha, candidatos, conversas, disparos, ia, instancia, leads, openai_cliente, places,
-                     portao, rascunhos, revisao, telefone, voz, voz_cliente)
+from servico import (banco, campanha, candidatos, conversas, disparos, ia, instancia, leads, midia_rota, openai_cliente,
+                     places, portao, rascunhos, revisao, telefone, voz, voz_cliente)
 from servico.conectores.base import ErroConector
 
 CORPO_MAX = 1024 * 1024
@@ -201,6 +201,8 @@ def fazer_handler(app):
                 finally:
                     con.close()
                 return self._json(200, dado)
+            if caminho.startswith("/midia/"):
+                return midia_rota.atender(self, app, igual(self.headers.get(CAB_TOKEN), app.token))
             if _modulo(caminho):
                 return self._conversas(_modulo(caminho))
             self._erro(404, "Rota desconhecida.")
@@ -217,6 +219,8 @@ def fazer_handler(app):
                 return leads.receber_csv(self, app, igual(self.headers.get(CAB_TOKEN), app.token))
             if self._caminho() == "/instancia":
                 return self._instancia()
+            if self._caminho().startswith("/midia/"):
+                return midia_rota.atender(self, app, igual(self.headers.get(CAB_TOKEN), app.token))
             if _modulo(self._caminho()):
                 return self._conversas(_modulo(self._caminho()))
             if not achado:

@@ -9,12 +9,13 @@ import http.client
 import json
 import re
 import socket
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
 from servico.conectores import base
-from servico.conectores.base import EnvioIncerto, NaoEnviado
+from servico.conectores.base import EnvioIncerto, MidiaExpirada, MidiaGrandeDemais, MidiaIndisponivel, NaoEnviado
 from servico.rotas import CAB_SEGREDO
 
 VAR_URL = "VENDAS_EVOLUTION_URL"
@@ -26,6 +27,11 @@ PREFIXO_PNG = "data:image/png;base64,"
 JA_EXISTE = (400, 403, 409)
 POR_PAGINA = 100   # em /chat/findMessages, "offset" é o tamanho da página
 PAGINAS_MAX = 50  # nome em uso; 401 (chave errada) e o resto sobem como erro
+TEMPO_MIDIA_S = 30
+ESPERA_NOVA_TENTATIVA_S = 1.0
+MIDIA_MAX = 20 * 1024 * 1024   # o maior teto por tipo (documento); o base64 + JSON cabe em RESPOSTA_MIDIA_MAX
+RESPOSTA_MIDIA_MAX = MIDIA_MAX * 4 // 3 + 1024 * 1024
+MIDIA_EXPIRADA = (400, 404, 410)   # a Evolution responde 400 a "Message not found" e a mídia que o WhatsApp não tem
 
 
 class PaginasDemais(base.ErroConector):
@@ -154,6 +160,37 @@ class Evolution(base.Conector):
     def traduzir_evento(self, corpo):
         return traduzir(corpo)
 
+    def baixar_midia(self, instancia, mensagem):
+        """POST /chat/getBase64FromMediaMessage/<instancia> com {"message": {"key": ...}}: a Evolution acha a
+        mensagem no banco dela pelo id da chave (DATABASE_SAVE_DATA_NEW_MESSAGE=true) e baixa do WhatsApp. Uma nova
+        tentativa curta em rede/5xx; 400/404/410 = expirada; resposta acima de RESPOSTA_MIDIA_MAX = grande_demais."""
+        base.validar_instancia(instancia)
+        chave = {k: mensagem.get(k) for k in ("id", "remoteJid", "fromMe")} if isinstance(mensagem, dict) else {}
+        if not isinstance(chave.get("id"), str) or not chave["id"]:
+            raise MidiaExpirada("mensagem sem id")
+        corpo = json.dumps({"message": {"key": chave}, "convertToMp4": False}).encode("utf-8")
+        caminho = self._caminho("chat", "getBase64FromMediaMessage", instancia)
+        for tentativa in (1, 2):
+            pedido = urllib.request.Request(self.url + caminho, data=corpo, method="POST", headers={
+                "apikey": self._chave, "Content-Type": "application/json", "Accept": "application/json"})
+            try:
+                with self._abridor.open(pedido, timeout=TEMPO_MIDIA_S) as resposta:
+                    bruto = resposta.read(RESPOSTA_MIDIA_MAX + 1)
+                break
+            except urllib.error.HTTPError as erro:
+                erro.close()
+                if erro.code in MIDIA_EXPIRADA:
+                    raise MidiaExpirada("Evolution respondeu HTTP %d" % erro.code, erro.code)
+                if erro.code < 500 or tentativa == 2:
+                    raise MidiaIndisponivel("Evolution respondeu HTTP %d" % erro.code, erro.code)
+            except (urllib.error.URLError, socket.timeout, TimeoutError, http.client.HTTPException, OSError) as erro:
+                if tentativa == 2:
+                    raise MidiaIndisponivel("Evolution não respondeu (%s)" % type(erro).__name__)
+            time.sleep(ESPERA_NOVA_TENTATIVA_S)
+        if len(bruto) > RESPOSTA_MIDIA_MAX:
+            raise MidiaGrandeDemais("resposta da mídia acima do teto")
+        return _midia(bruto)
+
     def mensagens_desde(self, instancia, desde, ate):
         """POST /chat/findMessages com where.messageTimestamp {gte, lte} (datas ISO), página a página. Só acha o
         que a Evolution gravou no banco dela (DATABASE_SAVE_DATA_NEW_MESSAGE=true). Mais de PAGINAS_MAX páginas levanta
@@ -209,6 +246,19 @@ def _id_externo(dados):
     if not ident:
         raise EnvioIncerto("Evolution aceitou mas não devolveu o id da mensagem")
     return str(ident)
+
+
+def _midia(bruto):
+    try:
+        dados = json.loads(bruto.decode("utf-8"))
+        b64 = dados.get("base64") or dados.get("data")
+        conteudo = base64.b64decode(b64.split(",")[-1], validate=True)
+    except (ValueError, AttributeError, TypeError, UnicodeDecodeError):
+        raise MidiaIndisponivel("Evolution respondeu algo que não é a mídia")
+    if not conteudo:
+        raise MidiaIndisponivel("mídia vazia")
+    tipo, nome = dados.get("mimetype"), dados.get("fileName")
+    return conteudo, tipo if isinstance(tipo, str) else None, nome if isinstance(nome, str) else None
 
 
 def _data_uri(valor):
@@ -273,10 +323,13 @@ def _mensagem(dados, enviada):
     except (TypeError, ValueError):
         momento = None
     perfil = dados.get("pushName")   # em fromMe é o nome do DONO: nunca vai para o lead
-    return {"tipo_evento": "mensagem", "direcao": "enviada" if from_me else "recebida",
-            "id_externo": str(chave["id"]), "remetente": remetente, "fromMe": from_me, "grupo": grupo,
-            "tipo": tipo, "texto": texto, "timestamp": momento, "lid": lid, "alternativa": alternativa,
-            "nome_perfil": perfil if isinstance(perfil, str) and not from_me else None}
+    evento = {"tipo_evento": "mensagem", "direcao": "enviada" if from_me else "recebida",
+                  "id_externo": str(chave["id"]), "remetente": remetente, "fromMe": from_me, "grupo": grupo,
+                  "tipo": tipo, "texto": texto, "timestamp": momento, "lid": lid, "alternativa": alternativa,
+                  "nome_perfil": perfil if isinstance(perfil, str) and not from_me else None}
+    if tipo in ("audio", "imagem", "documento"):   # o que baixar_midia precisa depois
+        evento["chave_midia"] = {"id": str(chave["id"]), "remoteJid": jid, "fromMe": from_me}
+    return evento
 
 
 def traduzir(corpo):

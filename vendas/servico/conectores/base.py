@@ -31,6 +31,25 @@ class EnvioIncerto(ErroConector):
     """O pedido pode ter tido efeito; o resultado não é conhecido."""
 
 
+class ErroMidia(ErroConector):
+    """baixar_midia falhou; `motivo` vai para midias.motivo (nunca leva nome de arquivo nem dado do lead)."""
+    motivo = "indisponivel"
+
+
+class MidiaIndisponivel(ErroMidia):
+    """Conector fora, 5xx/rede depois da nova tentativa, resposta ilegível: o dono pode pedir de novo."""
+
+
+class MidiaExpirada(ErroMidia):
+    """O WhatsApp/Evolution não tem mais a mídia (mensagem não achada, link vencido)."""
+    motivo = "expirada"
+
+
+class MidiaGrandeDemais(ErroMidia):
+    """A resposta passou do teto antes de terminar de ler: nada é gravado."""
+    motivo = "grande_demais"
+
+
 def validar_instancia(instancia):
     if not isinstance(instancia, str) or not INSTANCIA.match(instancia):
         raise ValueError("nome de instância inválido (letras, números, _ e -, até 64)")
@@ -44,7 +63,8 @@ class Conector:
       {"tipo_evento": "mensagem", "direcao": "recebida"|"enviada", "id_externo", "remetente" (dígitos do
        contato da conversa, ou do participante no grupo; None se só houver @lid), "fromMe", "grupo",
        "tipo" (texto|audio|imagem|documento|outro), "texto", "timestamp" (segundos), "lid", "alternativa",
-       "nome_perfil" (nome do perfil do lead; None em fromMe)}
+       "nome_perfil" (nome do perfil do lead; None em fromMe),
+       "chave_midia" (só em audio|imagem|documento: {"id", "remoteJid", "fromMe"}, o que baixar_midia recebe)}
       {"tipo_evento": "estado", "estado": um de ESTADOS}
       {"tipo_evento": "qr", "qr": data URI png}
     """
@@ -78,4 +98,9 @@ class Conector:
     def mensagens_desde(self, instancia, desde, ate):
         """Eventos de mensagem (mesmo formato de traduzir_evento) com momento entre desde e ate (datetime UTC):
         o que chegou com o serviço parado. Erros: ErroConector."""
+        raise NotImplementedError
+
+    def baixar_midia(self, instancia, mensagem):
+        """`mensagem` = a chave_midia guardada no recebimento. Devolve (bytes, mimetype declarado, nome declarado).
+        O mimetype declarado não é confiável (quem grava decide pelo conteúdo). Erros: ErroMidia."""
         raise NotImplementedError

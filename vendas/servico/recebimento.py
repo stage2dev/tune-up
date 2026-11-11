@@ -8,7 +8,8 @@ DEPOIS do commit, fora da transação.
 - @lid: usa remoteJidAlt/senderPn (e aprende o mapa lid -> telefone); sem alternativa nem mapa, linha em eventos.
 - Nome do perfil (pushName) do lead vira nome_whatsapp só se o contato não tem nome do CSV/dono; o de fromMe é do
   dono e é ignorado; webhook sem segredo não grava nome.
-- Áudio, imagem e documento do lead: grava o tipo, marca "precisa de você", sem IA.
+- Áudio, imagem e documento do lead: grava o tipo e a linha em `midias`, marca "precisa de você", sem IA; o
+  download (midia.py) entra na fila depois do commit, só com segredo válido.
 - Mensagem com mais de 30 min: sem IA, marca "precisa de você" (a subida busca o que chegou com o serviço parado).
 - fromMe: eco de envio nosso (pelo id devolvido ou texto igual em até 5 s) nunca pausa a IA; fromMe que não casa é o
   dono respondendo do celular: grava e pausa a IA da conversa por 15 min.
@@ -23,7 +24,7 @@ import re
 import sys
 import unicodedata
 
-from servico import banco, campanha, portao, telefone
+from servico import banco, campanha, midia, portao, telefone
 from servico.conectores import evolution
 
 UTC = datetime.timezone.utc
@@ -155,6 +156,10 @@ def processar(con, ev, agora, depois, confiavel=True):
                                            confiavel=confiavel)
     if mensagem_id is None:
         return
+    if tipo in MIDIA:
+        midia_id = midia.registrar(con, mensagem_id, tipo, ev.get("chave_midia"), confiavel)
+        if confiavel:
+            depois.append(("midia", midia_id))
     campanha.lead_respondeu(con, contato_id)   # o lead falou: sai da fila das campanhas (até sem segredo: só para)
     if not confiavel:   # o dono confere; opt-out é conservador e vale, mas sem confirmação para fora
         if tipo == "texto" and e_saida(ev.get("texto")):
@@ -188,6 +193,8 @@ def executar_depois(con, conector, depois):
                     continue
                 texto = banco.ler_config(con, "texto_confirmacao_sair") or CONFIRMACAO_SAIR
                 portao.enviar_confirmacao_sair(con, conector, instancia, acao[1], texto)
+            elif acao[0] == "midia":   # só põe na fila: o webhook responde sem esperar o download
+                midia.enfileirar(con, acao[1])
             else:
                 ao_receber_mensagem_de_lead(acao[1], acao[2])
         except Exception as e:

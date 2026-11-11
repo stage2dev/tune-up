@@ -18,7 +18,7 @@ import secrets  # noqa: E402
 import signal  # noqa: E402
 import threading  # noqa: E402
 
-from servico import (agendador, banco, candidatos, cerebro, evolution_local, openai_cliente, pasta, places, portao, rascunhos,  # noqa: E402
+from servico import (agendador, banco, candidatos, cerebro, evolution_local, midia, openai_cliente, pasta, places, portao, rascunhos,  # noqa: E402
                      revisao, recebimento, rotas, travas, voz_cliente)
 from servico.atendente import Atendente  # noqa: E402
 from servico.conectores import evolution  # noqa: E402
@@ -119,6 +119,7 @@ def rodar(args, avisar=print):
                 avisar("vendas: o segredo do webhook é novo; o modo voltou para 'Registra e conta' e a contagem de "
                        "válidos seguidos zerou (a Evolution ainda pode mandar o segredo antigo)", file=sys.stderr)
             banco.registrar_servico(con, app.porta, app.marca)  # a tela confere porta e projeto antes de agir
+            midia.interrompidas(con)   # pendente de um processo anterior: o dono pede de novo, nada em laço
             importar_candidatos(con, raiz, avisar)
         finally:
             con.close()
@@ -126,6 +127,9 @@ def rodar(args, avisar=print):
         ia = Atendente(app.abrir, cerebro.Cerebro(pasta_dados, raiz, args.openai_url), lambda: app.conector,
                        app=app)
         recebimento.registrar_gancho(ia.receber)
+        baixador = midia.Baixador(app.abrir, lambda: app.conector, pasta_dados)
+        midia.registrar_baixador(baixador)
+        baixador.iniciar(parar)   # limpa a retenção na subida e uma vez por dia
         for sinal in (signal.SIGINT, signal.SIGTERM):
             signal.signal(sinal, lambda *_: parar.set())
         batimento = threading.Thread(target=bater_sempre, args=(pasta_dados, parar), daemon=True)
@@ -142,6 +146,7 @@ def rodar(args, avisar=print):
         servidor.shutdown()
         servidor.server_close()
         recebimento.registrar_gancho(None)
+        midia.registrar_baixador(None)
         ia.parar()
         disparos.join(60)   # um envio no meio termina (o conector tem timeout) antes de sair
         batimento.join(BATIMENTO_S + 5)

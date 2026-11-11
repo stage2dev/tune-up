@@ -20,6 +20,8 @@ class ConectorFalso(base.Conector):
         self._trava = threading.Lock()
         self._contador = 0
         self.perdidos = []    # corpos de webhook que "chegaram com o serviço parado" (mensagens_desde devolve)
+        self.midias = {}      # id da mensagem -> (bytes, mimetype, nome) ou uma exceção (ErroMidia) a levantar
+        self.segurar_midia = None   # threading.Event: baixar_midia espera por ele (teste de "não bloqueia")
 
     def _anotar(self, nome, *argumentos):
         with self._trava:
@@ -69,6 +71,17 @@ class ConectorFalso(base.Conector):
     def traduzir_evento(self, corpo):
         self._anotar("traduzir_evento", corpo)
         return evolution.traduzir(corpo)
+
+    def baixar_midia(self, instancia, mensagem):
+        self._anotar("baixar_midia", instancia, mensagem)
+        if self.segurar_midia is not None:
+            self.segurar_midia.wait(10)
+        achada = self.midias.get((mensagem or {}).get("id"))
+        if achada is None:
+            raise base.MidiaExpirada("mensagem não achada no falso", 400)
+        if isinstance(achada, Exception):
+            raise achada
+        return achada
 
     def mensagens_desde(self, instancia, desde, ate):
         self._anotar("mensagens_desde", instancia, desde, ate)
