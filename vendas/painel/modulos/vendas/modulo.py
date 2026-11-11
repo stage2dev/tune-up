@@ -22,6 +22,10 @@ _spec = importlib.util.spec_from_file_location("tune_up_vendas_conexao", os.path
     os.path.abspath(__file__)), "abas", "conexao.py"))
 conexao = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(conexao)
+_spec = importlib.util.spec_from_file_location("tune_up_vendas_conversas", os.path.join(os.path.dirname(
+    os.path.abspath(__file__)), "abas", "conversas.py"))
+conversas = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(conversas)
 pasta = cliente.pasta
 VIVO_S = cliente.VIVO_S
 porta_do_painel = cliente.porta_do_painel
@@ -35,7 +39,8 @@ INFO = {
     "id": "vendas",
     "titulo": "Vendas",
     "icone": "pessoas",
-    "acoes": ["modo_webhook", "conectar_instancia"],
+    "acoes": ["modo_webhook", "conectar_instancia", "abrir_conversa", "enviar_mensagem", "assumir_conversa",
+              "devolver_ia", "liberar_saida", "reenviar_envio", "descartar_envio"],
     "negar": [
         "Bash(*127.0.0.1:%d*)" % PORTA,
         "Bash(*localhost:%d*)" % PORTA,
@@ -87,6 +92,9 @@ def agir(ctx, acao, dados, base=None):
     modo não muda nada. O token de envio nunca volta no resultado."""
     if acao == "conectar_instancia":
         return conexao.agir_conectar(ctx, cliente, dados, base)
+    if acao in ("abrir_conversa", "enviar_mensagem", "assumir_conversa", "devolver_ia", "liberar_saida",
+                "reenviar_envio", "descartar_envio"):
+        return conversas.agir(ctx, cliente, acao, dados, base)
     if acao != "modo_webhook":
         return {"ok": False, "mensagem": "Ação desconhecida."}
     modo = (dados or {}).get("modo")
@@ -143,4 +151,10 @@ def montar(ctx, base=None):
     if rodando:  # QR e estado lidos na hora, a cada montar: nada de cache aqui
         blocos += conexao.blocos_instancia(*conexao.ler_instancia(ctx, cliente, base))
         blocos += blocos_webhook(webhook) if webhook else []
-    return {"avisos": avisos, "abas": [{"id": "conexao", "titulo": "Conexão", "blocos": blocos}]}
+    if rodando:
+        aba = conversas.blocos(ctx, cliente, base)
+    else:
+        aba = [{"tipo": "texto", "titulo": "Serviço parado", "texto": "Ligue o serviço (veja a aba Conexão) para "
+                                                                      "ver e responder as conversas."}]
+    return {"avisos": avisos, "abas": [{"id": "conexao", "titulo": "Conexão", "blocos": blocos},
+                                       {"id": "conversas", "titulo": "Conversas", "blocos": aba}]}

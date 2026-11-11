@@ -254,9 +254,12 @@ def _enviar(con, conector, instancia, origem, numero, conteudo, partes, confirma
     return _entregar(con, conector, instancia, envio_id, tipo, canonico, conteudo)
 
 
-def enviar_manual(con, conector, instancia, numero, texto, id_tela, confirmar_optout=False, agora=None):
-    """Dono digitou. Chave = id gerado na tela (um por clique). Opt-out só passa com confirmar_optout=True."""
-    return _enviar(con, conector, instancia, "manual", numero, texto, [id_tela], confirmar_optout, agora)
+def enviar_manual(con, conector, instancia, numero, texto, id_tela, confirmar_optout=False, agora=None,
+                  conversa_id=None):
+    """Dono digitou. Chave = id gerado na tela (um por clique), mais a conversa quando a tela a informa (o id da
+    tela vem só do texto: o mesmo texto para outra conversa é outro envio). Opt-out só com confirmar_optout=True."""
+    partes = [id_tela] if conversa_id is None else [id_tela, conversa_id]
+    return _enviar(con, conector, instancia, "manual", numero, texto, partes, confirmar_optout, agora)
 
 
 def enviar_rascunho_aprovado(con, conector, instancia, numero, texto, id_rascunho, agora=None):
@@ -319,6 +322,29 @@ def reenviar(con, conector, instancia, envio_id, confirmar_optout=False, agora=N
     if motivo:
         return _resultado("negado", envio_id, motivo)
     return _entregar(con, conector, instancia, envio_id, linha["tipo"], linha["telefone"], linha["conteudo"])
+
+
+def descartar(con, envio_id):
+    """Ação explícita do dono: 'não saiu'. A linha 'incerto' vira 'falhou' (motivo descartado_pelo_dono) e a
+    última tentativa deixa de contar nos tetos. Nada é enviado. Outro estado = não muda nada."""
+    con.execute("BEGIN IMMEDIATE")
+    try:
+        linha = con.execute("SELECT estado FROM envios WHERE id = ?", (envio_id,)).fetchone()
+        if linha is None:
+            raise LookupError("envio %r não existe" % envio_id)
+        if linha["estado"] != "incerto":
+            con.execute("COMMIT")
+            return _resultado(linha["estado"], envio_id, "nao_incerto")
+        banco._exigir(con.execute("UPDATE envios SET estado = 'falhou', motivo = 'descartado_pelo_dono' "
+                                  "WHERE id = ? AND estado = 'incerto'", (envio_id,)))
+        banco._exigir(con.execute("UPDATE tentativas SET estado = 'falhou' WHERE id = (SELECT MAX(id) FROM "
+                                  "tentativas WHERE envio_id = ?) AND estado = 'incerto'", (envio_id,)))
+        con.execute("COMMIT")
+    except BaseException:
+        if con.in_transaction:
+            con.execute("ROLLBACK")
+        raise
+    return _resultado("falhou", envio_id, "descartado_pelo_dono")
 
 
 def pendentes_para_incerto(con):

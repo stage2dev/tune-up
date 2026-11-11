@@ -129,7 +129,9 @@ class TesteAgir(Aba):
         for acao in ("logout", "apagar_instancia", "x"):
             self.assertEqual(self.mod.agir(self.ctx, acao, {}, base=self.base),
                              {"ok": False, "mensagem": "Ação desconhecida."})
-        self.assertEqual(sorted(self.mod.INFO["acoes"]), ["conectar_instancia", "modo_webhook"])
+        self.assertEqual(sorted(self.mod.INFO["acoes"]), sorted([
+            "conectar_instancia", "modo_webhook", "abrir_conversa", "enviar_mensagem", "assumir_conversa",
+            "devolver_ia", "liberar_saida", "reenviar_envio", "descartar_envio"]))
         self.assertEqual(self.falso.chamadas, [])
 
     def test_servico_de_outro_projeto_recusado(self):

@@ -56,7 +56,7 @@ class TesteEsqueleto(unittest.TestCase):
         self.assertEqual(dado["avisos"], [])
         aba = dado["abas"][0]
         self.assertEqual(aba["titulo"], "Conexão")
-        self.assertEqual(len(dado["abas"]), 1)
+        self.assertEqual([a["titulo"] for a in dado["abas"]], ["Conexão", "Conversas"])
         for b in aba["blocos"]:
             self.assertIn(b["tipo"], TIPOS)
         self.assertIn("está parado", aba["blocos"][0]["texto"])

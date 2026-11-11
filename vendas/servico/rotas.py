@@ -7,9 +7,9 @@ import os
 import re
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
-from servico import banco, instancia, portao, telefone
+from servico import banco, conversas, instancia, portao, telefone
 from servico.conectores.base import ErroConector
 
 CORPO_MAX = 1024 * 1024
@@ -190,6 +190,8 @@ def fazer_handler(app):
                 finally:
                     con.close()
                 return self._json(200, dado)
+            if conversas.ROTA.match(caminho):
+                return self._conversas()
             self._erro(404, "Rota desconhecida.")
 
         def do_POST(self):
@@ -202,6 +204,8 @@ def fazer_handler(app):
                 return self._modo_webhook()
             if self._caminho() == "/instancia":
                 return self._instancia()
+            if conversas.ROTA.match(self._caminho()):
+                return self._conversas()
             if not achado:
                 self.close_connection = True
                 return self._erro(404, "Rota desconhecida.")
@@ -307,8 +311,29 @@ def fazer_handler(app):
                 con.close()
             self._json(200, r)
 
+        def _conversas(self):
+            """Rotas da aba Conversas (lista, conversa, incertos, modo, liberar, reenviar, descartar): sempre com
+            token. O envio e o reenvio passam pelo portão (conversas.py não chama o conector)."""
+            if not igual(self.headers.get(CAB_TOKEN), app.token):
+                self.close_connection = True
+                return self._erro(403, "Token de envio errado. Recarregue a tela.")
+            corpo = None
+            if self.command == "POST":
+                corpo = self._corpo_json()
+                if corpo is None:
+                    return
+            con = app.abrir()
+            try:
+                r = conversas.executar(app, con, self.command, self._caminho(), parse_qs(urlsplit(self.path).query),
+                                       corpo)
+            finally:
+                con.close()
+            self._erro(404, "Rota desconhecida.") if r is None else self._json(*r)
+
         def _enviar(self):
-            """Envio manual da tela: origem 'manual' fixada aqui; 'origem' no corpo é ignorada."""
+            """Envio manual da tela: origem 'manual' fixada aqui; 'origem' no corpo é ignorada. Com `conversa_id`
+            o telefone vem da conversa e a chave de dedupe é id da tela + conversa (o mesmo texto para outra
+            conversa não é cortado como repetido); a liberação do opt-out (botão com confirmação) vale 1 envio."""
             if not igual(self.headers.get(CAB_TOKEN), app.token):
                 self.close_connection = True
                 return self._erro(403, "Token de envio errado. Recarregue a tela.")
@@ -320,8 +345,11 @@ def fazer_handler(app):
                 return self._erro(400, "Mensagem vazia ou longa demais.")
             if not isinstance(id_tela, str) or not ID_TELA.match(id_tela):
                 return self._erro(400, "Envio sem identificador da tela.")
-            if not isinstance(corpo.get("telefone"), str):
+            conversa_id = corpo.get("conversa_id")
+            if conversa_id is None and not isinstance(corpo.get("telefone"), str):
                 return self._erro(400, "Telefone inválido.")
+            if conversa_id is not None and (not isinstance(conversa_id, int) or isinstance(conversa_id, bool)):
+                return self._erro(400, "Conversa inválida.")
             if app.conector is None:
                 return self._erro(503, "WhatsApp não configurado no serviço.")
             con = app.abrir()
@@ -329,9 +357,17 @@ def fazer_handler(app):
                 instancia = banco.ler_config(con, "instancia")
                 if not instancia:
                     return self._erro(503, "Conecte o WhatsApp primeiro.")
+                numero, confirmar = corpo.get("telefone"), corpo.get("confirmar_optout") is True
+                if conversa_id is not None:
+                    achada = conversas.dados_do_envio(con, conversa_id)
+                    if achada is None:
+                        return self._erro(404, "Conversa não encontrada.")
+                    numero = achada[0]
+                    saiu = con.execute("SELECT optout_em FROM contatos WHERE id = ?", (achada[1],)).fetchone()
+                    confirmar = confirmar or (saiu["optout_em"] is not None and conversas.liberado(con, achada[1]))
                 try:
-                    r = portao.enviar_manual(con, app.conector, instancia, corpo["telefone"], texto, id_tela,
-                                             confirmar_optout=corpo.get("confirmar_optout") is True)
+                    r = portao.enviar_manual(con, app.conector, instancia, numero, texto, id_tela,
+                                             confirmar_optout=confirmar, conversa_id=conversa_id)
                 except telefone.TelefoneInvalido:
                     return self._erro(400, "Telefone inválido.")
             finally:
