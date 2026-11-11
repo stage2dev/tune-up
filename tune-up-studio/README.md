@@ -3,13 +3,39 @@
 Status: work in progress. A plugin of the `tune-up` marketplace that depends on
 `tune-up` (it adds a module to its panel):
 
-```
-/plugin install tune-up-studio --marketplace stage2dev/tune-up
+```sh
+claude plugin marketplace add stage2dev/tune-up
+claude plugin install tune-up@tune-up
+claude plugin install tune-up-studio@tune-up
 ```
 
 Platforms: the studio runs on macOS, Linux and WSL2 only. Native Windows is not
 supported (the Claude Code sandbox it relies on does not run there); the
 `tune-up` panel itself still runs on Windows.
+
+## Turn it on in a project
+
+The panel loads nothing from a plugin unless the project names it. In the
+project's `painel.json`:
+
+```json
+{
+  "modulos_de_plugins": ["tune-up-studio@tune-up:estudio"],
+  "acoes_de_plugins": ["tune-up-studio@tune-up"],
+  "estudio": {"video_rede_local": false}
+}
+```
+
+- `modulos_de_plugins` adds the Estudio screen; `acoes_de_plugins` adds the
+  `estudio.*` actions.
+- The first time, and after every plugin update, the panel pins the plugin's
+  version and sha256 and refuses it until you confirm in a terminal:
+  `python3 painel.py --aceitar-extensao tune-up-studio@tune-up`.
+- `estudio.video_rede_local: true` turns on the render action
+  (`estudio.video-motion`). It lets the page being rendered reach localhost and
+  the machine's LAN address on macOS, so it is off by default; without it,
+  videos come from the FFmpeg slide reserve.
+- Then open the Estudio screen and follow its steps: Ambiente, Marca, Novo.
 
 ## What it is
 

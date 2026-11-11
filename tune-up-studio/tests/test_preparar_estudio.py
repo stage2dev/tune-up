@@ -206,7 +206,8 @@ class TestModulo(Base):
         self.assertEqual(a["nivel"], "atencao")
         self.assertIn("npm ci --ignore-scripts falhou", a["texto"])
         self.preparar()
-        self.assertIn("Estúdio pronto", mod.montar({"dados": self.dados})["alertas"][0]["texto"])
+        with mock.patch.object(mod, "_versao", return_value="0.1.0"):  # a do plugin de mentira do setUp
+            self.assertIn("Estúdio pronto", mod.montar({"dados": self.dados})["alertas"][0]["texto"])
         with mock.patch.object(mod, "_versao", return_value="0.2.0"):  # o plugin foi atualizado
             a = mod.montar({"dados": self.dados})["alertas"][0]
         self.assertEqual(a["nivel"], "atencao")
