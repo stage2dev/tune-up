@@ -17,7 +17,7 @@ import secrets  # noqa: E402
 import signal  # noqa: E402
 import threading  # noqa: E402
 
-from servico import banco, pasta, portao, rotas, travas  # noqa: E402
+from servico import banco, evolution_local, pasta, portao, rotas, travas  # noqa: E402
 from servico.conectores import evolution  # noqa: E402
 
 PORTA = 8791
@@ -91,9 +91,11 @@ def rodar(args, avisar=print):
         except OSError as e:
             avisar("vendas: não subi: a porta %d não abriu (%s)" % (args.porta, e.strerror or e), file=sys.stderr)
             return 4
+        ambiente = evolution_local.ler_ambiente(pasta_dados)  # .env do preparar; o ambiente do terminal manda
+        ambiente.update({k: os.environ[k] for k in (evolution.VAR_URL, evolution.VAR_CHAVE) if os.environ.get(k)})
         try:
             app.conector = evolution.Evolution.do_ambiente("http://%s:%d" % (rotas.HOST_DOCKER, app.porta),
-                                                           segredo, os.environ)
+                                                           segredo, ambiente)
         except ValueError:
             app.conector = None  # POST /enviar responde 503 até o dono configurar a Evolution
         for sinal in (signal.SIGINT, signal.SIGTERM):

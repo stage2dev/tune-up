@@ -16,6 +16,7 @@ CAB_TOKEN = "X-Vendas-Token"
 CAB_SEGREDO = "X-Vendas-Segredo"
 INSTANCIA = re.compile(r"^/webhook/([A-Za-z0-9_-]{1,64})$")
 MODO_REGISTRA, MODO_RECUSA = "registra_e_conta", "recusa"
+VALIDOS_PARA_RECUSA = 20  # "recusa" só liga depois de tantos webhooks válidos seguidos (um inválido zera)
 ID_TELA = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 TEXTO_MAX = 4096
 
@@ -160,6 +161,8 @@ def fazer_handler(app):
                 return
             if self._caminho() == "/enviar":
                 return self._enviar()
+            if self._caminho() == "/modo-webhook":
+                return self._modo_webhook()
             if not achado:
                 self.close_connection = True
                 return self._erro(404, "Rota desconhecida.")
@@ -169,10 +172,17 @@ def fazer_handler(app):
             segredo_ok = igual(self.headers.get(CAB_SEGREDO), app.segredo)
             con = app.abrir()
             try:
-                modo = banco.ler_config(con, "webhook_modo", MODO_REGISTRA)
-                if not segredo_ok:
-                    banco.somar_config(con, "webhook_invalidos")
-                    banco.gravar_config(con, "webhook_validos_seguidos", "0")
+                if not segredo_ok:  # zera e lê o modo numa transação só (a troca de modo também usa uma)
+                    con.execute("BEGIN IMMEDIATE")
+                    try:
+                        banco.somar_config(con, "webhook_invalidos")
+                        banco.gravar_config(con, "webhook_validos_seguidos", "0")
+                        modo = banco.ler_config(con, "webhook_modo", MODO_REGISTRA)
+                        con.execute("COMMIT")
+                    except Exception:
+                        if con.in_transaction:
+                            con.execute("ROLLBACK")
+                        raise
                     if modo != MODO_REGISTRA:  # modo desconhecido fecha: recusa
                         self.close_connection = True
                         return self._erro(401, "Segredo do webhook errado.")
@@ -186,6 +196,37 @@ def fazer_handler(app):
             finally:
                 con.close()
             self._json(200, {"ok": True})
+
+        def _modo_webhook(self):
+            """Troca o modo do segredo do webhook. "recusa" só com VALIDOS_PARA_RECUSA válidos seguidos (lidos e
+            gravados na mesma transação: um inválido que chega junto não passa por baixo)."""
+            if not igual(self.headers.get(CAB_TOKEN), app.token):
+                self.close_connection = True
+                return self._erro(403, "Token de envio errado. Recarregue a tela.")
+            corpo = self._corpo_json()
+            if corpo is None:
+                return
+            modo = corpo.get("modo")
+            if modo not in (MODO_REGISTRA, MODO_RECUSA):
+                return self._erro(400, "Modo desconhecido.")
+            con = app.abrir()
+            try:
+                con.execute("BEGIN IMMEDIATE")
+                try:
+                    seguidos = int(banco.ler_config(con, "webhook_validos_seguidos", "0"))
+                    if modo == MODO_RECUSA and seguidos < VALIDOS_PARA_RECUSA:
+                        con.execute("ROLLBACK")
+                        return self._erro(409, "Faltam %d webhooks válidos seguidos para ligar a recusa."
+                                          % (VALIDOS_PARA_RECUSA - seguidos))
+                    banco.gravar_config(con, "webhook_modo", modo)
+                    con.execute("COMMIT")
+                except Exception:
+                    if con.in_transaction:
+                        con.execute("ROLLBACK")
+                    raise
+            finally:
+                con.close()
+            self._json(200, {"webhook_modo": modo, "webhook_validos_seguidos": seguidos})
 
         def _enviar(self):
             """Envio manual da tela: origem 'manual' fixada aqui; 'origem' no corpo é ignorada."""

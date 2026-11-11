@@ -5,7 +5,7 @@ A WhatsApp sales module for the [tune-up](../README.md) panel. It has two parts:
 - a **panel screen** (`painel/modulos/vendas/modulo.py`, screen id `vendas`) that shows the connection, the conversations and the sending state;
 - a **local service** (`servico/`, Python 3.9 standard library only) that holds the WhatsApp connection and the data, listening on `127.0.0.1` only.
 
-Status: 0.1.0 is a skeleton. The screen has one tab, "Conexão", that says whether the service is running (from its heartbeat in the database) and, when it is stopped, shows the exact command to start it. The service runs and receives webhooks, but has no WhatsApp connection yet.
+Status: 0.1.0 is a skeleton. The screen has one tab, "Conexão", that says whether the service is running (from its heartbeat in the database) and, when it is stopped, shows the exact commands to start it and to prepare the local Evolution API. The service runs and receives webhooks, but has no WhatsApp connection flow (QR) yet.
 
 ## Enable it in a project
 
@@ -38,12 +38,31 @@ Routes:
 | `GET /saude` | health, no secrets |
 | `GET /token-de-envio` | returns the send token only when `Origin` is exactly the `--painel` origin; any other origin or no `Origin` = 403. `OPTIONS` and CORS only for that origin |
 | `GET /estado` | requires header `X-Vendas-Token` (compared in constant time); webhook mode and counters |
+| `POST /modo-webhook` | requires `X-Vendas-Token`; JSON `{modo}` with `registra_e_conta` or `recusa`. `recusa` answers 409 until 20 consecutive valid webhooks were received (an invalid one resets the count); going back to `registra_e_conta` is always allowed |
 | `POST /enviar` | requires `X-Vendas-Token`; JSON `{telefone, texto, id_tela, confirmar_optout}`. Always origin `manual` (an `origem` field in the body is ignored) and always through the send gate. Replies `{estado, motivo, envio_id}`; 503 when the Evolution connector or the instance is not configured |
 | `POST /webhook/<instance>` | JSON only, 1 MB limit; secret in header `X-Vendas-Segredo` (constant-time compare). Mode `registra_e_conta` (default) accepts and counts valid/invalid; mode `recusa` answers 401 to a wrong secret. The raw event goes to the `eventos` table |
 
 `Host` must be `127.0.0.1` or `localhost` (and the service port); `host.docker.internal` is accepted only on the webhook route. Nothing from a request is written to logs.
 
+The screen ("Conexão" tab, while the service runs) shows the webhook mode, the valid, invalid and consecutive-valid counters and a form to switch the mode. The form calls the module action `modo_webhook`, which asks the service (default port 8791) for the send token as the panel origin and posts to `POST /modo-webhook`; the 20-valid rule is enforced by the service, and the token never comes back in the action result.
+
 The send token is new on every start and stored 0600 in the data folder (deleted on clean stop); the webhook secret is kept 0600 in the data folder across restarts. The panel screen never reads either file.
+
+## Local Evolution API (Docker)
+
+The WhatsApp connection runs in a local Evolution API v2 (Docker). Prepare its files once per project:
+
+```
+python3 -B <plugin folder>/servico/evolution_local.py preparar --projeto <project root> [--porta 8791] [--porta-evolution 8080]
+```
+
+- Writes `compose.yml` and `.env` into `<data folder>/evolution/` (the external data folder below, never the project root; a target inside the project or under a synced folder is refused with exit code 2).
+- `.env` is mode 0600 and holds an API key and a Postgres password generated on the spot. The public default key of the Evolution examples is never used. An existing `.env` is never overwritten unless you pass `--refazer` (which also needs the old Postgres volume removed, since Postgres keeps the first password).
+- `compose.yml` runs Evolution API v2.3.7, Postgres 15 and Redis 7. Only the Evolution port is published, bound to `127.0.0.1` (default 8080); Postgres and Redis publish nothing. Telemetry and the global webhook are off.
+- It prints the command to start the containers, `docker compose -f <data folder>/evolution/compose.yml up -d`, and never runs Docker itself.
+- The service reads the Evolution URL (`SERVER_URL`) and key from that `.env` when `VENDAS_EVOLUTION_URL` / `VENDAS_EVOLUTION_CHAVE` are not set in its environment. It registers each instance's webhook as `http://host.docker.internal:<service port>/webhook/<instance>` with the secret in the `X-Vendas-Segredo` header, so start the service with the same `--porta` you gave `preparar`.
+
+**Linux limitation:** the compose maps `host.docker.internal` to the host gateway (`host-gateway`), but on Linux that is the Docker bridge address, and the service listens on `127.0.0.1` only, so the webhook may not reach it. This first release targets macOS only (the compose file was validated with `docker compose config` on macOS with colima; delivery from a running container to the service was not tested end to end). On Linux, the webhook path is not supported yet.
 
 ## Send gate
 
