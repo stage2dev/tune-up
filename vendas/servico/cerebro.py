@@ -76,6 +76,14 @@ def marcar_precisa_de_voce(con, conversa_id, motivo, desligar=False, erro=None):
     banco.registrar_evento(con, "ia_precisa_de_voce", json.dumps(dados))
 
 
+def _cortada(resposta):
+    """finish_reason 'length' = texto cortado no teto de saída: nunca vai para o lead."""
+    try:
+        return resposta["choices"][0].get("finish_reason") == "length"
+    except (KeyError, IndexError, TypeError, AttributeError):
+        return False
+
+
 class Cerebro:
     """base_url só vem da subida do serviço (argumento/ambiente), nunca de um pedido."""
 
@@ -121,7 +129,7 @@ class Cerebro:
                 msg = None
             if msg is None or not isinstance(chamadas, list):
                 return self._parar(con, conversa_id, r, "resposta_invalida")
-            if resposta["choices"][0].get("finish_reason") == "length":   # cortada no teto de saída: nada sai
+            if _cortada(resposta):   # cortada no teto de saída: nada sai
                 return self._parar(con, conversa_id, r, "resposta_cortada")
             if not chamadas:
                 texto = msg.get("content")
@@ -171,6 +179,8 @@ class Cerebro:
                                                {"role": "user", "content": "Rascunho a reescrever:\n" + texto}],
                  "max_completion_tokens": SAIDA_MAX}
         resposta, _ = self._chamar(con, segredo, par, corpo, {"chamadas": 0, "custo_usd": 0.0})
+        if resposta is None or _cortada(resposta):   # reescrita cortada no teto de saída nunca sai
+            return None
         try:
             novo = resposta["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError):

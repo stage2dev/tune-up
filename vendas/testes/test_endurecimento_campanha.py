@@ -21,7 +21,7 @@ from testes import test_campanha  # noqa: E402
 from testes.openai_falsa import resposta_texto  # noqa: E402
 from testes.test_cerebro import Base as BaseCerebro  # noqa: E402
 from testes.test_leads import Importa  # noqa: E402
-from testes import test_leads_aba  # noqa: E402
+from testes import test_leads_aba, test_saida  # noqa: E402
 
 GRANDE = "nome,telefone\nAna,+55 11 90000-0001\n\"%s\",+55 11 90000-0002\n" % ("x" * 200000)
 
@@ -94,7 +94,7 @@ class TesteCampanha(test_campanha.Base):
         self.assertEqual(r["motivo"], "campanha_parada")
         self.assertEqual(self.c.entregues, [])
 
-    def test_reenvio_de_falha_com_campanha_pausada_nao_sai(self):
+    def test_reenvio_do_agendador_com_campanha_pausada_nao_sai(self):
         cid = self.campanha(1)
         linha = campanha.proximo(self.con, portao._iso(self.agora))
         envio = banco.registrar_envio(self.con, "campanha:%d:%d:%s" % (cid, linha["contato_id"], linha["passo"]),
@@ -102,9 +102,33 @@ class TesteCampanha(test_campanha.Base):
                                       telefone=linha["telefone"], tipo="texto", conteudo="Oi",
                                       instancia=test_campanha.INST)
         self.assertTrue(campanha.pausar(self.con, cid))
-        r = portao.reenviar(self.con, self.c, test_campanha.INST, envio, agora=self.agora)
+        r = portao.reenviar(self.con, self.c, test_campanha.INST, envio, agora=self.agora, so_se_campanha_ativa=True)
         self.assertEqual(r["motivo"], "campanha_parada")
         self.assertEqual(self.c.entregues, [])
+
+    def test_agendador_reenvia_falha_so_com_a_campanha_ativa(self):
+        self.campanha(1)
+        self.c.modo_envio = "recusar"
+        self.rodar(1)
+        self.c.modo_envio = "ok"
+        with mock.patch.object(portao, "reenviar", wraps=portao.reenviar) as espiao:
+            self.rodar(20, passo_s=600)
+        self.assertTrue(espiao.called)
+        self.assertTrue(all(c.kwargs.get("so_se_campanha_ativa") for c in espiao.call_args_list))
+        self.assertEqual(len(self.c.entregues), 1)
+
+    def test_dono_reenvia_o_incerto_de_campanha_concluida(self):
+        cid = self.campanha(1)
+        self.c.modo_envio = "timeout"
+        self.rodar(3)
+        self.assertEqual(self.estados(cid), ["incerto"])
+        self.assertEqual(self.con.execute("SELECT estado FROM campanhas WHERE id = ?", (cid,)).fetchone()[0],
+                         "concluida")
+        envio = self.con.execute("SELECT id FROM envios WHERE estado = 'incerto'").fetchone()[0]
+        self.c.modo_envio = "ok"
+        r = portao.reenviar(self.con, self.c, test_campanha.INST, envio, agora=self.agora)   # o "Reenviar" do dono
+        self.assertEqual((r["estado"], r["motivo"]), ("enviado", None))
+        self.assertEqual(len(self.c.entregues), 1)   # o timeout não entregou; o reenvio do dono entregou
 
     def _ja_recebeu_de_outra_instancia(self, contato_id):
         banco.registrar_envio(self.con, "manual:x%d" % contato_id, "manual", estado="enviado", contato_id=contato_id,
@@ -133,6 +157,18 @@ class TesteCampanha(test_campanha.Base):
                          (False, "teto_contatos_novos_dia"))
         self.assertEqual(portao.pode_enviar(self.con, "campanha", test_campanha.numero(900), agora=self.agora,
                                             instancia="outra"), (True, None))
+
+
+class TesteReescritaCortada(test_saida.Base):
+    def test_reescrita_com_length_barra_e_nao_chama_o_conector(self):
+        st, corpo = resposta_texto("Custa R$ 10 e o melhor da oferta")
+        corpo["choices"][0]["finish_reason"] = "length"
+        self.falsa.fila = [(st, corpo)]
+        r = self.entregar('enviar_link({"nome": "x"})')
+        self.assertEqual((r["estado"], r["motivo"]), ("barrado", "ferramenta_como_texto"))
+        self.assertEqual(len(self.falsa.chamadas_chat()), 1)   # a reescrita foi pedida e voltou cortada
+        self.assertEqual(self.c.envios(), 0)
+        self.assertEqual(self.precisa_de_voce(), 1)
 
 
 class TesteCsvMalformado(Importa):

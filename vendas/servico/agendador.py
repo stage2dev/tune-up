@@ -104,7 +104,7 @@ class Agendador:
                 return {"estado": "pulado", "envio_id": None, "motivo": motivo}
             return portao.enviar_campanha(con, conector, instancia, linha["telefone"], texto,
                                           linha["campanha_id"], linha["passo"], agora=agora)
-        r = portao.reenviar(con, conector, instancia, linha["envio_id"], agora=agora)
+        r = portao.reenviar(con, conector, instancia, linha["envio_id"], agora=agora, so_se_campanha_ativa=True)
         if r["motivo"] == "nao_reenviavel":   # a linha mudou no meio: vale o que ela diz agora
             r = dict(r, estado="duplicado")
         return r
