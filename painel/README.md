@@ -169,6 +169,7 @@ Cruza o registro com `claude agents --json --all` (cache de 3 s). Medido no CLI 
 - Arquivos: `/assets/*` com cache longo, `index.html` sem cache, outra rota que não seja `/api` cai no `index.html`. Nada de `..`, ponto inicial, barra invertida, byte nulo ou atalho que saia de `web/dist`.
 - O leitor não segue atalho para fora do `plans_dir`, e nome de arquivo vindo do perfil (`goal`, `progress`, `later`) só vale se for nome simples.
 - Módulos e ações do pacote: só dentro do pacote, sem atalho para fora.
+- Mídia do módulo (opcional): `INFO["midia"] = "pasta"` (relativa a `<dados>`) libera `GET /api/modulos/{id}/arquivo?c=<caminho relativo>`. Só png, jpg, webp, mp4 e webm; `..`, ponto no começo, barra invertida, caminho absoluto e atalho que sai da pasta dão 404. `Range` de um intervalo dá 206 (inclusive `bytes=-N`); fora do arquivo, 416; vários intervalos, 200 com o arquivo inteiro.
 - `POST /api/modulos/{id}/acao` passa pelas mesmas defesas de todo POST; o corpo e os `dados` nunca vão para o log nem para a resposta de erro.
 - Timeout de conexão de 15 s; subprocessos com lista e timeout.
 
@@ -195,6 +196,7 @@ Tipos exatos em `contrato/api.d.ts`.
 | `GET /api/modulos` | telas extras ligadas e quantos alertas cada uma tem |
 | `GET /api/modulos/{id}[?fresco=1]` | conteúdo de uma tela extra (`fresco=1` ignora o cache de 30 s) |
 | `POST /api/modulos/{id}/acao` | ação de uma tela extra (`agir`): 200, 400, 404, 409, 500, 503 |
+| `GET /api/modulos/{id}/arquivo?c=` | imagem ou vídeo da pasta que o módulo declara em `INFO["midia"]`: 200, 206, 404, 416 |
 
 ## De onde vêm os dados de `/api/estado`
 

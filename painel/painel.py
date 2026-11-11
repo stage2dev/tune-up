@@ -28,6 +28,7 @@ import extensoes  # noqa: E402
 import lancador as lanc  # noqa: E402
 import leitor  # noqa: E402
 import mascara  # noqa: E402
+import midia  # noqa: E402
 import modulos  # noqa: E402
 import teto  # noqa: E402
 import transcricao  # noqa: E402
@@ -39,11 +40,12 @@ CORPO_MAX = 32 * 1024  # uma mensagem do chat tem até 6000 letras (acento = 2 b
 RE_ROTA_EXEC = re.compile(r"^/api/execucoes/([^/]{1,40})/(eventos|parar|abrir|responder)$")
 RE_ROTA_MODULO = re.compile(r"^/api/modulos/([^/]{1,80})$")
 RE_ROTA_MODULO_ACAO = re.compile(r"^/api/modulos/([^/]{1,80})/acao$")
+RE_ROTA_MODULO_ARQ = re.compile(r"^/api/modulos/([^/]{1,80})/arquivo$")
 RE_SESSAO = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 CSP = ("default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
-       "font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; "
-       "frame-ancestors 'none'")
+       "media-src 'self'; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; "
+       "form-action 'none'; frame-ancestors 'none'")
 
 
 class Estado:
@@ -143,10 +145,12 @@ def fazer_handler(app):
         protocol_version = "HTTP/1.0"
 
         # ---- respostas
-        def _enviar(self, codigo, corpo, tipo, cache="no-store", csp=CSP):
+        def _enviar(self, codigo, corpo, tipo, cache="no-store", csp=CSP, extra=None, tamanho=None):
             self.send_response(codigo)
             self.send_header("Content-Type", tipo)
-            self.send_header("Content-Length", str(len(corpo)))
+            self.send_header("Content-Length", str(len(corpo) if tamanho is None else tamanho))
+            for k, v in (extra or {}).items():
+                self.send_header(k, v)
             self.send_header("Cache-Control", cache)
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
@@ -154,7 +158,7 @@ def fazer_handler(app):
             self.send_header("Cross-Origin-Resource-Policy", "same-origin")
             self.send_header("Content-Security-Policy", csp)
             self.end_headers()
-            if self.command != "HEAD":
+            if self.command != "HEAD" and corpo:
                 self.wfile.write(corpo)
 
         def _json(self, codigo, dado):
@@ -267,12 +271,32 @@ def fazer_handler(app):
             if m:
                 fresco = (query.get("fresco") or ["0"])[0] in ("1", "true")
                 return self._json(*modulos.montar(app.cfg, urllib.parse.unquote(m.group(1)), usar_cache=not fresco))
+            m = RE_ROTA_MODULO_ARQ.match(caminho)
+            if m:
+                return self._arquivo(urllib.parse.unquote(m.group(1)), (query.get("c") or [None])[0])
             m = RE_ROTA_EXEC.match(caminho)
             if m and m.group(2) == "eventos":
                 return self._eventos(m.group(1), query)
             if m:
                 return self._erro(405, "Use POST nesta rota.")
             return self._erro(404, "Não encontrado.")
+
+        def _arquivo(self, mid, c):
+            """Mídia do módulo (midia.py) em blocos; Range de um intervalo dá 206."""
+            r = midia.abrir(app.cfg, mid, c, self.headers.get("Range"))
+            if not isinstance(r, midia.Aberto):
+                codigo, dado, extra = r
+                corpo = json.dumps(dado, ensure_ascii=False).encode("utf-8")
+                return self._enviar(codigo, corpo, "application/json; charset=utf-8", extra=extra)
+            try:
+                self._enviar(r.codigo, b"", r.tipo, extra=r.cabecalhos(), tamanho=r.tamanho)
+                if self.command != "HEAD":
+                    for pedaco in r.blocos():
+                        self.wfile.write(pedaco)
+            except (BrokenPipeError, ConnectionResetError):
+                self.close_connection = True  # o navegador pulou para outro trecho do vídeo
+            finally:
+                r.fechar()
 
         def _agentes(self, query):
             sessao = (query.get("sessao") or [None])[0]
