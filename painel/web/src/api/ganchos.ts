@@ -41,13 +41,21 @@ export const useExecucoes = () =>
 export const useModulos = () =>
   useQuery({ queryKey: chaves.modulos, queryFn: () => apiGet<ListaModulos>('/api/modulos'), refetchInterval: 30_000 });
 
-/** Uma tela de modulo (alertas, abas e blocos). */
+/** Intervalo de releitura do modulo em ms: atualizar_em (s) preso em 2..60; sem numero, 15 s. */
+export function intervaloDeAtualizacao(v: unknown): number {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return 15_000;
+  return Math.round(Math.min(60, Math.max(2, v)) * 1000);
+}
+
+/** Uma tela de modulo (alertas, abas e blocos). Relê no ritmo de `atualizar_em` (2..60 s; sem ele, 15 s);
+ *  com a aba do navegador escondida, para (refetchIntervalInBackground: false). */
 export const useModulo = (id: string | undefined) =>
   useQuery({
     queryKey: chaves.modulo(id ?? ''),
     enabled: !!id,
     queryFn: () => apiGet<DadosModulo>(`/api/modulos/${encodeURIComponent(id ?? '')}`),
-    refetchInterval: 15_000,
+    refetchInterval: (q) => intervaloDeAtualizacao(q.state.data?.atualizar_em),
+    refetchIntervalInBackground: false,
   });
 
 /** Chama uma acao do modulo (POST) e, se der certo, puxa o modulo de novo sem o cache do servidor. */

@@ -2,12 +2,17 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
-## 2.7.1
+## 2.8.0
 
-A module action that says it failed now shows as an error, and a second plugin joins the marketplace.
+Module screens get an inbox block and refresh faster; a module action that says it failed now shows as an error, and a second plugin joins the marketplace.
 
+- New block `caixa` (inbox): a list of conversations (title, one-line preview, relative time, unread badge, status seal, the open one highlighted, text search in the browser) next to the open conversation. Clicking a row posts `{acao: abrir.acao, dados: {...abrir.dados_fixos, conversa_id}}` through the module action route; the row shows "abrindo…" until the fresh reload lands, and a failed action shows the server message. Up to 768 px wide it shows one pane at a time with a back button. Rows are buttons with a visible focus ring. The server drops a `caixa` without `conversas` or `abrir.acao`, and rows without `id`/`titulo`, with a warning.
+- Conversation messages may carry `tipo` (`texto`, `audio`, `imagem`, `documento`, `outro`): anything but text shows as a labelled chip ("Áudio – ouça no celular") instead of a raw `[audio]`. Balloons use the chat's look, with the time in each balloon and a separator per day. Enter sends and Shift+Enter breaks the line (same as the chat box). The list follows new messages only when you are already at the bottom.
+- A module response may carry `atualizar_em` (seconds, clamped to 2..60 by the server and the screen; 15 without it). The screen reloads at that pace and stops while the browser tab is hidden. Text being typed is never overwritten.
+- A tab may carry `alerta` (integer >= 1), shown as a small badge next to its title.
 - `POST /api/modulos/<id>/acao`: when the module's `agir` returns `{ok: false, mensagem}`, the panel answers 422 with that message, so the screen shows an error and never "Feito.".
 - New plugin `tune-up-vendas` 0.1.0 in `vendas/` (second marketplace entry, own README, CHANGELOG and tests; CI step "Sales module tests"). It is off until a project lists it in `modulos_de_plugins`. Nothing in the core imports it.
+- `painel/web/dist` rebuilt.
 
 ## 2.7.0
 

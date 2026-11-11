@@ -168,6 +168,25 @@ def _texto(v, n=500):
     return v[:n] if isinstance(v, str) else ""
 
 
+def _caixa(b, avisos, aba):
+    """Bloco caixa: sem lista ou sem abrir.acao sai inteiro; linha sem id/titulo sai; o resto passa."""
+    abrir, conv = b.get("abrir"), b.get("conversas")
+    if not isinstance(conv, list) or not isinstance(abrir, dict) or not _texto(abrir.get("acao")):
+        avisos.append("aba %s: bloco caixa sem 'conversas' ou sem 'abrir.acao' ignorado" % aba)
+        return None
+    linhas = [c for c in conv if isinstance(c, dict) and _texto(c.get("id")) and isinstance(c.get("titulo"), str)]
+    if len(linhas) != len(conv):
+        avisos.append("aba %s: conversa sem 'id' ou 'titulo' ignorada" % aba)
+    saida = dict(b, conversas=linhas)
+    if "conversa" in saida and not isinstance(saida["conversa"], dict):
+        del saida["conversa"]
+    return saida
+
+
+def _numero(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and v not in (float("inf"), float("-inf"))
+
+
 def conferir(dado, inf):
     """Forma mínima da resposta de montar(). Peça ruim sai com aviso; o resto passa."""
     if not isinstance(dado, dict):
@@ -187,11 +206,19 @@ def conferir(dado, inf):
         blocos = [b for b in aba["blocos"][:MAX_BLOCOS] if isinstance(b, dict) and isinstance(b.get("tipo"), str)]
         if len(blocos) != len(aba["blocos"][:MAX_BLOCOS]):
             avisos.append("aba %s: bloco sem 'tipo' ignorado" % _texto(aba["id"], 40))
-        abas.append(dict(aba, id=_texto(aba["id"], 40), titulo=_texto(aba.get("titulo") or aba["id"], 80),
-                         blocos=blocos))
+        nome = _texto(aba["id"], 40)
+        blocos = [x for x in (_caixa(b, avisos, nome) if b["tipo"] == "caixa" else b for b in blocos) if x is not None]
+        aba = dict(aba, id=nome, titulo=_texto(aba.get("titulo") or aba["id"], 80), blocos=blocos)
+        if not (_numero(aba.get("alerta")) and aba["alerta"] >= 1):
+            aba.pop("alerta", None)
+        else:
+            aba["alerta"] = int(aba["alerta"])
+        abas.append(aba)
     gerado = dado.get("gerado_em") if isinstance(dado.get("gerado_em"), str) else _agora()
     saida = {"id": inf["id"], "titulo": _texto(dado.get("titulo"), 60) or inf["titulo"], "gerado_em": gerado,
              "alertas": alertas[:MAX_ALERTAS], "abas": abas, "avisos": avisos}
+    if _numero(dado.get("atualizar_em")):
+        saida["atualizar_em"] = min(60, max(2, dado["atualizar_em"]))
     try:
         json.dumps(saida, ensure_ascii=False, allow_nan=False)
     except (TypeError, ValueError) as e:

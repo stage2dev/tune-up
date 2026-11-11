@@ -86,7 +86,7 @@ export const copiaDoBotao = (x: Record<string, unknown>): BotaoCopia => ({
   acao: String(x.acao), dados: { ...objeto(x.dados) }, confirmar: textoOuNada(x.confirmar), rotulo: String(x.rotulo),
 });
 
-const COM_ESTADO = ['formulario', 'conversa'];
+const COM_ESTADO = ['formulario', 'conversa', 'caixa'];
 /** Chave estavel do bloco: o que ele digita nao migra para outro quando a lista reordena. Indice so para blocos sem estado. */
 export function chaveDoBloco(b: { tipo?: unknown; [k: string]: unknown }, i: number): string {
   if (typeof b?.id === 'string' && b.id) return `id:${b.id}`;

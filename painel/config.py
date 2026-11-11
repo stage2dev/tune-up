@@ -13,7 +13,7 @@ import os
 import re
 
 PAINEL = os.path.dirname(os.path.abspath(__file__))
-VERSAO = "2.3.0"
+VERSAO = "2.4.0"
 ENV_PROJETO = "TUNEUP_PAINEL_PROJETO"
 PACOTE_PADRAO = "painel-projeto"
 

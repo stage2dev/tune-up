@@ -1,4 +1,4 @@
-// Renderizador dos blocos do contrato de modulo (kpis, tabela, lista, serie, texto, acoes).
+// Renderizador dos blocos do contrato de modulo (kpis, tabela, lista, serie, texto, acoes e os interativos).
 // Cada bloco chega de um pacote de projeto e pode vir incompleto: tudo aqui e lido com cuidado.
 import type { ReactNode } from 'react';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -6,6 +6,7 @@ import type { Bloco } from '../../api/tipos';
 import { Cartao, EstadoVazio, Selo } from '../../componentes';
 import type { Tom } from '../../componentes/Selo';
 import { BotoesDoGrupo } from './BotaoAcao';
+import { Caixa } from './Caixa';
 import { Conversa } from './Conversa';
 import { Formulario } from './Formulario';
 import { Imagem } from './Imagem';
@@ -206,6 +207,8 @@ export function RenderBloco({ bloco, moduloId }: { bloco: Bloco; moduloId?: stri
       return <Formulario b={bloco} moduloId={moduloId} />;
     case 'conversa':
       return <Conversa b={bloco} moduloId={moduloId} />;
+    case 'caixa':
+      return <Caixa b={bloco} moduloId={moduloId} />;
     case 'imagem':
       return <Imagem b={bloco} desconhecido={() => <Desconhecido tipo="imagem" />} />;
     default:

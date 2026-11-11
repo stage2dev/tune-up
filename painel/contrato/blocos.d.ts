@@ -14,6 +14,7 @@ export type Bloco =
   | { tipo: 'acoes'; titulo?: string; grupo: string }
   | BlocoFormulario
   | BlocoConversa
+  | BlocoCaixa
   | BlocoImagem
   | { tipo: string; [k: string]: unknown }; // desconhecido: a tela mostra um aviso discreto
 
@@ -44,6 +45,8 @@ export interface MensagemConversa {
   de: 'contato' | 'eu' | 'ia';
   texto: string;
   quando: string;
+  /** Sem tipo (ou 'texto') = texto. O resto vira uma etiqueta ("Áudio – ouça no celular"); texto "[audio]" some. */
+  tipo?: 'texto' | 'audio' | 'imagem' | 'documento' | 'outro';
   estado?: 'pendente' | 'enviado' | 'falhou' | 'incerto' | 'negado';
   nota?: string;
 }
@@ -57,6 +60,29 @@ export interface BlocoConversa {
   enviar?: { acao: string; dados_fixos?: Record<string, unknown>; rotulo?: string };
   botoes?: { rotulo: string; acao: string; dados?: Record<string, unknown>; confirmar?: string }[];
   vazio?: string;
+}
+/** Caixa de entrada: lista de conversas (busca no navegador) e a conversa aberta ao lado; tela estreita = uma por vez.
+ *  Clicar numa linha posta { acao: abrir.acao, dados: { ...abrir.dados_fixos, conversa_id: id } } e relê o módulo.
+ *  O servidor descarta o bloco sem `abrir.acao` e as linhas sem id/titulo (com aviso). */
+export interface BlocoCaixa {
+  tipo: 'caixa';
+  id?: string;
+  titulo?: string;
+  conversas: {
+    id: string;
+    titulo: string;
+    /** Prévia da última mensagem (uma linha). */
+    detalhe?: string;
+    quando?: string;
+    selo?: { texto: string; tom: Tom };
+    nao_lidas?: number;
+    ativa?: boolean;
+  }[];
+  abrir: { acao: string; dados_fixos?: Record<string, unknown> };
+  /** A conversa aberta: mesmo formato do bloco conversa (sem tipo). */
+  conversa?: Omit<BlocoConversa, 'tipo'>;
+  vazio?: string;
+  vazio_conversa?: string;
 }
 /** Só data:image/png;base64 e data:image/jpeg;base64 (svg pode carregar script). */
 export interface BlocoImagem {

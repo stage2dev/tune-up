@@ -203,6 +203,8 @@ export interface AbaModulo {
   id: string;
   titulo: string;
   blocos: Bloco[];
+  /** Selo pequeno no titulo da aba (inteiro >= 1). */
+  alerta?: number;
 }
 
 export interface DadosModulo {
@@ -212,4 +214,6 @@ export interface DadosModulo {
   alertas: AlertaModulo[];
   abas: AbaModulo[];
   avisos: string[];
+  /** Segundos entre releituras (o servidor e a tela prendem em 2..60). */
+  atualizar_em?: number;
 }

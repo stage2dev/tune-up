@@ -7,6 +7,7 @@ import { Abas, Erro, EsqueletoPagina, EstadoVazio, Pagina, Cartao } from '../../
 import type { AlertaModulo, NivelAlerta } from '../../api/tipos';
 import { dataHora } from './formato';
 import { Blocos } from './Blocos';
+import { alertaDaAba } from './entrada';
 
 const ESTILO: Record<NivelAlerta, { cor: string; Icone: typeof Info }> = {
   info: { cor: 'var(--color-accent)', Icone: Info },
@@ -68,7 +69,7 @@ export default function Modulo() {
       {!ativa ? (
         <Cartao><EstadoVazio titulo="Este módulo não tem abas" texto="Ele está habilitado, mas ainda não trouxe nenhuma aba para mostrar." /></Cartao>
       ) : (
-        <Abas abas={abas.map((a) => ({ id: a.id, rotulo: a.titulo }))} ativa={ativa.id} aoTrocar={setEscolhida}>
+        <Abas abas={abas.map((a) => ({ id: a.id, rotulo: a.titulo, alerta: alertaDaAba(a.alerta) }))} ativa={ativa.id} aoTrocar={setEscolhida}>
           <Blocos key={`${id}:${ativa.id}`} blocos={ativa.blocos} moduloId={id} />
         </Abas>
       )}
