@@ -44,6 +44,12 @@ export function pedidoDaLinha(abrir: unknown, id: string): { acao: string; dados
   return acao ? { acao, dados: { ...objeto(a.dados_fixos), conversa_id: id } } : null;
 }
 
+/** Tela estreita (um painel por vez): a conversa so toma a tela quando ha uma aberta, a pessoa nao voltou para a
+ * lista e nenhuma abertura esta pendente. Assim o "abrindo" e o erro da acao (que moram na lista) ficam a vista. */
+export const conversaAVista = (aberta: boolean, voltou: boolean, pendente: string | null): boolean => aberta && !voltou && !pendente;
+/** Depois da acao abrir: so o sucesso tira a pessoa da lista; a falha deixa a lista com o aviso de erro. */
+export const voltouDepoisDeAbrir = (voltou: boolean, ok: boolean): boolean => (ok ? false : voltou);
+
 const dois = (n: number) => String(n).padStart(2, '0');
 const meiaNoite = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 const diasEntre = (d: Date, agora: Date) => Math.round((meiaNoite(agora) - meiaNoite(d)) / 86_400_000);

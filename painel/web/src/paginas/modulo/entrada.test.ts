@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { intervaloDeAtualizacao } from '../../api/ganchos';
-import { alertaDaAba, filtrarConversas, fioComDias, horaDaMensagem, legendaDe, lerConversas, pedidoDaLinha, quandoCurto, rotuloDoTipo } from './entrada';
+import { alertaDaAba, conversaAVista, filtrarConversas, fioComDias, horaDaMensagem, legendaDe, lerConversas, pedidoDaLinha, quandoCurto, rotuloDoTipo, voltouDepoisDeAbrir } from './entrada';
 
 const agora = new Date(2026, 10, 11, 15, 0); // 11/11/2026 15:00 local
 
@@ -24,6 +24,23 @@ describe('caixa: linhas', () => {
     expect(pedidoDaLinha({ acao: 'abrir' }, 'c1')).toEqual({ acao: 'abrir', dados: { conversa_id: 'c1' } });
     expect(pedidoDaLinha({ acao: '' }, 'c1')).toBeNull();
     expect(pedidoDaLinha(undefined, 'c1')).toBeNull();
+  });
+  it('tela estreita: abrir B com A aberta deixa a lista (e o erro) a vista ate B chegar; falha nunca volta para A', () => {
+    // A aberta, a pessoa voltou para a lista e tocou em B.
+    let voltou = true;
+    let pendente: string | null = 'B';
+    expect(conversaAVista(true, voltou, pendente)).toBe(false); // "abrindo" na lista, A nao reaparece
+    // a acao falhou (ex.: 409): a lista com o aviso de erro continua na tela
+    voltou = voltouDepoisDeAbrir(voltou, false);
+    pendente = null;
+    expect(conversaAVista(true, voltou, pendente)).toBe(false);
+    // tenta de novo e da certo: so depois da releitura (pendente zera) a conversa toma a tela
+    pendente = 'B';
+    voltou = voltouDepoisDeAbrir(voltou, true);
+    expect(conversaAVista(true, voltou, pendente)).toBe(false);
+    pendente = null;
+    expect(conversaAVista(true, voltou, pendente)).toBe(true);
+    expect(conversaAVista(false, false, null)).toBe(false); // sem conversa aberta a lista fica
   });
   it('hora relativa da linha', () => {
     expect(quandoCurto('2026-11-11T14:59:40', agora)).toBe('agora');

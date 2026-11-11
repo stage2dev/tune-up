@@ -10,7 +10,7 @@ import { Cartao, EstadoVazio, Selo } from '../../componentes';
 import type { Tom } from '../../componentes/Selo';
 import { CLASSE_CAMPO } from './Formulario';
 import { Conversa } from './Conversa';
-import { filtrarConversas, lerConversas, pedidoDaLinha, quandoCurto, type LinhaCaixa } from './entrada';
+import { conversaAVista, filtrarConversas, lerConversas, pedidoDaLinha, quandoCurto, voltouDepoisDeAbrir, type LinhaCaixa } from './entrada';
 import { textoOuNada } from './interativos';
 import { AvisoEnvio, useEnvio } from './useEnvio';
 
@@ -35,7 +35,7 @@ function Linha({ l, abrindo, desligada, aoAbrir }: { l: LinhaCaixa; abrindo: boo
       >
         <span className="flex items-center gap-2 min-w-0">
           <span className={`text-sm truncate flex-1 min-w-0 ${l.ativa || l.naoLidas ? 'font-medium' : ''} ${l.ativa ? 'text-[var(--color-accent)]' : ''}`}>{l.titulo}</span>
-          {hora && <span className="shrink-0 text-[11px] tabular-nums text-[var(--color-text-tertiary)]">{abrindo ? 'abrindo…' : hora}</span>}
+          {(hora || abrindo) && <span className="shrink-0 text-[11px] tabular-nums text-[var(--color-text-tertiary)]">{abrindo ? 'abrindo…' : hora}</span>}
         </span>
         <span className="flex items-center gap-2 min-w-0">
           <span className="text-xs truncate flex-1 min-w-0 text-[var(--color-text-secondary)]">{l.detalhe ?? ''}</span>
@@ -76,15 +76,16 @@ export function Caixa({ b, moduloId }: { b: Bloco; moduloId?: string }) {
 
   async function abrir(id: string) {
     const p = pedidoDaLinha(b.abrir, id);
-    setVoltou(false);
     if (!p || pendente) return;
     viuBusca.current = false;
     setPendente(id);
-    if (!(await enviar(p.acao, p.dados))) setPendente(null);
+    const ok = await enviar(p.acao, p.dados);
+    setVoltou((v) => voltouDepoisDeAbrir(v, ok)); // falha: a lista (com o erro) fica a vista, nunca a conversa velha
+    if (!ok) setPendente(null);
   }
 
   const vistas = filtrarConversas(linhas, busca);
-  const mostraConversa = !!aberta && !voltou;
+  const mostraConversa = conversaAVista(!!aberta, voltou, pendente);
   const titulo = textoOuNada(aberta?.titulo) ?? ativa?.titulo;
   const voltar = (
     <button type="button" onClick={() => setVoltou(true)} className="min-[769px]:hidden mb-2 inline-flex items-center gap-1.5 text-sm text-[var(--color-accent)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] rounded">
