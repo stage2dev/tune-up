@@ -195,8 +195,8 @@ def sandbox_do_usuario(projeto=None, home=None):
     return res or [(OK, "settings: nenhuma chave de sandbox do usuário amplia o estúdio")]
 
 
-def verificar(projeto=None):
-    return (sistema() + node() + hyperframes() + chrome() + ffmpeg() + sandbox_linux()
+def verificar(projeto=None, node_dir=NODE_DIR):
+    return (sistema() + node() + hyperframes(node_dir) + chrome() + ffmpeg() + sandbox_linux()
             + sandbox_do_usuario(projeto))
 
 

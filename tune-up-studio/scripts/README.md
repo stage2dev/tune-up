@@ -194,3 +194,27 @@ graph file is not inspected (a `movie=` source there is stopped only by the
 sandbox network block); an action that puts `Bash` in `permitir` turns on the
 core's compound/script lock, which refuses `python3` and absolute-path
 binaries, so studio actions must not do that.
+
+## preparar_estudio.py: "Preparar estúdio"
+
+Deterministic, not an AI session, and the only studio step with network:
+`npm ci --ignore-scripts` then `npm audit signatures` (no install script runs;
+see `node/README.md`). Then it runs `verificar_ambiente.py` and writes
+`<dados>/ambiente.json` (`pronto`, `node_dir`, `hyperframes`, each step with
+its exit code, the checker items). If signatures fail, `node_modules` is
+removed and `pronto` is false.
+
+```sh
+python3 -I scripts/preparar_estudio.py --dados <pacote>/dados [--projeto <pasta>]
+# asks before downloading; --sim skips the question (the module command passes it)
+```
+
+Install folder: `node/` in place, unless the studio is under `~/.claude` (the
+plugin cache, protected by the sandbox); then `package.json` and the lockfile
+are copied to `<dados>/tune-up-studio/<version>/node` and the install goes
+there (`ambiente.json` says where). It does not download Chrome.
+
+From the panel: module `estudio` (`painel/modulos/estudio/modulo.py`), command
+`preparar` with `{"confirmar": true}`; without it nothing runs. The command
+holds `<dados>/ambiente.lock` and passes it to the background run, so a second
+click while it runs is refused. Output goes to `<dados>/ambiente.log`.
