@@ -3,12 +3,13 @@
 Não é teste de unidade (o unittest não descobre esta pasta): gasta 1 sessão de verdade.
 
   python3 -B painel/tests_reais/prova_video_bg.py --fonte <pasta da composição> --saida <pasta> [--modelo haiku]
+      [--pedido "<uma linha; %s vira o caminho do hyperframes>"]
 
 Cria um projeto descartável sem git dentro de $HOME e o apaga no fim. Dispara pelo Lancador do
-painel a ação-fixture (`acao_estudio.json`) com duas regras a mais em `negar`: `Skill(hyperframes)`
+painel a ação-fixture (`acao_estudio.json`) com duas regras somadas às de `negar` dela: `Skill(hyperframes)`
 e `Skill(hyperframes-cli)`. Antes do disparo copia a composição para `{trabalho}/fonte` e planta
 uma skill falsa `hyperframes` em `{trabalho}/.claude/skills/` que, se carregada, grava
-`skill-carregou.txt`. O prompt é fixo (uma linha). Acompanha até `terminou` (ou o limite), imprime
+`skill-carregou.txt`. O prompt é fixo (uma linha; `--pedido` troca por outro, também fixo). Acompanha até `terminou` (ou o limite), imprime
 estado, tempo, voltas e tokens do .jsonl, copia o MP4 para --saida e faz `claude stop` + `claude rm`.
 """
 import argparse
@@ -71,6 +72,7 @@ def principal():
     ap.add_argument("--saida", required=True, help="pasta para o MP4 e o relatório")
     ap.add_argument("--modelo", default="haiku")
     ap.add_argument("--espera", type=int, default=360, help="segundos no máximo")
+    ap.add_argument("--pedido", default=PEDIDO, help="prompt de uma linha; %%s vira o caminho do hyperframes")
     arg = ap.parse_args()
     fonte, saida = os.path.realpath(arg.fonte), os.path.realpath(arg.saida)
     os.makedirs(saida, exist_ok=True)
@@ -79,7 +81,7 @@ def principal():
     try:
         with open(os.path.join(AQUI, "acao_estudio.json"), encoding="utf-8") as f:
             dados = json.load(f)
-        dados["acoes"][0]["negar"] = list(NEGAR_SKILL)
+        dados["acoes"][0]["negar"] = dados["acoes"][0].get("negar", []) + NEGAR_SKILL  # soma: mantém as do Bash
         dados["acoes"][0]["modelos"] = [arg.modelo]
         with open(os.path.join(acoes, "acao_estudio.json"), "w", encoding="utf-8") as f:
             json.dump(dados, f, ensure_ascii=False)
@@ -98,7 +100,7 @@ def principal():
         bin_hf = os.path.join(NODE, "node_modules", ".bin", "hyperframes")
         t0 = time.time()
         try:
-            ex = lc.iniciar("estudio.fixture", {"pedido": PEDIDO % bin_hf})
+            ex = lc.iniciar("estudio.fixture", {"pedido": arg.pedido % bin_hf})
         except Exception as e:  # disparo negado: registra e sai
             print("DISPARO FALHOU: %s" % e)
             return 1
@@ -133,6 +135,8 @@ def principal():
         print("video.mp4 em {trabalho}:", os.path.exists(mp4))
         if os.path.exists(mp4):
             shutil.copy2(mp4, os.path.join(saida, "video-bg.mp4"))
+        if os.path.isdir(os.path.join(pasta, "shots")):  # snapshot da prova de rede: a página diz o que saiu
+            shutil.copytree(os.path.join(pasta, "shots"), os.path.join(saida, "shots"), dirs_exist_ok=True)
         for sub in ("stop", "rm"):
             cod, out, err = lc.rodar([cfg["claude_bin"], sub, i], cfg["workspace"], 30)
             print("claude %s %s -> %s %s" % (sub, i, cod, (out + err).strip()[:160]))

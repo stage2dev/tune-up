@@ -44,10 +44,22 @@ class TesteValidar(unittest.TestCase):
                  {"env": {"path": "x"}}, {"env": {"PATH": "/x"}}, {"env": {"LD_PRELOAD": "x"}},
                  {"env": {"DYLD_INSERT_LIBRARIES": "x"}}, {"env": {"CLAUDE_CODE_X": "1"}},
                  {"env": {"ANTHROPIC_BASE_URL": "x"}}, {"env": {"NODE_OPTIONS": "x"}}, {"env": {"A": 1}},
+                 {"sandbox": {"rede_local": 1}}, {"sandbox": {"rede_local": True, "x": 1}}, {"sandbox": {}},
                  {"env": {"A": "a\nb"}}, {"env": {"A": "x" * 201}}, {"env": {"V%d" % i: "" for i in range(21)}}]
         for ruim in ruins:
             with self.assertRaises(ValueError, msg=repr(ruim)):
                 catalogo.validar_acao(dict(SIMPLES, **ruim))
+
+    def test_rede_local(self):
+        ligada = catalogo.validar_acao(dict(SIMPLES, sandbox={"rede_local": True}))
+        self.assertEqual((ligada["sandbox"], ligada["_rede_local"]), (True, True))
+        self.assertNotIn("_rede_local", catalogo.publica(ligada))
+        desligada = catalogo.validar_acao(dict(SIMPLES, sandbox={"rede_local": False}))
+        self.assertEqual((desligada["sandbox"], desligada.get("_rede_local")), (True, None))
+        rede = settings(desligada, pasta=None)["sandbox"]["network"]
+        self.assertEqual(rede, {"strictAllowlist": True, "allowedDomains": []})  # padrão: sem escutar em localhost
+        rede = settings(ligada, pasta=None)["sandbox"]["network"]
+        self.assertEqual(rede, {"strictAllowlist": True, "allowedDomains": [], "allowLocalBinding": True})
 
     def test_env_nao_sai_na_api(self):
         a = catalogo.validar_acao(dict(SIMPLES, env={"DO_NOT_TRACK": "1"}))
@@ -60,7 +72,7 @@ class TesteSettings(unittest.TestCase):
         conf = settings(fixture())
         self.assertEqual(conf["sandbox"], {
             "enabled": True, "failIfUnavailable": True, "allowUnsandboxedCommands": False,
-            "network": {"strictAllowlist": True, "allowedDomains": []},
+            "network": {"strictAllowlist": True, "allowedDomains": [], "allowLocalBinding": True},
             "filesystem": {"denyRead": [WS + "/.env*", WS + "/*.pem", WS + "/*.key",
                                         WS + "/**/.env*", WS + "/**/*.pem", WS + "/**/*.key"],
                            "denyWrite": [DADOS + "/estudio-dono.json", DADOS + "/aprovados"]}})

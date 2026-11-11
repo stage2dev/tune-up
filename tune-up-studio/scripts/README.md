@@ -123,11 +123,20 @@ it at `python3` and a file it wrote.
 
 ## Inside the Claude Code sandbox (`claude --bg`, CLI 2.1.322)
 
-Proof script: `painel/tests_reais/prova_video_bg.py`. With the studio fixture
-settings, `hyperframes render` fails with `listen EPERM: operation not
-permitted 127.0.0.1`: render serves the composition on loopback and the
+Proof script: `painel/tests_reais/prova_video_bg.py`. With plain
+`"sandbox": true`, `hyperframes render` fails with `listen EPERM: operation
+not permitted 127.0.0.1`: render serves the composition on loopback and the
 sandbox network block forbids the bind. `Skill(hyperframes)` in `deny` blocks
 the skill ("Skill execution blocked by permission rules").
+
+The fixture now uses `"sandbox": {"rede_local": true}`, which adds
+`sandbox.network.allowLocalBinding` (macOS only; no effect on Linux). Measured
+on macOS with haiku: the example reel renders in the session (21 s wall time
+for the whole session) and passes `qa_video.py`. The price, from a page
+snapshotted in the sandbox: requests to `192.0.2.1` and `example.com` fail at
+once (`TypeError`), but requests to another listener on `127.0.0.1` and on this
+machine's own LAN address both arrive. Any local service without
+authentication is reachable from a composition.
 
 ## reserva_slides.py and video_ou_reserva.py: FFmpeg fallback
 
