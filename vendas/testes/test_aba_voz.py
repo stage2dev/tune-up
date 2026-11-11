@@ -81,8 +81,10 @@ class AbaVoz(Base):
     def configurar(self, voz_id=VOZ, clonada="nao", dono=DONO, chave=True):
         if chave:
             self.assertTrue(self.agir("voz_chave", chave=CHAVE)["ok"])
-        r = self.agir("voz_config", voz_id=voz_id, clonada=clonada, teto_caracteres_dia="5000", numero_dono=dono)
+        r = self.agir("voz_config", voz_id=voz_id, clonada=clonada, teto_caracteres_dia="5000")
         self.assertTrue(r["ok"], r)
+        if dono:
+            self.assertTrue(self.agir("voz_dono", numero=dono, confirmar="sim")["ok"])
 
     def config(self, chave, padrao=None):
         con = banco.abrir(self.pasta)
@@ -226,11 +228,11 @@ class TesteTeste(AbaVoz):
         self.assertEqual(self.kpis()["Seu número (teste)"]["valor"], "não configurado")
         r = self.agir("voz_teste")
         self.assertFalse(r["ok"])
-        self.assertIn("Informe o seu número", r["mensagem"])
+        self.assertIn("Salve o seu número", r["mensagem"])
         self.assertEqual((self.enviados(), self.falsa.pedidos), ([], []))
 
     def test_numero_do_dono_invalido_e_recusado(self):
-        r = self.agir("voz_config", voz_id=VOZ, clonada="nao", teto_caracteres_dia="5000", numero_dono="123")
+        r = self.agir("voz_dono", numero="123", confirmar="sim")
         self.assertFalse(r["ok"])
         self.assertIn("Número do dono inválido", r["mensagem"])
 

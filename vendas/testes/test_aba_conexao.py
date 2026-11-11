@@ -137,7 +137,7 @@ class TesteAgir(Aba):
             "disparos_ativar", "disparos_pausar", "disparos_retomar",
             "importar_candidatos", "candidato_filtrar", "candidato_aprovar", "candidato_descartar",
             "places_chave", "places_apagar_chave", "places_teto", "places_buscar", "places_guardar", "voz_chave", "voz_apagar_chave",
-            "voz_config", "voz_consentimento", "voz_teste"]))
+            "voz_config", "voz_consentimento", "voz_dono", "voz_teste"]))
         self.assertEqual(self.falso.chamadas, [])
 
     def test_servico_de_outro_projeto_recusado(self):

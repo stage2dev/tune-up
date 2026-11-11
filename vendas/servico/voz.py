@@ -22,7 +22,8 @@ TETO_MAX = 1000000
 CACHE_VOZES_S = 600   # lista de vozes da conta fica 10 min em memória (por chave), só se a ElevenLabs respondeu
 LIMITE_TEXTO = 600      # caracteres por áudio (sem contar o aviso)
 TEXTO_TESTE = "Olá! Este é um teste da voz do seu atendimento."
-ROTA = re.compile(r"^/voz(?:/(vozes|chave|chave/apagar|config|consentimento|teste))?$")
+ROTA = re.compile(r"^/voz(?:/(vozes|chave|chave/apagar|config|consentimento|dono|teste))?$")
+CATEGORIAS_CLONADAS = ("cloned", "professional")   # category do GET /v1/voices: voz tirada de uma pessoa
 
 
 _cache_trava = threading.Lock()
@@ -39,6 +40,25 @@ def vozes(app, segredo):
     with _cache_trava:
         app.cache_vozes = (marca, time.monotonic(), list(lista))
     return lista
+
+
+def _categoria_no_cache(app, voz_id):
+    """Categoria do voice_id na última lista de vozes da conta guardada (sem rede), ou None."""
+    with _cache_trava:
+        cache = getattr(app, "cache_vozes", None)
+    return next((v.get("categoria") for v in (cache[2] if cache else []) if v.get("voice_id") == voz_id), None)
+
+
+def _clonada_pela_lista(app, voz_id):
+    """A lista da conta marca a voz como clonada? Pede a lista (cache de 10 min) se há chave; lista fora = None."""
+    segredo = chave.ler(app.pasta_dados, ARQUIVO_CHAVE)
+    if segredo:
+        try:
+            vozes(app, segredo)
+        except voz_cliente.ErroVoz:
+            pass
+    categoria = _categoria_no_cache(app, voz_id)
+    return None if categoria is None else categoria in CATEGORIAS_CLONADAS
 
 
 def _dia():
@@ -87,15 +107,18 @@ def consentimento(con, voz_id):
     return dict(linha) if linha else None
 
 
-def _config(con):
-    return {"voz_id": banco.ler_config(con, "voz_id"), "clonada": banco.ler_config(con, "voz_clonada") == "1",
+def _config(app, con):
+    """A voz que a lista da conta (em cache) marca como clonada é clonada mesmo com voz_clonada = 0."""
+    voz_id = banco.ler_config(con, "voz_id")
+    clonada = banco.ler_config(con, "voz_clonada") == "1" or _categoria_no_cache(app, voz_id) in CATEGORIAS_CLONADAS
+    return {"voz_id": voz_id, "clonada": clonada,
             "modelo": banco.ler_config(con, "voz_modelo") or MODELO_PADRAO,
             "formato": banco.ler_config(con, "voz_formato") or FORMATO_PADRAO}
 
 
 def avisos(app, con, cfg=None):
     """Por que a voz está desligada (lista vazia = ligada)."""
-    cfg = cfg or _config(con)
+    cfg = cfg or _config(app, con)
     saida = []
     if not voz_cliente.achar_ffmpeg():
         saida.append("Voz desligada: instale o ffmpeg (ele converte o áudio em nota de voz do WhatsApp).")
@@ -109,14 +132,15 @@ def avisos(app, con, cfg=None):
 
 
 def estado(app, con):
-    cfg = _config(con)
+    cfg = _config(app, con)
     cons = consentimento(con, cfg["voz_id"])
+    dono = banco.ler_config(con, "numero_dono")
     lista = avisos(app, con, cfg)
     return {"ligada": not lista, "avisos": lista, "chave": chave.estado(app.pasta_dados, ARQUIVO_CHAVE),
             "ffmpeg": voz_cliente.achar_ffmpeg() is not None, "voz_id": cfg["voz_id"], "clonada": cfg["clonada"],
             "aviso_ia": AVISO_IA if cfg["clonada"] else None, "modelo": cfg["modelo"], "formato": cfg["formato"],
             "consentimento": None if cons is None else {"nome": cons["nome"], "data": cons["data"]},
-            "dono_configurado": bool(banco.ler_config(con, "numero_dono")),
+            "dono_configurado": bool(dono), "dono_final": dono[-4:] if dono else None,
             "teto_caracteres_dia": teto(con), "usados_hoje": usados_hoje(con), "limite_texto": LIMITE_TEXTO}
 
 
@@ -126,7 +150,7 @@ def _gerar_e_enviar(app, con, origem, numero, texto, mandar):
     texto = texto.strip() if isinstance(texto, str) else ""
     if not texto or len(texto) > LIMITE_TEXTO:
         return {"estado": "erro", "erro": "O texto do áudio tem de ter de 1 a %d caracteres." % LIMITE_TEXTO}
-    cfg = _config(con)
+    cfg = _config(app, con)
     lista = avisos(app, con, cfg)
     if lista:
         return {"estado": "desligada", "erro": lista[0], "avisos": lista}
@@ -184,7 +208,7 @@ def _texto(valor, limite):
     return re.sub(r"[\x00-\x1f\x7f]", " ", valor).strip()[:limite] if isinstance(valor, str) else ""
 
 
-def _salvar_config(con, corpo):
+def _salvar_config(app, con, corpo):
     voz_id = _texto(corpo.get("voz_id"), 64)
     modelo = _texto(corpo.get("modelo"), 64) or MODELO_PADRAO
     formato = _texto(corpo.get("formato"), 64) or FORMATO_PADRAO
@@ -199,18 +223,12 @@ def _salvar_config(con, corpo):
         return 400, {"erro": "Teto diário inválido (de 0 a %d caracteres)." % TETO_MAX}
     if not isinstance(corpo.get("clonada", False), bool):
         return 400, {"erro": "Marque se a voz é clonada (sim ou não)."}
-    dono = _texto(corpo.get("numero_dono"), 40)   # opcional: vazio mantém o que já está gravado
-    if dono:
-        try:
-            dono = telefone.normalizar(dono)
-        except telefone.TelefoneInvalido:
-            return 400, {"erro": "Número do dono inválido (DDD + número, só dígitos)."}
+    pela_lista = _clonada_pela_lista(app, voz_id)   # a lista da conta manda: "cloned" com "não" segue clonada
+    clonada = bool(corpo.get("clonada")) or bool(pela_lista)
     con.execute("BEGIN IMMEDIATE")
     try:
-        if dono:
-            banco.gravar_config(con, "numero_dono", dono)
         banco.gravar_config(con, "voz_id", voz_id)
-        banco.gravar_config(con, "voz_clonada", "1" if corpo.get("clonada") else "0")
+        banco.gravar_config(con, "voz_clonada", "1" if clonada else "0")
         banco.gravar_config(con, "voz_modelo", modelo)
         banco.gravar_config(con, "voz_formato", formato)
         banco.gravar_config(con, "voz_teto_caracteres_dia", str(int(teto_dia)))
@@ -219,8 +237,23 @@ def _salvar_config(con, corpo):
         if con.in_transaction:
             con.execute("ROLLBACK")
         raise
-    return 200, {"voz_id": voz_id, "clonada": bool(corpo.get("clonada")), "modelo": modelo, "formato": formato,
-                 "teto_caracteres_dia": int(teto_dia), "dono_configurado": bool(banco.ler_config(con, "numero_dono"))}
+    return 200, {"voz_id": voz_id, "clonada": clonada, "clonada_pela_lista": bool(pela_lista) and not corpo.get(
+        "clonada"), "modelo": modelo, "formato": formato, "teto_caracteres_dia": int(teto_dia)}
+
+
+def _salvar_dono(con, corpo):
+    """Número do dono (só o teste de áudio usa), com confirmação. Recusa o número de um contato (lead, em opt-out
+    ou não): o teste não olha opt-out nem pausa, então nunca pode mirar um lead. Devolve só os 4 últimos dígitos."""
+    if corpo.get("confirmar") is not True:
+        return 400, {"erro": "Confirme que este é o SEU número para salvar."}
+    try:
+        dono = telefone.normalizar(_texto(corpo.get("numero"), 40))
+    except telefone.TelefoneInvalido:
+        return 400, {"erro": "Número do dono inválido (DDD + número, só dígitos)."}
+    if banco.buscar_contato(con, dono) is not None:
+        return 409, {"erro": "Esse número é de um contato da sua lista. O teste só vai para o seu próprio número."}
+    banco.gravar_config(con, "numero_dono", dono)
+    return 200, {"dono_final": dono[-4:]}
 
 
 def _gravar_consentimento(con, corpo):
@@ -273,7 +306,9 @@ def executar(app, con, metodo, caminho, query, corpo):
         return 200, {"apagada": chave.apagar(app.pasta_dados, ARQUIVO_CHAVE),
                      "chave": chave.estado(app.pasta_dados, ARQUIVO_CHAVE)}
     if sub == "config":
-        return _salvar_config(con, corpo)
+        return _salvar_config(app, con, corpo)
+    if sub == "dono":
+        return _salvar_dono(con, corpo)
     if sub == "consentimento":
         return _gravar_consentimento(con, corpo)
     id_tela = corpo.get("id_tela")

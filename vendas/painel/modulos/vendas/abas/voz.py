@@ -1,12 +1,13 @@
 """Aba Voz: estado da voz (ffmpeg, chave da ElevenLabs, voz escolhida, caracteres de hoje), chave (campo segredo,
 trocar e apagar com confirmação), seleção da voz pela lista da conta (lista lenta ou fora do ar = voice_id digitado),
 voz clonada só liga com o consentimento do dono da voz, teto diário e o botão de áudio de teste. O teste vai SÓ para o
-número do dono: esta aba nunca manda número ao serviço. A tela só vê 'configurada' e os 4 últimos caracteres; nenhuma
+número do dono, salvo só pela ação própria com confirmação; o teste nunca manda número ao serviço. A tela só vê 'configurada' e os 4 últimos caracteres; nenhuma
 mensagem de ação ecoa a chave."""
 import datetime
 import secrets
 
-ACOES = ("voz_chave", "voz_apagar_chave", "voz_config", "voz_consentimento", "voz_teste")
+ACOES = ("voz_chave", "voz_apagar_chave", "voz_config", "voz_consentimento", "voz_dono", "voz_teste")
+CLONADAS = ("cloned", "professional")   # categorias da lista da conta que o serviço trata como voz clonada
 TEMPO_VOZES_S = 12  # o serviço espera a ElevenLabs até 6 s, uma tentativa só
 SEM_LISTA = "Lista de vozes indisponível: digite o voice_id da voz."
 AVISO_CLONADA = ("Todo áudio com voz clonada começa com o aviso falado \"Mensagem de voz gerada por IA.\" e esse "
@@ -15,9 +16,9 @@ AVISO_CLONADA = ("Todo áudio com voz clonada começa com o aviso falado \"Mensa
                  "consentimento do dono da voz.")
 CONSENTIMENTO = ("Eu autorizo o uso da minha voz clonada para atendimento e vendas por mensagens de voz no "
                  "WhatsApp, sabendo que cada áudio começa com o aviso de que foi gerado por IA.")
-MOTIVOS = {"sem_numero_do_dono": "Informe o seu número (campo \"Seu número\") e salve a voz antes do teste.",
+MOTIVOS = {"sem_numero_do_dono": "Salve o seu número (formulário \"Seu número\") antes do teste.",
            "nao_e_o_dono": "O teste só vai para o número do dono.",
-           "numero_invalido": "O número do dono é inválido. Corrija e salve a voz."}
+           "numero_invalido": "O número do dono é inválido. Corrija no formulário \"Seu número\"."}
 
 
 def _erro(codigo, r, padrao):
@@ -76,8 +77,8 @@ def blocos(estado, vozes, aviso, hoje=None):
                       else "faltando: a voz clonada não liga", "tom": "bom" if cons else "atencao"})
     itens += [{"rotulo": "Caracteres hoje", "valor": "%d de %d" % (estado.get("usados_hoje") or 0,
                                                                  estado.get("teto_caracteres_dia") or 0)},
-              {"rotulo": "Seu número (teste)", "valor": "configurado" if estado.get("dono_configurado")
-               else "não configurado", "tom": "bom" if estado.get("dono_configurado") else "atencao"}]
+              {"rotulo": "Seu número (teste)", "valor": "configurado (final %s)" % estado.get("dono_final")
+               if estado.get("dono_configurado") else "não configurado", "tom": "bom" if estado.get("dono_configurado") else "atencao"}]
     saida = [{"tipo": "kpis", "titulo": "Voz do atendimento", "itens": itens}]
     if estado.get("ligada"):
         saida.append({"tipo": "texto", "titulo": "Voz ligada", "texto": "A voz está pronta para o teste de áudio."})
@@ -93,20 +94,33 @@ def blocos(estado, vozes, aviso, hoje=None):
                      "projeto. Depois a tela mostra só os 4 últimos caracteres.",
         "acao": "voz_chave", "botao": "Trocar chave" if k.get("configurada") else "Salvar chave",
         "campos": [{"id": "chave", "rotulo": "Chave da ElevenLabs", "tipo": "segredo", "obrigatorio": True}]})
-    saida.append({"tipo": "formulario", "id": "voz_config", "titulo": "Voz, número e teto diário",
+    campo_voz = _campo_voz(estado, vozes)
+    escolhida = [v for v in vozes or [] if v["voice_id"] == campo_voz["valor"]]
+    marcada = clonada or bool(escolhida and escolhida[0].get("categoria") in CLONADAS)
+    saida.append({"tipo": "formulario", "id": "voz_config", "titulo": "Voz e teto diário",
                   "descricao": "A voz de catálogo é a padrão. Marque \"clonada\" só se a voz foi clonada de uma "
                                "pessoa: ela só liga com o consentimento abaixo. O teto conta os caracteres falados "
                                "por dia (inclui o aviso de IA); no teto, nada é gerado.",
                   "acao": "voz_config", "botao": "Salvar voz", "campos": [
-                      _campo_voz(estado, vozes),
+                      campo_voz,
                       {"id": "clonada", "rotulo": "Esta voz é clonada de uma pessoa", "tipo": "escolha",
-                       "valor": "sim" if clonada else "nao", "obrigatorio": True,
+                       "valor": "sim" if marcada else "nao", "obrigatorio": True,
+                       "ajuda": "Voz que a sua conta marca como cloned ou professional fica clonada mesmo com Não.",
                        "opcoes": [{"valor": "nao", "rotulo": "Não, é voz de catálogo"},
                                   {"valor": "sim", "rotulo": "Sim, é clonada"}]},
                       {"id": "teto_caracteres_dia", "rotulo": "Teto diário (caracteres)", "tipo": "texto",
-                       "obrigatorio": True, "valor": str(estado.get("teto_caracteres_dia") or 0)},
-                      {"id": "numero_dono", "rotulo": "Seu número (WhatsApp do dono)", "tipo": "texto",
-                       "ajuda": "Só o teste de áudio usa. DDD + número; deixe em branco para manter o salvo."}]})
+                       "obrigatorio": True, "valor": str(estado.get("teto_caracteres_dia") or 0)}]})
+    saida.append({"tipo": "formulario", "id": "voz_dono", "titulo": "Seu número (teste de áudio)",
+                  "descricao": "Só o áudio de teste usa este número. Tem de ser o SEU WhatsApp: número de um contato "
+                               "da lista é recusado. Salvo agora: %s." % ("final %s" % estado.get("dono_final")
+                                                                          if estado.get("dono_configurado")
+                                                                          else "nenhum"),
+                  "acao": "voz_dono", "botao": "Salvar meu número", "campos": [
+                      {"id": "numero", "rotulo": "Seu número (WhatsApp do dono)", "tipo": "texto",
+                       "obrigatorio": True, "ajuda": "DDD + número, só dígitos."},
+                      {"id": "confirmar", "rotulo": "Este número é meu (não é de um cliente)", "tipo": "escolha",
+                       "valor": "nao", "obrigatorio": True,
+                       "opcoes": [{"valor": "nao", "rotulo": "Não"}, {"valor": "sim", "rotulo": "Sim, é meu"}]}]})
     if clonada:
         saida.append({"tipo": "formulario", "id": "voz_consentimento", "titulo": "Consentimento do dono da voz",
                       "descricao": "Vale para a voz escolhida acima. Fica gravado com a data e o texto exatos.",
@@ -160,15 +174,19 @@ def agir(ctx, cliente, acao, dados, base=None):
             return {"ok": False, "mensagem": "Sem a confirmação do dono da voz o consentimento não é gravado."}
         caminho, corpo = "/voz/consentimento", {"nome": dados.get("nome"), "data": dados.get("data"),
                                                  "texto": dados.get("texto")}
+    elif acao == "voz_dono":
+        if dados.get("confirmar") != "sim":
+            return {"ok": False, "mensagem": "Escolha \"Sim, é meu\" para salvar o seu número."}
+        caminho, corpo = "/voz/dono", {"numero": dados.get("numero"), "confirmar": True}
     elif acao == "voz_teste":
         caminho, corpo = "/voz/teste", {"id_tela": "tela-" + secrets.token_hex(8)}
     else:
         corpo = {"voz_id": dados.get("voz_id"), "clonada": dados.get("clonada") == "sim",
-                 "teto_caracteres_dia": dados.get("teto_caracteres_dia"), "numero_dono": dados.get("numero_dono")}
+                 "teto_caracteres_dia": dados.get("teto_caracteres_dia")}
         caminho = "/voz/config"
     try:
         codigo, r = cliente.chamar(ctx, "POST", caminho, corpo, base=base, tempo=cliente.TEMPO_ENVIO_S
-                                   if acao == "voz_teste" else None)
+                                   if acao == "voz_teste" else TEMPO_VOZES_S if acao == "voz_config" else None)
     except cliente.Recusa as e:
         return {"ok": False, "mensagem": str(e)}
     if acao == "voz_teste":
@@ -181,4 +199,9 @@ def agir(ctx, cliente, acao, dados, base=None):
         return {"ok": True, "mensagem": "Chave apagada." if r.get("apagada") else "Não havia chave."}
     if acao == "voz_consentimento":
         return {"ok": True, "mensagem": "Consentimento de %s gravado." % (r.get("consentimento") or {}).get("nome")}
+    if acao == "voz_dono":
+        return {"ok": True, "mensagem": "Seu número salvo (final %s)." % r.get("dono_final")}
+    if r.get("clonada_pela_lista"):
+        return {"ok": True, "mensagem": "Voz salva como clonada: a sua conta ElevenLabs marca essa voz como clonada. "
+                                        "Ela só liga com o consentimento do dono da voz."}
     return {"ok": True, "mensagem": "Voz salva (%s)." % ("clonada" if r.get("clonada") else "catálogo")}
