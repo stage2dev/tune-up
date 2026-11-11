@@ -28,6 +28,10 @@ POR_PAGINA = 100   # em /chat/findMessages, "offset" é o tamanho da página
 PAGINAS_MAX = 50  # nome em uso; 401 (chave errada) e o resto sobem como erro
 
 
+class PaginasDemais(base.ErroConector):
+    """A janela tem mais de PAGINAS_MAX páginas: ler só parte perderia um SAIR das páginas puladas."""
+
+
 class _SemRedirecionar(urllib.request.HTTPRedirectHandler):
     """Redirecionamento levaria a chave (header apikey) para outro destino: vira erro 3xx."""
 
@@ -145,11 +149,12 @@ class Evolution(base.Conector):
 
     def mensagens_desde(self, instancia, desde, ate):
         """POST /chat/findMessages com where.messageTimestamp {gte, lte} (datas ISO), página a página. Só acha o
-        que a Evolution gravou no banco dela (DATABASE_SAVE_DATA_NEW_MESSAGE=true)."""
+        que a Evolution gravou no banco dela (DATABASE_SAVE_DATA_NEW_MESSAGE=true). Mais de PAGINAS_MAX páginas levanta
+        PaginasDemais (nada é devolvido pela metade)."""
         base.validar_instancia(instancia)
         filtro = {"messageTimestamp": {"gte": _iso_z(desde), "lte": _iso_z(ate)}}
         eventos, pagina = [], 1
-        while pagina <= PAGINAS_MAX:
+        while True:
             dados = self._pedir("POST", self._caminho("chat", "findMessages", instancia),
                                 {"where": filtro, "page": pagina, "offset": POR_PAGINA})
             bloco = dados.get("messages") if isinstance(dados, dict) else None
@@ -161,6 +166,8 @@ class Evolution(base.Conector):
                 paginas = int(bloco.get("pages") or 0)
             except (TypeError, ValueError):
                 paginas = 0
+            if paginas > PAGINAS_MAX:
+                raise PaginasDemais("findMessages: %d páginas (máximo %d)" % (paginas, PAGINAS_MAX))
             if pagina >= paginas:
                 break
             pagina += 1

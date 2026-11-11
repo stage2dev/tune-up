@@ -213,6 +213,25 @@ class TesteSubida(Base):
         self.assertEqual(motivos, ["sem_conector", "sem_instancia"])
         self.assertIsNotNone(banco.ler_config(self.con, recebimento.JANELA))
 
+    def test_paginas_demais_falha_e_guarda_a_janela(self):
+        falsa = EvolutionFalsa()
+        self.addCleanup(falsa.fechar)
+        registro = {"key": {"remoteJid": jid(LEAD), "fromMe": False, "id": "R1"}, "messageType": "conversation",
+                    "message": {"conversation": "sair"}, "messageTimestamp": int(time.time()) - 3600}
+        falsa.srv.respostas[("POST", "/chat/findMessages/" + INST)] = (200, {"messages": {
+            "total": 6000, "pages": evolution.PAGINAS_MAX + 10, "currentPage": 1, "records": [registro]}})
+        c = evolution.Evolution(falsa.url, "k", "http://x", "s", tempo_limite=2)
+        self.janela(datetime.datetime.now(UTC) - datetime.timedelta(days=3))
+        janela = banco.ler_config(self.con, recebimento.JANELA)
+        parar = threading.Event()
+        parar.set()
+        self.assertFalse(servico_mod.recuperar(self.app(c), parar))
+        self.assertEqual(len(falsa.srv.pedidos), 1)   # não lê 50 páginas à toa
+        self.assertEqual(banco.ler_config(self.con, recebimento.JANELA), janela)
+        self.assertEqual([d for (d,) in self.con.execute(
+            "SELECT dados FROM eventos WHERE tipo = 'recuperacao_falhou'")], ["PaginasDemais"])
+        self.assertEqual(self.contar("contatos"), 0)
+
 
 class TesteFindMessages(unittest.TestCase):
     def test_busca_paginada_e_traduz(self):
