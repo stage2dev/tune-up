@@ -12,8 +12,9 @@ fora dela), 404. "base": "tune-up" põe a pasta em <raiz>/.tune-up em vez de <da
 - Nome dado pelo servidor: 16 letras do sha256 + extensão. Mesmo conteúdo = mesmo nome: não duplica.
 - Pasta: cada pedaço é criado ou conferido sem atalho (lstat), e o realpath final tem de ser exatamente
   <base real>/<pasta>. Escreve num temporário oculto com O_CREAT|O_EXCL|O_NOFOLLOW e troca com os.replace.
-- Depois: com "gancho": true, chama agir(ctx, "envio.recebido", {"destino", "caminho"}) (falha vira aviso:
-  o arquivo já está gravado) e sempre apaga o cache da tela.
+- Depois: com "gancho": true, chama agir(ctx, "envio.recebido", {"destino", "caminho"}) também no arquivo
+  repetido (o gancho é idempotente; o reenvio conserta um registro que falhou). Erro, 409 ou "feito": false
+  viram "registrado": false + aviso (o arquivo já está gravado). Sempre apaga o cache da tela.
 Python 3.9, só biblioteca padrão.
 """
 import hashlib
@@ -245,13 +246,19 @@ def receber(cfg, mid, chave, headers, rfile, tempo=modulos.TEMPO_LIMITE):
     except Recusa as e:
         return e.codigo, {"erro": e.mensagem}
     partes = decl["partes"] + [nome]
-    caminho, avisos = "/".join(partes), []
-    if novo and decl["gancho"] and callable(getattr(mod, "agir", None)):
+    caminho, avisos, registrado = "/".join(partes), [], True
+    if decl["gancho"] and callable(getattr(mod, "agir", None)):  # também no repetido: registrar é idempotente
+        ctx = dict(modulos.contexto(cfg), ler_dono=lambda: modulos.dono.ler(cfg, mid),
+                   gravar_dono=lambda c, v: modulos.dono.gravar(cfg, mid, c, v))
         try:
-            modulos._rodar_agir(mod, modulos.contexto(cfg), mid, "envio.recebido",
-                                {"destino": chave, "caminho": caminho}, tempo)
+            r = modulos._rodar_agir(mod, ctx, mid, "envio.recebido", {"destino": chave, "caminho": caminho}, tempo)
+            if isinstance(r, dict) and (r.get("feito") is False or r.get("codigo") == 409):
+                registrado, motivo = False, str(r.get("mensagem") or "a tela recusou")[:300]
         except modulos.ErroModulo as e:
-            avisos.append("O arquivo foi guardado, mas a tela não terminou de registrá-lo (%s)." % e.mensagem)
+            registrado, motivo = False, e.mensagem
+        if not registrado:
+            avisos.append("O arquivo foi guardado, mas a tela não terminou de registrá-lo (%s). Envie de novo." % motivo)
     _limpar_cache(mid)
     return (201 if novo else 200), {"ok": True, "caminho": caminho, "c": _c_da_midia(mod, partes, decl["base"]), "tipo": tipo,
-                                    "largura": w, "altura": h, "repetido": not novo, "avisos": avisos}
+                                    "largura": w, "altura": h, "repetido": not novo, "registrado": registrado,
+                                    "avisos": avisos}

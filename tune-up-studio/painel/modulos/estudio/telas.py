@@ -97,12 +97,14 @@ def _logo(obj, campos):
     envio = {"tipo": "envio", "id": "marca-logo", "titulo": "Logo", "descricao": texto + " PNG, JPG ou WebP, até 5 MB.",
              "destino": "logo", "variante": "um", "alt": "Logo do negócio", "max_bytes": 5000000,
              "botao": "Enviar outra logo" if copia else "Enviar logo"}
-    if copia.lower().endswith(IMAGEM):
-        envio["atual"] = "estudio/marca/" + copia
+    if copia.lower().endswith(IMAGEM):  # a enviada tem nome pelo sha256: logo trocada = URL nova (sem imagem velha da memória)
+        enviada = do_dono and isinstance(logo, str) and logo.startswith(".tune-up/estudio/marca/assets/")
+        envio["atual"] = logo[len(".tune-up/"):] if enviada and logo.lower().endswith(IMAGEM) else "estudio/marca/" + copia
     blocos = [envio]
     if not (do_dono and logo is None):
         blocos.append({"tipo": "formulario", "id": "marca-sem-logo", "acao": "marca.sem_logo", "botao": "Não tenho logo",
-                       "campos": [], "dados_fixos": {"confirmar": True},
+                       "campos": [], "dados_fixos": {"confirmar": True}, "discreto": True,
+                       "confirmar": "Tirar a logo? As peças vão sair só com o nome do negócio.",
                        "descricao": "Sem logo, as peças mostram o nome do negócio no lugar."})
     return blocos, envio.get("atual"), copia.lower().endswith(ma.CORES_DA_LOGO)
 
@@ -137,7 +139,7 @@ def _negocio(obj, campos):
     tom = obj.get("tom", {}).get("valor") if isinstance(obj.get("tom"), dict) else None
     tom = tom if isinstance(tom, list) else []
     blocos = [{"tipo": "formulario", "id": "marca-" + k, "acao": "marca.editar", "botao": "Salvar",
-               "dados_fixos": {"campo": k}, "campos": [{"id": "valor", "rotulo": rotulo, "tipo": "texto",
+               "salvar_ao_sair": True, "dados_fixos": {"campo": k}, "campos": [{"id": "valor", "rotulo": rotulo, "tipo": "texto",
                                                         "obrigatorio": True, "valor": str(_valor(campos, k) or ""),
                                                         "ajuda": ajuda}]}
               for k, rotulo, ajuda in (("nome", "Nome", "Como o negócio aparece nas peças."),
@@ -195,23 +197,23 @@ def aba_marca(m, sha, aprovada):
               "fontes": {"titulo": str(_valor(campos, "fontes.heading") or ""), "texto": str(_valor(campos, "fontes.body") or "")},
               "campos": {"fundo": "cores.bg", "texto": "cores.text", "principal": "cores.primary",
                          "destaque": "cores.accent", "superficie": "cores.surface", "letras": "letras"},
-              "textos": {"chamada": str(_valor(campos, "descricao") or nome)[:80], "frase": "Um exemplo de frase das suas peças.",
+              "textos": {"chamada": str(_valor(campos, "descricao") or "")[:80], "frase": "Um exemplo de frase das suas peças.",
                          "botao": "Fale com a gente"},
-              "legenda": "Exemplo de post com a sua marca. As peças de verdade seguem estas cores, letras e fotos."}
+              "legenda": "Exemplo de post com a sua marca. As peças de verdade seguem estas cores e letras.", "lado": True}
     if atual:
         previa["logo"] = atual
     if aprovada:
-        fim = {"tipo": "texto", "titulo": "Marca confirmada",
+        fim = {"tipo": "texto", "titulo": "Marca confirmada", "lado": True,
                "texto": "As peças usam esta marca. Se você mudar qualquer coisa aqui (cor, letra, logo, foto ou texto), "
                         "pedimos sua confirmação de novo antes de criar peças.",
                "ir_para": {"aba": "novo", "rotulo": "Ir para 3. Novo"}}
     else:  # o sha256 curto vai escondido: a marca trocada depois que a tela abriu não é confirmada às cegas
-        fim = {"tipo": "formulario", "id": "marca-confirmar", "titulo": "Tudo certo?", "acao": "marca.aprovar",
+        fim = {"tipo": "formulario", "id": "marca-confirmar", "titulo": "Tudo certo?", "acao": "marca.aprovar", "lado": True,
                "botao": CONFIRMAR, "campos": [], "dados_fixos": {"confirmar": True, "sha256": sha[:12]},
                "descricao": "Você pode voltar aqui e mudar quando quiser. Se mudar, pedimos sua confirmação de novo "
                             "antes de criar peças."}
     return ([topo] + logo + [_fotos(obj), cores, _letras(obj, campos, nome)] + _negocio(obj, campos)
-            + [previa, fim, _redescobrir(), _origem(campos)])
+            + [previa, fim, dict(_redescobrir(), discreto=True), _origem(campos)])
 
 
 def _redescobrir():

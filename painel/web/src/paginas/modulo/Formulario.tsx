@@ -11,10 +11,10 @@ import { AvisoEnvio, useEnvio } from './useEnvio';
 export const CLASSE_CAMPO =
   'w-full min-w-0 rounded-lg border border-[var(--color-input-border)] bg-[var(--color-input-bg)] px-3 py-2 text-sm text-[var(--color-text)]';
 
-function Entrada({ c, idBase, valor, invalido, aoMudar }: { c: CampoLido; idBase: string; valor: string; invalido: boolean; aoMudar: (v: string) => void }) {
+function Entrada({ c, idBase, valor, invalido, aoMudar, aoSair }: { c: CampoLido; idBase: string; valor: string; invalido: boolean; aoMudar: (v: string) => void; aoSair?: () => void }) {
   const id = `${idBase}-${c.id}`;
   const secreto = c.tipo === 'segredo'; // nao controlado: o valor nao vai para o estado do React nem para o atributo value
-  const comum = { id, className: CLASSE_CAMPO, ...(secreto ? { name: c.id } : { value: valor }), 'aria-invalid': invalido || undefined, required: c.obrigatorio };
+  const comum = { id, className: CLASSE_CAMPO, ...(secreto ? { name: c.id } : { value: valor }), 'aria-invalid': invalido || undefined, required: c.obrigatorio, onBlur: aoSair };
   return (
     <div className="grid gap-1">
       <label htmlFor={id} className="text-sm font-medium text-[var(--color-text)]">
@@ -86,6 +86,7 @@ function FormularioBase({ b, moduloId, acaoCat, disparar }: { b: BlocoCru; modul
   const textoConfirmar = textoDeConfirmacao(acaoCat, usarSec ? sec?.confirmar : b.confirmar);
   const faltando = camposFaltando(campos, editados); // segredo nunca esta em `editados`: so e checado no envio
   const idBase = `form-${moduloId ?? 'm'}-${useId()}`; // dois formularios na mesma aba (post e video): ids e rotulos nao se cruzam
+  const aoSair = !acaoCat && b.salvar_ao_sair === true; // salva ao sair do campo (e no Enter): sem botao, nada digitado fica so na tela
 
   async function executar(lidos: Record<string, string>, secundario = usarSec) {
     const qual = acaoCat ? acaoCat.id : secundario ? acaoSec : textoOuNada(b.acao);
@@ -132,10 +133,13 @@ function FormularioBase({ b, moduloId, acaoCat, disparar }: { b: BlocoCru; modul
         {textoOuNada(b.descricao) && <p className="text-sm text-[var(--color-text-secondary)] break-words whitespace-pre-line">{textoOuNada(b.descricao)}</p>}
         {!acao && <p role="note" className="text-xs text-[var(--color-text-tertiary)]">Este formulário não diz qual ação chamar.</p>}
         {campos.map((c) => (
-          <Entrada key={c.id} c={c} idBase={idBase} valor={valorDoCampo(c, editados)} invalido={invalidos.includes(c.id) && (c.tipo === 'segredo' || faltando.includes(c.id))} aoMudar={(v) => setEditados((x) => ({ ...x, [c.id]: v }))} />
+          <Entrada key={c.id} c={c} idBase={idBase} valor={valorDoCampo(c, editados)} invalido={invalidos.includes(c.id) && (c.tipo === 'segredo' || faltando.includes(c.id))} aoMudar={(v) => setEditados((x) => ({ ...x, [c.id]: v }))}
+            aoSair={aoSair && c.tipo !== 'segredo' ? () => { if (c.id in editados && editados[c.id] !== c.valor) void aoEnviar({ preventDefault: () => undefined }); } : undefined} />
         ))}
         <div className="flex flex-wrap items-center gap-3">
-          <Botao type="submit" enviando={enviando && pedindo === null && !usarSec} textoEnviando={acaoCat ? 'Começando…' : 'Enviando…'} disabled={!acaoCat && !textoOuNada(b.acao)}>{textoOuNada(b.botao) ?? 'Enviar'}</Botao>
+          {aoSair ? enviando && <span role="status" className="text-sm text-[var(--color-text-secondary)]">Salvando…</span> : (
+            <Botao type="submit" variante={b.discreto === true ? 'secundario' : 'primario'} enviando={enviando && pedindo === null && !usarSec} textoEnviando={acaoCat ? 'Começando…' : 'Enviando…'} disabled={!acaoCat && !textoOuNada(b.acao)}>{textoOuNada(b.botao) ?? 'Enviar'}</Botao>
+          )}
           {acaoSec && (
             <Botao variante="secundario" enviando={enviando && pedindo === null && usarSec} disabled={enviando}
               onClick={(e) => void aoEnviar(e, true)}>{textoOuNada(sec?.botao) ?? 'Recusar'}</Botao>

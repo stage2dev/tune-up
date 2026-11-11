@@ -33,6 +33,17 @@ export async function enviarArquivos(arquivos: File[], maxBytes: unknown, mandar
   return r;
 }
 
+export interface RespostaEnvio { c?: unknown; registrado?: unknown; avisos?: unknown }
+
+/** `c` da resposta. Guardado mas nao registrado pelo modulo (`registrado: false`) nao e sucesso: vira erro com o aviso. */
+export function cDoEnvio(resp: RespostaEnvio | null | undefined): string | null {
+  if (resp?.registrado === false) {
+    const t = Array.isArray(resp.avisos) ? resp.avisos.filter((x) => typeof x === 'string').join(' ') : '';
+    throw new Error(t || 'O arquivo foi guardado, mas a tela não terminou de registrá-lo. Envie de novo.');
+  }
+  return typeof resp?.c === 'string' ? resp.c : null;
+}
+
 /** Frase do fim: quantas foram e o que deu errado. */
 export function fraseDoFim(r: ResultadoEnvio, grade: boolean): string {
   const feito = r.feitos === 0 ? '' : r.feitos === 1 ? (grade ? '1 foto enviada.' : 'Imagem enviada.') : `${r.feitos} fotos enviadas.`;
@@ -69,8 +80,7 @@ export function Envio({ b, moduloId }: { b: BlocoCru; moduloId?: string }) {
     try {
       const r = await enviarArquivos(arquivos, b.max_bytes, async (a, i) => {
         setFase({ fase: 'enviando', i, n: arquivos.length, progresso: 0 });
-        const resp = await apiEnviarArquivo<{ c?: unknown }>(caminho, a, (p) => setFase({ fase: 'enviando', i, n: arquivos.length, progresso: p }));
-        return typeof resp?.c === 'string' ? resp.c : null;
+        return cDoEnvio(await apiEnviarArquivo<RespostaEnvio>(caminho, a, (p) => setFase({ fase: 'enviando', i, n: arquivos.length, progresso: p })));
       });
       if (r.feitos > 0) relerModulo(qc, moduloId);
       if (!grade && r.ultimo) setRecente(r.ultimo);

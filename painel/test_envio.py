@@ -38,7 +38,9 @@ def montar(ctx):
     return {"abas": [{"id": "a", "blocos": [{"tipo": "texto", "texto": str(n)}]}]}
 def agir(ctx, acao, dados):
     with open(os.path.join(ctx["dados"], "ganchos.log"), "a") as f:
-        f.write(json.dumps([acao, dados]) + "\\n")
+        f.write(json.dumps([acao, dados, callable(ctx.get("gravar_dono"))]) + "\\n")
+    if os.path.exists(os.path.join(ctx["dados"], "recusar")):
+        return {"feito": False, "mensagem": "sem marca"}
     return {}
 '''
 
@@ -164,8 +166,33 @@ class TesteEnvio(unittest.TestCase):
         st2, d2 = self.enviar(corpo)
         self.assertEqual((st1, st2, d2["repetido"], d1["caminho"]), (201, 200, True, d2["caminho"]))
         self.assertEqual(antes, self.arquivos("fotos"))
-        with open(os.path.join(self.dados, "ganchos.log")) as f:  # gancho só no primeiro
-            self.assertEqual(sum(1 for linha in f if d1["caminho"] in linha), 1)
+        with open(os.path.join(self.dados, "ganchos.log")) as f:  # o gancho roda de novo: registrar é idempotente
+            self.assertEqual(sum(1 for linha in f if d1["caminho"] in linha), 2)
+        self.assertEqual((d1["registrado"], d2["registrado"]), (True, True))
+
+    def test_gancho_ocupado_ou_que_recusa_nao_vira_sucesso_e_reenvio_registra(self):
+        corpo, pare = png(semente=b"ocupado"), threading.Event()
+        t = threading.Thread(target=pare.wait, daemon=True)
+        t.start()
+        modulos._agindo["marca"] = t  # outra ação do módulo em andamento
+        try:
+            st, d = self.enviar(corpo)
+        finally:
+            pare.set()
+            t.join()
+            modulos._agindo.pop("marca", None)
+        self.assertEqual((st, d["registrado"]), (201, False))
+        self.assertIn("ação anterior", d["avisos"][0])
+        st, d = self.enviar(corpo)  # mesmo arquivo: cai em repetido, mas o gancho roda e registra
+        self.assertEqual((st, d["repetido"], d["registrado"], d["avisos"]), (200, True, True, []))
+        recusar = os.path.join(self.dados, "recusar")
+        open(recusar, "w").close()
+        try:
+            st, d = self.enviar(png(semente=b"recusado"))
+        finally:
+            os.remove(recusar)
+        self.assertEqual((st, d["registrado"]), (201, False))
+        self.assertIn("sem marca", d["avisos"][0])
 
     def test_gancho_recebe_destino_e_caminho_e_cache_some(self):
         modulos.montar(self.cfg, "marca")  # enche o cache
@@ -173,7 +200,7 @@ class TesteEnvio(unittest.TestCase):
         self.assertEqual(st, 201)
         with open(os.path.join(self.dados, "ganchos.log")) as f:
             linhas = [json.loads(x) for x in f]
-        self.assertIn(["envio.recebido", {"destino": "fotos", "caminho": d["caminho"]}], linhas)
+        self.assertIn(["envio.recebido", {"destino": "fotos", "caminho": d["caminho"]}, True], linhas)  # com gravar_dono
         _c, tela = modulos.montar(self.cfg, "marca")  # com cache: já mostra o novo total
         self.assertEqual(tela["abas"][0]["blocos"][0]["texto"], str(len(self.arquivos("fotos"))))
         self.assertNotIn("envio.recebido", envio.modulos.carregar(self.cfg, "marca").INFO.get("acoes", []))

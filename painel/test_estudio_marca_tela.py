@@ -99,10 +99,17 @@ class TesteMarcaTela(tem.TesteMarca):
         self.assertEqual((logo["fonte"], logo["travado"]), ("dono", True))
         self.assertEqual(self.obj()["logo_copia"], "assets/logo.png")
         self.assertEqual(self.recusa().codigo, 409)  # logo nova: a aprovação caiu
+        self.assertIs(modulos.dono.ler(self.cfg, "estudio")["marca"]["aprovado"], False)  # e foi gravada como caída
         self.assertIn("Esta é a logo que você enviou", self.bloco("marca-logo")["descricao"])
-        cod, _ = self.enviar("logo", png_de("#000000"))  # outra logo: a anterior sai de assets/
+        cod, r2 = self.enviar("logo", png_de("#000000"))  # outra logo: a anterior sai de assets/
         envios = [n for n in os.listdir(os.path.join(self.pasta, "assets")) if envio_nome(n)]
         self.assertEqual((cod, len(envios)), (201, 1))
+        # tela e prévia mostram o arquivo enviado (nome muda com o conteúdo), não logo.png: o navegador não reaproveita a velha
+        self.assertEqual(self.bloco("marca-logo")["atual"], r2["c"])
+        self.assertEqual(next(b for b in self.aba() if b["tipo"] == "previa")["logo"], r2["c"])
+        sem = self.bloco("marca-sem-logo")
+        self.assertTrue(sem["confirmar"].startswith("Tirar a logo?"))  # apagar a logo pede um sim
+        self.assertIs(sem["discreto"], True)
 
     def test_fotos_em_grade_principal_e_remover(self):
         for cor in ("#FF0000", "#00FF00", "#0000FF"):

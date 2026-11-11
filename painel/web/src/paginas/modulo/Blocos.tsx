@@ -1,7 +1,7 @@
 // Renderizador dos blocos do contrato de modulo (kpis, tabela, lista, serie, texto, acoes, formulario, conversa, imagem, galeria, midia,
 // cores, envio, previa, opcoes).
 // Cada bloco chega de um pacote de projeto e pode vir incompleto: tudo aqui e lido com cuidado.
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { Bloco } from '../../api/tipos';
 import { Botao, Cartao, EstadoVazio, Selo } from '../../componentes';
@@ -258,10 +258,29 @@ export function Blocos({ blocos, moduloId, aoIrAba }: { blocos: Bloco[]; moduloI
     return <Cartao><EstadoVazio titulo="Esta aba está vazia" texto="O módulo ainda não trouxe nada para mostrar aqui." /></Cartao>;
   }
   const chaves = chavesDosBlocos(blocos as BlocoCru[]);
+  const lado = blocos.map((b) => (b as BlocoCru)?.lado === true); // "lado": coluna lateral fixa na tela larga (previa ao vivo)
+  const primeiro = lado.indexOf(true);
+  if (primeiro < 0) {
+    return (
+      <ProvedorRascunho>
+        <div className="grid gap-3 grid-cols-[minmax(0,1fr)]">
+          {blocos.map((b, i) => <RenderBloco key={chaves[i]} bloco={b} moduloId={moduloId} aoIrAba={aoIrAba} />)}
+        </div>
+      </ProvedorRascunho>
+    );
+  }
+  // tela estreita: uma coluna na ordem do modulo; de 1024 px para cima a coluna lateral acompanha a rolagem
+  const fila = { '--fila': `1 / span ${Math.max(1, lado.filter((x) => !x).length)}` } as CSSProperties;
   return (
     <ProvedorRascunho>
-      <div className="grid gap-3 grid-cols-[minmax(0,1fr)]">
-        {blocos.map((b, i) => <RenderBloco key={chaves[i]} bloco={b} moduloId={moduloId} aoIrAba={aoIrAba} />)}
+      <div className="grid gap-3 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)]">
+        {blocos.map((b, i) => lado[i] ? (i === primeiro && (
+          <div key="lado" data-lado className="grid gap-3 content-start min-w-0 lg:col-start-2 lg:self-start lg:sticky lg:top-4 lg:[grid-row:var(--fila)]" style={fila}>
+            {blocos.map((x, k) => lado[k] && <RenderBloco key={chaves[k]} bloco={x} moduloId={moduloId} aoIrAba={aoIrAba} />)}
+          </div>
+        )) : (
+          <div key={chaves[i]} className="grid min-w-0 lg:col-start-1"><RenderBloco bloco={b} moduloId={moduloId} aoIrAba={aoIrAba} /></div>
+        ))}
       </div>
     </ProvedorRascunho>
   );

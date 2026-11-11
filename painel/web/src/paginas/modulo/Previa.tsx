@@ -40,7 +40,7 @@ export function Previa({ b, moduloId }: { b: BlocoCru; moduloId?: string }) {
           </div>
         </div>
         <figcaption className="text-xs text-[var(--color-text-secondary)] break-words">
-          {textoOuNada(b.legenda) ?? 'Exemplo de post com a sua marca. As peças de verdade seguem estas cores, letras e fotos.'}
+          {textoOuNada(b.legenda) ?? 'Exemplo de post com a sua marca. As peças de verdade seguem estas cores e letras.'}
         </figcaption>
       </figure>
     </Cartao>

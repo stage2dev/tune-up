@@ -8,7 +8,7 @@ import { ErroApi } from '../../api/cliente';
 import { ProvedorAvisos } from '../../componentes';
 import { Blocos } from './Blocos';
 import { avisosDeContraste, lerCores } from './Cores';
-import { enviarArquivos, fraseDoFim } from './Envio';
+import { cDoEnvio, enviarArquivos, fraseDoFim } from './Envio';
 import { chaveDoBloco } from './interativos';
 import { comRascunho, conferirArquivo, contraste, corHex, fonteSegura, semRascunho, textoSobre, vistaDaPrevia } from './marca';
 import { chipLigado, lerOpcoes } from './Opcoes';
@@ -186,5 +186,34 @@ describe('bloco envio', () => {
     expect(r.erros).toHaveLength(2);
     expect(fraseDoFim(r, true)).toMatch(/^2 fotos enviadas\. .*b\.gif.*c\.jpg.*não aceito/);
     expect(fraseDoFim({ feitos: 1, erros: [], ultimo: 'x' }, false)).toBe('Imagem enviada.');
+  });
+  it('guardado mas nao registrado pela tela vira erro, sem imagem nova', async () => {
+    const aviso = 'O arquivo foi guardado, mas a tela não terminou de registrá-lo (Esta tela ainda está fazendo a ação anterior.). Envie de novo.';
+    const r = await enviarArquivos([arquivo('a.png', 'image/png', 10)], undefined,
+      async () => cDoEnvio({ c: 'marca/assets/a.png', registrado: false, avisos: [aviso] }));
+    expect(r).toEqual({ feitos: 0, erros: ['“a.png”: ' + aviso], ultimo: null });
+    expect(fraseDoFim(r, false)).not.toContain('Imagem enviada');
+    expect(cDoEnvio({ c: 'marca/assets/b.png', registrado: true, avisos: [] })).toBe('marca/assets/b.png');
+    expect(() => cDoEnvio({ registrado: false })).toThrow('Envie de novo');
+  });
+});
+
+describe('aba da marca: coluna lateral e salvar ao sair', () => {
+  it('blocos com lado ficam juntos numa coluna lateral fixa; o resto na ordem', () => {
+    const h = html([{ tipo: 'texto', titulo: 'Cores', texto: 'a' }, { tipo: 'previa', nome: 'X', lado: true, cores: {} },
+      { tipo: 'formulario', titulo: 'Tudo certo?', acao: 'marca.aprovar', botao: 'Confirmar', campos: [], lado: true }, { tipo: 'texto', titulo: 'Origem', texto: 'b' }]);
+    expect(h.match(/data-lado/g)).toHaveLength(1);
+    const lado = h.slice(h.indexOf('data-lado'));
+    expect(lado.indexOf('Como vai ficar')).toBeLessThan(lado.indexOf('Tudo certo?'));
+    expect(h).toContain('lg:sticky');
+    expect(h).toContain('--fila:1 / span 2');
+    expect(html([{ tipo: 'texto', texto: 'a' }])).not.toContain('data-lado');
+  });
+  it('salvar_ao_sair: sem botao Salvar; discreto: botao secundario', () => {
+    const h = html([{ tipo: 'formulario', acao: 'marca.editar', botao: 'Salvar', salvar_ao_sair: true, campos: [{ id: 'valor', rotulo: 'Nome', tipo: 'texto', valor: 'A' }] }]);
+    expect(h).not.toContain('>Salvar<');
+    expect(h).toContain('value="A"');
+    const d = html([{ tipo: 'formulario', acao: 'marca.sem_logo', botao: 'Não tenho logo', discreto: true, campos: [] }]);
+    expect(d).toMatch(/<button[^>]*bg-\[var\(--color-surface\)\][^>]*>Não tenho logo/);
   });
 });
