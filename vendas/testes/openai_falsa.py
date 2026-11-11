@@ -44,6 +44,8 @@ class OpenAIFalsa:
                     item = (200, {"data": [{"id": m} for m in falsa.modelos]})
                 else:
                     item = falsa.fila.pop(0) if falsa.fila else (500, {"error": {"code": "fila_vazia"}})
+                if callable(item):  # o teste age NO MEIO da chamada e devolve a resposta
+                    item = item()
                 if item == OpenAIFalsa.DORMIR:
                     time.sleep(1.5)
                     item = (200, {})

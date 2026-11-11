@@ -18,7 +18,9 @@ import secrets  # noqa: E402
 import signal  # noqa: E402
 import threading  # noqa: E402
 
-from servico import banco, evolution_local, openai_cliente, pasta, portao, recebimento, rotas, travas  # noqa: E402
+from servico import (banco, cerebro, evolution_local, openai_cliente, pasta, portao, recebimento, rotas,  # noqa: E402
+                     travas)
+from servico.atendente import Atendente  # noqa: E402
 from servico.conectores import evolution  # noqa: E402
 
 PORTA = 8791
@@ -109,6 +111,8 @@ def rodar(args, avisar=print):
         finally:
             con.close()
         app.conector = conector(pasta_dados, app.porta, segredo, avisar)
+        ia = Atendente(app.abrir, cerebro.Cerebro(pasta_dados, raiz, args.openai_url), lambda: app.conector)
+        recebimento.registrar_gancho(ia.receber)
         for sinal in (signal.SIGINT, signal.SIGTERM):
             signal.signal(sinal, lambda *_: parar.set())
         batimento = threading.Thread(target=bater_sempre, args=(pasta_dados, parar), daemon=True)
@@ -122,6 +126,8 @@ def rodar(args, avisar=print):
             pass
         servidor.shutdown()
         servidor.server_close()
+        recebimento.registrar_gancho(None)
+        ia.parar()
         batimento.join(BATIMENTO_S + 5)
         avisar("serviço de Vendas parado", flush=True)
         return 0
