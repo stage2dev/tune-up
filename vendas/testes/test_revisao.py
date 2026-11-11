@@ -178,10 +178,33 @@ class TesteDescartados(Revisao):
     def test_descartado_nao_e_sugerido_de_novo_por_telefone_nem_por_site(self):
         cid = self.candidato("A")
         revisao.descartar(self.con, cid)
-        n1, _ = candidatos._gravar(self.con, [linha("Outro Nome")])                          # mesmo telefone
-        n2, _ = candidatos._gravar(self.con, [linha("Outro", "(11) 90000-0009", site="http://EXEMPLO.invalid/x")])
-        n3, _ = candidatos._gravar(self.con, [linha("Diferente", "(11) 90000-0008", site="https://outro.invalid/")])
+        n1 = candidatos._gravar(self.con, [linha("Outro Nome")])[0]                          # mesmo telefone
+        n2 = candidatos._gravar(self.con, [linha("Outro", "(11) 90000-0009", site="http://EXEMPLO.invalid?x=1")])[0]
+        n3 = candidatos._gravar(self.con, [linha("Diferente", "(11) 90000-0008", site="https://outro.invalid/")])[0]
         self.assertEqual((n1, n2, n3), (0, 0, 1))
+
+    def test_descarte_em_plataforma_compartilhada_nao_bloqueia_outras_empresas(self):
+        cid = self.candidato("Clinica A", site="https://www.instagram.com/clinica_a")
+        revisao.descartar(self.con, cid)
+        r = candidatos._gravar(self.con, [
+            linha("Clinica B", "(11) 90000-0002", site="https://instagram.com/clinica_b"),
+            linha("Salao C", "(11) 90000-0003", site="https://www.instagram.com/salao_c/"),
+            linha("Sem Perfil", "(11) 90000-0004", site="https://www.instagram.com/"),
+            linha("Clinica A de novo", "(11) 90000-0005", site="https://Instagram.com/clinica_a/?igsh=1")])
+        self.assertEqual(r, (3, 0, 1))  # 3 novos, 0 repetidos, 1 descartado há pouco (contado à parte)
+        self.assertEqual(sorted(n for n, in self.con.execute("SELECT nome FROM candidatos WHERE estado = 'novo'")),
+                         ["Clinica B", "Salao C", "Sem Perfil"])
+
+    def test_resumo_conta_descartados_recentes_a_parte(self):
+        cid = self.candidato("A")
+        revisao.descartar(self.con, cid)
+        pasta = candidatos.pasta_dos_candidatos(self.projeto)
+        os.makedirs(pasta, exist_ok=True)
+        with open(os.path.join(pasta, "lote.json"), "w", encoding="utf-8") as f:
+            json.dump([linha("Outro", "(11) 90000-0009")], f)
+        r = candidatos.importar(self.con, self.projeto)
+        self.assertEqual((r["novos"], r["repetidos"], r["descartados_recentes"]), (0, 0, 1))
+        self.assertIn("1 descartado(s) há menos de 30 dias", candidatos.resumo(r))
 
 
 if __name__ == "__main__":

@@ -107,21 +107,36 @@ def _ler(caminho):
     return dado
 
 
-def host_do_site(site):
-    """Host normalizado do site (minúsculo, sem 'www.'), ou None."""
-    host = (urlsplit(site).hostname or "").lower() if site else ""
-    return (host[4:] if host.startswith("www.") else host) or None
+PLATAFORMAS = frozenset(("instagram.com", "facebook.com", "fb.com", "linktr.ee", "wa.me", "api.whatsapp.com",
+                          "google.com", "maps.google.com", "g.page", "goo.gl", "tiktok.com", "youtube.com",
+                          "linkedin.com", "x.com", "twitter.com"))
+
+
+def chave_do_site(site):
+    """Site normalizado para a anti re-sugestão: host (sem 'www.') + caminho, minúsculo, sem barra final, query nem
+    âncora. None se não há site ou se é só a raiz de uma plataforma compartilhada (não identifica a empresa)."""
+    partes = urlsplit(site) if site else None
+    host = ((partes.hostname or "") if partes else "").lower()
+    host = host[4:] if host.startswith("www.") else host
+    if not host:
+        return None
+    caminho = partes.path.rstrip("/").lower()
+    if not caminho and host in PLATAFORMAS:
+        return None
+    return host + caminho
 
 
 def _gravar(con, linhas):
-    """Insere numa transação. Devolve (novos, repetidos); repetido = mesmo telefone ou mesmo nome/cidade/nicho."""
-    novos = 0
+    """Insere numa transação. Devolve (novos, repetidos, descartados_recentes); repetido = mesmo telefone ou mesmo
+    nome/cidade/nicho; descartado recente = mesmo site (chave_do_site) de um candidato descartado nos últimos 30 dias."""
+    novos = descartados = 0
     con.execute("BEGIN IMMEDIATE")
     try:
         for l in linhas:
-            host = host_do_site(l["site"])
+            host = chave_do_site(l["site"])  # coluna site_host guarda a chave do site (host + caminho)
             if host and con.execute("SELECT 1 FROM candidatos WHERE site_host = ? AND estado = 'descartado'",
                                     (host,)).fetchone():
+                descartados += 1
                 continue  # empresa descartada há pouco: não sugere de novo (telefone igual já cai no índice único)
             cur = con.execute(
                 "INSERT OR IGNORE INTO candidatos (nome, site, telefone, url_da_fonte, nicho, cidade, criado_em, "
@@ -134,7 +149,7 @@ def _gravar(con, linhas):
         if con.in_transaction:
             con.execute("ROLLBACK")
         raise
-    return novos, len(linhas) - novos
+    return novos, len(linhas) - novos - descartados, descartados
 
 
 def _apagar(caminho):
@@ -149,9 +164,10 @@ def _apagar(caminho):
 
 
 def importar(con, raiz):
-    """Importa e apaga os arquivos da pasta. Devolve {arquivos, novos, repetidos, recusados, linhas_recusadas,
-    nao_apagados}. Levanta PastaRecusada se a pasta fugir do pacote. Erro do banco deixa o arquivo na pasta."""
-    r = {"arquivos": 0, "novos": 0, "repetidos": 0, "recusados": 0, "linhas_recusadas": 0, "nao_apagados": 0}
+    """Importa e apaga os arquivos da pasta. Devolve {arquivos, novos, repetidos, descartados_recentes, recusados,
+    linhas_recusadas, nao_apagados}. Levanta PastaRecusada se a pasta fugir do pacote. Erro do banco deixa o arquivo na pasta."""
+    r = {"arquivos": 0, "novos": 0, "repetidos": 0, "descartados_recentes": 0, "recusados": 0, "linhas_recusadas": 0,
+         "nao_apagados": 0}
     with _trava:
         pasta = _conferir_pasta(raiz)
         if pasta is None:
@@ -180,9 +196,10 @@ def importar(con, raiz):
                 if not _apagar(caminho):
                     r["nao_apagados"] += 1
                 continue
-            novos, repetidos = _gravar(con, boas)
+            novos, repetidos, descartados = _gravar(con, boas)
             r["novos"] += novos
             r["repetidos"] += repetidos
+            r["descartados_recentes"] += descartados
             r["linhas_recusadas"] += ruins
             if not _apagar(caminho):
                 r["nao_apagados"] += 1
@@ -191,6 +208,8 @@ def importar(con, raiz):
 
 def resumo(r):
     texto = "%d arquivo(s): %d candidato(s) novo(s), %d repetido(s)" % (r["arquivos"], r["novos"], r["repetidos"])
+    if r.get("descartados_recentes"):
+        texto += "; %d descartado(s) há menos de 30 dias (não sugeridos de novo)" % r["descartados_recentes"]
     if r["recusados"] or r["linhas_recusadas"]:
         texto += "; recusado(s): %d arquivo(s), %d linha(s)" % (r["recusados"], r["linhas_recusadas"])
     if r["nao_apagados"]:

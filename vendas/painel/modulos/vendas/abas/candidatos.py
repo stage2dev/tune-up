@@ -7,6 +7,8 @@ ACOES = ("importar_candidatos",)
 def _resumo(r):
     texto = "%d arquivo(s): %d candidato(s) novo(s), %d repetido(s)." % (
         r.get("arquivos", 0), r.get("novos", 0), r.get("repetidos", 0))
+    if r.get("descartados_recentes"):
+        texto += " %d descartado(s) há menos de 30 dias (não sugeridos de novo)." % r["descartados_recentes"]
     if r.get("recusados") or r.get("linhas_recusadas"):
         texto += " Recusado(s): %d arquivo(s), %d linha(s)." % (r.get("recusados", 0), r.get("linhas_recusadas", 0))
     if r.get("nao_apagados"):
