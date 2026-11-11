@@ -62,6 +62,12 @@
           "entrada": "^python3(?= |\\Z)(?! +-I(?: +-B)? +(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/scripts/(?:qa_video|qa_imagem|reserva_slides|video_ou_reserva|fontes)\\.py(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
           "motivo": "python3: só os scripts do estúdio (com -I), sem '-c' nem script gravado em {trabalho} (nem por outro nome dela)"
         },
+        {
+          "ferramenta": "Bash",
+          "campo": "command",
+          "entrada": "^(?!(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/node/node_modules/\\.bin/hyperframes )[\\s\\S]*(?i:\\.hyperframes)",
+          "motivo": "Bash do estúdio: só o hyperframes fixado cita .hyperframes (o QA confia nos relatórios dessa pasta)"
+        },
         "Skill(hyperframes)",
         "Skill(hyperframes-cli)"
       ],
@@ -174,6 +180,12 @@
           "entrada": "^python3(?= |\\Z)(?! +-I(?: +-B)? +(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/scripts/(?:qa_video|qa_imagem|reserva_slides|video_ou_reserva|fontes)\\.py(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
           "motivo": "python3: só os scripts do estúdio (com -I), sem '-c' nem script gravado em {trabalho} (nem por outro nome dela)"
         },
+        {
+          "ferramenta": "Bash",
+          "campo": "command",
+          "entrada": "^(?!(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/node/node_modules/\\.bin/hyperframes )[\\s\\S]*(?i:\\.hyperframes)",
+          "motivo": "Bash do estúdio: só o hyperframes fixado cita .hyperframes (o QA confia nos relatórios dessa pasta)"
+        },
         "Skill(hyperframes)",
         "Skill(hyperframes-cli)"
       ],
@@ -268,6 +280,12 @@
           "campo": "command",
           "entrada": "^python3(?= |\\Z)(?! +-I(?: +-B)? +(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/scripts/(?:qa_video|qa_imagem|reserva_slides|video_ou_reserva|fontes)\\.py(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
           "motivo": "python3: só os scripts do estúdio (com -I), sem '-c' nem script gravado em {trabalho} (nem por outro nome dela)"
+        },
+        {
+          "ferramenta": "Bash",
+          "campo": "command",
+          "entrada": "^(?!(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/node/node_modules/\\.bin/hyperframes )[\\s\\S]*(?i:\\.hyperframes)",
+          "motivo": "Bash do estúdio: só o hyperframes fixado cita .hyperframes (o QA confia nos relatórios dessa pasta)"
         },
         "Skill(hyperframes)",
         "Skill(hyperframes-cli)"

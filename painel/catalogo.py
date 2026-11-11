@@ -139,6 +139,8 @@ def validar_acao(a):
     so_com = a.get("so_com")
     if so_com is not None and not (isinstance(so_com, str) and RE_SO_COM.match(so_com)):
         raise ValueError("ação %s: so_com precisa ser uma chave do painel.json (ex.: estudio.video_rede_local)" % a["id"])
+    if caixa.get("_rede_local") and so_com is None:  # rede_local é desligado por padrão: só existe se o projeto ligar
+        raise ValueError("ação %s: sandbox com rede_local precisa de so_com (ex.: estudio.video_rede_local)" % a["id"])
     equipe = a.get("equipe") if isinstance(a.get("equipe"), str) else ""
     if RE_CONTROLE.search(equipe):
         raise ValueError("ação %s: equipe com caractere de controle" % a["id"])
@@ -161,8 +163,10 @@ def _arquivos(pastas):
 
 
 def _tira_trava(plugin, pacote):
-    """A ação do pacote perde algum `requer` ou o sandbox que a do plugin de mesmo id tem."""
-    return bool(set(plugin["_requer"]) - set(pacote["_requer"])) or (bool(plugin["sandbox"]) and not pacote["sandbox"])
+    """A ação do pacote perde algum `requer`, o sandbox ou o `so_com` da do plugin de mesmo id, ou liga `rede_local`."""
+    return bool(set(plugin["_requer"]) - set(pacote["_requer"])) or (bool(plugin["sandbox"]) and not pacote["sandbox"]) \
+        or (plugin["_so_com"] is not None and pacote["_so_com"] != plugin["_so_com"]) \
+        or (bool(pacote.get("_rede_local")) and not plugin.get("_rede_local"))
 
 
 def carregar_catalogo(pastas):
@@ -198,8 +202,9 @@ def carregar_catalogo(pastas):
                     acoes[velha] = limpa
                     vistos[limpa["id"]] = origem
                 elif origem > 1 and vistos[limpa["id"]] == 1 and _tira_trava(limpa, acoes[velha]):
-                    # o pacote carrega antes dos plugins: não pode ocupar a id e derrubar requer/sandbox
-                    avisos.append("%s: ação %s tira requer ou sandbox da ação de plugin de mesmo id; recusei a do pacote"
+                    # o pacote carrega antes dos plugins: não pode ocupar a id e derrubar requer/sandbox/so_com
+                    avisos.append("%s: ação %s tira requer, sandbox ou so_com (ou liga rede_local) da ação de plugin "
+                                  "de mesmo id; recusei a do pacote"
                                   % (arquivos[limpa["id"]], limpa["id"]))
                     acoes[velha] = limpa
                     vistos[limpa["id"]] = origem

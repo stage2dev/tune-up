@@ -51,7 +51,7 @@ class TesteValidar(unittest.TestCase):
                 catalogo.validar_acao(dict(SIMPLES, **ruim))
 
     def test_rede_local(self):
-        ligada = catalogo.validar_acao(dict(SIMPLES, sandbox={"rede_local": True}))
+        ligada = catalogo.validar_acao(dict(SIMPLES, sandbox={"rede_local": True}, so_com="dev.rede"))
         self.assertEqual((ligada["sandbox"], ligada["_rede_local"]), (True, True))
         self.assertNotIn("_rede_local", catalogo.publica(ligada))
         desligada = catalogo.validar_acao(dict(SIMPLES, sandbox={"rede_local": False}))
@@ -175,6 +175,9 @@ class TesteLancadorSandbox(test_chat.Base):
         test_chat.Base.setUp(self)
         with open(FIXTURE, encoding="utf-8") as f:
             self.gravar_acoes(json.load(f)["acoes"])
+
+    def lanc(self, **extra):  # a fixture tem rede_local, então so_com: o projeto liga a chave
+        return test_chat.Base.lanc(self, bruto={"estudio": {"video_rede_local": True}}, **extra)
 
     def test_dispara_com_cwd_na_pasta_e_grava(self):
         lc = self.lanc()

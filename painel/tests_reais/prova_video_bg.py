@@ -86,7 +86,8 @@ def principal():
         with open(os.path.join(acoes, "acao_estudio.json"), "w", encoding="utf-8") as f:
             json.dump(dados, f, ensure_ascii=False)
         cfg = config.carregar(projeto)
-        cfg.update(acoes_dir=acoes, acoes_pacote_dir=None, modulos=[], max_execucoes=1, pular_permissoes=False)
+        cfg.update(acoes_dir=acoes, acoes_pacote_dir=None, modulos=[], max_execucoes=1, pular_permissoes=False,
+                   bruto={"estudio": {"video_rede_local": True}})  # a fixture tem rede_local, logo so_com
         criar = trabalho.criar
 
         def criar_com_fonte(pasta, acao, valores):

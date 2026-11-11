@@ -61,6 +61,37 @@ class TesteSoCom(unittest.TestCase):
                 catalogo.validar_acao(dict(LIVRE, so_com=ruim))
         self.assertNotIn("so_com", catalogo.publica(catalogo.validar_acao(PRESA)))
 
+    def test_rede_local_sem_so_com_recusada(self):
+        sem = dict(PRESA)
+        sem.pop("so_com")
+        with self.assertRaises(ValueError) as ctx:
+            catalogo.validar_acao(sem)
+        self.assertIn("so_com", str(ctx.exception))
+        self.assertTrue(catalogo.validar_acao(dict(sem, sandbox=True))["sandbox"])  # sandbox sem rede_local segue
+
+    def test_pacote_nao_tira_so_com_nem_liga_rede_local_de_plugin(self):
+        # o pacote carrega antes dos plugins: a mesma id sem so_com, com outro so_com ou com rede_local perde o lugar
+        sem_so_com = dict(PRESA, sandbox=True)
+        sem_so_com.pop("so_com")
+        outro_so_com = dict(PRESA, so_com="meu.sempre")
+        com_rede = dict(LIVRE, so_com="meu.sempre", sandbox={"rede_local": True})
+        plugin_livre = dict(LIVRE, sandbox=True)
+        for pacote, plugin in ((sem_so_com, PRESA), (outro_so_com, PRESA), (com_rede, plugin_livre)):
+            with self.subTest(pacote=pacote):
+                pastas = [os.path.join(self.tmp, n) for n in ("nucleo", "pacote", "plugin")]
+                for pasta, acoes in zip(pastas[1:], ([dict(pacote, titulo="Falsa")], [plugin])):
+                    os.makedirs(pasta, exist_ok=True)
+                    with open(os.path.join(pasta, "a.json"), "w", encoding="utf-8") as f:
+                        json.dump({"acoes": acoes}, f)
+                acoes, avisos = catalogo.carregar_catalogo(pastas)
+                self.assertEqual([a["titulo"] for a in acoes], [plugin["id"]], avisos)
+                self.assertEqual(len(avisos), 1, avisos)
+        for pasta, acao in (("pacote", dict(PRESA, titulo="Minha")), ("plugin", PRESA)):
+            with open(os.path.join(self.tmp, pasta, "a.json"), "w", encoding="utf-8") as f:
+                json.dump({"acoes": [acao]}, f)  # mesmas travas: o pacote segue ocupando a id
+        acoes, _ = catalogo.carregar_catalogo(pastas)
+        self.assertEqual([a["titulo"] for a in acoes], ["Minha"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -98,6 +98,13 @@ DENIED = [
     "cat /etc/hosts",
     "curl https://example.com",
     "rm -rf fonte",
+    # forged HyperFrames report: only the pinned hyperframes binary may cite .hyperframes
+    "ffmpeg -f rawvideo " + WL + "forja.txt -f rawvideo fonte/.hyperframes/artifacts/checks/z.json",
+    "ffmpeg -f rawvideo " + WL + "forja.txt -f rawvideo fonte/.HyperFrames/artifacts/checks/z.json",
+    "ffmpeg -f rawvideo " + WL + "forja.txt -f rawvideo " + WORK + "/fonte/.hyperframes/video-state.json",
+    "ffmpeg -f rawvideo " + WL + "forja.txt -f rawvideo fonte/.hyperframes./artifacts/checks/z.json",
+    "ffprobe -v error fonte/.hyperframes/artifacts/checks/z.json",
+    PY + "qa_imagem.py --source fonte --png a.png --check-json fonte/.hyperframes/artifacts/checks/z.json",
 ]
 
 
@@ -124,7 +131,7 @@ class RulesFile(unittest.TestCase):
     def test_rules_pass_core_validation(self):
         with open(RULES, encoding="utf-8") as f:
             out = travas.validar_travas({"negar": json.load(f)["negar"]})
-        self.assertEqual(len(out["regras_negar"]), 6)
+        self.assertEqual(len(out["regras_negar"]), 7)
 
 
 class Decide(unittest.TestCase):
