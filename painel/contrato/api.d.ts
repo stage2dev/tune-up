@@ -411,6 +411,7 @@ export interface PainelJson {
   pacote?: string; // pasta dentro de .tune-up (padrão "painel-projeto"); atalho para fora é ignorado
   modulos?: string[]; // ids habilitados (padrão [])
   modulos_de_plugins?: string[]; // "plugin@marketplace:modulo" de plugin instalado (padrão []); a API usa só o id curto
+  acoes_de_plugins?: string[]; // "plugin@marketplace" de plugin instalado (padrão []); soma <installPath>/painel/acoes/*.json
   areas_acompanhamento?: { id: string; titulo?: string; regex: string }[]; // sem isso tudo cai em "geral"
   claude_projects_dir?: string; // padrão ~/.claude/projects
   projeto_mem?: string; // projeto no claude-mem (padrão: nome da pasta raiz)

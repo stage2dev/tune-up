@@ -24,6 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer  # noqa: E40
 
 import config  # noqa: E402
 import estaticos  # noqa: E402
+import extensoes  # noqa: E402
 import lancador as lanc  # noqa: E402
 import leitor  # noqa: E402
 import mascara  # noqa: E402
@@ -361,9 +362,17 @@ def main(argv=None):
                     help="raiz do projeto (padrão: $%s, a 1ª pasta com .tune-up/ acima do cwd, "
                          "ou dois níveis acima do painel)" % config.ENV_PROJETO)
     ap.add_argument("--plans-dir", default=None, help="pasta .planning (padrão: painel.json ou procurada)")
+    ap.add_argument("--aceitar-extensao", metavar="PLUGIN@MARKETPLACE", default=None,
+                    help="confirma a versão de agora de um plugin que mudou (extensoes.py) e sai")
     args = ap.parse_args(argv)
     raiz, origem = config.achar_raiz(args.projeto)
     cfg = config.carregar(raiz)
+    if args.aceitar_extensao is not None:
+        try:
+            print("painel: %s" % extensoes.aceitar(cfg, args.aceitar_extensao))
+        except (OSError, ValueError) as e:
+            sys.exit("painel: não aceitei %s: %s" % (args.aceitar_extensao, e))
+        return
     config.migrar_registro_antigo(cfg)  # registro da versão antiga (<painel>/dados), uma vez
     print("painel: projeto %s (%s, achado por %s)" % (cfg["nome"], raiz, origem), file=sys.stderr)
     leitor._CFG[:] = [cfg]

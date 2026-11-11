@@ -51,6 +51,7 @@ Tipos em `contrato/api.d.ts` (`PainelJson`). Caminho relativo vale a partir da r
 | `pacote` | `painel-projeto` (nome simples de pasta dentro de `.tune-up`; atalho para fora é ignorado) |
 | `modulos` | `[]` (ids de telas extras do pacote que ficam ligadas) |
 | `modulos_de_plugins` | `[]` (telas extras de plugins instalados, no formato `plugin@marketplace:modulo`; ver Módulos) |
+| `acoes_de_plugins` | `[]` (ações de plugins instalados, no formato `plugin@marketplace`; ver Botões) |
 | `modelos_disponiveis` | nada: o painel sonda a licença. `{"fable": false}` (ou `true`) vence a sonda |
 | `areas_acompanhamento` | nenhuma: toda lista cai em "geral" |
 | `projeto_mem` / `claude_mem_db` | nome da pasta raiz / `~/.claude-mem/claude-mem.db` |
@@ -119,6 +120,8 @@ O pacote do projeto pode acrescentar níveis (ações com `grupo: "chat"`) ou tr
 
 O catálogo é `acoes/dev.json` do núcleo (grupo `dev`: Rodar Parte, Planejar fase, Investigar, Status) mais `<pacote>/acoes/*.json`. Id repetido é ignorado com aviso. Cada ação tem `grupo` (`^[a-z0-9_-]{1,40}$`; `area` ainda vale como nome antigo), `risco` (`leitura`, `rascunho`, `codigo`, `credito`) e um modelo de prompt com `{param}`.
 
+- Ações de plugin (opt-in): `"acoes_de_plugins": ["plugin@marketplace"]` soma `<installPath>/painel/acoes/*.json` do plugin instalado (nome e marketplace exatos em `installed_plugins.json`) depois do núcleo e do pacote. Ação de plugin nunca substitui a do núcleo (`substitui` só vale no pacote); id repetido é ignorado com aviso.
+- Trava de extensões (`extensoes.py`, vale para `acoes_de_plugins` e `modulos_de_plugins`): na primeira vez que um plugin é usado, a versão do registro e o sha256 da pasta instalada (sem `node_modules`, `.git` e `__pycache__`) ficam em `<pacote>/dados/extensoes.json`. Se a versão ou o conteúdo mudar, nada desse plugin carrega e a tela mostra um aviso até a pessoa confirmar no terminal: `python3 painel.py --aceitar-extensao plugin@marketplace`. Arquivo ilegível recusa todas as extensões até ser apagado.
 - O navegador só manda `{acao, params}`. **O prompt é montado no servidor**; o cliente nunca manda comando.
 - Validação: a ação existe; fase e Parte existem no estado atual e a Parte não está fechada; texto sem caractere de controle (quebra de linha só em parâmetro com `"linhas": true`), até o limite, e nunca começando com `-`; escolha só entre as opções; campo desconhecido é recusado.
 - Disparo: `claude --bg -n "NOME" [--model M] [--effort E] --settings <travas> "PROMPT"` com lista de argumentos, sem shell, `cwd` = raiz e **sem modo que pula permissão** (a não ser com `pular_permissoes`). Rodar Parte usa o nome `Fase N Parte X`, que o leitor liga à Parte.

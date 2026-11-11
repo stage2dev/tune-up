@@ -174,7 +174,7 @@ def carregar_catalogo(pastas):
                 avisos.append("%s: %s" % (nome, e))
                 continue
             if limpa["id"] in vistos:
-                if limpa["_substitui"] and origem > 0 and vistos[limpa["id"]] == 0:
+                if limpa["_substitui"] and origem == 1 and vistos[limpa["id"]] == 0:  # só o pacote; plugin não
                     acoes[[x["id"] for x in acoes].index(limpa["id"])] = limpa
                     vistos[limpa["id"]] = origem
                 else:
@@ -183,6 +183,14 @@ def carregar_catalogo(pastas):
             vistos[limpa["id"]] = origem
             acoes.append(limpa)
     return acoes, avisos
+
+
+def catalogo_do_projeto(cfg):
+    """Núcleo, pacote do projeto e, por último, as ações de plugins aceitos (extensoes.py)."""
+    import extensoes
+    pastas, avisos = extensoes.pastas_de_acoes(cfg)
+    acoes, av = carregar_catalogo([cfg["acoes_dir"], cfg.get("acoes_pacote_dir")] + pastas)
+    return acoes, avisos + av
 
 
 def publica(acao):

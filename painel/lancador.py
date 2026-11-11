@@ -17,7 +17,7 @@ import tempfile
 import threading
 import time
 
-from catalogo import (ErroAcao, RE_ID_ACAO, carregar_catalogo, montar, nome_da_sessao,  # noqa: F401
+from catalogo import (ErroAcao, RE_ID_ACAO, carregar_catalogo, catalogo_do_projeto, montar, nome_da_sessao,  # noqa: F401
                       publica, texto_livre, validar_params)
 import mascara
 import modulos
@@ -141,7 +141,7 @@ class Lancador:
         return self.modelos.resumo(self.catalogo()[0])
 
     def catalogo(self):
-        return carregar_catalogo([self.cfg["acoes_dir"], self.cfg.get("acoes_pacote_dir")])
+        return catalogo_do_projeto(self.cfg)
 
     def acoes(self):
         acoes, avisos = self.catalogo()
