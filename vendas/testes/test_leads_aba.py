@@ -8,6 +8,7 @@ import io  # noqa: E402
 import json  # noqa: E402
 import os  # noqa: E402
 import unittest  # noqa: E402
+from unittest import mock  # noqa: E402
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(AQUI))
@@ -24,7 +25,7 @@ class Aba(Base):
         self.ctx = {"raiz": self.projeto, "config": {"porta": PORTA_PAINEL}}
         con = banco.abrir(self.pasta)  # fica aberta: sem conexão WAL não há -shm e a tela lê "serviço parado"
         self.addCleanup(con.close)
-        banco.bater(con)
+        self.manter_vivo()
         banco.registrar_servico(con, self.app.porta, self.app.marca)
 
     def aba(self):
@@ -62,8 +63,9 @@ class TesteAba(Aba):
 
     def test_formulario_traz_o_comando_exato_e_nao_o_token(self):
         form = [b for b in self.aba() if b["tipo"] == "formulario" and b["acao"] == "leads_importar"][0]
-        self.assertIn("importar.py --projeto", form["descricao"])
-        self.assertIn(self.projeto, form["descricao"])
+        cli = self.mod.cliente
+        self.assertIn("%s -B %s --projeto %s arquivo.csv" % (cli.PYTHON, cli.citar(self.mod.leads.IMPORTAR),
+                                                             cli.citar(self.projeto)), form["descricao"])
         self.assertNotIn(self.token, json.dumps(self.aba()))
         self.assertEqual({o["valor"] for o in [c for c in form["campos"] if c["id"] == "base_legal"][0]["opcoes"]},
                          set(leads.BASES_LEGAIS))
@@ -77,6 +79,7 @@ class TesteAba(Aba):
         self.assertFalse(self.agir("leads_filtrar", optout="talvez")["ok"])
 
     def test_servico_parado_a_aba_avisa(self):
+        self.parar_batimento()
         con = banco.abrir(self.pasta)
         try:
             con.execute("DELETE FROM batimento")
@@ -146,6 +149,7 @@ class TesteComando(Aba):
         self.assertIn("2 MB", erro)
 
     def test_recusa_com_servico_parado(self):
+        self.parar_batimento()
         con = banco.abrir(self.pasta)
         try:
             con.execute("DELETE FROM batimento")
@@ -162,6 +166,17 @@ class TesteComando(Aba):
         codigo, _, erro = self.rodar(self.arquivo, "--origem", "x", "--base-legal", "consentimento")
         self.assertEqual(codigo, 1)
         self.assertIn("token", erro)
+
+
+class TesteCitar(unittest.TestCase):
+    def test_windows_usa_python_e_aspas_duplas(self):
+        cli = carregar_modulo().cliente
+        self.assertEqual(cli.PYTHON, "python" if os.name == "nt" else "python3")
+        with mock.patch.object(cli, "WINDOWS", True):
+            self.assertEqual(cli.citar("C:\\Users\\Ana Maria\\p"), '"C:\\Users\\Ana Maria\\p"')
+        with mock.patch.object(cli, "WINDOWS", False):
+            self.assertEqual(cli.citar("/a b/c"), "'/a b/c'")
+            self.assertEqual(cli.citar("/a/c"), "/a/c")
 
 
 if __name__ == "__main__":

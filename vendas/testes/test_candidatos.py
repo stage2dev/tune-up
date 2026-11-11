@@ -186,7 +186,7 @@ class TesteRotaAcaoESubida(Pasta):
         self.app.raiz = self.projeto
         con = banco.abrir(self.pasta)  # fica aberta: sem conexão WAL não há -shm e a tela lê "serviço parado"
         self.addCleanup(con.close)
-        banco.bater(con)
+        self.manter_vivo()
         banco.registrar_servico(con, self.app.porta, self.app.marca)
         mod = carregar_modulo()
         self.assertIn("importar_candidatos", mod.INFO["acoes"])

@@ -317,12 +317,12 @@ class TestJitterEThread(Base):
         self.campanha(3)
         parar = threading.Event()
         t = self.ag.iniciar(parar)
-        for _ in range(100):
+        for _ in range(400):   # até 20 s: máquina lenta
             if self.c.envios():
                 break
             threading.Event().wait(0.05)
         parar.set()
-        t.join(5)
+        t.join(30)
         self.assertFalse(t.is_alive())
         self.assertEqual(self.c.envios(), 1)          # parou durante o jitter: não mandou o 2º
 

@@ -138,10 +138,10 @@ class TesteReservaETentativa(BaseCerebro):
                 con.close()
         primeira = threading.Thread(target=rodar, args=(self.conversa,))
         primeira.start()
-        self.assertTrue(entrou.wait(5))
+        self.assertTrue(entrou.wait(30))
         rodar(outra)   # a 1ª ainda está na OpenAI com a reserva aberta
         solta.set()
-        primeira.join(5)
+        primeira.join(30)
         self.assertEqual(resultados[outra]["motivo"], "teto_diario")
         self.assertEqual(resultados[self.conversa]["texto"], "Oi")
         self.assertEqual(len(self.falsa.chamadas_chat()), 1)

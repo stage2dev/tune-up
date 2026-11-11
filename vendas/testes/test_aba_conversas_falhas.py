@@ -145,6 +145,7 @@ class TestePeloPainel(Conversas):
         self.assertIn("recusou", corpo["erro"])
 
     def test_servico_parado_e_erro_na_tela(self):
+        self.parar_batimento()
         self.con.execute("UPDATE batimento SET em = '2000-01-01T00:00:00+00:00' WHERE id = 1")
         codigo, corpo = self.enviar_pelo_painel(self.maria)
         self.assertEqual(codigo, 422)

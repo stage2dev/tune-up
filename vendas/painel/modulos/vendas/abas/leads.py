@@ -1,7 +1,6 @@
 """Aba Leads: contagens, filtros, lista (telefone mascarado, nome sempre como texto) e importação de CSV colado.
 CSV grande vai pelo comando de terminal (servico/importar.py): a tela não envia arquivo. Nada aqui lê o token."""
 import os
-import shlex
 
 ACOES = ("leads_filtrar", "leads_importar")
 TEXTO_MAX = 25000  # bytes: cabe no corpo de 32 KB da rota de ação do painel
@@ -18,10 +17,10 @@ def _opcoes(pares):
     return [{"valor": v, "rotulo": r} for v, r in pares]
 
 
-def comando(ctx):
+def comando(ctx, cliente):
     raiz = (ctx or {}).get("raiz") or "<raiz do projeto>"
-    return "python3 -B %s --projeto %s arquivo.csv --origem <origem> --base-legal <base>" % (
-        shlex.quote(IMPORTAR), shlex.quote(raiz))
+    return "%s -B %s --projeto %s arquivo.csv --origem <origem> --base-legal <base>" % (
+        cliente.PYTHON, cliente.citar(IMPORTAR), cliente.citar(raiz))
 
 
 def ler(ctx, cliente, base=None):
@@ -79,7 +78,7 @@ def _linha(lead):
             "saiu": "saiu (opt-out)" if lead.get("saiu") else "", "conversa": "sim" if lead.get("tem_conversa") else ""}
 
 
-def blocos(ctx, dados, aviso):
+def blocos(ctx, dados, aviso, cliente):
     if dados is None:
         return [{"tipo": "texto", "titulo": "Leads indisponíveis", "texto": aviso or "O serviço não respondeu."}]
     c, f = dados.get("contagens") or {}, dados.get("filtro") or {}
@@ -110,7 +109,8 @@ def blocos(ctx, dados, aviso):
                   "descricao": ("Cole o CSV com a linha de títulos nome, telefone e origem (separador , ou ;), até "
                                 "~25 KB. Cada linha precisa de origem: da coluna origem ou da origem padrão "
                                 "abaixo; linha sem origem é recusada. Quem já existe não muda e quem saiu "
-                                "continua fora. Para arquivos maiores (até 2 MB) rode no terminal: %s" % comando(ctx)),
+                                "continua fora. Para arquivos maiores (até 2 MB) rode no terminal: %s"
+                                % comando(ctx, cliente)),
                   "acao": "leads_importar", "botao": "Importar", "campos": [
         {"id": "texto", "rotulo": "CSV", "tipo": "texto_longo", "obrigatorio": True},
         {"id": "origem", "rotulo": "Origem padrão (para linhas sem origem)", "tipo": "texto"},

@@ -29,7 +29,7 @@ class Aba(Base):
         self.ctx = {"raiz": self.projeto, "config": {"porta": PORTA_PAINEL}}
         self.con = banco.abrir(self.pasta)
         self.addCleanup(self.con.close)
-        banco.bater(self.con)
+        self.manter_vivo()
         banco.registrar_servico(self.con, self.app.porta, self.app.marca)
 
     def blocos(self):
@@ -47,13 +47,14 @@ class Aba(Base):
 
 class TesteMontar(Aba):
     def test_servico_parado_mostra_comandos_sem_formulario_de_instancia(self):
+        self.parar_batimento()
         self.con.execute("UPDATE batimento SET em = '2000-01-01T00:00:00+00:00' WHERE id = 1")
         blocos = self.blocos()
         titulos = [b.get("titulo") for b in blocos]
         self.assertIn("Serviço parado", titulos)
         self.assertIn("Evolution não preparada", titulos)
         texto = json.dumps(blocos)
-        self.assertIn("python3 -B", texto)
+        self.assertIn(self.mod.cliente.PYTHON + " -B", texto)
         self.assertIn("preparar --projeto", texto)
         self.assertEqual(self.tipos(blocos, "imagem"), [])
         self.assertEqual(self.tipos(blocos, "formulario"), [])

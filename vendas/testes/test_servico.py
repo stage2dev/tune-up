@@ -14,6 +14,7 @@ import signal  # noqa: E402
 import subprocess  # noqa: E402
 import tempfile  # noqa: E402
 import threading  # noqa: E402
+import time  # noqa: E402
 import unittest  # noqa: E402
 from contextlib import redirect_stderr  # noqa: E402
 from unittest import mock  # noqa: E402
@@ -281,9 +282,14 @@ class TesteProcesso(Base):
             token = f.read()
         if os.name != "nt":
             self.assertEqual(os.stat(os.path.join(p, "token_envio")).st_mode & 0o777, 0o600)
-        dado = modulo.montar({"raiz": self.projeto}, base=self.base)
-        bloco = dado["abas"][0]["blocos"][0]
-        self.assertEqual(bloco["titulo"], "Serviço rodando")
+        fim = time.monotonic() + 20  # máquina lenta: a leitura logo depois da subida pode ainda não ver o batimento
+        while True:
+            dado = modulo.montar({"raiz": self.projeto}, base=self.base)
+            bloco = dado["abas"][0]["blocos"][0]
+            if bloco["titulo"] == "Serviço rodando" or time.monotonic() > fim:
+                break
+            time.sleep(0.2)
+        self.assertEqual(bloco["titulo"], "Serviço rodando", dado["avisos"])
         self.assertEqual(dado["avisos"], [])
         self.assertNotIn(token, json.dumps(dado))
         proc.send_signal(signal.SIGTERM)

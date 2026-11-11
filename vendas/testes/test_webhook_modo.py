@@ -9,6 +9,7 @@ import json  # noqa: E402
 import os  # noqa: E402
 import shutil  # noqa: E402
 import socket  # noqa: E402
+import sqlite3  # noqa: E402
 import tempfile  # noqa: E402
 import threading  # noqa: E402
 import unittest  # noqa: E402
@@ -42,6 +43,35 @@ class Base(unittest.TestCase):
         threading.Thread(target=self.servidor.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True).start()
         self.addCleanup(self.servidor.server_close)
         self.addCleanup(self.servidor.shutdown)
+
+    def manter_vivo(self):
+        """Batimento fresco o teste inteiro, como o serviço faz (conexão própria, a cada 2 s): numa máquina lenta o
+        teste passa dos VIVO_S e um batimento só viraria "serviço parado". self.parar_batimento() para antes de testar
+        o serviço parado; a limpeza para e fecha a conexão antes de apagar a pasta (o Windows não apaga aberto)."""
+        parar, pronto = threading.Event(), threading.Event()
+
+        def bater():
+            con = banco.abrir(self.pasta)
+            try:
+                banco.bater(con)
+                pronto.set()
+                while not parar.wait(2):
+                    try:
+                        banco.bater(con)
+                    except sqlite3.Error:
+                        pass  # banco ocupado nesta volta: a próxima tenta, como no serviço
+            finally:
+                con.close()
+
+        fio = threading.Thread(target=bater, daemon=True)
+        fio.start()
+
+        def parar_batimento():
+            parar.set()
+            fio.join(30)
+        self.parar_batimento = parar_batimento
+        self.addCleanup(parar_batimento)
+        self.assertTrue(pronto.wait(30), "o primeiro batimento não saiu")
 
     def pedir(self, metodo, caminho, cab=None, corpo=None, host=None):
         cab = dict(cab or {})
@@ -151,7 +181,7 @@ class TesteTelaModoWebhook(Base):
         self.ctx = {"raiz": self.projeto, "config": {"porta": PORTA_PAINEL}}
         self.con = banco.abrir(self.pasta)  # conexão aberta = -shm existe, como com o serviço no ar
         self.addCleanup(self.con.close)
-        banco.bater(self.con)
+        self.manter_vivo()
         banco.registrar_servico(self.con, self.app.porta, self.app.marca)
 
     def agir(self, modo, ctx=None):
@@ -203,6 +233,7 @@ class TesteTelaModoWebhook(Base):
         self.assertEqual(banco.ler_config(con2, "webhook_modo", rotas.MODO_REGISTRA), rotas.MODO_REGISTRA)
 
     def test_agir_recusa_batimento_velho_ou_porta_sem_registro(self):
+        self.parar_batimento()
         self.con.execute("UPDATE batimento SET em = '2000-01-01T00:00:00+00:00' WHERE id = 1")
         r = self.agir(rotas.MODO_REGISTRA)
         self.assertFalse(r["ok"])

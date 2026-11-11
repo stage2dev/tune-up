@@ -3,7 +3,6 @@ A tela só LÊ o banco (modo somente leitura) e nunca lê o arquivo do token. Py
 import datetime
 import importlib.util
 import os
-import shlex
 import sqlite3
 
 PORTA_EVOLUTION = 8080  # porta padrão da Evolution local (servico/evolution_local.py)
@@ -111,13 +110,13 @@ def ler_webhook(raiz, base=None):
 
 def comando(ctx):
     raiz = (ctx or {}).get("raiz") or "<raiz do projeto>"
-    return "python3 -B %s --projeto %s --painel http://127.0.0.1:%s" % (
-        shlex.quote(SERVICO), shlex.quote(raiz), porta_do_painel(ctx))
+    return "%s -B %s --projeto %s --painel http://127.0.0.1:%s" % (
+        cliente.PYTHON, cliente.citar(SERVICO), cliente.citar(raiz), porta_do_painel(ctx))
 
 
 def comando_evolution(ctx):
     raiz = (ctx or {}).get("raiz") or "<raiz do projeto>"
-    return "python3 -B %s preparar --projeto %s" % (shlex.quote(EVOLUTION_LOCAL), shlex.quote(raiz))
+    return "%s -B %s preparar --projeto %s" % (cliente.PYTHON, cliente.citar(EVOLUTION_LOCAL), cliente.citar(raiz))
 
 
 def agir(ctx, acao, dados, base=None):
@@ -202,7 +201,7 @@ def montar(ctx, base=None):
         blocos += blocos_webhook(webhook) if webhook else []
     if rodando:
         aba, aba_ia = conversas.blocos(ctx, cliente, base), ia.blocos(*ia.ler(ctx, cliente, base))
-        aba_leads = leads.blocos(ctx, *leads.ler(ctx, cliente, base))
+        aba_leads = leads.blocos(ctx, *leads.ler(ctx, cliente, base), cliente)
         aba_disparos = disparos.blocos(ctx, *disparos.ler(ctx, cliente, base))
         aba_buscador = (buscador.blocos(ctx, *buscador.ler(ctx, cliente, base), FORM_IMPORTAR)
                         + places.blocos(*places.ler(ctx, cliente, base), buscador.endereco))

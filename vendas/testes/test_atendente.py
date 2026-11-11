@@ -64,7 +64,7 @@ class Base(unittest.TestCase):
         depois = recebimento.gravar(self.con, evolution.traduzir(corpo(ident, texto, de)))
         recebimento.executar_depois(self.con, self.c, depois)
 
-    def esperar(self, condicao, tempo=5.0):
+    def esperar(self, condicao, tempo=20.0):   # só demora se falhar; máquina lenta leva mais que 5 s
         fim = time.monotonic() + tempo
         while time.monotonic() < fim:
             if condicao():

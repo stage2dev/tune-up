@@ -128,6 +128,7 @@ class TesteLista(Conversas):
             self.assertNotIn(segredo, tudo)
 
     def test_servico_parado_nao_quebra_a_aba(self):
+        self.parar_batimento()
         self.con.execute("UPDATE batimento SET em = '2000-01-01T00:00:00+00:00' WHERE id = 1")
         r = self.mod.montar(self.ctx, base=self.base)
         self.assertEqual(r["abas"][1]["blocos"][0]["titulo"], "Serviço parado")

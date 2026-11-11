@@ -3,7 +3,6 @@ conexão. Só fala com o serviço por cliente.chamar (porta, batimento e marca c
 montar (leitura fresca, sem cache aqui) e vai só para o bloco imagem. Nada de token ou chave sai daqui."""
 import os
 import re
-import shlex
 
 ESTADOS = {"desconectado": "Desconectado", "aguardando_qr": "Aguardando QR", "conectado": "Conectado"}
 NOME = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -26,7 +25,7 @@ def bloco_evolution(ctx, cliente, comando_preparar, base=None):
         compose = os.path.join(cliente.pasta.caminho_da_pasta(raiz, base), "evolution", "compose.yml")
         return {"tipo": "texto", "titulo": "Evolution preparada",
                 "texto": "Os arquivos da Evolution local existem. Para ligar (num terminal, não pelo Claude): "
-                         "docker compose -f %s up -d" % shlex.quote(compose)}
+                         "docker compose -f %s up -d" % cliente.citar(compose)}
     return {"tipo": "texto", "titulo": "Evolution não preparada",
             "texto": "Prepare os arquivos da Evolution local (Docker) com: %s . Depois suba com o comando "
                      "docker compose que ele mostrar no fim." % comando_preparar}

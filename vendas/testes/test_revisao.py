@@ -33,7 +33,7 @@ class Revisao(Base):
         self.ctx = {"raiz": self.projeto, "config": {"porta": PORTA_PAINEL}}
         self.con = banco.abrir(self.pasta)
         self.addCleanup(self.con.close)
-        banco.bater(self.con)
+        self.manter_vivo()
         banco.registrar_servico(self.con, self.app.porta, self.app.marca)
 
     def candidato(self, nome="Clínica A", fone="(11) 90000-0001", **extra):
@@ -149,6 +149,7 @@ class TesteTela(Revisao):
         self.assertIn("(endereço não exibido)", texto)
 
     def test_servico_parado_nao_mostra_candidatos(self):
+        self.parar_batimento()
         self.con.execute("DELETE FROM batimento")
         self.candidato()
         self.assertEqual([b["tipo"] for b in self.aba()], ["texto"])

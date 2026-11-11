@@ -138,6 +138,7 @@ class TesteBlocos(Disparos):
             self.assertNotIn(pedaco, tudo)
 
     def test_servico_parado_aba_avisa(self):
+        self.parar_batimento()
         self.sql("DELETE FROM batimento")
         self.assertEqual(self.aba()[0]["tipo"], "texto")
         r = self.agir("disparos_pausar", campanha_id=1)

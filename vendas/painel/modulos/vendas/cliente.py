@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 import pathlib
+import shlex
 import socket
 import sqlite3
 import urllib.error
@@ -14,6 +15,8 @@ import urllib.request
 VIVO_S = 15  # batimento mais velho que isso = serviço parado (o serviço bate a cada 3 s)
 TEMPO_REDE_S = 5  # toda chamada ao serviço tem tempo limite próprio (o painel não para a thread do agir)
 TEMPO_ENVIO_S = 18  # envio espera o conector (até 15 s) e cabe nos 20 s do agir do painel
+WINDOWS = os.name == "nt"
+PYTHON = "python" if WINDOWS else "python3"  # no Windows "python3" costuma abrir a loja da Microsoft
 SEM_RESPOSTA = "O serviço de Vendas não respondeu. Ligue-o e tente de novo."
 PROCESSANDO = ("O serviço de Vendas ainda está processando o pedido. Atualize a tela em alguns segundos para ver "
                "o resultado antes de tentar de novo.")
@@ -55,6 +58,11 @@ def pedir(metodo, url, cab, corpo=None, tempo=None):
             return e.code, {}
         finally:
             e.close()
+
+
+def citar(caminho):
+    """Caminho pronto para colar no terminal: aspas simples no macOS/Linux, duplas no Windows (cmd e PowerShell)."""
+    return '"%s"' % caminho if WINDOWS else shlex.quote(caminho)
 
 
 def porta_do_painel(ctx):
