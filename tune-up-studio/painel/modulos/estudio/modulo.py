@@ -31,10 +31,26 @@ def _ambiente(dados):
         return None
 
 
+def _versao():
+    try:
+        with open(os.path.join(os.path.dirname(os.path.dirname(SCRIPT)), ".claude-plugin", "plugin.json"),
+                  encoding="utf-8") as f:
+            return json.load(f).get("version")
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
 def montar(ctx):
     amb = _ambiente(ctx["dados"]) if ctx.get("dados") else None
     if amb is None:
         return {"alertas": [{"nivel": "info", "texto": "Estúdio ainda não preparado. Use Preparar estúdio."}]}
+    if amb.get("estado") == "preparando":
+        return {"alertas": [{"nivel": "info", "texto": "Preparando o estúdio (desde %s). Se nada mudar em 20 min, "
+                             "o Preparar parou: veja dados/ambiente.log e use Preparar estúdio de novo."
+                             % amb.get("gravado_em", "")}]}
+    if amb.get("pronto") is True and amb.get("estudio") != _versao():
+        return {"alertas": [{"nivel": "atencao", "texto": "Estúdio preparado para a versão %s do plugin; esta é a %s. "
+                             "Use Preparar estúdio de novo." % (amb.get("estudio"), _versao())}]}
     if amb.get("pronto") is True:
         return {"alertas": [{"nivel": "info", "texto": "Estúdio pronto (%s)." % amb.get("gravado_em", "")}]}
     faltas = [i.get("texto", "") for i in amb.get("verificacao") or [] if isinstance(i, dict) and i.get("nivel") == "erro"]

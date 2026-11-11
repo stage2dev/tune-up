@@ -124,6 +124,7 @@ class Files(unittest.TestCase):
     def test_chrome_cache(self):
         env = {"HYPERFRAMES_CACHE_DIR": os.path.join(self.d, "hf")}
         self.assertEqual(levels(va.chrome(env)), [va.ERRO])
+        self.assertIn("hyperframes browser ensure", va.chrome(env)[0][1])  # o Preparar não baixa o Chrome
         old = self.write("hf/chrome/chrome-headless-shell/mac_arm-1.0.0.0/x/chrome-headless-shell", "")
         items = va.chrome(env)
         self.assertEqual(levels(items), [va.ERRO])

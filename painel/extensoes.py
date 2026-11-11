@@ -51,7 +51,7 @@ def soma(base):
     assin = []
     for rel, cam in lista:
         st = os.lstat(cam)
-        assin.append((rel, st.st_size, st.st_mtime_ns, os.path.islink(cam)))
+        assin.append((rel, st.st_size, st.st_mtime_ns, st.st_ctime_ns, st.st_ino, os.path.islink(cam)))
     assin = tuple(assin)
     with _lock:
         if _somas.get(base, (None,))[0] == assin:

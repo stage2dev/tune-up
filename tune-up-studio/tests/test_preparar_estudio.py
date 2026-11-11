@@ -127,6 +127,19 @@ class TestPreparar(Base):
         with open(alvo) as f:
             self.assertEqual(f.read(), "")
 
+    def test_interrompido_no_npm_ci_nao_deixa_pronto_antigo(self):
+        pe.gravar(self.dados, {"versao": 1, "pronto": True, "gravado_em": "ontem"})
+        vistos = []
+
+        def rodar(cmd, cwd, timeout):  # npm ci apaga node_modules e o Ctrl+C chega no meio
+            vistos.append(self.lido())
+            raise KeyboardInterrupt
+        with self.assertRaises(KeyboardInterrupt):
+            pe.preparar(self.dados, self.tmp, studio=self.studio, rodar=rodar, which=lambda n: "/bin/" + n,
+                        verificar=lambda p, n=None: [], home=self.tmp, sistema=OK_SO)
+        self.assertEqual((vistos[0]["pronto"], vistos[0]["estado"]), (False, "preparando"))
+        self.assertFalse(self.lido()["pronto"])
+
 
 class TestMain(Base):
     def test_sem_confirmacao_nada_feito(self):
@@ -144,6 +157,14 @@ class TestMain(Base):
         with mock.patch.object(pe, "preparar", side_effect=OSError("disco cheio")):
             self.assertEqual(pe.main(["--dados", self.dados, "--sim"]), 1)
         self.assertFalse(self.lido()["pronto"])
+
+    def test_ctrl_c_ou_erro_inesperado_regrava_nao_pronto_e_relanca(self):
+        for erro in (KeyboardInterrupt, AttributeError("dependencies")):
+            pe.gravar(self.dados, {"pronto": True})
+            with mock.patch.object(pe, "preparar", side_effect=erro):
+                with self.assertRaises(BaseException):
+                    pe.main(["--dados", self.dados, "--sim"])
+            self.assertFalse(self.lido()["pronto"])
 
     @unittest.skipIf(pe.fcntl is None, "flock")
     def test_segundo_preparar_ao_mesmo_tempo_e_recusado(self):
@@ -186,6 +207,12 @@ class TestModulo(Base):
         self.assertIn("npm ci --ignore-scripts falhou", a["texto"])
         self.preparar()
         self.assertIn("Estúdio pronto", mod.montar({"dados": self.dados})["alertas"][0]["texto"])
+        with mock.patch.object(mod, "_versao", return_value="0.2.0"):  # o plugin foi atualizado
+            a = mod.montar({"dados": self.dados})["alertas"][0]
+        self.assertEqual(a["nivel"], "atencao")
+        self.assertIn("0.1.0", a["texto"])
+        pe.gravar(self.dados, {"versao": 1, "pronto": False, "estado": "preparando", "gravado_em": "agora"})
+        self.assertIn("Preparando o estúdio", mod.montar({"dados": self.dados})["alertas"][0]["texto"])
 
 
 if __name__ == "__main__":

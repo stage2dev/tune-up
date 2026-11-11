@@ -103,6 +103,9 @@ def gravar(dados, conteudo):
 def preparar(dados, projeto, studio=STUDIO, rodar=_rodar, which=shutil.which, verificar=va.verificar,
              home=None, sistema=va.sistema):
     """Install, check and write ambiente.json. Returns the dict that was written."""
+    # first thing: an interrupted run (Ctrl+C, kill, reboot) must not leave an older "pronto": true
+    gravar(dados, {"versao": 1, "estudio": versao_do_estudio(studio), "gravado_em": _agora(), "pronto": False,
+                   "estado": "preparando"})
     passos, pronto = [], True
     node_dir = npm = None
     if sistema()[0][0] == va.ERRO:
@@ -178,13 +181,16 @@ def main(argv=None, entrada=input):
     with trava:
         try:
             r = preparar(dados, os.path.abspath(args.projeto))
-        except OSError as e:
-            print("Não consegui preparar: %s" % e)
-            try:  # never leave an older "pronto": true behind
-                gravar(dados, {"versao": 1, "gravado_em": _agora(), "pronto": False, "erro": str(e)[:300]})
+        except BaseException as e:  # Ctrl+C and bugs too: never leave an older "pronto": true behind
+            motivo = str(e) or type(e).__name__
+            print("Não consegui preparar: %s" % motivo)
+            try:
+                gravar(dados, {"versao": 1, "gravado_em": _agora(), "pronto": False, "erro": motivo[:300]})
             except OSError:
                 pass
-            return 1
+            if isinstance(e, OSError):
+                return 1
+            raise
     print(va.relatorio([(i["nivel"], i["texto"]) for i in r["verificacao"]]))
     for passo in r["passos"]:
         print("%s %s%s" % ("[ok]   " if passo["ok"] else "[falha]", passo["passo"],

@@ -111,7 +111,8 @@ def chrome(env=None, home=None):
                     return [(OK, "chrome: chrome-headless-shell %s no cache do HyperFrames" % CHROME_VERSION)]
     outra = " (há outra versão no cache: %s)" % ", ".join(versoes) if versoes else ""
     return [(ERRO, "chrome: chrome-headless-shell %s não está no cache do HyperFrames%s; "
-                   "o Preparar estúdio baixa" % (CHROME_VERSION, outra))]
+                   "baixe no terminal, na pasta node do estúdio: npx --no-install hyperframes browser ensure"
+                   % (CHROME_VERSION, outra))]
 
 
 def nomes_de_filtros(saida):
