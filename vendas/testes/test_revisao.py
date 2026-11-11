@@ -195,6 +195,21 @@ class TesteDescartados(Revisao):
         self.assertEqual(sorted(n for n, in self.con.execute("SELECT nome FROM candidatos WHERE estado = 'novo'")),
                          ["Clinica B", "Salao C", "Sem Perfil"])
 
+    def test_plataforma_com_id_na_query_nao_bloqueia_outra_empresa(self):
+        for i, (site_a, site_b) in enumerate((
+                ("https://www.facebook.com/profile.php?id=101", "https://m.facebook.com/profile.php?id=102"),
+                ("https://api.whatsapp.com/send?phone=5511900000003", "https://api.whatsapp.com/send?phone=5511900000004"),
+                ("https://web.whatsapp.com/send?phone=5511900000005", "https://web.whatsapp.com/send?phone=5511900000006"),
+                ("https://www.google.com/maps?cid=11", "https://google.com/maps?cid=12"),
+                ("https://m.facebook.com/", "https://m.facebook.com/"))):
+            cid = self.candidato("A%d" % i, "(11) 90000-01%02d" % i, site=site_a)
+            revisao.descartar(self.con, cid)
+            r = candidatos._gravar(self.con, [linha("B%d" % i, "(11) 90000-02%02d" % i, site=site_b)])
+            self.assertEqual(r, (1, 0, 0), site_b)
+        r = candidatos._gravar(self.con, [linha("A0 de novo", "(11) 90000-0399",  # mesmo id, outra ordem/rastreio
+                                                site="https://facebook.com/profile.php?fbclid=x&id=101")])
+        self.assertEqual(r, (0, 0, 1))
+
     def test_resumo_conta_descartados_recentes_a_parte(self):
         cid = self.candidato("A")
         revisao.descartar(self.con, cid)

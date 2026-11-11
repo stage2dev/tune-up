@@ -9,7 +9,7 @@ import os
 import re
 import stat
 import threading
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 from servico import banco, conhecimento, telefone
 
@@ -107,23 +107,28 @@ def _ler(caminho):
     return dado
 
 
-PLATAFORMAS = frozenset(("instagram.com", "facebook.com", "fb.com", "linktr.ee", "wa.me", "api.whatsapp.com",
-                          "google.com", "maps.google.com", "g.page", "goo.gl", "tiktok.com", "youtube.com",
+PLATAFORMAS = frozenset(("instagram.com", "facebook.com", "fb.com", "linktr.ee", "wa.me", "whatsapp.com",
+                          "google.com", "g.page", "goo.gl", "tiktok.com", "youtube.com",
                           "linkedin.com", "x.com", "twitter.com"))
+PARAMETROS_QUE_IDENTIFICAM = ("id", "phone", "cid")  # profile.php?id=, send?phone=, maps?cid=
 
 
 def chave_do_site(site):
-    """Site normalizado para a anti re-sugestão: host (sem 'www.') + caminho, minúsculo, sem barra final, query nem
-    âncora. None se não há site ou se é só a raiz de uma plataforma compartilhada (não identifica a empresa)."""
+    """Site normalizado para a anti re-sugestão: host (sem 'www.') + caminho, minúsculo, sem barra final nem âncora.
+    Query ignorada, salvo em plataforma (ou subdomínio dela), onde id/phone/cid entram ordenados: lá a query é que
+    identifica a empresa. None se não há site ou se é só a raiz de uma plataforma (não identifica a empresa)."""
     partes = urlsplit(site) if site else None
     host = ((partes.hostname or "") if partes else "").lower()
     host = host[4:] if host.startswith("www.") else host
     if not host:
         return None
     caminho = partes.path.rstrip("/").lower()
-    if not caminho and host in PLATAFORMAS:
+    if not any(host == p or host.endswith("." + p) for p in PLATAFORMAS):
+        return host + caminho
+    ids = sorted("%s=%s" % (k, v) for k, v in parse_qsl(partes.query.lower()) if k in PARAMETROS_QUE_IDENTIFICAM)
+    if not caminho and not ids:
         return None
-    return host + caminho
+    return host + caminho + ("?" + "&".join(ids) if ids else "")
 
 
 def _gravar(con, linhas):
