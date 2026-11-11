@@ -25,6 +25,9 @@ MOTIVOS = {
     "descartado_pelo_dono": "Marcada por você como não enviada.",
     "pendente_na_subida": "O serviço reiniciou no meio do envio: não sei se saiu.",
     "sem_numero_do_dono": "O número do dono não está configurado.",
+    "pedir_humano": "A IA pediu para você assumir esta conversa.",
+    "erro_interno": "A IA falhou nesta conversa e foi desligada nela.",
+    "rodadas": "A IA não chegou a uma resposta (voltou a chamar ferramentas) e foi desligada nesta conversa.",
 }
 ESTADOS_NOTA = ("negado", "falhou", "incerto")
 
@@ -88,7 +91,8 @@ def bloco_lista(r):
     for c in r["conversas"]:
         selos = _selos(c)
         item = {"titulo": "%s (%s)" % (_nome(c), c["telefone_mascarado"]) if c.get("nome") else _nome(c),
-                "detalhe": " · ".join([c.get("ultima") or "sem mensagens"] + [t for t, _ in selos[1:]])}
+                "detalhe": " · ".join([c.get("ultima") or "sem mensagens"] + [t for t, _ in selos[1:]]
+                                      + ([motivo_pt(c["motivo_humano"])] if c.get("motivo_humano") else []))}
         if selos:
             item["selo"] = {"texto": selos[0][0], "tom": selos[0][1]}
         itens.append(item)
@@ -123,6 +127,8 @@ def bloco_conversa(r):
         botoes.append({"rotulo": "Liberar uma mensagem", "acao": "liberar_saida", "dados": dados,
                        "confirmar": AVISO_LIBERAR})
     estado = [t for t, _ in _selos(c)] + (["envio liberado para uma mensagem"] if c.get("liberado") else [])
+    if c.get("motivo_humano"):
+        estado.append("IA desligada: " + motivo_pt(c["motivo_humano"]))
     return {"tipo": "conversa", "id": "conversa_%d" % c["id"],
             "titulo": "%s, %s%s" % (c.get("nome") or "Sem nome", c["telefone"],
                                     " (%s)" % ", ".join(estado) if estado else ""),

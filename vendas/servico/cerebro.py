@@ -71,8 +71,13 @@ def ferramentas(links):
     return lista
 
 
-def marcar_precisa_de_voce(con, conversa_id, motivo):
-    cur = con.execute("UPDATE conversas SET precisa_de_voce = 1 WHERE id = ?", (conversa_id,))
+def marcar_precisa_de_voce(con, conversa_id, motivo, desligar=False):
+    """desligar=True: a IA também sai da conversa (modo humano) até o dono devolver na tela; o motivo fica guardado."""
+    if desligar:
+        cur = con.execute("UPDATE conversas SET precisa_de_voce = 1, modo = 'humano', motivo_humano = ? WHERE id = ?",
+                          (motivo, conversa_id))
+    else:
+        cur = con.execute("UPDATE conversas SET precisa_de_voce = 1 WHERE id = ?", (conversa_id,))
     if cur.rowcount != 1:
         raise banco.EscritaSemEfeito("conversa %r não existe" % conversa_id)
     banco.registrar_evento(con, "ia_precisa_de_voce", json.dumps({"conversa_id": conversa_id, "motivo": motivo}))
@@ -91,7 +96,7 @@ class Cerebro:
             return self._responder(con, conversa_id, mensagens)
         except Exception:
             try:
-                marcar_precisa_de_voce(con, conversa_id, "erro_interno")
+                marcar_precisa_de_voce(con, conversa_id, "erro_interno", True)
             except Exception:
                 pass  # a exceção original é a que importa; ela sobe abaixo
             raise
@@ -135,7 +140,9 @@ class Cerebro:
                 saida = self._ferramenta(con, conversa_id, chamada, links, r)
                 historico.append({"role": "tool", "tool_call_id": str((chamada or {}).get("id") or ""),
                                   "content": json.dumps(saida, ensure_ascii=False)})
-        return self._parar(con, conversa_id, r, "rodadas")
+            if r["motivo"] == "pedir_humano":   # a IA saiu da conversa: nada a enviar e nenhuma chamada a mais
+                return r
+        return self._parar(con, conversa_id, r, "rodadas", True)
 
     def reescrever(self, con, texto, pedido):
         """UMA chamada SEM ferramentas pedindo outra versão do rascunho. Texto novo ou None (sem chave/modelo, teto,
@@ -159,8 +166,8 @@ class Cerebro:
             return None
         return novo.strip() if custo is not None and isinstance(novo, str) and novo.strip() else None
 
-    def _parar(self, con, conversa_id, r, motivo):
-        marcar_precisa_de_voce(con, conversa_id, motivo)
+    def _parar(self, con, conversa_id, r, motivo, desligar=False):
+        marcar_precisa_de_voce(con, conversa_id, motivo, desligar)
         r.update({"texto": None, "links": [], "precisa_de_voce": True, "motivo": motivo})
         return r
 
@@ -200,7 +207,7 @@ class Cerebro:
                 r["links"].append(url)
             return {"ok": True, "url": url}
         if nome == "pedir_humano":
-            marcar_precisa_de_voce(con, conversa_id, "pedir_humano")
-            r["precisa_de_voce"], r["motivo"] = True, "pedir_humano"
+            marcar_precisa_de_voce(con, conversa_id, "pedir_humano", True)
+            r["precisa_de_voce"], r["motivo"], r["texto"] = True, "pedir_humano", None
             return {"ok": True}
         return {"ok": False, "erro": "ferramenta desconhecida"}

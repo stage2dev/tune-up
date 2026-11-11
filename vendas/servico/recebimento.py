@@ -122,7 +122,9 @@ def _de_mim(con, ev, numero, conversa_id, momento, confiavel):
     banco.registrar_mensagem(con, conversa_id, "saida", ev.get("texto"), ev["id_externo"], ev["tipo"], envio_id,
                              confiavel)
     if envio_id is None and confiavel:   # o dono respondeu do celular: a IA desta conversa espera
-        _marcar(con, conversa_id, "pausada_ate", _iso(momento + PAUSA_DONO))
+        # nova fala do dono estende; uma mais velha (busca na subida) nunca encurta a pausa que já vale
+        con.execute("UPDATE conversas SET pausada_ate = ? WHERE id = ? AND (pausada_ate IS NULL OR pausada_ate < ?)",
+                    (_iso(momento + PAUSA_DONO), conversa_id, _iso(momento + PAUSA_DONO)))
 
 
 def processar(con, ev, agora, depois, confiavel=True):

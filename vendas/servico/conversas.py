@@ -45,7 +45,7 @@ def _deslocamento(query):
 def listar(con, query, agora=None):
     momento = agora or datetime.datetime.now(datetime.timezone.utc)
     linhas = con.execute(
-        "SELECT c.id, c.contato_id, c.modo, c.precisa_de_voce, k.nome, k.telefone, k.optout_em, "
+        "SELECT c.id, c.contato_id, c.modo, c.precisa_de_voce, c.motivo_humano, k.nome, k.telefone, k.optout_em, "
         "(SELECT texto FROM mensagens m WHERE m.conversa_id = c.id ORDER BY m.id DESC LIMIT 1) AS ultima, "
         "(SELECT tipo FROM mensagens m WHERE m.conversa_id = c.id ORDER BY m.id DESC LIMIT 1) AS ultima_tipo, "
         "(SELECT criado_em FROM mensagens m WHERE m.conversa_id = c.id ORDER BY m.id DESC LIMIT 1) AS ultima_em "
@@ -55,7 +55,8 @@ def listar(con, query, agora=None):
     total = con.execute("SELECT COUNT(*) FROM conversas").fetchone()[0]
     return {"total": total, "aberta": aberta(con), "conversas": [
         {"id": r["id"], "nome": r["nome"], "telefone_mascarado": mascarar(r["telefone"]), "modo": r["modo"],
-         "precisa_de_voce": bool(r["precisa_de_voce"]), "saiu": r["optout_em"] is not None,
+         "precisa_de_voce": bool(r["precisa_de_voce"]),
+         "motivo_humano": r["motivo_humano"], "saiu": r["optout_em"] is not None,
          "ia_pausada": portao._pausada(con, r["contato_id"], momento),
          "ultima": _previa(r["ultima"], r["ultima_tipo"]) if r["ultima_em"] else "", "quando": r["ultima_em"]}
         for r in linhas]}
@@ -80,8 +81,8 @@ def selecionar(con, conversa_id):
 def abrir(con, conversa_id, query, agora=None):
     """A conversa com o telefone inteiro e as últimas mensagens (no máximo 50 por padrão, 100 no teto)."""
     momento = agora or datetime.datetime.now(datetime.timezone.utc)
-    c = con.execute("SELECT c.id, c.contato_id, c.modo, c.precisa_de_voce, k.nome, k.telefone, k.optout_em "
-                    "FROM conversas c JOIN contatos k ON k.id = c.contato_id WHERE c.id = ?",
+    c = con.execute("SELECT c.id, c.contato_id, c.modo, c.precisa_de_voce, c.motivo_humano, k.nome, k.telefone, "
+                    "k.optout_em FROM conversas c JOIN contatos k ON k.id = c.contato_id WHERE c.id = ?",
                     (conversa_id,)).fetchone()
     if c is None:
         return None
@@ -101,7 +102,8 @@ def abrir(con, conversa_id, query, agora=None):
                       "estado": e["estado"], "motivo": e["motivo"]})
     itens.sort(key=lambda i: (i["quando"] or "", int(i["id"][1:])))
     return {"conversa": {"id": c["id"], "nome": c["nome"], "telefone": c["telefone"], "modo": c["modo"],
-                         "precisa_de_voce": bool(c["precisa_de_voce"]), "saiu": c["optout_em"] is not None,
+                         "precisa_de_voce": bool(c["precisa_de_voce"]),
+                         "motivo_humano": c["motivo_humano"], "saiu": c["optout_em"] is not None,
                          "ia_pausada": portao._pausada(con, c["contato_id"], momento),
                          "liberado": banco.ler_config(con, LIBERADO) == str(c["contato_id"])},
             "mensagens": itens[-limite:]}
@@ -119,11 +121,13 @@ def incertos(con, query):
 
 
 def definir_modo(con, conversa_id, modo):
-    """Assumir (humano; a IA para e o aviso 'precisa de você' sai) ou devolver (IA; a pausa acaba). False = não existe."""
+    """Assumir (humano; a IA para e o aviso 'precisa de você' sai) ou devolver (IA; a pausa, o aviso e o motivo acabam). False = não existe."""
     if modo == "humano":
-        cur = con.execute("UPDATE conversas SET modo = 'humano', precisa_de_voce = 0 WHERE id = ?", (conversa_id,))
+        cur = con.execute("UPDATE conversas SET modo = 'humano', precisa_de_voce = 0, motivo_humano = NULL "
+                          "WHERE id = ?", (conversa_id,))
     else:
-        cur = con.execute("UPDATE conversas SET modo = 'ia', pausada_ate = NULL WHERE id = ?", (conversa_id,))
+        cur = con.execute("UPDATE conversas SET modo = 'ia', pausada_ate = NULL, precisa_de_voce = 0, "
+                          "motivo_humano = NULL WHERE id = ?", (conversa_id,))
     return cur.rowcount == 1
 
 

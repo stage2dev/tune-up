@@ -108,6 +108,10 @@ MIGRACOES = [
     [
         "ALTER TABLE mensagens ADD COLUMN confiavel INTEGER NOT NULL DEFAULT 1 CHECK (confiavel IN (0, 1))",
     ],
+    # 7: por que a IA ficou desligada nesta conversa (pedir_humano, erro, anti-loop); some ao devolver para a IA
+    [
+        "ALTER TABLE conversas ADD COLUMN motivo_humano TEXT",
+    ],
 ]
 VERSAO = len(MIGRACOES)
 PARECE_SEGREDO = re.compile(r"chave|senha|token|segredo|secret|key|password", re.I)
