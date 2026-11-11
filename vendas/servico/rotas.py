@@ -9,7 +9,7 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
-from servico import banco, conversas, ia, instancia, openai_cliente, portao, telefone
+from servico import banco, conversas, ia, instancia, openai_cliente, portao, rascunhos, telefone
 from servico.conectores.base import ErroConector
 
 CORPO_MAX = 1024 * 1024
@@ -41,6 +41,11 @@ def origem_do_painel(valor):
 
 def igual(recebido, esperado):
     return hmac.compare_digest((recebido or "").encode("utf-8"), esperado.encode("utf-8"))
+
+
+def _modulo(caminho):
+    """Módulo das rotas com token (rascunhos e modo por conversa, IA, conversas) que atende o caminho, ou None."""
+    return next((m for m in (rascunhos, ia, conversas) if m.ROTA.match(caminho)), None)
 
 
 def guardar_evento(con, instancia, corpo, segredo_ok):
@@ -192,8 +197,8 @@ def fazer_handler(app):
                 finally:
                     con.close()
                 return self._json(200, dado)
-            if conversas.ROTA.match(caminho) or ia.ROTA.match(caminho):
-                return self._conversas(ia if ia.ROTA.match(caminho) else conversas)
+            if _modulo(caminho):
+                return self._conversas(_modulo(caminho))
             self._erro(404, "Rota desconhecida.")
 
         def do_POST(self):
@@ -206,8 +211,8 @@ def fazer_handler(app):
                 return self._modo_webhook()
             if self._caminho() == "/instancia":
                 return self._instancia()
-            if conversas.ROTA.match(self._caminho()) or ia.ROTA.match(self._caminho()):
-                return self._conversas(ia if ia.ROTA.match(self._caminho()) else conversas)
+            if _modulo(self._caminho()):
+                return self._conversas(_modulo(self._caminho()))
             if not achado:
                 self.close_connection = True
                 return self._erro(404, "Rota desconhecida.")

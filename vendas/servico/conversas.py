@@ -46,6 +46,7 @@ def listar(con, query, agora=None):
     momento = agora or datetime.datetime.now(datetime.timezone.utc)
     linhas = con.execute(
         "SELECT c.id, c.contato_id, c.modo, c.precisa_de_voce, c.motivo_humano, k.nome, k.telefone, k.optout_em, "
+        "EXISTS (SELECT 1 FROM rascunhos d WHERE d.conversa_id = c.id AND d.estado = 'pendente') AS tem_rascunho, "
         "(SELECT texto FROM mensagens m WHERE m.conversa_id = c.id ORDER BY m.id DESC LIMIT 1) AS ultima, "
         "(SELECT tipo FROM mensagens m WHERE m.conversa_id = c.id ORDER BY m.id DESC LIMIT 1) AS ultima_tipo, "
         "(SELECT criado_em FROM mensagens m WHERE m.conversa_id = c.id ORDER BY m.id DESC LIMIT 1) AS ultima_em "
@@ -57,7 +58,7 @@ def listar(con, query, agora=None):
         {"id": r["id"], "nome": r["nome"], "telefone_mascarado": mascarar(r["telefone"]), "modo": r["modo"],
          "precisa_de_voce": bool(r["precisa_de_voce"]),
          "motivo_humano": r["motivo_humano"], "saiu": r["optout_em"] is not None,
-         "ia_pausada": portao._pausada(con, r["contato_id"], momento),
+         "tem_rascunho": bool(r["tem_rascunho"]), "ia_pausada": portao._pausada(con, r["contato_id"], momento),
          "ultima": _previa(r["ultima"], r["ultima_tipo"]) if r["ultima_em"] else "", "quando": r["ultima_em"]}
         for r in linhas]}
 
@@ -80,9 +81,10 @@ def selecionar(con, conversa_id):
 
 def abrir(con, conversa_id, query, agora=None):
     """A conversa com o telefone inteiro e as últimas mensagens (no máximo 50 por padrão, 100 no teto)."""
+    from servico import rascunhos   # aqui dentro: rascunhos.py importa este módulo
     momento = agora or datetime.datetime.now(datetime.timezone.utc)
-    c = con.execute("SELECT c.id, c.contato_id, c.modo, c.precisa_de_voce, c.motivo_humano, k.nome, k.telefone, "
-                    "k.optout_em FROM conversas c JOIN contatos k ON k.id = c.contato_id WHERE c.id = ?",
+    c = con.execute("SELECT c.id, c.contato_id, c.modo, c.modo_ia, c.precisa_de_voce, c.motivo_humano, k.nome, "
+                    "k.telefone, k.optout_em FROM conversas c JOIN contatos k ON k.id = c.contato_id WHERE c.id = ?",
                     (conversa_id,)).fetchone()
     if c is None:
         return None
@@ -105,8 +107,10 @@ def abrir(con, conversa_id, query, agora=None):
                          "precisa_de_voce": bool(c["precisa_de_voce"]),
                          "motivo_humano": c["motivo_humano"], "saiu": c["optout_em"] is not None,
                          "ia_pausada": portao._pausada(con, c["contato_id"], momento),
-                         "liberado": banco.ler_config(con, LIBERADO) == str(c["contato_id"])},
-            "mensagens": itens[-limite:]}
+                         "liberado": banco.ler_config(con, LIBERADO) == str(c["contato_id"]),
+                         "modo_ia": c["modo_ia"] or "padrao", "modo_ia_efetivo": rascunhos.modo_da_conversa(
+                             con, c["id"])},
+            "mensagens": itens[-limite:], "rascunho": rascunhos.pendente(con, c["id"], momento)}
 
 
 def incertos(con, query):

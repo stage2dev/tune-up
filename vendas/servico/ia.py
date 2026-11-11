@@ -2,9 +2,9 @@
 a chave da OpenAI e salvar modelo + teto diário. Nenhuma resposta leva a chave: só 'configurada' e os 4 últimos."""
 import re
 
-from servico import banco, chave, cerebro, conhecimento, openai_cliente, precos
+from servico import banco, chave, cerebro, conhecimento, openai_cliente, precos, rascunhos
 
-ROTA = re.compile(r"^/ia(?:/(modelos|chave|chave/apagar|config))?$")
+ROTA = re.compile(r"^/ia(?:/(modelos|chave|chave/apagar|config|modo))?$")
 MODELO = re.compile(r"^[A-Za-z0-9._:/-]{1,100}$")
 TETO_MAX_USD = 1000
 
@@ -16,7 +16,7 @@ def estado(app, con):
     saber = conhecimento.ler(app.raiz) if app.raiz else None
     return {"chave": chave.estado(app.pasta_dados), "modelo": modelo, "sugestao": cerebro.SUGESTAO_MODELO,
             "teto_usd": precos.ler_teto(con), "gasto_hoje_usd": round(precos.gasto_hoje(con), 6),
-            "preco_conhecido": conhecido,
+            "preco_conhecido": conhecido, "modo_padrao": rascunhos.modo_padrao(con),
             "conhecimento": None if saber is None else {
                 "oferta": bool(saber["oferta"]), "tom": bool(saber["tom"]), "metodos": bool(saber["metodos"]),
                 "links": len(cerebro.ler_links(app.raiz)), "avisos": saber["avisos"]}}
@@ -77,4 +77,9 @@ def executar(app, con, metodo, caminho, query, corpo):
         return 200, {"apagada": chave.apagar(app.pasta_dados), "chave": chave.estado(app.pasta_dados)}
     if sub == "config":
         return _config(con, corpo)
+    if sub == "modo":
+        if corpo.get("modo") not in rascunhos.MODOS_IA:
+            return 400, {"erro": "Modo desconhecido."}
+        rascunhos.definir_modo_padrao(con, corpo["modo"])
+        return 200, {"modo_padrao": corpo["modo"]}
     return None

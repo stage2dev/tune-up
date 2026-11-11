@@ -31,6 +31,8 @@ MOTIVOS = {
     "anti_loop": "A IA repetiu a mesma resposta 3 vezes e foi desligada nesta conversa.",
 }
 ESTADOS_NOTA = ("negado", "falhou", "incerto")
+ACOES_RASCUNHO = ("aprovar_rascunho", "editar_rascunho", "descartar_rascunho")
+AVISO_AUTOMATICO = ("Nesta conversa a IA vai ENVIAR as respostas sozinha, sem você aprovar. Mudar para automático?")
 
 
 def motivo_pt(motivo):
@@ -113,6 +115,7 @@ def bloco_abrir(r):
 
 def bloco_conversa(r):
     c = r["conversa"]
+    rascunho = r.get("rascunho")
     mensagens = []
     for m in r["mensagens"]:
         item = {"id": m["id"], "de": m["de"], "texto": m["texto"], "quando": _quando(m["quando"])}
@@ -127,7 +130,24 @@ def bloco_conversa(r):
     if c["saiu"] and not c.get("liberado"):
         botoes.append({"rotulo": "Liberar uma mensagem", "acao": "liberar_saida", "dados": dados,
                        "confirmar": AVISO_LIBERAR})
-    estado = [t for t, _ in _selos(c)] + (["envio liberado para uma mensagem"] if c.get("liberado") else [])
+    if rascunho:
+        mensagens.append({"id": "rascunho%d" % rascunho["id"], "de": "ia", "texto": rascunho["texto"],
+                          "quando": _quando(rascunho["criado_em"]),
+                          "nota": "Rascunho da IA: ainda NÃO foi enviado." if not rascunho["expirado"] else
+                          "Rascunho com mais de 24 horas: expirou e não pode mais ser aprovado."})
+        if not rascunho["expirado"]:
+            dados_r = {"rascunho_id": rascunho["id"]}
+            botoes += [{"rotulo": "Aprovar e enviar", "acao": "aprovar_rascunho", "dados": dados_r},
+                       {"rotulo": "Descartar rascunho", "acao": "descartar_rascunho", "dados": dados_r,
+                        "confirmar": "Descartar este rascunho? Nada será enviado."}]
+    if c.get("modo_ia_efetivo") == "automatico":
+        botoes.append({"rotulo": "Voltar para rascunho nesta conversa", "acao": "ia_rascunho_conversa", "dados": dados})
+    else:
+        botoes.append({"rotulo": "IA em modo automático nesta conversa", "acao": "ia_automatico_conversa",
+                       "dados": dados, "confirmar": AVISO_AUTOMATICO})
+    estado = [t for t, _ in _selos(c)] + ["IA: " + ("automático" if c.get("modo_ia_efetivo") == "automatico"
+                                                    else "rascunho")]
+    estado = estado + (["envio liberado para uma mensagem"] if c.get("liberado") else [])
     if c.get("motivo_humano"):
         estado.append("IA desligada: " + motivo_pt(c["motivo_humano"]))
     return {"tipo": "conversa", "id": "conversa_%d" % c["id"],
@@ -166,6 +186,13 @@ def blocos(ctx, cliente, base=None):
         aberta, aviso = _ler(ctx, cliente, "/conversas/%d?limite=50" % lista["aberta"], base)
         saida.append(bloco_conversa(aberta) if aberta else {"tipo": "texto", "titulo": "Conversa indisponível",
                                                             "texto": aviso})
+        rascunho = (aberta or {}).get("rascunho")
+        if rascunho and not rascunho["expirado"]:
+            saida.append({"tipo": "formulario", "id": "editar_rascunho", "titulo": "Editar o rascunho e enviar",
+                          "acao": "editar_rascunho", "botao": "Enviar texto editado",
+                          "dados_fixos": {"rascunho_id": rascunho["id"]},
+                          "campos": [{"id": "texto", "rotulo": "Mensagem", "tipo": "texto_longo",
+                                      "obrigatorio": True, "valor": rascunho["texto"]}]})
     incertos, aviso = _ler(ctx, cliente, "/incertos?limite=%d" % MAX_INCERTOS, base)
     if incertos and incertos["incertos"]:
         saida.append(bloco_incertos(incertos))
@@ -209,6 +236,28 @@ def id_do_servico(id_cliente):
     return hashlib.sha256(id_cliente.encode("utf-8")).hexdigest()[:40]
 
 
+def _agir_rascunho(ctx, cliente, acao, dados, base):
+    """Aprovar, editar e enviar ou descartar o rascunho; a origem 'rascunho_aprovado' é fixada pelo serviço."""
+    rascunho = _inteiro(dados.get("rascunho_id"))
+    if rascunho is None:
+        return {"ok": False, "mensagem": "Rascunho inválido."}
+    if acao == "descartar_rascunho":
+        codigo, r = _chamar(ctx, cliente, "POST", "/rascunhos/%d/descartar" % rascunho, {}, base)
+        if codigo is None:
+            return {"ok": False, "mensagem": r}
+        return {"ok": codigo == 200, "mensagem": "Rascunho descartado: nada foi enviado." if codigo == 200 else
+                str(r.get("erro") or "O serviço recusou (%d)." % codigo)}
+    corpo = {}
+    if acao == "editar_rascunho":
+        texto = str(dados.get("texto") or "").strip()
+        if not texto:
+            return {"ok": False, "mensagem": "Escreva a mensagem."}
+        corpo["texto"] = texto
+    codigo, r = _chamar(ctx, cliente, "POST", "/rascunhos/%d/aprovar" % rascunho, corpo, base,
+                        cliente.TEMPO_ENVIO_S)
+    return {"ok": False, "mensagem": r} if codigo is None else _resposta_envio(codigo, r, "Mensagem enviada.")
+
+
 def agir(ctx, cliente, acao, dados, base=None):
     dados = dados or {}
     if acao in ("reenviar_envio", "descartar_envio"):
@@ -225,6 +274,8 @@ def agir(ctx, cliente, acao, dados, base=None):
             return {"ok": codigo == 200, "mensagem": "Marcada como não enviada." if codigo == 200 else
                     str(r.get("erro") or "O serviço recusou (%d)." % codigo)}
         return _resposta_envio(codigo, r, "Mensagem reenviada (a mesma, sem duplicar).")
+    if acao in ACOES_RASCUNHO:
+        return _agir_rascunho(ctx, cliente, acao, dados, base)
     conversa = _inteiro(dados.get("conversa_id"))
     if conversa is None:
         return {"ok": False, "mensagem": "Escolha uma conversa."}
@@ -242,6 +293,10 @@ def agir(ctx, cliente, acao, dados, base=None):
              "assumir_conversa": ("/conversas/%d/modo" % conversa, {"modo": "humano"},
                                   "Você assumiu a conversa: a IA não responde nela."),
              "devolver_ia": ("/conversas/%d/modo" % conversa, {"modo": "ia"}, "Conversa devolvida para a IA."),
+             "ia_automatico_conversa": ("/conversas/%d/modo-ia" % conversa, {"modo_ia": "automatico"},
+                                        "Nesta conversa a IA agora envia sozinha."),
+             "ia_rascunho_conversa": ("/conversas/%d/modo-ia" % conversa, {"modo_ia": "rascunho"},
+                                      "Nesta conversa a IA volta a escrever só rascunhos."),
              "liberar_saida": ("/conversas/%d/liberar" % conversa, {}, "Liberado: a próxima mensagem desta "
                                                                        "conversa pode sair.")}
     if acao not in rotas:

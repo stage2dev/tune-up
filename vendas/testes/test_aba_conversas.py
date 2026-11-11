@@ -72,7 +72,7 @@ class TesteLista(Conversas):
                          [("contato", "oi, quero saber o preço")])
         self.assertEqual(conversa["enviar"], {"acao": "enviar_mensagem", "dados_fixos": {"conversa_id": self.maria},
                                               "rotulo": "Enviar"})
-        self.assertEqual([b["acao"] for b in conversa["botoes"]], ["assumir_conversa"])
+        self.assertEqual([b["acao"] for b in conversa["botoes"]], ["assumir_conversa", "ia_automatico_conversa"])
         self.assertNotIn("5511900000002", json.dumps(self.aba()))
 
     def test_selecao_fica_por_projeto_no_banco_do_servico(self):
@@ -295,7 +295,7 @@ class TesteModo(Conversas):
         self.assertTrue(self.agir("assumir_conversa", conversa_id=self.maria)["ok"])
         self.assertEqual(tuple(self.modo(self.maria))[:2], ("humano", 0))
         self.agir("abrir_conversa", conversa_id=self.maria)
-        self.assertEqual([b["acao"] for b in self.tipos(self.aba(), "conversa")[0]["botoes"]], ["devolver_ia"])
+        self.assertEqual([b["acao"] for b in self.tipos(self.aba(), "conversa")[0]["botoes"]], ["devolver_ia", "ia_automatico_conversa"])
         self.con.execute("UPDATE conversas SET pausada_ate = '2999-01-01T00:00:00+00:00' WHERE id = ?",
                          (self.maria,))
         self.assertTrue(self.agir("devolver_ia", conversa_id=self.maria)["ok"])

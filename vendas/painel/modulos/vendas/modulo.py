@@ -44,7 +44,8 @@ INFO = {
     "titulo": "Vendas",
     "icone": "pessoas",
     "acoes": ["modo_webhook", "conectar_instancia", "abrir_conversa", "enviar_mensagem", "assumir_conversa",
-              "devolver_ia", "liberar_saida", "reenviar_envio", "descartar_envio"] + list(ia.ACOES),
+              "devolver_ia", "liberar_saida", "reenviar_envio", "descartar_envio"] + list(conversas.ACOES_RASCUNHO)
+             + ["ia_automatico_conversa", "ia_rascunho_conversa"] + list(ia.ACOES),
     "negar": [
         "Bash(*127.0.0.1:%d*)" % PORTA,
         "Bash(*localhost:%d*)" % PORTA,
@@ -97,7 +98,8 @@ def agir(ctx, acao, dados, base=None):
     if acao == "conectar_instancia":
         return conexao.agir_conectar(ctx, cliente, dados, base)
     if acao in ("abrir_conversa", "enviar_mensagem", "assumir_conversa", "devolver_ia", "liberar_saida",
-                "reenviar_envio", "descartar_envio"):
+                "reenviar_envio", "descartar_envio", "ia_automatico_conversa", "ia_rascunho_conversa") \
+            or acao in conversas.ACOES_RASCUNHO:
         return conversas.agir(ctx, cliente, acao, dados, base)
     if acao in ia.ACOES:
         return ia.agir(ctx, cliente, acao, dados, base)

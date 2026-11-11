@@ -13,6 +13,8 @@
 - Nenhuma transação de escrita fica aberta durante a rede: a mensagem já foi gravada e commitada pelo recebimento;
   aqui só há leituras e escritas curtas em autocommit; o envio passa por servico/saida.py (sanitizador, anti-loop,
   balões) e sai pelo portão (origem 'ia'), que reconfere opt-out, pausa, modo humano e tetos NA HORA DE ENVIAR.
+- Modo da conversa (servico/rascunhos.py): 'rascunho' (padrão) guarda o texto como rascunho e NADA sai; 'automatico'
+  envia pelo portão. O sanitizador vale nos dois.
 - Não responde: modo humano, pausada, opt-out, entrada confiável mais nova que o gatilho, rodada sem gatilho.
   Grupo, fromMe, mídia e mensagem velha nem chegam aqui (o recebimento não chama o gancho).
 - parar(): as esperas acabam sem responder e as threads terminam (join com tempo limite)."""
@@ -23,7 +25,7 @@ import sys
 import threading
 import time
 
-from servico import banco, cerebro, chave, saida
+from servico import banco, cerebro, chave, rascunhos, saida
 
 UTC = datetime.timezone.utc
 ESPERA_S = 12
@@ -174,7 +176,9 @@ class Atendente:
         if not r["texto"]:
             return None
         texto = "\n".join([r["texto"]] + [u for u in r["links"] if u not in r["texto"]])
+        permitidos, segredos = list(cerebro.ler_links(self.cerebro.raiz).values()), [chave.ler(self.cerebro.pasta_dados)]
+        reescrever = lambda t, pedido: self.cerebro.reescrever(con, t, pedido)  # noqa: E731
+        if rascunhos.modo_da_conversa(con, conversa_id) == "rascunho":   # nada sai: o dono aprova na tela
+            return rascunhos.guardar(con, conversa_id, gatilho["id"], texto, permitidos, segredos, reescrever)
         return saida.entregar(con, conector, instancia, conversa["telefone"], conversa_id, gatilho["id_externo"],
-                              texto, permitidos=list(cerebro.ler_links(self.cerebro.raiz).values()),
-                              segredos=[chave.ler(self.cerebro.pasta_dados)],
-                              reescrever=lambda t, pedido: self.cerebro.reescrever(con, t, pedido))
+                              texto, permitidos=permitidos, segredos=segredos, reescrever=reescrever)

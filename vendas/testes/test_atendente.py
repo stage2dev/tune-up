@@ -49,6 +49,7 @@ class Base(unittest.TestCase):
         chave.gravar(self.pasta, "sk-test-" + "0" * 24)
         banco.gravar_config(self.con, "ia_modelo", "gpt-4o-mini")
         banco.gravar_config(self.con, "instancia", INST)
+        banco.gravar_config(self.con, "ia_modo_padrao", "automatico")   # o padrão do produto é rascunho (test_rascunhos.py)
         self.falsa = OpenAIFalsa()
         self.addCleanup(self.falsa.fechar)
         self.c = ConectorFalso()

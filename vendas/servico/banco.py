@@ -112,6 +112,21 @@ MIGRACOES = [
     [
         "ALTER TABLE conversas ADD COLUMN motivo_humano TEXT",
     ],
+    # 8: modo da IA por conversa (NULL = o padrão do projeto) e rascunhos que o dono aprova, edita ou descarta
+    [
+        "ALTER TABLE conversas ADD COLUMN modo_ia TEXT CHECK (modo_ia IN ('rascunho', 'automatico'))",
+        """CREATE TABLE rascunhos (
+            id INTEGER PRIMARY KEY,
+            conversa_id INTEGER NOT NULL REFERENCES conversas(id),
+            mensagem_id INTEGER NOT NULL REFERENCES mensagens(id),
+            texto TEXT NOT NULL,
+            estado TEXT NOT NULL DEFAULT 'pendente'
+                CHECK (estado IN ('pendente', 'aprovado', 'descartado', 'substituido', 'expirado', 'negado')),
+            criado_em TEXT NOT NULL,
+            decidido_em TEXT)""",
+        "CREATE UNIQUE INDEX rascunhos_gatilho ON rascunhos(conversa_id, mensagem_id)",
+        "CREATE UNIQUE INDEX rascunhos_pendente ON rascunhos(conversa_id) WHERE estado = 'pendente'",
+    ],
 ]
 VERSAO = len(MIGRACOES)
 PARECE_SEGREDO = re.compile(r"chave|senha|token|segredo|secret|key|password", re.I)

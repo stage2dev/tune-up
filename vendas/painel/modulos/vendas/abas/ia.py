@@ -2,7 +2,7 @@
 pelo dono (lista da conta; lista falhou = nome digitado), teto diário em US$ e gasto de hoje. A tela só vê
 'configurada' e os 4 últimos caracteres; nenhuma mensagem de ação ecoa a chave."""
 
-ACOES = ("ia_chave", "ia_config", "ia_apagar_chave")
+ACOES = ("ia_chave", "ia_config", "ia_apagar_chave", "ia_modo")
 TEMPO_MODELOS_S = 12  # o serviço espera a OpenAI até 8 s por tentativa
 
 
@@ -65,6 +65,14 @@ def blocos(estado, modelos, aviso):
                      "projeto. Depois a tela mostra só os 4 últimos caracteres.",
         "acao": "ia_chave", "botao": "Trocar chave" if k.get("configurada") else "Salvar chave",
         "campos": [{"id": "chave", "rotulo": "Chave da OpenAI", "tipo": "segredo", "obrigatorio": True}]})
+    saida.append({"tipo": "formulario", "id": "ia_modo", "titulo": "Modo da IA (padrão do projeto)",
+                  "descricao": "Rascunho: a IA escreve e NADA sai até você aprovar na aba Conversas. Automático: a IA "
+                               "envia sozinha. Cada conversa pode trocar o seu modo na aba Conversas.",
+                  "acao": "ia_modo", "botao": "Salvar modo", "campos": [
+                      {"id": "modo", "rotulo": "Modo", "tipo": "escolha", "obrigatorio": True,
+                       "valor": estado.get("modo_padrao") or "rascunho",
+                       "opcoes": [{"valor": "rascunho", "rotulo": "Rascunho (você aprova)"},
+                                  {"valor": "automatico", "rotulo": "Automático (a IA envia)"}]}]})
     if modelos:
         opcoes = [{"valor": m, "rotulo": m} for m in modelos]
         campo = {"id": "modelo", "rotulo": "Modelo", "tipo": "escolha", "opcoes": opcoes, "obrigatorio": True,
@@ -99,6 +107,8 @@ def agir(ctx, cliente, acao, dados, base=None):
         if dados.get("confirmar") != "sim":
             return {"ok": False, "mensagem": "Escolha \"Sim, apagar\" para apagar a chave."}
         caminho, corpo = "/ia/chave/apagar", {"confirmar": True}
+    elif acao == "ia_modo":
+        caminho, corpo = "/ia/modo", {"modo": dados.get("modo")}
     else:
         caminho, corpo = "/ia/config", {"modelo": dados.get("modelo"), "teto_usd": dados.get("teto_usd")}
     try:
@@ -109,6 +119,9 @@ def agir(ctx, cliente, acao, dados, base=None):
         return {"ok": False, "mensagem": _erro(codigo, r, "O serviço recusou (%d).")}
     if acao == "ia_chave":
         return {"ok": True, "mensagem": "Chave salva (final ****%s)." % ((r.get("chave") or {}).get("final") or "")}
+    if acao == "ia_modo":
+        return {"ok": True, "mensagem": "Modo padrão da IA: %s." % ("automático" if r.get("modo_padrao") ==
+                                                                  "automatico" else "rascunho")}
     if acao == "ia_apagar_chave":
         return {"ok": True, "mensagem": "Chave apagada." if r.get("apagada") else "Não havia chave."}
     return {"ok": True, "mensagem": "Modelo %s e teto de US$ %.2f salvos." % (r.get("modelo"), r.get("teto_usd"))}
