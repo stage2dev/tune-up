@@ -119,6 +119,27 @@ loopback). The numbers above were taken outside the sandbox. Until a render
 works in a sandboxed session, render time in a real action is not measured. The
 reserve reel was not run inside the sandbox either (not measured).
 
+### Real action `estudio.post` (PROVISIONAL, 2026-11-11)
+
+Measured by `painel/tests_reais/prova_post_bg.py`: example project copied to a
+throwaway folder, brand discovered and approved by the module command, the real
+action fired by the panel launcher with `claude --bg`, sandbox on, skip
+permissions off, model **haiku** (the action ships with opus; opus not measured).
+Tokens summed from the session `.jsonl`. One run each, one machine (macOS).
+
+| piece | wall clock (fire to done) | assistant turns | tokens (input / cache creation / cache read / output) | QA |
+| --- | --- | --- | --- | --- |
+| post 4:5, 1 frame | 47 s | 8 | 16 / 54,213 / 538,398 / 8,212 (600,839) | green, 0 fix rounds |
+| carousel 4:5, 5 frames | 236 s | 9 | 18 / 84,073 / 700,085 / 24,254 (808,430) | 5 of 5 green, 0 fix rounds |
+
+Both sessions ended on their own (`done`), with no question and no blocked
+command. Facts that shaped the action: `hyperframes check` writes its report
+history under `~/.cache/hyperframes/history` by default, which the sandbox
+refuses, and then the JSON has no `saved.report` (the QA fails); the action sets
+`HYPERFRAMES_HISTORY_ROOT=.hyperframes_history` (relative, so it lands in the
+work folder). The snapshot file name has `-`, which the Bash list only accepts
+after the absolute work-folder path, so the skill passes `--png` that way.
+
 ## Proposed caps per action (PROVISIONAL, to be revised in Parts 5 and 6)
 
 These are proposals set from the table, not enforced yet. The time cap is the
@@ -135,3 +156,4 @@ hook.
 | concurrent studio actions | 1 | Peak RAM of one reel render is about 0.5 GB for its largest process and the reserve path reached 0.9 GB. |
 
 Parts 5 and 6 measure again with the real action and replace this section.
+`estudio.post` already applies `max_minutos` 15 and `max_bloqueado_min` 5.

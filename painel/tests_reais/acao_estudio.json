@@ -14,6 +14,7 @@
         "HYPERFRAMES_NO_UPDATE_CHECK": "1",
         "HYPERFRAMES_NO_AUTO_INSTALL": "1",
         "HYPERFRAMES_SKIP_SKILLS": "1",
+        "HYPERFRAMES_HISTORY_ROOT": ".hyperframes_history",
         "GEMINI_API_KEY": "",
         "GOOGLE_API_KEY": ""
       },
