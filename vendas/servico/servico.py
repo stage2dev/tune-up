@@ -19,7 +19,7 @@ import signal  # noqa: E402
 import threading  # noqa: E402
 
 from servico import (agendador, banco, candidatos, cerebro, evolution_local, openai_cliente, pasta, places, portao, rascunhos,  # noqa: E402
-                     revisao, recebimento, rotas, travas)
+                     revisao, recebimento, rotas, travas, voz_cliente)
 from servico.atendente import Atendente  # noqa: E402
 from servico.conectores import evolution  # noqa: E402
 
@@ -41,6 +41,8 @@ def argumentos(argv):
                    help="URL base da OpenAI (só para testes; padrão %s)" % openai_cliente.URL_PADRAO)
     p.add_argument("--places-url", default=os.environ.get(places.VAR_URL) or places.URL_PADRAO,
                    help="URL base do Google Places (só para testes; padrão %s)" % places.URL_PADRAO)
+    p.add_argument("--elevenlabs-url", default=os.environ.get(voz_cliente.VAR_URL) or voz_cliente.URL_PADRAO,
+                   help="URL base da ElevenLabs (só para testes; padrão %s)" % voz_cliente.URL_PADRAO)
     return p.parse_args(argv)
 
 
@@ -104,6 +106,7 @@ def rodar(args, avisar=print):
         app.despachar = recebimento.Recebimento(lambda: app.conector)
         app.openai_url = args.openai_url
         app.places_url = args.places_url
+        app.elevenlabs_url = args.elevenlabs_url
         app.raiz = raiz
         try:
             servidor = rotas.criar_servidor(app, args.porta)

@@ -195,6 +195,17 @@ MIGRACOES = [
             criado_em TEXT NOT NULL)""",
         "CREATE TABLE places_uso (dia TEXT PRIMARY KEY, n INTEGER NOT NULL)",
     ],
+    # 15: voz (ElevenLabs): caracteres reservados por dia (teto antes de chamar) e consentimento do dono da voz clonada
+    [
+        "CREATE TABLE voz_uso (dia TEXT PRIMARY KEY, caracteres INTEGER NOT NULL)",
+        """CREATE TABLE voz_consentimentos (
+            id INTEGER PRIMARY KEY,
+            voz_id TEXT NOT NULL,
+            nome TEXT NOT NULL,
+            data TEXT NOT NULL,
+            texto TEXT NOT NULL,
+            criado_em TEXT NOT NULL)""",
+    ],
 ]
 VERSAO = len(MIGRACOES)
 PARECE_SEGREDO = re.compile(r"chave|senha|token|segredo|secret|key|password", re.I)

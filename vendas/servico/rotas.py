@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 from servico import (banco, campanha, candidatos, conversas, disparos, ia, instancia, leads, openai_cliente, places,
-                     portao, rascunhos, revisao, telefone)
+                     portao, rascunhos, revisao, telefone, voz, voz_cliente)
 from servico.conectores.base import ErroConector
 
 CORPO_MAX = 1024 * 1024
@@ -47,7 +47,7 @@ def igual(recebido, esperado):
 def _modulo(caminho):
     """Módulo das rotas com token (rascunhos e modo por conversa, IA, leads, campanhas, conversas) que atende o
     caminho, ou None."""
-    return next((m for m in (rascunhos, ia, leads, campanha, candidatos, revisao, disparos, places, conversas) if m.ROTA.match(caminho)), None)
+    return next((m for m in (rascunhos, ia, leads, campanha, candidatos, revisao, disparos, places, voz, conversas) if m.ROTA.match(caminho)), None)
 
 
 def guardar_evento(con, instancia, corpo, segredo_ok):
@@ -91,6 +91,7 @@ class App:
     raiz = None  # raiz do projeto: a subida do serviço põe; sem ela a aba IA não lê oferta.md
     openai_url = openai_cliente.URL_PADRAO  # só a subida do serviço troca (testes), nunca um pedido
     places_url = places.URL_PADRAO  # idem
+    elevenlabs_url = voz_cliente.URL_PADRAO  # idem
 
     def __init__(self, pasta_dados, porta, painel, token, segredo, despachar=guardar_evento, conector=None):
         self.pasta_dados = pasta_dados

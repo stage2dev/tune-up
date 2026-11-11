@@ -73,6 +73,17 @@ The send token is new on every start and stored 0600 in the data folder (deleted
 
 Decision on the key path: the generic panel form posts through the panel's action route on `127.0.0.1`, so the pasted key crosses the panel process in memory once on its way to the service. The panel does not log request bodies; the key is never written inside the project tree, never echoed in an action `resultado` or message, and never put in a transcript. A test sweeps route replies, screen blocks, action messages, stdout/stderr, every file under the project root and the database for the pasted key.
 
+## Voice notes (ElevenLabs + ffmpeg)
+
+`servico/voz.py` (+ `voz_cliente.py`, migration 15) turns a short text into a WhatsApp voice note with the user's own ElevenLabs account: `POST /v1/text-to-speech/{voice_id}?output_format=...` over urllib (key only in the `xi-api-key` header, text only in the JSON body, 30 s timeout, no retry), then `ffmpeg` (found with `shutil.which`, called with an argument list, 60 s limit) converts it to Ogg/Opus mono 48 kHz 32 kbps. Both temporary files are created 0600 in the external data folder and deleted after success and after failure. The key is stored like the OpenAI key (0600 file `elevenlabs_chave` in the data folder; routes return only "configurada" and the last 4 characters). Voice id, model (default `eleven_multilingual_v2`), output format (default `mp3_44100_128`) and the daily character cap live in config. `--elevenlabs-url` / `VENDAS_ELEVENLABS_URL` set the base URL for tests only.
+
+- No `ffmpeg`, no key or no voice id = voice off with a notice; nothing else changes.
+- Daily character cap (default 5,000, `voz_teto_caracteres_dia`) reserved in the database inside `BEGIN IMMEDIATE` before calling ElevenLabs; cap reached = no call. Max 600 characters per audio. An ElevenLabs error reply (401, 429, `quota_exceeded`, ...) = nothing sent, a clear message, and the reservation is returned; a timeout keeps it (the call may have been billed).
+- Sending goes only through the gate: `teste_audio` (only to the configured owner number `numero_dono`; the route never reads a number from the request) and `audio_ia` (opt-out, pause and audio caps apply). The gate is checked before any ElevenLabs call.
+- Token-protected routes: `GET /voz`, `POST /voz/chave`, `/voz/chave/apagar`, `/voz/config`, `/voz/consentimento`, `/voz/teste`.
+
+Decision on cloned voices (plan question Q5, taken by the coordinator while the owner was away; the owner can change it): the default voice is a **catalog voice** of the user's ElevenLabs account (no clone, no disclosure). A voice marked as cloned (`clonada`) only turns on after a recorded consent of the voice's owner (name, date and text, stored in the database for that voice id; another voice id needs its own consent), and every audio made with it starts with the spoken sentence "Mensagem de voz gerada por IA.", because the ElevenLabs usage policy requires disclosure when its absence would mislead. There is no switch to remove the disclosure from a cloned voice.
+
 ## Local Evolution API (Docker)
 
 The WhatsApp connection runs in a local Evolution API v2 (Docker). Prepare its files once per project:
