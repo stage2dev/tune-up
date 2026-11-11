@@ -5,12 +5,15 @@
    pelo modelo (sem ferramentas); se ainda falhar, nada sai.
 3. Links: só os do links.json do projeto (host+caminho normalizados; sai a URL da lista, nunca a do texto, então
    parâmetro de redirecionamento cai). Domínio sem esquema (golpe.com/pix) também é link. Lista vazia = nenhum link.
+   Depois do filtro, uma varredura larga (Unicode, sem olhar o que vem antes; IP com caminho) falha fechado: sobrou
+   algo com cara de domínio fora da lista (ação.com.br, ...golpe.com, -golpe.com, homógrafo) = nada sai.
 4. No máximo 4 frases e 4096 caracteres (corte em fim de frase); link da lista cortado volta no fim.
 5. Anti-loop: a 3ª resposta seguida quase igual às 2 anteriores = nada sai.
 6. Até 3 balões, cada um pelo portão (origem 'ia', chave conversa + gatilho + nº do balão), com "digitando" antes
-   quando o conector suporta (falha da presença não impede o envio). Balão negado = os seguintes não saem;
-   se o 1º já saiu, a conversa fica "precisa de você" com os balões que faltaram no evento ia_envio_parcial.
-Nada sai (1, 2, texto vazio, 5) = a conversa fica "precisa de você" (como o pedir_humano do cérebro)."""
+   quando o conector suporta (falha da presença não impede o envio). Balão negado = os seguintes não saem e a
+   conversa fica "precisa de você" com os balões que faltaram no evento (ia_envio_negado se foi o 1º,
+   ia_envio_parcial se não), salvo opt-out (o lead saiu) e pausa_humana (o dono já está na conversa).
+Nada sai (1, 2, 3, texto vazio, 5) = a conversa fica "precisa de você" (como o pedir_humano do cérebro)."""
 import difflib
 import json
 import re
@@ -42,6 +45,10 @@ SISTEMA_VAZADO = (cerebro.SISTEMA[:60].lower(), "dados_do_cliente")
 TOKEN = re.compile(r"\bsk-[A-Za-z0-9_-]{12,}|\bbearer\s+[A-Za-z0-9._~+/=-]{12,}"
                    r"|(?<![A-Za-z0-9])(?=[A-Za-z0-9_+/=-]*\d)(?=[A-Za-z0-9_+/=-]*[A-Za-z])[A-Za-z0-9_+/=-]{32,}", re.I)
 FIM_DE_FRASE = re.compile(r"(?<=[.!?…])\s+")
+EMAIL = re.compile(r"(?<![^\s(<\"'])[\w.+-]+@[\w-]+(?:\.[\w-]+)+(?![\w/@-]|\.\w)")
+LARGO = re.compile(r"(?<![\w-])[\w-]+(?:\.[\w-]+)*\.[^\W\d_]{2,}(?::\d+)?(?:[/?#][^\s<>\"'()\[\]{}]*)?"
+                   r"|\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?[/?#:][^\s<>\"'()\[\]{}]*")
+NAO_CHAMA_O_DONO = ("optout", "pausa_humana")   # balão negado por isso não chama o dono
 
 
 def _normalizar_url(url):
@@ -82,6 +89,18 @@ def filtrar_links(texto, permitidos):
         return certa + resto
     novo = URL.sub(trocar, texto)
     return re.sub(r"[ \t]{2,}", " ", novo).strip(), removidas
+
+
+def sobras_de_link(texto, permitidos):
+    """Varredura larga depois de filtrar_links: o que ainda tem cara de domínio (ou IP com caminho) e não é da lista.
+    E-mail inteiro (ana@loja.com, sem caminho) não conta."""
+    lista = {_normalizar_url(u) for u in permitidos or ()} - {None}
+    sobras = []
+    for m in LARGO.finditer(EMAIL.sub(" ", texto)):
+        bruto = m.group(0).rstrip(".,;:!?…")
+        if _normalizar_url(bruto) not in lista:
+            sobras.append(bruto)
+    return sobras
 
 
 def tem_segredo(texto, segredos=()):
@@ -187,6 +206,8 @@ def preparar(texto, permitidos, segredos=(), reescrever=None):
             return None, "segredo"
     texto, _ = filtrar_links(texto, permitidos)
     texto = _limitar_mantendo_links(texto)
+    if sobras_de_link(texto, permitidos):
+        return None, "link_suspeito"   # falha fechado: o filtro deixou passar algo com cara de link
     return (texto, None) if texto else (None, "vazio")
 
 
@@ -213,9 +234,10 @@ def entregar(con, conector, instancia, numero, conversa_id, id_gatilho, texto, p
         r = portao.enviar_ia(con, conector, instancia, numero, balao, conversa_id, id_gatilho, n, agora=agora)
         resultados.append(r)
         if r["estado"] != "enviado":
-            if n > 1:   # resposta cortada no meio: o dono completa
-                cerebro.marcar_precisa_de_voce(con, conversa_id, "envio_parcial")
-                banco.registrar_evento(con, "ia_envio_parcial", json.dumps(
+            if r["motivo"] not in NAO_CHAMA_O_DONO:   # resposta perdida ou cortada no meio: o dono responde/completa
+                tipo = "ia_envio_parcial" if n > 1 else "ia_envio_negado"
+                cerebro.marcar_precisa_de_voce(con, conversa_id, tipo[len("ia_"):])
+                banco.registrar_evento(con, tipo, json.dumps(
                     {"conversa_id": conversa_id, "estado": r["estado"], "motivo": r["motivo"],
                      "faltaram": lista[n - 1:]}, ensure_ascii=False))
             break

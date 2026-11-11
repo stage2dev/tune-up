@@ -147,6 +147,23 @@ class TesteLinks(Base):
         self.assertLessEqual(len(longo), 4096)
         self.assertTrue(longo.endswith("https://loja.example.com/planos"))
 
+    def test_link_que_escapa_do_filtro_falha_fechado(self):
+        for n, t in enumerate(("Pague em ação.com.br/pix", "Pague em pagaménto.com/pix", "Veja...golpe.com/pix",
+                               "ok...golpe.com", "Pague em -golpe.com/pix", "Pague em _golpe.com/pix",
+                               "Pague em @golpe.com/pix", "Pague em 1.2.3.4/pix", "Pague em p\u0430gamento.com/pix",
+                               "Pague em loja.example.com@golpe.com/planos")):
+            r = self.entregar(t, gatilho="l%d" % n, permitidos=[])
+            self.assertEqual((r["estado"], r["motivo"]), ("barrado", "link_suspeito"), t)
+        self.assertEqual(self.c.envios(), 0)
+        self.assertEqual(self.precisa_de_voce(), 1)
+
+    def test_varredura_larga_nao_barra_texto_comum_nem_link_da_lista(self):
+        for t in ("Escreva para ana@loja.example.com, custa R$ 99.90... sim...claro. Versão 2.0 ok.",
+                  "Veja https://loja.example.com/planos e www.loja.example.com/planos/."):
+            texto, motivo = saida.preparar(t, LISTA)
+            self.assertIsNone(motivo, t)
+            self.assertTrue(texto, t)
+
 
 class TesteTamanho(Base):
     def test_cinco_frases_viram_no_maximo_quatro(self):
@@ -226,6 +243,22 @@ class TesteBaloes(Base):
         self.assertIsNotNone(dados)
         self.assertIn("https://loja.example.com/planos", dados[0])
         self.assertIn("teto_minuto", dados[0])
+
+    def test_balao_1_negado_pelo_teto_marca_precisa_de_voce(self):
+        with mock.patch.object(portao, "TETO_MINUTO", 0):
+            r = self.entregar("Oi!\nQuer ver os planos?")
+        self.assertEqual((r["estado"], r["motivo"]), ("negado", "teto_minuto"))
+        self.assertEqual(self.enviados(), [])
+        self.assertEqual(self.precisa_de_voce(), 1)
+        dados = self.con.execute("SELECT dados FROM eventos WHERE tipo = 'ia_envio_negado'").fetchone()
+        self.assertIsNotNone(dados)
+        self.assertIn("Quer ver os planos?", dados[0])
+
+    def test_balao_1_negado_por_optout_nao_chama_o_dono(self):
+        self.con.execute("UPDATE contatos SET optout_em = '2026-01-01T00:00:00+00:00'")
+        r = self.entregar("Oi!")
+        self.assertEqual((r["estado"], r["motivo"]), ("negado", "optout"))
+        self.assertEqual(self.precisa_de_voce(), 0)
 
     def test_rodada_repetida_do_mesmo_gatilho_nao_duplica(self):
         self.entregar("Oi!\nTemos 2 planos.")
