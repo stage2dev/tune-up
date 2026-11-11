@@ -194,8 +194,10 @@ def bloco_incertos(r):
     botoes = []
     for e in itens:
         dados = {"envio_id": e["id"]}
-        botoes.append({"rotulo": "Reenviar #%d" % e["id"], "acao": "reenviar_envio", "dados": dados,
-                       "confirmar": "Reenviar a MESMA mensagem? Se ela já tiver saído, o contato recebe duas vezes."})
+        if e.get("tipo") != "audio":   # áudio não se reenvia: o arquivo já foi apagado; gere um áudio novo
+            botoes.append({"rotulo": "Reenviar #%d" % e["id"], "acao": "reenviar_envio", "dados": dados,
+                           "confirmar":
+                               "Reenviar a MESMA mensagem? Se ela já tiver saído, o contato recebe duas vezes."})
         botoes.append({"rotulo": "Marcar #%d como não enviada" % e["id"], "acao": "descartar_envio",
                        "dados": dados, "confirmar": "Marcar como não enviada? Nada será enviado."})
     return {"tipo": "conversa", "id": "incertos",

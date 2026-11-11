@@ -253,5 +253,46 @@ class TesteRegras(BaseVoz):
         self.assertEqual(args[0][args[0].index("-b:a") + 1], "32k")
 
 
+class TesteAudioIncerto(BaseVoz):
+    """O áudio que pode ter saído ('incerto') não é reenviado: o .ogg temporário já foi apagado, e reenviar o
+    marcaria 'falhou' (prova de que não saiu) para um áudio que o cliente pode ter recebido."""
+
+    def setUp(self):
+        super().setUp()
+        self.falsa.padrao = (200, b"ID3 mp3 falso")
+
+        def converter(_ffmpeg, _entrada, saida):
+            with open(saida, "wb") as f:
+                f.write(b"OggS ogg falso")
+        for alvo, valor in (("achar_ffmpeg", mock.Mock(return_value=SEM_FFMPEG)), ("converter", converter)):
+            p = mock.patch.object(voz_cliente, alvo, valor)
+            p.start()
+            self.addCleanup(p.stop)
+        self.conector.modo_envio = "aceitar_e_cair"
+        r = voz.enviar_teste(self.app, self.con, "tela-0000001", "Oi.")
+        self.assertEqual(r["estado"], "incerto", r)
+        self.envio_id = self.con.execute("SELECT id FROM envios").fetchone()[0]
+
+    def test_reenviar_audio_incerto_nao_muda_a_linha(self):
+        from servico import portao
+        self.conector.modo_envio = "ok"
+        antes = self.conector.envios()
+        r = portao.reenviar(self.con, self.conector, "loja", self.envio_id)
+        self.assertEqual(r["motivo"], "nao_reenviavel", r)
+        self.assertEqual(self.con.execute("SELECT estado FROM envios").fetchone()[0], "incerto")
+        self.assertEqual([t[0] for t in self.con.execute("SELECT estado FROM tentativas")], ["incerto"])
+        self.assertEqual(self.conector.envios(), antes)
+
+    def test_tela_de_incertos_sem_reenviar_e_sem_caminho_do_arquivo(self):
+        from servico import conversas
+        from testes.test_servico import carregar_modulo
+        aba = carregar_modulo().conversas
+        r = conversas.incertos(self.con, {})
+        self.assertEqual(r["incertos"][0]["previa"], "[áudio]")
+        self.assertNotIn(self.pasta, repr(r))
+        acoes = [b["acao"] for b in aba.bloco_incertos(r)["botoes"]]
+        self.assertEqual(acoes, ["descartar_envio"])
+
+
 if __name__ == "__main__":
     unittest.main()

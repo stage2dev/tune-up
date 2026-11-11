@@ -371,7 +371,9 @@ def reenviar(con, conector, instancia, envio_id, confirmar_optout=False, agora=N
         linha = con.execute("SELECT * FROM envios WHERE id = ?", (envio_id,)).fetchone()
         if linha is None:
             raise LookupError("envio %r não existe" % envio_id)
-        if linha["estado"] not in ("incerto", "falhou") or not linha["conteudo"] or not linha["telefone"]:
+        # áudio: o .ogg temporário já foi apagado na 1ª tentativa; o dono gera um áudio novo
+        if linha["estado"] not in ("incerto", "falhou") or not linha["conteudo"] or not linha["telefone"] \
+                or linha["tipo"] == "audio":
             con.execute("COMMIT")
             return _resultado(linha["estado"], envio_id, "nao_reenviavel")
         aceitas = ("ativa",) if so_se_campanha_ativa else ("ativa", "concluida")

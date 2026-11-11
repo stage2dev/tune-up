@@ -114,13 +114,14 @@ def abrir(con, conversa_id, query, agora=None):
 
 
 def incertos(con, query):
-    linhas = con.execute("SELECT id, origem, telefone, conteudo, motivo, tentado_em FROM envios "
+    linhas = con.execute("SELECT id, origem, tipo, telefone, conteudo, motivo, tentado_em FROM envios "
                          "WHERE estado = 'incerto' ORDER BY id DESC LIMIT ? OFFSET ?",
                          (_limite(query), _deslocamento(query))).fetchall()
     total = con.execute("SELECT COUNT(*) FROM envios WHERE estado = 'incerto'").fetchone()[0]
     return {"total": total, "incertos": [
-        {"id": r["id"], "origem": r["origem"], "telefone_mascarado": mascarar(r["telefone"]),
-         "previa": _previa(r["conteudo"], "áudio"), "motivo": r["motivo"], "quando": r["tentado_em"]}
+        {"id": r["id"], "origem": r["origem"], "tipo": r["tipo"], "telefone_mascarado": mascarar(r["telefone"]),
+         "previa": "[áudio]" if r["tipo"] == "audio" else _previa(r["conteudo"], "áudio"),
+         "motivo": r["motivo"], "quando": r["tentado_em"]}
         for r in linhas]}
 
 
