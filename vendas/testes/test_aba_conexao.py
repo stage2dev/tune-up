@@ -131,7 +131,8 @@ class TesteAgir(Aba):
                              {"ok": False, "mensagem": "Ação desconhecida."})
         self.assertEqual(sorted(self.mod.INFO["acoes"]), sorted([
             "conectar_instancia", "modo_webhook", "abrir_conversa", "enviar_mensagem", "assumir_conversa",
-            "devolver_ia", "liberar_saida", "reenviar_envio", "descartar_envio"]))
+            "devolver_ia", "liberar_saida", "reenviar_envio", "descartar_envio", "ia_chave", "ia_config",
+            "ia_apagar_chave"]))
         self.assertEqual(self.falso.chamadas, [])
 
     def test_servico_de_outro_projeto_recusado(self):

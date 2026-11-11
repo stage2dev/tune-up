@@ -52,6 +52,19 @@ The screen ("Conexão" tab, while the service runs) shows the webhook mode, the 
 
 The send token is new on every start and stored 0600 in the data folder (deleted on clean stop); the webhook secret is kept 0600 in the data folder across restarts. The panel screen never reads either file.
 
+## AI (OpenAI)
+
+`servico/cerebro.py` (+ `openai_cliente.py`, `chave.py`, `precos.py`, `ia.py`) talks to OpenAI Chat Completions over urllib: timeout per attempt, one retry on network error, timeout, 5xx or a 429 that is not `insufficient_quota`; the error is read from `error.code` in the body (the body message is never kept). `reasoning_effort` is never sent (it breaks together with function tools). No redirects are followed. The OpenAI base URL comes only from the service start (`--openai-url` or `VENDAS_OPENAI_URL`, for tests), never from a request.
+
+- Tools (closed list): `guardar_dado_do_lead`, `qualificar` (`frio`/`morno`/`quente`), `enviar_link` and `pedir_humano`. `enviar_link` only returns links from the project's `<root>/.tune-up/<pacote>/vendas/links.json` (`{"name": "https://..."}`; `pacote` from `painel.json`, default `painel-projeto`); a missing or empty file means no link tool at all, and a name outside the list is refused.
+- Daily spend cap in US$ (default 2), computed from each response's `usage` with a price table (US$ per 1M tokens, input and output). The default table is in `precos.py`; a `precos.json` in the data folder replaces it. A model missing from the table is charged as the most expensive entry and the screen says so. Cap reached = OpenAI is not called.
+- Error, timeout, cap reached, no key or no model = nothing to send and the conversation is marked "precisa de você". This item does not wire the brain to the receiving hook yet.
+- The API key lives only in the data folder, file `openai_chave`, mode 0600. The macOS Keychain is not used. Token-protected routes: `GET /ia` (state), `GET /ia/modelos` (`GET /v1/models` with the key), `POST /ia/chave` (set or replace), `POST /ia/chave/apagar` (`{"confirmar": true}`), `POST /ia/config` (`{modelo, teto_usd}`). No route returns the key: only `configurada` and the last 4 characters.
+
+"IA" tab: a form with a `segredo` field to paste the key, the model selector fed by the account's model list (when the list fails, a free-text model name with the error code), the daily cap, the key state and today's spend, and replace / delete buttons (delete asks to confirm). The model is chosen by the owner; `gpt-4o-mini` is only a suggestion.
+
+Decision on the key path: the generic panel form posts through the panel's action route on `127.0.0.1`, so the pasted key crosses the panel process in memory once on its way to the service. The panel does not log request bodies; the key is never written inside the project tree, never echoed in an action `resultado` or message, and never put in a transcript. A test sweeps route replies, screen blocks, action messages, stdout/stderr, every file under the project root and the database for the pasted key.
+
 ## Local Evolution API (Docker)
 
 The WhatsApp connection runs in a local Evolution API v2 (Docker). Prepare its files once per project:

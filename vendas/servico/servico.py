@@ -18,7 +18,7 @@ import secrets  # noqa: E402
 import signal  # noqa: E402
 import threading  # noqa: E402
 
-from servico import banco, evolution_local, pasta, portao, recebimento, rotas, travas  # noqa: E402
+from servico import banco, evolution_local, openai_cliente, pasta, portao, recebimento, rotas, travas  # noqa: E402
 from servico.conectores import evolution  # noqa: E402
 
 PORTA = 8791
@@ -35,6 +35,8 @@ def argumentos(argv):
     p.add_argument("--porta", type=int, default=PORTA, help="porta em 127.0.0.1 (0 = qualquer livre)")
     p.add_argument("--painel", default=PAINEL, help="origem exata do painel (esquema://host:porta)")
     p.add_argument("--base", default=None, help="pasta base dos dados (só para testes)")
+    p.add_argument("--openai-url", default=os.environ.get(openai_cliente.VAR_URL) or openai_cliente.URL_PADRAO,
+                   help="URL base da OpenAI (só para testes; padrão %s)" % openai_cliente.URL_PADRAO)
     return p.parse_args(argv)
 
 
@@ -92,6 +94,7 @@ def rodar(args, avisar=print):
         segredo = travas.ler_ou_criar_segredo(caminho_segredo)
         app = rotas.App(pasta_dados, args.porta, painel, token, segredo)
         app.despachar = recebimento.Recebimento(lambda: app.conector)
+        app.openai_url = args.openai_url
         try:
             servidor = rotas.criar_servidor(app, args.porta)
         except OSError as e:

@@ -9,7 +9,7 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
-from servico import banco, conversas, instancia, portao, telefone
+from servico import banco, conversas, ia, instancia, openai_cliente, portao, telefone
 from servico.conectores.base import ErroConector
 
 CORPO_MAX = 1024 * 1024
@@ -81,6 +81,7 @@ def conferir_segredo(con, segredo, novo=False):
 
 class App:
     """Estado do serviço que o handler usa: porta, origem do painel, token, segredo e o gancho do webhook."""
+    openai_url = openai_cliente.URL_PADRAO  # só a subida do serviço troca (testes), nunca um pedido
 
     def __init__(self, pasta_dados, porta, painel, token, segredo, despachar=guardar_evento, conector=None):
         self.pasta_dados = pasta_dados
@@ -190,8 +191,8 @@ def fazer_handler(app):
                 finally:
                     con.close()
                 return self._json(200, dado)
-            if conversas.ROTA.match(caminho):
-                return self._conversas()
+            if conversas.ROTA.match(caminho) or ia.ROTA.match(caminho):
+                return self._conversas(ia if ia.ROTA.match(caminho) else conversas)
             self._erro(404, "Rota desconhecida.")
 
         def do_POST(self):
@@ -204,8 +205,8 @@ def fazer_handler(app):
                 return self._modo_webhook()
             if self._caminho() == "/instancia":
                 return self._instancia()
-            if conversas.ROTA.match(self._caminho()):
-                return self._conversas()
+            if conversas.ROTA.match(self._caminho()) or ia.ROTA.match(self._caminho()):
+                return self._conversas(ia if ia.ROTA.match(self._caminho()) else conversas)
             if not achado:
                 self.close_connection = True
                 return self._erro(404, "Rota desconhecida.")
@@ -311,9 +312,9 @@ def fazer_handler(app):
                 con.close()
             self._json(200, r)
 
-        def _conversas(self):
-            """Rotas da aba Conversas (lista, conversa, incertos, modo, liberar, reenviar, descartar): sempre com
-            token. O envio e o reenvio passam pelo portão (conversas.py não chama o conector)."""
+        def _conversas(self, modulo=conversas):
+            """Rotas das abas Conversas (lista, conversa, incertos, modo, liberar, reenviar, descartar) e IA (ia.py):
+            sempre com token. O envio e o reenvio passam pelo portão (conversas.py não chama o conector)."""
             if not igual(self.headers.get(CAB_TOKEN), app.token):
                 self.close_connection = True
                 return self._erro(403, "Token de envio errado. Recarregue a tela.")
@@ -324,8 +325,8 @@ def fazer_handler(app):
                     return
             con = app.abrir()
             try:
-                r = conversas.executar(app, con, self.command, self._caminho(), parse_qs(urlsplit(self.path).query),
-                                       corpo)
+                r = modulo.executar(app, con, self.command, self._caminho(), parse_qs(urlsplit(self.path).query),
+                                    corpo)
             finally:
                 con.close()
             self._erro(404, "Rota desconhecida.") if r is None else self._json(*r)
