@@ -161,7 +161,8 @@ class TesteExtensoes(unittest.TestCase):
         mod = os.path.join(self.inst, "painel", "modulos", "estudio")
         cfg = self.cfg(acoes_de_plugins=["estudio@meumarket"], modulos_de_plugins=["estudio@meumarket:estudio"])
         self.assertEqual(modulos.montar(cfg, "estudio", usar_cache=False)[0], 200)
-        plantados = [os.path.join(mod, "__pycache__", "modulo.cpython-39.pyc"), os.path.join(mod, "solto.pyc")]
+        plantados = [os.path.join(mod, "__pycache__", "modulo.cpython-39.pyc"), os.path.join(mod, "solto.pyc"),
+                     os.path.join(self.inst, "scripts", "__pycache__", "cores.cpython-39.pyc")]
         if hasattr(os, "symlink") and os.name != "nt":
             plantados.append(os.path.join(mod, "atalho.py"))
         for plantado in plantados:

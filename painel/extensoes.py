@@ -76,14 +76,15 @@ def soma(base):
 
 
 def _codigo_fora_da_soma(base):
-    """Caminho relativo de um __pycache__, .pyc/.pyo ou .py atalho em <base>/painel/ (a soma não os cobre:
-    o import do servidor rodaria esse código sem confirmação); None se não há."""
-    for pasta, dirs, nomes in os.walk(os.path.join(base, "painel")):
-        for n in sorted(dirs + nomes):
-            cam = os.path.join(pasta, n)
-            if n == "__pycache__" or n.lower().endswith((".pyc", ".pyo")) \
-                    or n.lower().endswith(".py") and os.path.islink(cam):
-                return os.path.relpath(cam, base).replace(os.sep, "/")
+    """Caminho relativo de um __pycache__, .pyc/.pyo ou .py atalho em <base>/painel/ ou <base>/scripts/ (a soma
+    não os cobre: o import do servidor, que também carrega scripts/, rodaria esse código sem confirmação)."""
+    for raiz in ("painel", "scripts"):
+        for pasta, dirs, nomes in os.walk(os.path.join(base, raiz)):
+            for n in sorted(dirs + nomes):
+                cam = os.path.join(pasta, n)
+                if n == "__pycache__" or n.lower().endswith((".pyc", ".pyo")) \
+                        or n.lower().endswith(".py") and os.path.islink(cam):
+                    return os.path.relpath(cam, base).replace(os.sep, "/")
     return None
 
 

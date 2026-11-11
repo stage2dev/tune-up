@@ -21,6 +21,7 @@ except ImportError:
 INFO = {"id": "estudio", "titulo": "Estúdio", "icone": "clapperboard", "acoes": ["preparar", "marca.aprovar", "marca.editar"],
         "esquemas": {"preparar": {"confirmar": "booleano"}, "marca.aprovar": {"confirmar": "booleano"},
                      "marca.editar": {"campo": "texto", "valor": "texto"}}}
+REL_MARCA = ".tune-up/estudio/marca/marca.json"
 SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.realpath(__file__))))), "scripts", "preparar_estudio.py")
 
@@ -44,6 +45,17 @@ def _versao():
 
 
 def montar(ctx):
+    r = _montar_ambiente(ctx)
+    m = _marca(ctx)
+    if m is not None:  # o dono aprova o que vê aqui; o sha256 prende a aprovação a estes bytes
+        campos = ["%s=%s" % (k, v.get("valor")) for k, v in sorted(m[2]["campos"].items())
+                  if isinstance(v, dict) and v.get("valor") is not None]
+        r["alertas"].append({"nivel": "info", "texto": ("Marca (sha256 %s): %s" % (
+            hashlib.sha256(m[1]).hexdigest()[:12], "; ".join(campos) or "sem campos"))[:450]})
+    return r
+
+
+def _montar_ambiente(ctx):
     amb = _ambiente(ctx["dados"]) if ctx.get("dados") else None
     if amb is None:
         return {"alertas": [{"nivel": "info", "texto": "Estúdio ainda não preparado. Use Preparar estúdio."}]}
@@ -79,7 +91,7 @@ def _marca(ctx):
     """(caminho, texto, objeto) of <raiz>/.tune-up/estudio/marca/marca.json, or None."""
     if not ctx.get("raiz"):
         return None
-    caminho = os.path.join(ctx["raiz"], ".tune-up", "estudio", "marca", "marca.json")
+    caminho = os.path.join(ctx["raiz"], *REL_MARCA.split("/"))
     try:
         if os.path.islink(caminho):
             return None
@@ -97,7 +109,8 @@ def _marca_aprovar(ctx, dados):
     m = _marca(ctx)
     if m is None:
         return {"feito": False, "mensagem": "Ainda não há marca descoberta. Rode a skill de marca antes."}
-    ctx["gravar_dono"]("marca", {"aprovado": True, "sha256": hashlib.sha256(m[1]).hexdigest()})
+    # dono.faltando confere o sha256 do arquivo no disparo: marca trocada depois disto perde a aprovação
+    ctx["gravar_dono"]("marca", {"aprovado": True, "sha256": hashlib.sha256(m[1]).hexdigest(), "arquivo": REL_MARCA})
     return {"feito": True, "mensagem": "Marca aprovada."}
 
 
@@ -105,9 +118,11 @@ def _marca_editar(ctx, dados):
     sys.path.insert(0, os.path.dirname(SCRIPT))
     try:
         import cores
+        import descobrir_marca as dm
         import marca_leitores as ml
-    finally:
-        sys.path.remove(os.path.dirname(SCRIPT))
+    finally:  # descobrir_marca também se põe no sys.path ao ser importado: tira todas as entradas
+        while os.path.dirname(SCRIPT) in sys.path:
+            sys.path.remove(os.path.dirname(SCRIPT))
     campo, valor = dados.get("campo"), (dados.get("valor") or "").strip()
     if campo not in ml.CAMPOS or not valor or len(valor) > 200 or "\n" in valor:
         return {"feito": False, "mensagem": "Campo ou valor inválido."}
@@ -120,10 +135,13 @@ def _marca_editar(ctx, dados):
         return {"feito": False, "mensagem": "Ainda não há marca descoberta. Rode a skill de marca antes."}
     caminho, _, obj = m
     obj["campos"][campo] = {"valor": valor, "fonte": "dono", "confianca": "alta", "travado": True}
-    tmp = caminho + ".tmp"
-    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
-        f.write(json.dumps(obj, ensure_ascii=False, indent=2) + "\n")
-    os.replace(tmp, caminho)
+    if campo == "logo":  # a cópia antiga não é mais o logo do dono: some, e entra a nova se o arquivo existe
+        assets = os.path.join(os.path.dirname(caminho), "assets")
+        for n in os.listdir(assets) if os.path.isdir(assets) and not os.path.islink(assets) else []:
+            if n.lower().startswith("logo."):
+                os.remove(os.path.join(assets, n))
+        obj["logo_copia"] = dm.copiar_logo(ctx["raiz"], os.path.dirname(caminho), obj["campos"]["logo"])
+    dm._gravar(caminho, json.dumps(obj, ensure_ascii=False, indent=2) + "\n")  # O_EXCL|O_NOFOLLOW no .tmp
     # a marca mudou: a aprovação anterior deixa de valer até o dono aprovar de novo
     ctx["gravar_dono"]("marca", {"aprovado": False})
     return {"feito": True, "mensagem": "Campo %s salvo e travado. Aprove a marca de novo." % campo}

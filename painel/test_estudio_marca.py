@@ -90,6 +90,43 @@ class TesteMarca(Base):
         with open(self.marca, encoding="utf-8") as f:
             self.assertEqual(json.load(f), MARCA)
 
+    def test_marca_trocada_depois_de_aprovar_perde_aprovacao(self):
+        self.agir("marca.aprovar", {"confirmar": True})
+        trocada = json.loads(json.dumps(MARCA))
+        trocada["campos"]["cores.primary"] = {"valor": "#FF00FF", "fonte": "sessao", "confianca": "alta",
+                                              "travado": False}
+        escrever(self.marca, json.dumps(trocada))
+        self.assertEqual(self.recusa().codigo, 409)
+        os.remove(self.marca)
+        self.assertEqual(self.recusa().codigo, 409)  # sumiu: também não vale
+        escrever(self.marca, json.dumps(MARCA))  # os mesmos bytes aprovados voltam a valer
+        modulos.antes_de_disparar(self.cfg, ACAO)
+
+    def test_montar_mostra_campos_e_sha_da_marca(self):
+        texto = " ".join(a["texto"] for a in modulos.montar(self.cfg, "estudio", usar_cache=False)[1]["alertas"])
+        self.assertIn("#112233", texto)
+        self.assertIn("Forno", texto)
+
+    @unittest.skipIf(not hasattr(os, "symlink") or os.name == "nt", "atalho")
+    def test_editar_nao_segue_atalho_no_tmp(self):
+        fora = os.path.join(self.tmp, "fora.txt")
+        escrever(fora, "original")
+        os.symlink(fora, self.marca + ".tmp")
+        self.assertIs(self.agir("marca.editar", {"campo": "nome", "valor": "Novo"})[1]["resultado"]["feito"], True)
+        with open(fora, encoding="utf-8") as f:
+            self.assertEqual(f.read(), "original")
+        self.assertFalse(os.path.islink(self.marca))
+        with open(self.marca, encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["campos"]["nome"]["valor"], "Novo")
+
+    def test_editar_logo_tira_a_copia_antiga(self):
+        escrever(self.marca, json.dumps(dict(MARCA, logo_copia="assets/logo.png")))
+        escrever(os.path.join(self.pasta, "assets", "logo.png"), "PNG-A")
+        self.assertIs(self.agir("marca.editar", {"campo": "logo", "valor": "sem logo"})[1]["resultado"]["feito"], True)
+        self.assertFalse(os.path.exists(os.path.join(self.pasta, "assets", "logo.png")))
+        with open(self.marca, encoding="utf-8") as f:
+            self.assertIsNone(json.load(f)["logo_copia"])
+
 
 if __name__ == "__main__":
     unittest.main()

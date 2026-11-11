@@ -6,9 +6,11 @@ sandbox.DONO, que entra no denyWrite do sandbox e nas travas de toda sessão. M�
 não está nessa lista não tem aprovação (hoje só `estudio`).
 Campo `requer` de uma ação ("<modulo>.<chave>"): o lançador recusa disparar se a entrada
 não tem "aprovado": true. Arquivo ausente, ilegível, atalho ou de outro módulo = sem aprovação.
+Entrada com "sha256" e "arquivo" (relativo à raiz) só vale enquanto o arquivo tiver esses bytes.
 Python 3.9, só biblioteca padrão.
 """
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -81,6 +83,23 @@ def validar_requer(bruto):
     return list(dict.fromkeys(lista))
 
 
+def _mesmo_conteudo(cfg, v):
+    """True se a aprovação não prende arquivo, ou se o arquivo aprovado ainda tem o mesmo sha256."""
+    if "sha256" not in v and "arquivo" not in v:
+        return True
+    rel, raiz = v.get("arquivo"), cfg.get("raiz") or cfg.get("workspace")
+    if not (isinstance(rel, str) and rel and raiz) or rel.startswith("/") or ".." in rel.split("/"):
+        return False
+    caminho = os.path.join(raiz, *rel.split("/"))
+    try:
+        if os.path.islink(caminho):
+            return False
+        with open(caminho, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest() == v.get("sha256")
+    except OSError:
+        return False
+
+
 def faltando(cfg, requer):
     """Entradas de `requer` sem "aprovado": true no arquivo do módulo. Fecha na dúvida."""
     falta = []
@@ -91,6 +110,6 @@ def faltando(cfg, requer):
         except ValueError:
             dado = None
         v = dado.get(m.group(2)) if dado else None
-        if not (isinstance(v, dict) and v.get("aprovado") is True):
+        if not (isinstance(v, dict) and v.get("aprovado") is True and _mesmo_conteudo(cfg, v)):
             falta.append(r if isinstance(r, str) else repr(r))
     return falta
