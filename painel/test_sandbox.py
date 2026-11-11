@@ -75,7 +75,8 @@ class TesteSettings(unittest.TestCase):
             "network": {"strictAllowlist": True, "allowedDomains": [], "allowLocalBinding": True},
             "filesystem": {"denyRead": [WS + "/.env*", WS + "/*.pem", WS + "/*.key",
                                         WS + "/**/.env*", WS + "/**/*.pem", WS + "/**/*.key"],
-                           "denyWrite": [DADOS + "/estudio-dono.json", DADOS + "/aprovados"]}})
+                           "denyWrite": [DADOS + "/estudio-dono.json", DADOS + "/aprovados",
+                                         DADOS + "/extensoes.json"]}})
         self.assertEqual(conf["worktree"], {"bgIsolation": "none"})
         self.assertEqual(conf["env"], {"HYPERFRAMES_NO_TELEMETRY": "1", "DO_NOT_TRACK": "1",
                                        "HYPERFRAMES_NO_UPDATE_CHECK": "1", "HYPERFRAMES_NO_AUTO_INSTALL": "1",

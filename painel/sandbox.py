@@ -13,9 +13,10 @@ Python 3.9, só biblioteca padrão.
 """
 import re
 
+from travas import DONO  # noqa: F401  (em <dados>: só o servidor grava; o gancho confere pelo nome)
+
 NEGAR = ["WebFetch", "WebSearch", "mcp__*"]
 SEGREDOS = (".env*", "*.pem", "*.key")
-DONO = ("estudio-dono.json", "aprovados")  # em <dados>: só o servidor grava
 RE_ENV = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 ENV_PROIBIDO = re.compile(r"^(CLAUDE|ANTHROPIC|LD_|DYLD_)|^(PATH|HOME|TMPDIR|SHELL|NODE_OPTIONS|BASH_ENV|ENV)$")
 MAX_ENV, MAX_VALOR = 20, 200

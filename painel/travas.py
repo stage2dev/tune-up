@@ -66,6 +66,9 @@ SEP_BASH = re.compile(r"&&|\|\||\$\(|[;&|\n(){}`]")
 META_BASH = re.compile(r";|&&|\|\||\||\$\(|`|<<|[<>]\(|\n|(?<![<>])&(?!>)")
 CURINGA = re.compile(r"[*?\[{$`]")
 NOMES_CONFIG = (".claude", ".tune-up", "claude.md", "claude.local.md", ".mcp.json")
+DONO = ("estudio-dono.json", "aprovados", "extensoes.json")  # em <dados>: só o servidor grava (sandbox.DONO)
+# escrita que cita esses nomes em qualquer caminho: `cd <dados> && echo > estudio-dono.json` não passa
+RE_DONO = re.compile(r"(?i)(^|[/\s'\"=<>;|&()])(%s)($|[/\s'\";|&)<>])" % "|".join(re.escape(n) for n in DONO))
 PONTO_PONTO = re.compile(r"(^|[/\s'\"=])\.\.($|[/\s'\";|&)<>])")
 FERR_ARQUIVO = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 RE_UNIDADE = re.compile(r"^[A-Za-z]:")
@@ -250,7 +253,8 @@ def _disfarcado(norm, conf, forma):
         if (fixo.startswith("/") or RE_UNIDADE.match(fixo)) and any(p.startswith(fixo) for p in prots):
             return True
         ultimo = fixo.rsplit("/", 1)[-1].lower()
-        if (ultimo and any(n.startswith(ultimo) for n in NOMES_CONFIG)) or re.search(r"(?i)\.(claude|tune-up)/", fixo):
+        if (ultimo and any(n.startswith(ultimo) for n in NOMES_CONFIG + DONO)) or re.search(
+                r"(?i)\.(claude|tune-up)/", fixo):
             return True
     return False
 
@@ -270,11 +274,13 @@ def _protegido_normal(texto, conf, comando, cwd=""):
     forma = lambda p: caminho_comparavel(p, sc)  # noqa: E731
     if not comando:
         norm = caminho_comparavel(texto, sc)
-        return _protegido(norm, conf, forma) or CAMINHO_CONFIG.search(RE_UNIDADE.sub("", norm)) is not None
+        return (_protegido(norm, conf, forma) or CAMINHO_CONFIG.search(RE_UNIDADE.sub("", norm)) is not None
+                or RE_DONO.search(norm) is not None)
     for norm in {_bash_comparavel(texto, sc), _bash_comparavel(texto, sc, escape=True)}:
         pp = PONTO_PONTO.search(norm) is not None
-        if (_protegido(norm, conf, forma, sem_lib=pp) or _disfarcado(norm, conf, forma) or cwd and _protegido(
-                _resolvidos(norm, cwd, sc), conf, forma, sem_lib=pp and re.search(r"\b(cd|pushd)\b", norm))):
+        if (_protegido(norm, conf, forma, sem_lib=pp) or _disfarcado(norm, conf, forma) or RE_DONO.search(norm)
+                or cwd and _protegido(_resolvidos(norm, cwd, sc), conf, forma,
+                                      sem_lib=pp and re.search(r"\b(cd|pushd)\b", norm))):
             return True
     return False
 

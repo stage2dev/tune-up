@@ -169,6 +169,30 @@ class TesteBashLiberado(unittest.TestCase):
             self.assertIsNone(bash(c, "make && ./x; python -c 1"))
 
 
+class TesteNomesDoDono(unittest.TestCase):
+    """Item 4.0: sessão sem sandbox gravava o que é do dono com `cd <dados> && echo > estudio-dono.json`."""
+
+    def test_escrita_que_cita_o_nome_em_qualquer_caminho(self):
+        for acao, esperado in ((ACAO_LEITURA, "deny"), (ACAO_CODIGO, "ask")):
+            c = TesteCaminhoRelativo()._conf(acao)
+            for cmd in ("cd /p/.tune-up/pacote/dados && echo x > estudio-dono.json",
+                        "cd /p/.tune-up/pacote/dados && mkdir -p aprovados/1",
+                        "cd /p/.tune-up/pacote/dados && cp /tmp/a extensoes.json",
+                        "cd /p/.tune-up/pacote/dados; echo x > 'Estudio-Dono.JSON'",
+                        "cd /p/.tune-up/pacote/dados && echo x > estudio-dono.js?",
+                        "cd /p/.tune-up/pacote/dados && echo x > estudio\\-dono.json"):
+                self.assertEqual(travas.decidir(c, "Bash", {"command": cmd}, "/tmp/w")[0], esperado, cmd)
+            for alvo in ("/tmp/w/estudio-dono.json", "/tmp/w/aprovados/x.png", "/tmp/w/extensoes.json"):
+                self.assertEqual(decisao(c, "Write", {"file_path": alvo}), esperado, alvo)
+            self.assertIsNone(travas.decidir(c, "Bash", {"command": "cat estudio-dono.json"}, "/tmp/w"))
+            self.assertIsNone(travas.decidir(c, "Bash", {"command": "echo x > saida/ok.txt"}, "/tmp/w"))
+            self.assertIsNone(decisao(c, "Write", {"file_path": "/tmp/w/nao-aprovados.txt"}))
+
+    def test_sandbox_dono_tem_os_tres_nomes(self):
+        import sandbox
+        self.assertEqual(set(sandbox.DONO), {"estudio-dono.json", "aprovados", "extensoes.json"})
+
+
 @unittest.skipIf(os.name == "nt", "o comando do gancho é texto de shell POSIX (shlex.quote)")
 class TesteFalhaDoGancho(unittest.TestCase):
     def _rodar(self, python):

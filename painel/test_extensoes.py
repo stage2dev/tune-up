@@ -156,6 +156,28 @@ class TesteExtensoes(unittest.TestCase):
             painel.main(["--projeto", self.tmp, "--aceitar-extensao", "nada@meumarket"])
         self.assertIn("não está instalado", str(fim.exception.code))
 
+    def test_pyc_ou_py_atalho_em_painel_recusa_acoes_modulo_e_aceitar(self):
+        """Item 4.0: a soma pula __pycache__; um .pyc plantado rodaria no servidor sem confirmação."""
+        mod = os.path.join(self.inst, "painel", "modulos", "estudio")
+        cfg = self.cfg(acoes_de_plugins=["estudio@meumarket"], modulos_de_plugins=["estudio@meumarket:estudio"])
+        self.assertEqual(modulos.montar(cfg, "estudio", usar_cache=False)[0], 200)
+        plantados = [os.path.join(mod, "__pycache__", "modulo.cpython-39.pyc"), os.path.join(mod, "solto.pyc")]
+        if hasattr(os, "symlink") and os.name != "nt":
+            plantados.append(os.path.join(mod, "atalho.py"))
+        for plantado in plantados:
+            if plantado.endswith("atalho.py"):
+                os.symlink(os.path.join(self.inst, "scripts", "qa.py"), plantado)
+            else:
+                escrever(plantado, "x")
+            ids, avisos = self.ids(cfg)
+            self.assertNotIn("estudio.post", ids, plantado)
+            self.assertTrue(any("código compilado ou atalho" in a for a in avisos), avisos)
+            self.assertEqual(modulos.montar(cfg, "estudio", usar_cache=False)[0], 404, plantado)
+            with self.assertRaises(ValueError):
+                extensoes.aceitar(cfg, "estudio@meumarket")
+            shutil.rmtree(os.path.dirname(plantado)) if "__pycache__" in plantado else os.remove(plantado)
+        self.assertIn("estudio.post", self.ids(cfg)[0])  # limpo, volta (o sha não mudou)
+
 
 if __name__ == "__main__":
     unittest.main()

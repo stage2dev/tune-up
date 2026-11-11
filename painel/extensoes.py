@@ -7,6 +7,7 @@ do plugin instalado (installed_plugins.json, nome@marketplace exato). Os módulo
 Trava: na primeira vez que um plugin é usado, a versão do registro e um sha256 da pasta instalada
 (sem node_modules, .git e __pycache__) ficam em <dados>/extensoes.json. Se um dos dois mudar, nada
 desse plugin carrega até a pessoa confirmar: python3 painel.py --aceitar-extensao plugin@marketplace.
+Plugin com __pycache__, .pyc/.pyo ou .py atalho dentro de painel/ é recusado (a soma não cobre isso).
 Python 3.9, só biblioteca padrão.
 """
 import datetime
@@ -74,6 +75,18 @@ def soma(base):
     return valor
 
 
+def _codigo_fora_da_soma(base):
+    """Caminho relativo de um __pycache__, .pyc/.pyo ou .py atalho em <base>/painel/ (a soma não os cobre:
+    o import do servidor rodaria esse código sem confirmação); None se não há."""
+    for pasta, dirs, nomes in os.walk(os.path.join(base, "painel")):
+        for n in sorted(dirs + nomes):
+            cam = os.path.join(pasta, n)
+            if n == "__pycache__" or n.lower().endswith((".pyc", ".pyo")) \
+                    or n.lower().endswith(".py") and os.path.islink(cam):
+                return os.path.relpath(cam, base).replace(os.sep, "/")
+    return None
+
+
 def _registro(cfg):
     return os.path.join(cfg.get("dados_dir") or "", ARQUIVO)
 
@@ -108,6 +121,9 @@ def _atual(cfg, chave):
     base = os.path.realpath(os.path.expanduser(entrada["installPath"]))
     if not os.path.isdir(base):
         raise ValueError("plugin %s: pasta instalada não existe" % chave)
+    ruim = _codigo_fora_da_soma(base)
+    if ruim:
+        raise ValueError("plugin %s: código compilado ou atalho em %s; apague e reinstale" % (chave, ruim[:120]))
     try:
         sha = soma(base)
     except (OSError, ValueError) as e:
