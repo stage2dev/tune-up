@@ -1,0 +1,25 @@
+{
+  "_sobre": "Grupos da lista de skills do chat (na ordem de exibir) e regras por tema. Cada regra é uma regex sem distinção de maiúscula; vale primeiro no nome da skill e do plugin (a primeira regra que casar vence) e só depois na descrição; sem nenhuma, 'outras'. 'tuneup' é só das skills fixas (plugin tune-up e tune-up-*). O pacote do projeto pode ter <pacote>/habilidades.json com 'regras' (entram antes destas) e 'plugins': {\"nome-do-plugin\": \"grupo\"}.",
+  "grupos": [
+    {"id": "tuneup", "titulo": "Tune-up (sempre ligado)"},
+    {"id": "marketing", "titulo": "Marketing"},
+    {"id": "vendas", "titulo": "Vendas"},
+    {"id": "design", "titulo": "Design e UX"},
+    {"id": "codigo", "titulo": "Código"},
+    {"id": "revisao", "titulo": "Revisão e segurança"},
+    {"id": "banco", "titulo": "Banco de dados"},
+    {"id": "pesquisa", "titulo": "Pesquisa e documentos"},
+    {"id": "midia", "titulo": "Vídeo e mídia"},
+    {"id": "outras", "titulo": "Outras"}
+  ],
+  "regras": [
+    {"grupo": "marketing", "regex": "marketing|an[uú]ncio|\\bads?\\b|seo\\b|keyword|competit|concorr|instagram|facebook|tiktok|linkedin|campanha|campaign|copywrit|\\bcopy\\b|social media|redes sociais|newsletter|\\bbrand|\\bmarca\\b|landing page|growth"},
+    {"grupo": "revisao", "regex": "review|revis[aã]o|revisor|security|seguran[cç]a|audit|vulnerab|pentest|\\bowasp\\b|threat"},
+    {"grupo": "vendas", "regex": "vendas?\\b|\\bsales\\b|\\bsdr\\b|\\bleads?\\b|\\bcrm\\b|prospec|funil|funnel|pricing|pre[cç]o|checkout|pagamento|payment|cobran[cç]a|billing|e-?commerce|loja"},
+    {"grupo": "midia", "regex": "v[ií]deo|\\bimage(m|ns|s)?\\b|[aá]udio|\\btts\\b|\\bvoice\\b|\\bvoz\\b|m[ií]dia|\\bmedia\\b|thumbnail|remotion|ffmpeg|anima[cç]|animation|podcast"},
+    {"grupo": "banco", "regex": "database|banco de dados|postgres|\\bsql\\b|supabase|migration|\\bschema\\b|prisma|mysql|mongo|redis|clickhouse"},
+    {"grupo": "design", "regex": "design|\\bux\\b|\\bui\\b|interface|figma|layout|acessib|accessib|\\bcss\\b|tailwind|frontend|front-end|\\btela"},
+    {"grupo": "pesquisa", "regex": "research|pesquis|document|\\bdocs?\\b|\\bpdf\\b|docx|xlsx|pptx|planilha|spreadsheet|\\bsearch\\b|\\bbusca|relat[oó]rio|report"},
+    {"grupo": "codigo", "regex": "c[oó]digo|\\bcode\\b|coding|\\btests?\\b|\\btdd\\b|python|typescript|javascript|react|\\bapi\\b|backend|refactor|\\bgit\\b|debug|\\bbuild\\b|deploy|kotlin|\\bjava\\b|golang|\\brust\\b|django|spring|\\bbug|fastapi|dotnet|nuxt|next\\.?js|pytorch|\\bperl\\b|swift|laravel|engineering|framework"}
+  ]
+}

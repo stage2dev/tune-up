@@ -225,6 +225,8 @@ export interface Execucao {
   /** true quando a espera é um pedido preso no terminal (permissão): `precisa_de_voce` sem `pode_responder`.
    *  Mandar mensagem com `interromper` CANCELA o pedido (não o aprova); aprovar é só no terminal (/abrir). */
   espera_terminal: boolean;
+  /** Nomes das skills escolhidas no pedido inicial (servidor antigo nao manda). */
+  habilidades?: string[];
 }
 
 export interface PerguntaChat {
@@ -244,6 +246,8 @@ export interface PedidoResposta {
   /** true = vale também com a sessão rodando ou em precisa_de_voce (`pode_interromper`): interrompe e manda.
    *  Sem isso, nesses estados dá 409. */
   interromper?: boolean;
+  /** ids de GET /api/habilidades (até 6; só no chat); o servidor põe o bloco das skills no fim do texto. 400 se inválido. */
+  habilidades?: string[];
 }
 export interface RespResposta {
   execucao: Execucao;
@@ -253,6 +257,8 @@ export interface RespResposta {
 export interface PedidoExecucao {
   acao: string;
   params: Record<string, string>;
+  /** ids de GET /api/habilidades (até 6; só no chat); o servidor põe o bloco das skills no fim do pedido. 400 se inválido. */
+  habilidades?: string[];
 }
 export interface RespExecucaoCriada {
   execucao: Execucao; // 201
@@ -276,7 +282,18 @@ export interface Evento {
   texto: string; // até 600 letras, segredos mascarados com ***
   ferramenta?: string; // em 'ferramenta' e 'subagente'
   erro?: boolean; // true em 'resultado' (só resultados com erro aparecem) e em 'sistema'
+  /** Nomes das skills escolhidas nesta fala do dono (evento 'usuario'). */
+  habilidades?: string[];
 }
+
+/** GET /api/habilidades — skills do chat (cache de 60 s no servidor; nunca manda caminho de arquivo). */
+export interface Habilidade {
+  id: string; nome: string; titulo: string; descricao: string; grupo: string; origem: string;
+  listada: boolean; // false = plugin desligado ou pasta extra: o Claude le o arquivo so quando a pessoa escolhe
+  fixa: boolean; // true = tune-up: sempre ligado, nao da para escolher
+}
+export interface GrupoHabilidade { id: string; titulo: string }
+export interface RespHabilidades { grupos: GrupoHabilidade[]; habilidades: Habilidade[]; avisos?: string[] }
 
 /** GET /api/execucoes/{id}/eventos?desde=N[&inteiro=1] — comece com desde=0 e mande `proximo` na próxima.
  *  Com inteiro=1 as falas ('usuario' e 'assistente') vêm com até 12000 letras (chat); o resto segue em 600. */

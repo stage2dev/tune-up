@@ -1,5 +1,6 @@
 // Caixa de escrever que cresce com o texto. Enter envia; Shift+Enter quebra a linha.
-import { useLayoutEffect, useRef, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { TIPO_ARRASTE } from './habilidades';
 import { mostrarContador } from './logica';
 
 interface Props {
@@ -16,10 +17,16 @@ interface Props {
   /** Botao(es) no canto da caixa. */
   children?: ReactNode;
   autoFocus?: boolean;
+  /** Etiquetas acima do texto. */
+  topo?: ReactNode;
+  /** Recebe o id da skill arrastada para a caixa. Sem isto, a caixa nao aceita arraste. */
+  aoSoltarSkill?: (id: string) => void;
 }
 
-export function CaixaTexto({ valor, aoMudar, aoEnviar, max, rotulo, placeholder, desabilitado, linhas = 3, alturaMax = 320, children, autoFocus }: Props) {
+export function CaixaTexto({ valor, aoMudar, aoEnviar, max, rotulo, placeholder, desabilitado, linhas = 3, alturaMax = 320, children, autoFocus, topo, aoSoltarSkill }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const [sobre, setSobre] = useState(false);
+  const skillNoArraste = (e: DragEvent) => !!aoSoltarSkill && e.dataTransfer.types.includes(TIPO_ARRASTE);
 
   useLayoutEffect(() => {
     const t = ref.current;
@@ -29,7 +36,31 @@ export function CaixaTexto({ valor, aoMudar, aoEnviar, max, rotulo, placeholder,
   }, [valor, alturaMax]);
 
   return (
-    <div className="rounded-xl border border-[var(--color-input-border)] bg-[var(--color-input-bg)] focus-within:border-[var(--color-accent)] focus-within:ring-2 focus-within:ring-[var(--color-accent-subtle)] transition-colors">
+    <div
+      onDragOver={(e) => {
+        if (!skillNoArraste(e)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        setSobre(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setSobre(false);
+      }}
+      onDrop={(e) => {
+        if (!skillNoArraste(e)) return;
+        e.preventDefault();
+        setSobre(false);
+        const id = e.dataTransfer.getData(TIPO_ARRASTE);
+        if (id) aoSoltarSkill?.(id);
+      }}
+      className={`relative rounded-xl border bg-[var(--color-input-bg)] ${sobre ? 'border-[var(--color-accent)] border-dashed' : 'border-[var(--color-input-border)]'} focus-within:border-[var(--color-accent)] focus-within:ring-2 focus-within:ring-[var(--color-accent-subtle)] transition-colors`}
+    >
+      {sobre && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-[var(--color-accent-subtle)] text-sm font-medium text-[var(--color-accent)] pointer-events-none">
+          Solte aqui para usar esta skill
+        </div>
+      )}
+      {topo}
       <textarea
         ref={ref}
         aria-label={rotulo}

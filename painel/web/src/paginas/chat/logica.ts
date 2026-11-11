@@ -129,7 +129,7 @@ export function comecoDoPedido(texto: string | undefined, max = 90): string {
 
 // ---------------------------------------------------------------- itens da conversa
 export type ItemConversa =
-  | { tipo: 'dono'; chave: string; texto: string; ts: string }
+  | { tipo: 'dono'; chave: string; texto: string; ts: string; habilidades?: string[] }
   | { tipo: 'claude'; chave: string; texto: string; ts: string; erro: boolean }
   | { tipo: 'atividade'; chave: string; eventos: EventoExecucao[]; erros: number };
 
@@ -140,9 +140,9 @@ const ATIVIDADE = new Set(['ferramenta', 'subagente', 'resultado', 'sistema']);
  * 'usuario' seguintes sao respostas do dono; 'assistente' sao falas do Claude; o resto vira um bloco de atividade
  * entre as falas.
  */
-export function montarConversa(pedido: string | undefined, eventos: EventoExecucao[]): ItemConversa[] {
+export function montarConversa(pedido: string | undefined, eventos: EventoExecucao[], habilidadesDoPedido?: string[]): ItemConversa[] {
   const itens: ItemConversa[] = [];
-  if (pedido) itens.push({ tipo: 'dono', chave: 'pedido', texto: pedido, ts: '' });
+  if (pedido) itens.push({ tipo: 'dono', chave: 'pedido', texto: pedido, ts: '', habilidades: habilidadesDoPedido?.length ? habilidadesDoPedido : undefined });
   let pulouPrompt = false;
   let bloco: Extract<ItemConversa, { tipo: 'atividade' }> | null = null;
   for (const ev of eventos) {
@@ -160,7 +160,7 @@ export function montarConversa(pedido: string | undefined, eventos: EventoExecuc
       continue;
     }
     bloco = null;
-    if (ev.tipo === 'usuario') itens.push({ tipo: 'dono', chave: `u${ev.n}`, texto: ev.texto, ts: ev.ts });
+    if (ev.tipo === 'usuario') itens.push({ tipo: 'dono', chave: `u${ev.n}`, texto: ev.texto, ts: ev.ts, habilidades: ev.habilidades?.length ? ev.habilidades : undefined });
     else if (ev.tipo === 'assistente') itens.push({ tipo: 'claude', chave: `c${ev.n}`, texto: ev.texto, ts: ev.ts, erro: !!ev.erro });
   }
   return itens;

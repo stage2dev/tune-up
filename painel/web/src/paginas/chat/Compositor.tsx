@@ -2,16 +2,21 @@
 // O que mostra vem de estadoCaixa(); o texto digitado fica se o envio falhar.
 import { useState } from 'react';
 import { Send, StopCircle } from 'lucide-react';
-import { useResponder } from '../../api/ganchos';
+import { useHabilidades, useResponder } from '../../api/ganchos';
 import type { Execucao } from '../../api/tipos';
 import { Botao } from '../../componentes';
 import { CaixaTexto } from './CaixaTexto';
+import { EtiquetasSkills } from './EtiquetasSkills';
 import { Perguntas } from './Perguntas';
 import { estadoCaixa } from './caixa';
+import { idsParaEnviar } from './habilidades';
 import { MAX_RESPOSTA } from './logica';
+import type { SkillsDoPedido } from './useSkillsDoPedido';
 
-export function Compositor({ exec, aoParar }: { exec: Execucao; aoParar: () => void }) {
+/** `skills` so vem em conversa do chat; sem ele a caixa nao mostra etiquetas nem aceita arraste. */
+export function Compositor({ exec, aoParar, skills }: { exec: Execucao; aoParar: () => void; skills?: SkillsDoPedido }) {
   const responder = useResponder();
+  const lista = useHabilidades();
   const [texto, setTexto] = useState('');
   const [erro, setErro] = useState<string | null>(null);
   const limpo = texto.trim();
@@ -20,10 +25,14 @@ export function Compositor({ exec, aoParar }: { exec: Execucao; aoParar: () => v
   const mandar = (t: string, limparCaixa: boolean) => {
     if (!t || responder.isPending) return;
     setErro(null);
+    const habilidades = skills ? idsParaEnviar(skills.ids, lista.data?.habilidades ?? []) : [];
     responder.mutate(
-      { id: exec.id, texto: t, interromper: c.interromper },
+      { id: exec.id, texto: t, interromper: c.interromper, habilidades },
       {
-        onSuccess: () => limparCaixa && setTexto(''),
+        onSuccess: () => {
+          if (limparCaixa) setTexto('');
+          skills?.removerEnviados(habilidades);
+        },
         onError: (e) => setErro(e instanceof Error && e.message ? e.message : 'Não consegui mandar. Tente de novo.'),
       },
     );
@@ -67,6 +76,8 @@ export function Compositor({ exec, aoParar }: { exec: Execucao; aoParar: () => v
         desabilitado={!c.habilitada || responder.isPending}
         linhas={2}
         alturaMax={220}
+        topo={skills && <EtiquetasSkills skills={skills} desabilitado={responder.isPending} />}
+        aoSoltarSkill={skills?.por}
       >
         {botao}
       </CaixaTexto>

@@ -11,11 +11,12 @@ import { Botao, Dialogo, Erro, Esqueleto, EsqueletoPagina, EstadoVazio, Selo, us
 import { Baloes } from './Baloes';
 import { Compositor } from './Compositor';
 import { fraseTrabalhando, itensDoPainel, sessaoDaConversa } from './agentesChat';
-import { comQueSaiu, montarConversa } from './logica';
+import { comQueSaiu, grupoDe, GRUPO_CHAT, montarConversa } from './logica';
+import type { SkillsDoPedido } from './useSkillsDoPedido';
 
 const linkDiscreto = 'underline text-[var(--color-text-secondary)] hover:text-[var(--color-text)] disabled:opacity-60';
 
-export function ConversaAberta({ id, niveis }: { id: string; niveis: Acao[] }) {
+export function ConversaAberta({ id, niveis, skills }: { id: string; niveis: Acao[]; skills: SkillsDoPedido }) {
   const lista = useExecucoes();
   const eventos = useEventos(id, true);
   const abrir = useAbrirNoTerminal();
@@ -148,11 +149,11 @@ export function ConversaAberta({ id, niveis }: { id: string; niveis: Acao[] }) {
       {eventos.isError ? (
         <Erro erro={eventos.error} aoTentar={() => void eventos.refetch()} />
       ) : (
-        <Baloes itens={montarConversa(exec.params?.pedido, evs)} trabalhando={carregando ? null : frase} rodape={carregando ?? fim} />
+        <Baloes itens={montarConversa(exec.params?.pedido, evs, exec.habilidades)} trabalhando={carregando ? null : frase} rodape={carregando ?? fim} />
       )}
 
       <div className="shrink-0">
-        <Compositor key={exec.id} exec={exec} aoParar={() => setConfirmaParar(true)} />
+        <Compositor key={exec.id} exec={exec} aoParar={() => setConfirmaParar(true)} skills={grupoDe(exec) === GRUPO_CHAT ? skills : undefined} />
       </div>
 
       <Dialogo aberto={confirmaParar} perigo titulo="Parar este pedido?" textoConfirmar="Parar" enviando={parar.isPending} aoFechar={() => setConfirmaParar(false)} aoConfirmar={confirmarParar}>

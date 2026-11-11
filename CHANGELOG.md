@@ -2,6 +2,17 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## 2.7.0
+
+The panel chat has a list of skills to pick from.
+
+- The left column of the chat has two views, "Conversas" and "Skills". The skills list has a search box and groups by theme (marketing, sales, design and UX, code, review and security, database, research and documents, video and media, others) or by plugin. Click a skill or drag it into the message box; it becomes a tag above the text (up to 6 per message). The request balloon shows the skills that went with it.
+- `GET /api/habilidades` lists skills from installed plugins, the user's skills, the project's skills and optional extra folders (`habilidades_pastas` in `painel.json`). Skills of a disabled plugin or of an extra folder are marked "off the list": the session reads their `SKILL.md` by path instead of calling the Skill tool. Skills of `tune-up` and `tune-up-*` plugins show as always on and cannot be picked. Theme rules live in `painel/habilidades.json` (the skill and plugin name are matched before the description); the project package can add `habilidades.json` with its own rules and a plugin-to-group map.
+- `POST /api/execucoes` and `POST .../responder` take `habilidades` (ids from the list, chat levels only). The server, never the screen, appends a short block to the prompt naming the chosen skills and saying the tune-up flow always applies; the block is stripped from the transcript and the event carries `habilidades`. A message that already contains one of the block's marker lines is refused.
+- Skill files are untrusted: read without blocking, regular files only, 8 KB cap, names and folder names checked, descriptions masked, no file path sent to the screen. A plugin registry or settings file that cannot be read becomes a warning in the list.
+- Picking skills tells the session which ones to use; it does not unload the others. Measured on CLI 2.1.322: `--settings` with `enabledPlugins` does start a session with fewer plugins, but the option is lost when the session is resumed, so the panel does not use it.
+- `painel/web/dist` rebuilt.
+
 ## 2.6.0
 
 The panel chat no longer needs the terminal.
