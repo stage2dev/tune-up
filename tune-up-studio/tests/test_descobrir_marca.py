@@ -98,6 +98,19 @@ class TesteExemplo(Base):
                                               "travado": True})
         self.assertEqual(c["cores.bg"]["valor"], "#FFF8EC")
 
+    def test_segunda_rodada_preserva_fotos_tom_e_letras_do_projeto(self):
+        dm.rodar(self.raiz)
+        d = self.ler_marca()
+        extras = {"fotos": [{"arquivo": "fotos/0123456789abcdef.png", "principal": True}],
+                  "tom": {"valor": ["direto"], "fonte": "dono", "travado": True},
+                  "letras_do_projeto": {"titulo": "Lora", "texto": "Lora"}}
+        d.update(extras, outro="some")
+        with open(os.path.join(self.saida, "marca.json"), "w", encoding="utf-8") as f:
+            json.dump(d, f)
+        d2 = dm.rodar(self.raiz)
+        self.assertEqual({k: d2[k] for k in extras}, extras)
+        self.assertNotIn("outro", self.ler_marca())
+
     def test_logo_travado_sem_arquivo_mantem_copia(self):
         dm.rodar(self.raiz)
         d = self.ler_marca()

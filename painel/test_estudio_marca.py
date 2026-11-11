@@ -115,7 +115,7 @@ class TesteMarca(Base):
     def test_montar_mostra_campos_e_sha_da_marca(self):
         abas = {a["id"]: a for a in modulos.montar(self.cfg, "estudio", usar_cache=False)[1]["abas"]}
         texto = json.dumps(abas["marca"], ensure_ascii=False)
-        for esperado in ("#112233", "Forno", "a.css:1", self.sha(), "data:image/png;base64,"):
+        for esperado in ("#112233", "Forno", "a.css:1", self.sha(), '"tipo": "cores"', '"tipo": "previa"'):
             self.assertIn(esperado, texto)
         self.assertIn("Passo 1 de 3", json.dumps(abas["novo"], ensure_ascii=False))  # sem estúdio preparado, o 1º passo
 

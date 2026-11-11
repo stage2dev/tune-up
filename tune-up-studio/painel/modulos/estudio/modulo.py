@@ -2,8 +2,9 @@
 "modulos_de_plugins": ["tune-up-studio@<marketplace>:estudio"]).
 
 Abas: Novo, Fila, Galeria, Aprovação (pecas.py; selo do servidor em selo.py), Marca e Ambiente (telas.py).
-Comandos: `preparar`; para a marca, `marca.aprovar` (exige o sha256 curto mostrado na tela) / `marca.editar` /
-`marca.redescobrir`; para as peças, `peca.aprovar` / `peca.recusar`. A aprovação da marca é gravada
+Comandos: `preparar`; para a marca, `marca.aprovar` (exige o sha256 curto que vai escondido no botão) /
+`marca.redescobrir` e os da tela de marca (marca_acoes.py; `envio.recebido` só o servidor chama, depois de
+gravar um envio de INFO["envios"]); para as peças, `peca.aprovar` / `peca.recusar`. A aprovação da marca é gravada
 aqui (ctx["gravar_dono"] -> estudio-dono.json); as skills de marca só leem. `preparar`: roda scripts/preparar_estudio.py em segundo plano (npm ci
 leva mais que os 20 s de agir) e a tela mostra o <dados>/ambiente.json. O comando exige
 {"confirmar": true}: é o único passo do estúdio com rede (risco `codigo`).
@@ -17,6 +18,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))  # irmãos; o painel já põe e depois tira esta pasta
 try:
+    import marca_acoes
     import pecas
     import telas
 finally:
@@ -28,15 +30,32 @@ except ImportError:
     fcntl = None
 
 PECA = {"trabalho": "texto", "confirmar": "booleano"}
-INFO = {"id": "estudio", "titulo": "Estúdio", "icone": "clapperboard", "midia": ["trabalhos", "aprovados"],
+CAMPO = {"campo": "texto", "valor": "texto"}
+TIPOS_IMAGEM = ["png", "jpeg", "webp"]
+# logo e fotos que o dono envia moram ao lado do marca.json (<raiz>/.tune-up/estudio/marca/)
+MARCA_ASSETS = {"pasta": "estudio/marca/assets", "base": "tune-up"}
+MARCA_FOTOS = {"pasta": "estudio/marca/fotos", "base": "tune-up"}
+INFO = {"id": "estudio", "titulo": "Estúdio", "icone": "clapperboard",
+        "midia": ["trabalhos", "aprovados", MARCA_ASSETS, MARCA_FOTOS],
         "baixar": ["aprovados"],  # a planilha do anúncio (.csv) sai como download, só depois de aprovada
-        "acoes": ["preparar", "marca.aprovar", "marca.editar", "marca.redescobrir", "peca.aprovar", "peca.recusar"],
+        "envios": {"logo": dict(MARCA_ASSETS, tipos=TIPOS_IMAGEM, max_bytes=5000000, max_arquivos=10, gancho=True),
+                   "fotos": dict(MARCA_FOTOS, tipos=TIPOS_IMAGEM, max_bytes=8 * 1024 * 1024,
+                                 max_arquivos=marca_acoes.MAX_FOTOS, gancho=True)},
+        "acoes": ["preparar", "marca.aprovar", "marca.editar", "marca.redescobrir", "marca.sem_logo",
+                  "marca.cores_da_logo", "marca.letras", "marca.tom", "marca.remover_foto",
+                  "peca.aprovar", "peca.recusar"],
         "esquemas": {"preparar": {"confirmar": "booleano"}, "marca.aprovar": {"confirmar": "booleano", "sha256": "texto"},
-                     "marca.editar": {"campo": "texto", "valor": "texto"}, "marca.redescobrir": {"confirmar": "booleano"},
+                     "marca.editar": CAMPO, "marca.redescobrir": {"confirmar": "booleano"},
+                     "marca.sem_logo": {"confirmar": "booleano"}, "marca.cores_da_logo": {}, "marca.letras": CAMPO,
+                     "marca.tom": dict(CAMPO, ligado="booleano"),
+                     "marca.remover_foto": {"destino": "texto", "arquivo": "texto"},
                      "peca.aprovar": PECA, "peca.recusar": PECA}}
-REL_MARCA = ".tune-up/estudio/marca/marca.json"
-SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.realpath(__file__))))), "scripts", "preparar_estudio.py")
+REL_MARCA = marca_acoes.REL_MARCA
+SCRIPT = os.path.join(marca_acoes.SCRIPTS, "preparar_estudio.py")
+COMANDOS = {"envio.recebido": marca_acoes.recebido, "marca.editar": marca_acoes.editar,
+            "marca.sem_logo": marca_acoes.sem_logo, "marca.cores_da_logo": marca_acoes.cores_da_logo,
+            "marca.letras": marca_acoes.letras, "marca.tom": marca_acoes.tom,
+            "marca.remover_foto": marca_acoes.remover_foto}
 
 
 def _ambiente(dados):
@@ -123,20 +142,7 @@ def _travar(dados):
     return f
 
 
-def _marca(ctx):
-    """(caminho, texto, objeto) of <raiz>/.tune-up/estudio/marca/marca.json, or None."""
-    if not ctx.get("raiz"):
-        return None
-    caminho = os.path.join(ctx["raiz"], *REL_MARCA.split("/"))
-    try:
-        if os.path.islink(caminho):
-            return None
-        with open(caminho, "rb") as f:
-            bruto = f.read()
-        obj = json.loads(bruto.decode("utf-8"))
-    except (OSError, ValueError):
-        return None
-    return (caminho, bruto, obj) if isinstance(obj, dict) and isinstance(obj.get("campos"), dict) else None
+_marca = marca_acoes.ler
 
 
 def _marca_aprovar(ctx, dados):
@@ -144,46 +150,13 @@ def _marca_aprovar(ctx, dados):
         return {"feito": False, "mensagem": "Confirme que a marca mostrada está certa."}
     m = _marca(ctx)
     if m is None:
-        return {"feito": False, "mensagem": "Ainda não há marca descoberta. Rode a skill de marca antes."}
+        return {"feito": False, "mensagem": "Ainda não há marca. Use Procurar de novo no meu projeto."}
     curto = dados.get("sha256")
     if not isinstance(curto, str) or len(curto) < 12 or not hashlib.sha256(m[1]).hexdigest().startswith(curto.lower()):
-        return {"feito": False, "mensagem": "A marca mudou depois que a tela abriu. Atualize e confira de novo."}
+        return {"feito": False, "mensagem": "A marca mudou depois que a tela abriu. Confira de novo e confirme."}
     # dono.faltando confere o sha256 do arquivo no disparo: marca trocada depois disto perde a aprovação
     ctx["gravar_dono"]("marca", {"aprovado": True, "sha256": hashlib.sha256(m[1]).hexdigest(), "arquivo": REL_MARCA})
-    return {"feito": True, "mensagem": "Marca aprovada."}
-
-
-def _marca_editar(ctx, dados):
-    sys.path.insert(0, os.path.dirname(SCRIPT))
-    try:
-        import cores
-        import descobrir_marca as dm
-        import marca_leitores as ml
-    finally:  # descobrir_marca também se põe no sys.path ao ser importado: tira todas as entradas
-        while os.path.dirname(SCRIPT) in sys.path:
-            sys.path.remove(os.path.dirname(SCRIPT))
-    campo, valor = dados.get("campo"), (dados.get("valor") or "").strip()
-    if campo not in ml.CAMPOS or not valor or len(valor) > 200 or "\n" in valor:
-        return {"feito": False, "mensagem": "Campo ou valor inválido."}
-    if campo.startswith("cores."):
-        valor = cores.para_hex(valor)
-        if valor is None:
-            return {"feito": False, "mensagem": "Não entendi essa cor. Use um valor como #1A2B3C."}
-    m = _marca(ctx)
-    if m is None:
-        return {"feito": False, "mensagem": "Ainda não há marca descoberta. Rode a skill de marca antes."}
-    caminho, _, obj = m
-    obj["campos"][campo] = {"valor": valor, "fonte": "dono", "confianca": "alta", "travado": True}
-    if campo == "logo":  # a cópia antiga não é mais o logo do dono: some, e entra a nova se o arquivo existe
-        assets = os.path.join(os.path.dirname(caminho), "assets")
-        for n in os.listdir(assets) if os.path.isdir(assets) and not os.path.islink(assets) else []:
-            if n.lower().startswith("logo."):
-                os.remove(os.path.join(assets, n))
-        obj["logo_copia"] = dm.copiar_logo(ctx["raiz"], os.path.dirname(caminho), obj["campos"]["logo"])
-    dm._gravar(caminho, json.dumps(obj, ensure_ascii=False, indent=2) + "\n")  # O_EXCL|O_NOFOLLOW no .tmp
-    # a marca mudou: a aprovação anterior deixa de valer até o dono aprovar de novo
-    ctx["gravar_dono"]("marca", {"aprovado": False})
-    return {"feito": True, "mensagem": "%s salvo. Aprove a marca de novo." % telas.ROTULOS.get(campo, campo)}
+    return {"feito": True, "mensagem": "Marca confirmada. Já dá para criar peças na aba 3. Novo."}
 
 
 def _marca_redescobrir(ctx, dados):
@@ -210,8 +183,8 @@ def agir(ctx, acao, dados):
         return _marca_redescobrir(ctx, dados)
     if acao == "marca.aprovar":
         return _marca_aprovar(ctx, dados)
-    if acao == "marca.editar":
-        return _marca_editar(ctx, dados)
+    if acao in COMANDOS:
+        return COMANDOS[acao](ctx, dados)
     if acao != "preparar":
         return {"feito": False, "mensagem": "Ação desconhecida."}
     if dados.get("confirmar") is not True:

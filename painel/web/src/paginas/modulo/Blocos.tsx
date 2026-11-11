@@ -77,11 +77,12 @@ function Kpis({ b }: { b: BlocoCru }) {
 // Coluna 'secundaria' some no celular (menos de 640 px): a tabela cabe sem rolagem lateral.
 const SO_TELA_LARGA = 'hidden sm:table-cell';
 
+// `recolhido: true`: a tabela fica fechada atrás do título (detalhe técnico que quase ninguém precisa ver).
 function Tabela({ b }: { b: BlocoCru }) {
   const colunas = lista(b.colunas).filter((c) => typeof c.id === 'string');
   const linhas = lista(b.linhas);
-  return (
-    <Moldura b={b}>
+  const corpo = (
+    <>
       {colunas.length === 0 || linhas.length === 0 ? (
         <Vazio texto={texto(b.vazio)} />
       ) : (
@@ -110,7 +111,16 @@ function Tabela({ b }: { b: BlocoCru }) {
           </table>
         </div>
       )}
-    </Moldura>
+    </>
+  );
+  if (b.recolhido !== true) return <Moldura b={b}>{corpo}</Moldura>;
+  return (
+    <Cartao>
+      <details>
+        <summary className="cursor-pointer min-h-11 flex items-center text-sm font-medium">{texto(b.titulo) ?? 'Detalhes'}</summary>
+        {corpo}
+      </details>
+    </Cartao>
   );
 }
 

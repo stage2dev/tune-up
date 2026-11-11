@@ -5,7 +5,8 @@ export type Tom = 'neutro' | 'bom' | 'atencao' | 'ruim';
 export type Bloco =
   | { tipo: 'kpis'; titulo?: string; itens: { rotulo: string; valor: string | number | null; detalhe?: string; tom?: Tom }[] }
   | { tipo: 'tabela'; titulo?: string; colunas: { id: string; rotulo: string; alinhar?: 'esq' | 'dir'; secundaria?: boolean }[];
-      linhas: Record<string, string | number | null>[]; vazio?: string }
+      linhas: Record<string, string | number | null>[]; vazio?: string;
+      /** Fechada atrás do título (clique para abrir): detalhe técnico. */ recolhido?: boolean }
   | { tipo: 'lista'; titulo?: string; itens: { titulo: string; detalhe?: string; selo?: { texto: string; tom: Tom } }[];
       vazio?: string }
   | { tipo: 'serie'; titulo?: string; unidade?: string;

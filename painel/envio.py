@@ -1,7 +1,8 @@
 """Envio de imagem para um módulo: POST /api/modulos/<id>/envio?destino=<chave>, corpo = bytes crus da imagem.
 
 O módulo declara INFO["envios"] = {chave: {"pasta": "relativa a <dados>", "tipos": ["png", "jpeg", "webp"],
-"max_bytes": N, "max_arquivos": N, "gancho": bool}}. Sem declaração (ou chave fora dela), 404.
+"max_bytes": N, "max_arquivos": N, "gancho": bool, "base"?: "dados" | "tune-up"}}. Sem declaração (ou chave
+fora dela), 404. "base": "tune-up" põe a pasta em <raiz>/.tune-up em vez de <dados> (ex.: a marca do estúdio).
 - Content-Length obrigatório e conferido contra max_bytes (teto global TETO) antes de ler qualquer byte;
   a leitura vai em blocos e nunca passa do tamanho declarado.
 - O tipo vem dos BYTES (assinatura + cabeçalho com largura e altura), nunca da extensão nem do Content-Type.
@@ -10,7 +11,7 @@ O módulo declara INFO["envios"] = {chave: {"pasta": "relativa a <dados>", "tipo
 - SVG é recusado: um validador estrito de XML/SVG não cabe pequeno, e a rota de mídia não serve SVG.
 - Nome dado pelo servidor: 16 letras do sha256 + extensão. Mesmo conteúdo = mesmo nome: não duplica.
 - Pasta: cada pedaço é criado ou conferido sem atalho (lstat), e o realpath final tem de ser exatamente
-  <dados real>/<pasta>. Escreve num temporário oculto com O_CREAT|O_EXCL|O_NOFOLLOW e troca com os.replace.
+  <base real>/<pasta>. Escreve num temporário oculto com O_CREAT|O_EXCL|O_NOFOLLOW e troca com os.replace.
 - Depois: com "gancho": true, chama agir(ctx, "envio.recebido", {"destino", "caminho"}) (falha vira aviso:
   o arquivo já está gravado) e sempre apaga o cache da tela.
 Python 3.9, só biblioteca padrão.
@@ -118,13 +119,13 @@ def declaracao(mod, chave):
             or not isinstance(envios.get(chave), dict):
         raise Recusa(404, "Esta tela não recebe esse arquivo.")
     d = envios[chave]
-    partes = midia._segmentos_ok(d.get("pasta"))
+    partes, base = midia.entrada(d)
     tipos = d.get("tipos")
     num = [d.get(k) for k in ("max_bytes", "max_arquivos")]
     if not partes or not isinstance(tipos, list) or not tipos or any(t not in EXT for t in tipos) \
             or any(isinstance(n, bool) or not isinstance(n, int) or n < 1 for n in num):
         raise Recusa(500, "Esta tela está incompleta (INFO[\"envios\"] inválido).")
-    return {"partes": partes, "tipos": set(tipos), "max_bytes": min(num[0], TETO),
+    return {"partes": partes, "base": base, "tipos": set(tipos), "max_bytes": min(num[0], TETO),
             "max_arquivos": min(num[1], MAX_ARQUIVOS), "gancho": d.get("gancho") is True}
 
 
@@ -205,12 +206,12 @@ def gravar(pasta, nome, corpo, decl):
     return True
 
 
-def _c_da_midia(mod, partes):
-    """`c` para GET .../arquivo, ou None se a pasta não está em INFO["midia"]."""
+def _c_da_midia(mod, partes, base):
+    """`c` para GET .../arquivo, ou None se a pasta não está em INFO["midia"] (com a mesma base)."""
     decl = getattr(mod, "INFO", {}).get("midia")
     for d in decl if isinstance(decl, list) else [decl]:
-        p = midia._segmentos_ok(d)
-        if p and partes[:len(p)] == p:
+        p, b = midia.entrada(d)
+        if p and b == base and partes[:len(p)] == p:
             return "/".join(partes if isinstance(decl, list) else partes[len(p):])
     return None
 
@@ -229,7 +230,7 @@ def receber(cfg, mid, chave, headers, rfile, tempo=modulos.TEMPO_LIMITE):
         return e.codigo, {"erro": e.mensagem}
     try:
         decl = declaracao(mod, chave)
-        dados = modulos.contexto(cfg)["dados"]
+        dados = midia.base_real(cfg, decl["base"])
         if not dados:
             raise Recusa(404, "Esta tela não recebe esse arquivo.")
         corpo = ler(rfile, tamanho_declarado(headers, decl["max_bytes"]))
@@ -252,5 +253,5 @@ def receber(cfg, mid, chave, headers, rfile, tempo=modulos.TEMPO_LIMITE):
         except modulos.ErroModulo as e:
             avisos.append("O arquivo foi guardado, mas a tela não terminou de registrá-lo (%s)." % e.mensagem)
     _limpar_cache(mid)
-    return (201 if novo else 200), {"ok": True, "caminho": caminho, "c": _c_da_midia(mod, partes), "tipo": tipo,
+    return (201 if novo else 200), {"ok": True, "caminho": caminho, "c": _c_da_midia(mod, partes, decl["base"]), "tipo": tipo,
                                     "largura": w, "altura": h, "repetido": not novo, "avisos": avisos}

@@ -39,6 +39,13 @@ describe('renderizador de blocos', () => {
     expect(h.match(/hidden sm:table-cell/g)?.length).toBe(2); // th e td da secundaria
     expect(h).toMatch(/<th[^>]*class="(?![^"]*hidden)[^"]*"[^>]*>Campo/);
   });
+  it('tabela recolhida: fechada atras do titulo; sem recolhido, aberta', () => {
+    const h = html([{ tipo: 'tabela', titulo: 'De onde veio cada dado', recolhido: true, colunas: [{ id: 'a', rotulo: 'Dado' }], linhas: [{ a: 'Cor' }] }]);
+    expect(h).toMatch(/<details><summary[^>]*>De onde veio cada dado<\/summary>/);
+    expect(h).not.toMatch(/<details[^>]*open/);
+    expect(h).toContain('<td');
+    expect(html([{ tipo: 'tabela', titulo: 'T', colunas: [{ id: 'a', rotulo: 'A' }], linhas: [{ a: 1 }] }])).not.toContain('<details');
+  });
   it('tabela vazia explica com o texto do bloco', () => {
     expect(html([{ tipo: 'tabela', colunas: [{ id: 'a', rotulo: 'A' }], linhas: [], vazio: 'Nada cadastrado ainda.' }])).toContain('Nada cadastrado ainda.');
   });

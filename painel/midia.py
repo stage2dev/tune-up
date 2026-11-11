@@ -1,10 +1,11 @@
 """Mídia de módulo: GET /api/modulos/<id>/arquivo?c=<caminho relativo>.
 
 O módulo declara INFO["midia"] = "pasta" (relativa ao <dados> do módulo) ou uma lista de pastas, e então
-`c` começa pelo nome da pasta (ex.: "aprovados/x.png"). Sem declaração, 404.
+`c` começa pelo nome da pasta (ex.: "aprovados/x.png"). Sem declaração, 404. Uma pasta da lista pode ser
+{"pasta": "a/b", "base": "tune-up"}: relativa a <raiz>/.tune-up em vez de <dados> (ex.: a marca do estúdio).
 - `c` é relativo a essa pasta; nada de '..', '.', segmento que começa com ponto, barra
   invertida, byte nulo, caminho absoluto ou letra de unidade;
-- o caminho real (realpath) tem de ficar dentro da pasta real, que fica dentro de <dados>;
+- o caminho real (realpath) tem de ficar dentro da pasta real, que fica dentro de <dados> (ou da base declarada);
 - abre com O_NOFOLLOW (onde existe) e confere com fstat que é arquivo comum;
 - só png, jpg/jpeg, webp, mp4 e webm; .csv só dentro de uma pasta que o módulo lista em INFO["baixar"]
   (sempre um nome de INFO["midia"]) e sai como download (text/csv + Content-Disposition: attachment);
@@ -24,6 +25,7 @@ BAIXAR = {".csv": "text/csv; charset=utf-8"}  # nunca mostrado no navegador: sai
 RE_NOME_ANEXO = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$")
 BLOCO = 64 * 1024
 MAX_C = 400
+BASES = ("dados", "tune-up")
 RE_RANGE = re.compile(r"^bytes=(\d{0,18})-(\d{0,18})$")
 
 
@@ -67,6 +69,22 @@ def _segmentos_ok(texto):
     return partes
 
 
+def entrada(d):
+    """(partes, base) de uma pasta de INFO["midia"] ou INFO["envios"]; partes None se a declaração é ruim."""
+    if isinstance(d, dict):
+        base = d.get("base", "dados")
+        return (_segmentos_ok(d.get("pasta")) if base in BASES else None), base
+    return _segmentos_ok(d), "dados"
+
+
+def base_real(cfg, base):
+    """Pasta da base ("dados" = <dados> do módulo; "tune-up" = <raiz>/.tune-up), ou "" se não há."""
+    ctx = modulos.contexto(cfg)
+    if base == "tune-up":
+        return os.path.join(ctx["raiz"], ".tune-up") if ctx.get("raiz") else ""
+    return ctx["dados"] if base == "dados" else ""
+
+
 def _dentro(real, base):
     return real.startswith(base.rstrip(os.sep) + os.sep)
 
@@ -79,13 +97,14 @@ def pasta_do_modulo(cfg, mid, c=None):
     decl = decl.get("midia") if isinstance(decl, dict) else None
     partes_c = _segmentos_ok(c)
     if isinstance(decl, list):  # a primeira pasta da lista que é começo de `c` (e sobra um nome de arquivo)
-        lista = [p for p in (_segmentos_ok(d) for d in decl) if p]
-        partes = next((p for p in lista if partes_c and len(partes_c) > len(p) and partes_c[:len(p)] == p), None)
-        partes_c = partes_c[len(partes):] if partes else None
-        partes = partes or (lista[0] if lista else None)
+        lista = [e for e in (entrada(d) for d in decl) if e[0]]
+        achada = next((e for e in lista if partes_c and len(partes_c) > len(e[0]) and partes_c[:len(e[0])] == e[0]),
+                      None)
+        partes_c = partes_c[len(achada[0]):] if achada else None
+        partes, base = achada or (lista[0] if lista else (None, None))
     else:
-        partes = _segmentos_ok(decl)
-    dados = modulos.contexto(cfg)["dados"]
+        partes, base = entrada(decl)
+    dados = base_real(cfg, base) if partes else ""
     if not partes or not dados:
         raise modulos.ErroModulo(404, "Esta tela não mostra arquivos.")
     base_dados = os.path.realpath(dados)

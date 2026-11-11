@@ -288,3 +288,38 @@ is kept on the next run. No color, font or logo at `alta`/`media` gives
 
 `cores.py` turns `#rgb[a]`, `#rrggbb[aa]`, `rgb()`, `hsl()`, a bare HSL trio
 (shadcn) and `oklch()` into `#RRGGBB`; anything else is `None`.
+
+The studio's Marca tab also writes `marca.json`: every field the owner changes
+gets `"fonte": "dono"` and `"travado": true`, plus three keys that a new
+discovery keeps as they are: `fotos` (`[{arquivo: "fotos/<name>", principal}]`,
+up to 8, the first is the main one), `tom` (`{valor: ["acolhedor", ...]}`) and
+`letras_do_projeto` (the font pair found before the owner picked another one).
+Logo and photos the owner uploads land in `marca/assets/` and `marca/fotos/`
+through the panel's upload route (file name = 16 hex of the sha256); studio
+sessions only read them (their sandbox writes only to the job folder).
+
+## cores_da_logo.py: "Pegar as cores da logo"
+
+Deterministic, no network, no AI, same file = same answer.
+
+```sh
+python3 -I scripts/cores_da_logo.py <logo.png|logo.svg>
+# exit 0: {"cores": [[hex, weight], ...], "papeis": {"primary", "accent", "text", "bg"}}
+# exit 2: refused, with the reason in Portuguese (shown on the screen)
+```
+
+- SVG: `fill`, `stroke` and `stop-color` (attributes and CSS) counted by
+  occurrence, read by `cores.py`; `var()`, `url()` and color names other than
+  white/black are skipped, and a shape with no fill is not counted as black.
+- PNG: decoded with `zlib` only (color types 0, 2, 3, 4, 6; bit depth 1 to 16;
+  `tRNS` honored; pixels under 50% alpha skipped), counted on a grid of up to
+  200 x 200 pixels. Interlaced PNGs and images above 2.5 million pixels are
+  refused (pure-Python unfiltering takes about 4 s at that size on a laptop).
+- Similar colors (anti-aliasing) merge into the most frequent one. Roles:
+  `primary` = most frequent colorful color, `accent` = the next colorful one
+  far from it, `text` = the darkest if dark enough, `bg` = the lightest if light
+  enough. A role with no fitting color is left as it was; `surface` never changes.
+- JPEG and WebP are not read: the standard library has no decoder for them
+  (baseline JPEG means a Huffman + IDCT decoder, WebP a VP8/VP8L one), and a
+  dependency is out. With a JPEG or WebP logo the Marca tab hides the button;
+  the owner picks the colors by hand.

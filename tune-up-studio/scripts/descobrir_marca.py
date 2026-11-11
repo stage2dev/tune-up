@@ -99,8 +99,12 @@ def descobrir(raiz):
     return {k: ach.melhor(k) for k in CAMPOS}
 
 
-def ler_existente(saida):
-    """Fields of an existing marca.json, {} if there is none. Raises ValueError if present but unreadable."""
+DO_DONO = ("fotos", "tom", "letras_do_projeto")  # written by the studio screen; a new discovery keeps them
+
+
+def ler_existente(saida, tudo=False):
+    """Fields of an existing marca.json ({} if there is none), or the whole object with tudo=True.
+    Raises ValueError if present but unreadable."""
     alvo = os.path.join(saida, "marca.json")
     if not os.path.lexists(alvo):
         return {}
@@ -114,7 +118,7 @@ def ler_existente(saida):
     campos = d.get("campos") if isinstance(d, dict) else None
     if not isinstance(campos, dict):
         raise ValueError("marca.json sem 'campos'")
-    return campos
+    return d if tudo else campos
 
 
 def mesclar(novos, existentes):
@@ -199,10 +203,12 @@ def rodar(raiz, saida=None):
     if not os.path.isdir(raiz):
         raise ValueError("pasta do projeto não existe")
     saida = os.path.abspath(saida or os.path.join(raiz, ".tune-up", "estudio", "marca"))
-    campos = mesclar(descobrir(raiz), ler_existente(saida))
+    antes = ler_existente(saida, tudo=True)
+    campos = mesclar(descobrir(raiz), antes.get("campos") or {})
     os.makedirs(saida, exist_ok=True)
     d = {"versao": 1, "gerado_em": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
          "modo": modo(campos), "campos": campos}
+    d.update((k, antes[k]) for k in DO_DONO if k in antes)
     d["logo_copia"] = copiar_logo(raiz, saida, campos["logo"])
     if d["modo"] == "sem_marca":
         d["paleta_neutra"] = dict(PALETA_NEUTRA)
