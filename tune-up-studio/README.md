@@ -124,7 +124,7 @@ reserve reel was not run inside the sandbox either (not measured).
 Measured by `painel/tests_reais/prova_post_bg.py`: example project copied to a
 throwaway folder, brand discovered and approved by the module command, the real
 action fired by the panel launcher with `claude --bg`, sandbox on, skip
-permissions off, model **haiku** (the action ships with opus; opus not measured).
+permissions off, model **haiku** (the action ships with opus; opus in the next table).
 Tokens summed from the session `.jsonl`. One run each, one machine (macOS).
 
 | piece | wall clock (fire to done) | assistant turns | tokens (input / cache creation / cache read / output) | QA |
@@ -133,7 +133,26 @@ Tokens summed from the session `.jsonl`. One run each, one machine (macOS).
 | carousel 4:5, 5 frames | 236 s | 9 | 18 / 84,073 / 700,085 / 24,254 (808,430) | 5 of 5 green, 0 fix rounds |
 
 Both sessions ended on their own (`done`), with no question and no blocked
-command. Facts that shaped the action: `hyperframes check` writes its report
+command.
+
+Same harness with model **opus** (what the action ships with), 2026-11-11, one
+run each, one machine (macOS). Tokens are almost all cache reads.
+
+| piece | wall clock | turns | tokens (input / cache creation / cache read / output) | QA final line | CLI state |
+| --- | --- | --- | --- | --- | --- |
+| post 4:5, 1 frame (before `fontes.py`) | 243 s | 10 | 20 / 80,690 / 653,705 / 5,036 (739,451) | `PRECISA DO SEU OLHO: 0 de 1 verdes, q1: snapshot` | working/idle (panel: done after idle wait) |
+| post 1:1, 1 frame (before `fontes.py`) | 57 s | 9 | 17 / 50,697 / 597,588 / 4,373 (652,675) | `PRECISA DO SEU OLHO: 0 de 1 verdes, q1: snapshot` | blocked/idle |
+| carousel 4:5, 5 frames (before `fontes.py`) | 144 s | 14 | 25 / 79,022 / 1,114,272 / 14,218 (1,207,537) | `PRECISA DO SEU OLHO: 0 de 5 verdes, ...` | blocked/idle |
+| post 4:5, 1 frame (with `fontes.py`) | 57 s | 9 | 18 / 53,308 / 609,808 / 4,544 (667,678) | `PRONTO: 1 de 1 quadros verdes` | done/idle |
+| carousel 4:5, 5 frames (with `fontes.py`) | 139 s | 13 | 23 / 77,431 / 1,054,670 / 13,431 (1,145,555) | `PRONTO: 5 de 5 quadros verdes` | done/idle |
+
+The three runs before `fontes.py` all failed the same check, `Fonts failed:
+Brand Body`: the example brand body font is a generic stack, and the skill made
+the model write `local()` of names that are not on macOS. No command was denied
+in any of the five runs. The two `blocked/idle` endings came with the
+`PRECISA DO SEU OLHO` answer; the panel shows them as `precisa_de_voce`.
+
+Facts that shaped the action: `hyperframes check` writes its report
 history under `~/.cache/hyperframes/history` by default, which the sandbox
 refuses, and then the JSON has no `saved.report` (the QA fails); the action sets
 `HYPERFRAMES_HISTORY_ROOT=.hyperframes_history` (relative, so it lands in the

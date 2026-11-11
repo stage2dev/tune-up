@@ -165,6 +165,24 @@ headless Chrome (`--screenshot --window-size=1080,1920`,
 `--host-resolver-rules="MAP * ~NOTFOUND"`). Measured on macOS: 3 slides, 10 s,
 1.7 s wall time, QA all green.
 
+## fontes.py: brand fonts for a post frame
+
+`python3 -I scripts/fontes.py --trabalho <work folder>` reads `fontes.heading` and
+`fontes.body` from the approved `marca.json` of the project that holds the work
+folder and prints the two `@font-face` lines (`Brand Heading`, `Brand Body`) the
+post skill pastes. Named families stay first; a generic family (`system-ui`,
+`sans-serif`, `serif`, `monospace`, `-apple-system`, `ui-*`, ...) cannot go in
+`local()`, so it becomes a fixed stack: sans = Helvetica Neue, Arial, Liberation
+Sans, DejaVu Sans; serif = Georgia, Times New Roman, Liberation Serif, DejaVu
+Serif; mono = Menlo, Courier New, Liberation Mono, DejaVu Sans Mono. It also
+prints one `/* fonte da marca <field>: ... generica ... */` line per field with a
+generic family. A field with only named fonts gets no stack, so a font missing on
+the machine still fails the snapshot. Exit 2 when `marca.json` cannot be read.
+Measured 2026-11-11 with HyperFrames on macOS: the Forno Miúdo body
+(`system-ui, -apple-system, 'Segoe UI', sans-serif`) as `local("Segoe UI")` alone
+gave `Fonts FAILED: Brand Body`; with the printed lines, `Fonts: 2 loaded` and
+`qa_imagem.py --final` `PRONTO: 1 de 1 quadros verdes`.
+
 ## Bash positive list for studio actions (`regras/bash-estudio.json`)
 
 Six `negar` hook rules (lookahead regexes on `command`) that every studio
@@ -182,7 +200,8 @@ same list (checked by `tests/test_regras_bash.py`). Allowed, nothing else:
 - `ffmpeg` where every `-i` comes right after `-protocol_whitelist file,pipe`.
 - `ffprobe`.
 - `python3 -I <abs path>/tune-up-studio[/<version>]/scripts/` with
-  `qa_video.py`, `qa_imagem.py`, `reserva_slides.py` or `video_ou_reserva.py`.
+  `qa_video.py`, `qa_imagem.py`, `reserva_slides.py`, `video_ou_reserva.py` or
+  `fontes.py`.
 
 Every argument is either an option without `/`, a relative path without `:`,
 or a path inside `{trabalho}`. No `..`, `//`, `~`, quotes, `$`, `;`, `&`,

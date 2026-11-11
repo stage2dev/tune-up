@@ -42,6 +42,8 @@ ALLOWED = [
     PY + "qa_video.py --source fonte --video video.mp4 --check-json check.json --out qa.json",
     PY + "reserva_slides.py --slides slides --out video.mp4",
     PY + "video_ou_reserva.py --source fonte --slides slides --out video.mp4",
+    PY + "fontes.py",
+    PY + "fontes.py --trabalho " + WORK,
 ]
 
 DENIED = [
@@ -85,6 +87,9 @@ DENIED = [
     "python3 -I " + WORK + "/tune-up-studio/scripts/qa_video.py",
     PY + "qa_video.py --out /tmp/qa.json",
     PY + "outro.py",
+    PY + "fontes.py --trabalho /tmp/outro",
+    PY + "fontes.py 'system-ui, sans-serif'",
+    "python3 -I " + WORK + "/tune-up-studio/scripts/fontes.py",
     PY + "qa_video.py --source fonte --video v.mp4 --check-json c.json --ffprobe python3",
     PY + "reserva_slides.py --slides s --out v.mp4 --ffmpeg python3",
     PY + "video_ou_reserva.py --source fonte --slides s --out v.mp4 --hyperframes x",

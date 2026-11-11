@@ -1,7 +1,7 @@
 ---
 name: post
 description: "Makes a still post or a carousel (PNG per frame) from a briefing, using only the owner-approved brand, and checks every frame with the studio QA. Runs unattended from the panel action estudio.post. Use on: post, carrossel, carousel, peça estática, post do Instagram."
-allowed-tools: Read, Bash(${CLAUDE_PLUGIN_ROOT}/node/node_modules/.bin/hyperframes *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/qa_imagem.py *)
+allowed-tools: Read, Bash(${CLAUDE_PLUGIN_ROOT}/node/node_modules/.bin/hyperframes *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/qa_imagem.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/fontes.py *)
 ---
 
 # Post and carousel
@@ -22,6 +22,7 @@ The prompt gives: the working folder (`{trabalho}`, your current folder), `Forma
 The project root is the working folder path cut right before `/.tune-up/`. Read `<root>/.tune-up/estudio/marca/marca.json`. The panel only starts this action when the owner approved that file; do not look for approval yourself and never write there.
 
 - Use `campos` values only: `cores.*` (hex) and `fontes.*`. Never invent a color or a font. Missing field: use the neutral one from `MARCA.md` next to it.
+- Fonts come from a script, not from you: run `python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/fontes.py --trabalho <working folder>` (absolute path) once. It prints the two `@font-face` lines for `fontes.heading` and `fontes.body` (a generic family like `system-ui` or `sans-serif` becomes a fixed stack of local fonts) and one `/* fonte da marca ...: ... generica ... */` line per field that names a generic family. Paste every printed line as is at the top of each frame's `<style>`; never write or edit an `@font-face` yourself. For each `generica` line, write in `resultado.md` that the brand font of that field is generic and the frame uses the local stack.
 - Logo: if `logo` points to an `.svg` in `<root>/.tune-up/estudio/marca/assets/`, Read it and Write the same text to `q<N>/fonte/assets/logo.svg`. Any other logo type: leave the logo out and say so in `resultado.md`.
 
 ## 3. Copy
@@ -43,8 +44,7 @@ For frame N write `q<N>/fonte/index.html` (N = 1, 2, ...). Copy the shape of thi
 <head>
   <meta charset="utf-8">
   <style>
-    @font-face { font-family: "Brand Heading"; src: local("<first family of fontes.heading>"); }
-    @font-face { font-family: "Brand Body"; src: local("<first family of fontes.body>"); }
+    <the lines printed by fontes.py, unchanged>
     :root { --bg: #...; --surface: #...; --primary: #...; --text: #...; --accent: #...; }
     html, body { margin: 0; background: var(--bg); }
     #root { position: relative; width: 1080px; height: 1350px; overflow: hidden; box-sizing: border-box;
@@ -62,7 +62,7 @@ For frame N write `q<N>/fonte/index.html` (N = 1, 2, ...). Copy the shape of thi
 
 Rules:
 - `data-width`/`data-height` and `#root` width/height are the frame size. Every frame of a carousel has the same size.
-- CSS only, colors only through the `--` variables, fonts only through the two `@font-face` names (never a bare generic family as the only font: the renderer would download a web font). In `src`, one `local("...")` per family of the brand field, comma-separated (`src: local("Helvetica Neue"), local("Arial");`); skip generic names like `sans-serif` or `system-ui` there.
+- CSS only, colors only through the `--` variables, fonts only through the two `@font-face` names `Brand Heading` and `Brand Body` printed by `fontes.py` (never a bare generic family as the only font: the renderer would download a web font).
 - Safe container: all text inside `#root` with at least 80 px padding; give text boxes a `max-width` and let them wrap. No absolute positioning of text near the edges.
 - Forbidden: `<script>`, any URL (`http`, `//`), web fonts, `gsap`, `data-layout-*` attributes, images other than `assets/logo.svg`. The QA fails on any of these.
 
@@ -79,5 +79,5 @@ Fix rounds: if the QA is not green, read the failed checks in `q<N>/qa.json`, ed
 ## 6. Finish
 
 1. `python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/qa_imagem.py --final <working folder> --formato=<R> --out final.json`. It re-checks every `q<N>/` frame (size of the format, saved check report, snapshot record) and writes the final line in `linha`: `PRONTO: <n> de <n> quadros verdes` only when every frame is green, otherwise `PRECISA DO SEU OLHO: <k> de <n> verdes, <frames and checks>`.
-2. Write `resultado.md`: format, size, one line per frame from `final.json` (`q<N>/snap/frame-00-at-0s.png`, green or `precisa do seu olho` with the failed checks; a failed font by name), the caption, and anything left out (logo, missing brand field, fewer frames than asked).
+2. Write `resultado.md`: format, size, one line per frame from `final.json` (`q<N>/snap/frame-00-at-0s.png`, green or `precisa do seu olho` with the failed checks; a failed font by name), the caption, anything left out (logo, missing brand field, fewer frames than asked) and each generic brand font reported by `fontes.py`.
 3. Answer with the `linha` of `final.json`, exactly. Do not list or re-check files after that.
