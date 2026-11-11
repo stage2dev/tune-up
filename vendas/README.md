@@ -83,6 +83,8 @@ Decision on the key path: the generic panel form posts through the panel's actio
 - An uncertain voice note is never resent: the temporary `.ogg` is already gone, so the gate answers `nao_reenviavel` without touching the row, and "Envios incertos" only offers "mark as not sent" for audio (the owner generates a new audio).
 - Token-protected routes: `GET /voz`, `POST /voz/chave`, `/voz/chave/apagar`, `/voz/config`, `/voz/consentimento`, `/voz/teste`.
 
+The panel tab "Voz" (`painel/modulos/vendas/abas/voz.py`) shows the state (ffmpeg, key last 4, voice, consent, characters today / cap), pastes/replaces/deletes the key (delete needs confirmation), picks the voice from `GET /voz/vozes` (the account's `/v1/voices`, cached 10 min per key; when the list is slow or fails the tab keeps working with a free-text voice id), records the consent form, and has the button "send test audio to my number". The test route never takes a number: the owner number is set in the voice form (`numero_dono`, optional) and a number in the action body is ignored.
+
 Decision on cloned voices (plan question Q5, taken by the coordinator while the owner was away; the owner can change it): the default voice is a **catalog voice** of the user's ElevenLabs account (no clone, no disclosure). A voice marked as cloned (`clonada`) only turns on after a recorded consent of the voice's owner (name, date and text, stored in the database for that voice id; another voice id needs its own consent), and every audio made with it starts with the spoken sentence "Mensagem de voz gerada por IA.", because the ElevenLabs usage policy requires disclosure when its absence would mislead. There is no switch to remove the disclosure from a cloned voice.
 
 ## Local Evolution API (Docker)

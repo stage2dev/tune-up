@@ -20,6 +20,7 @@ URL_PADRAO = "https://api.elevenlabs.io"
 VAR_URL = "VENDAS_ELEVENLABS_URL"
 TEMPO_S = 30
 TEMPO_FFMPEG_S = 60
+TEMPO_VOZES_S = 6   # o painel espera 12 s pela rota /voz/vozes
 MAX_AUDIO = 20 * 1024 * 1024   # resposta maior que isso não é um áudio curto: recusa
 FORMATO_ID = re.compile(r"^[A-Za-z0-9]{8,64}$")
 FORMATO_NOME = re.compile(r"^[a-z0-9_]{1,64}$")   # modelo e formato de saída
@@ -92,6 +93,41 @@ def sintetizar(url_base, segredo, voz_id, modelo, formato, texto, tempo=TEMPO_S)
     if not audio or len(audio) > MAX_AUDIO:
         raise ErroVoz("A ElevenLabs devolveu um áudio vazio ou grande demais. Nada foi enviado.", "resposta_invalida")
     return audio
+
+
+def listar_vozes(url_base, segredo, tempo=None):
+    """GET /v1/voices: [{voice_id, nome, categoria}] da conta, em ordem de nome. UMA tentativa. ErroVoz se falha."""
+    pedido = urllib.request.Request(url_base.rstrip("/") + "/v1/voices", method="GET", headers={"xi-api-key": segredo})
+    try:
+        with openai_cliente._abridor(url_base).open(pedido, timeout=tempo or TEMPO_VOZES_S) as r:
+            dados = json.loads(r.read(MAX_AUDIO).decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        try:
+            bruto = e.read(4096)
+        except OSError:
+            bruto = b""
+        finally:
+            e.close()
+        codigo = _status_do_corpo(bruto)
+        raise ErroVoz(_mensagem_http(e.code, codigo), codigo or "http_%d" % e.code)
+    except (socket.timeout, TimeoutError):
+        raise ErroVoz("A ElevenLabs demorou demais para listar as vozes.", "tempo_esgotado")
+    except urllib.error.URLError as e:
+        if isinstance(e.reason, (socket.timeout, TimeoutError)):
+            raise ErroVoz("A ElevenLabs demorou demais para listar as vozes.", "tempo_esgotado")
+        raise ErroVoz("Não consegui falar com a ElevenLabs (rede).", "rede")
+    except (http.client.HTTPException, OSError):
+        raise ErroVoz("Não consegui falar com a ElevenLabs (rede).", "rede")
+    except (ValueError, UnicodeDecodeError):
+        raise ErroVoz("A ElevenLabs devolveu uma lista de vozes ilegível.", "resposta_invalida")
+    itens = dados.get("voices") if isinstance(dados, dict) else None
+    if not isinstance(itens, list):
+        raise ErroVoz("A ElevenLabs devolveu uma lista de vozes ilegível.", "resposta_invalida")
+    vozes = [{"voice_id": i["voice_id"], "nome": str(i.get("name") or i["voice_id"])[:80],
+              "categoria": str(i.get("category") or "")[:30]}
+             for i in itens if isinstance(i, dict) and isinstance(i.get("voice_id"), str)
+             and FORMATO_ID.match(i["voice_id"])]
+    return sorted(vozes, key=lambda v: v["nome"].lower())
 
 
 def achar_ffmpeg():

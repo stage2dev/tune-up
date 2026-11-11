@@ -4,6 +4,7 @@ import json
 import shutil
 import subprocess
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
@@ -24,11 +25,27 @@ class ElevenLabsFalsa:
         self.pedidos = []
         self.fila = []
         self.padrao = padrao
+        self.pedidos_get = []
+        self.atraso_get = 0
+        self.vozes = (200, {"voices": []})  # resposta do GET /v1/voices
         falsa = self
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *_):
                 pass
+
+            def do_GET(self):
+                falsa.pedidos_get.append({"caminho": self.path, "cabecalhos": {k.lower(): v for k, v in self.headers.items()}})
+                time.sleep(falsa.atraso_get)
+                codigo, corpo = falsa.vozes
+                corpo = json.dumps(corpo).encode("utf-8")
+                try:
+                    self.send_response(codigo)
+                    self.send_header("Content-Length", str(len(corpo)))
+                    self.end_headers()
+                    self.wfile.write(corpo)
+                except OSError:
+                    pass  # o cliente desistiu (tempo esgotado)
 
             def do_POST(self):
                 tamanho = int(self.headers.get("Content-Length") or 0)

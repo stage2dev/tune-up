@@ -6,7 +6,10 @@ data, texto) para AQUELE voice_id, e todo áudio dela começa com AVISO_IA falad
 Ordem de um envio: texto (limite por áudio) -> prontidão -> portão.pode_enviar (sem gastar) -> reserva de caracteres
 do dia em BEGIN IMMEDIATE (teto antes de chamar) -> ElevenLabs -> ffmpeg (temporários 0600 na pasta de dados, sempre
 apagados) -> portão (origem audio_ia ou teste_audio; teste_audio só para o número do dono)."""
+import hashlib
 import re
+import threading
+import time
 
 from servico import banco, chave, portao, telefone, voz_cliente
 
@@ -16,9 +19,26 @@ MODELO_PADRAO = "eleven_multilingual_v2"
 FORMATO_PADRAO = "mp3_44100_128"
 TETO_PADRAO = 5000      # caracteres por dia (config voz_teto_caracteres_dia)
 TETO_MAX = 1000000
+CACHE_VOZES_S = 600   # lista de vozes da conta fica 10 min em memória (por chave), só se a ElevenLabs respondeu
 LIMITE_TEXTO = 600      # caracteres por áudio (sem contar o aviso)
 TEXTO_TESTE = "Olá! Este é um teste da voz do seu atendimento."
-ROTA = re.compile(r"^/voz(?:/(chave|chave/apagar|config|consentimento|teste))?$")
+ROTA = re.compile(r"^/voz(?:/(vozes|chave|chave/apagar|config|consentimento|teste))?$")
+
+
+_cache_trava = threading.Lock()
+
+
+def vozes(app, segredo):
+    """Lista de vozes da conta: do cache (10 min, mesma chave) ou de UMA consulta. ErroVoz sobe."""
+    marca = hashlib.sha256(segredo.encode("utf-8")).hexdigest()
+    with _cache_trava:
+        cache = getattr(app, "cache_vozes", None)
+        if cache and cache[0] == marca and time.monotonic() - cache[1] < CACHE_VOZES_S:
+            return list(cache[2])
+    lista = voz_cliente.listar_vozes(getattr(app, "elevenlabs_url", voz_cliente.URL_PADRAO), segredo)
+    with _cache_trava:
+        app.cache_vozes = (marca, time.monotonic(), list(lista))
+    return lista
 
 
 def _dia():
@@ -96,6 +116,7 @@ def estado(app, con):
             "ffmpeg": voz_cliente.achar_ffmpeg() is not None, "voz_id": cfg["voz_id"], "clonada": cfg["clonada"],
             "aviso_ia": AVISO_IA if cfg["clonada"] else None, "modelo": cfg["modelo"], "formato": cfg["formato"],
             "consentimento": None if cons is None else {"nome": cons["nome"], "data": cons["data"]},
+            "dono_configurado": bool(banco.ler_config(con, "numero_dono")),
             "teto_caracteres_dia": teto(con), "usados_hoje": usados_hoje(con), "limite_texto": LIMITE_TEXTO}
 
 
@@ -178,8 +199,16 @@ def _salvar_config(con, corpo):
         return 400, {"erro": "Teto diário inválido (de 0 a %d caracteres)." % TETO_MAX}
     if not isinstance(corpo.get("clonada", False), bool):
         return 400, {"erro": "Marque se a voz é clonada (sim ou não)."}
+    dono = _texto(corpo.get("numero_dono"), 40)   # opcional: vazio mantém o que já está gravado
+    if dono:
+        try:
+            dono = telefone.normalizar(dono)
+        except telefone.TelefoneInvalido:
+            return 400, {"erro": "Número do dono inválido (DDD + número, só dígitos)."}
     con.execute("BEGIN IMMEDIATE")
     try:
+        if dono:
+            banco.gravar_config(con, "numero_dono", dono)
         banco.gravar_config(con, "voz_id", voz_id)
         banco.gravar_config(con, "voz_clonada", "1" if corpo.get("clonada") else "0")
         banco.gravar_config(con, "voz_modelo", modelo)
@@ -191,7 +220,7 @@ def _salvar_config(con, corpo):
             con.execute("ROLLBACK")
         raise
     return 200, {"voz_id": voz_id, "clonada": bool(corpo.get("clonada")), "modelo": modelo, "formato": formato,
-                 "teto_caracteres_dia": int(teto_dia)}
+                 "teto_caracteres_dia": int(teto_dia), "dono_configurado": bool(banco.ler_config(con, "numero_dono"))}
 
 
 def _gravar_consentimento(con, corpo):
@@ -219,7 +248,17 @@ def executar(app, con, metodo, caminho, query, corpo):
         return None
     sub = achou.group(1)
     if metodo == "GET":
-        return (200, estado(app, con)) if sub is None else None
+        if sub is None:
+            return 200, estado(app, con)
+        if sub != "vozes":
+            return None
+        segredo = chave.ler(app.pasta_dados, ARQUIVO_CHAVE)
+        if not segredo:
+            return 409, {"erro": "Cole a chave da ElevenLabs primeiro."}
+        try:
+            return 200, {"vozes": vozes(app, segredo)}
+        except voz_cliente.ErroVoz as e:
+            return 502, {"erro": e.mensagem, "codigo": e.codigo}
     if metodo != "POST" or corpo is None or sub is None:
         return None
     if sub == "chave":

@@ -50,6 +50,10 @@ _spec = importlib.util.spec_from_file_location("tune_up_vendas_places", os.path.
     os.path.abspath(__file__)), "abas", "places.py"))
 places = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(places)
+_spec = importlib.util.spec_from_file_location("tune_up_vendas_voz", os.path.join(os.path.dirname(
+    os.path.abspath(__file__)), "abas", "voz.py"))
+voz = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(voz)
 pasta = cliente.pasta
 VIVO_S = cliente.VIVO_S
 porta_do_painel = cliente.porta_do_painel
@@ -70,7 +74,7 @@ INFO = {
     "acoes": ["modo_webhook", "conectar_instancia", "abrir_conversa", "enviar_mensagem", "assumir_conversa",
               "devolver_ia", "liberar_saida", "reenviar_envio", "descartar_envio"] + list(conversas.ACOES_RASCUNHO)
              + ["ia_automatico_conversa", "ia_rascunho_conversa"] + list(ia.ACOES) + list(leads.ACOES) + list(disparos.ACOES)
-             + list(candidatos.ACOES) + list(buscador.ACOES) + list(places.ACOES),
+             + list(candidatos.ACOES) + list(buscador.ACOES) + list(places.ACOES) + list(voz.ACOES),
     "negar": [
         "Bash(*127.0.0.1:%d*)" % PORTA,
         "Bash(*localhost:%d*)" % PORTA,
@@ -138,6 +142,8 @@ def agir(ctx, acao, dados, base=None):
         return buscador.agir(ctx, cliente, acao, dados, base)
     if acao in places.ACOES:
         return places.agir(ctx, cliente, acao, dados, base)
+    if acao in voz.ACOES:
+        return voz.agir(ctx, cliente, acao, dados, base)
     if acao != "modo_webhook":
         return {"ok": False, "mensagem": "Ação desconhecida."}
     modo = (dados or {}).get("modo")
@@ -200,7 +206,10 @@ def montar(ctx, base=None):
         aba_disparos = disparos.blocos(ctx, *disparos.ler(ctx, cliente, base))
         aba_buscador = (buscador.blocos(ctx, *buscador.ler(ctx, cliente, base), FORM_IMPORTAR)
                         + places.blocos(*places.ler(ctx, cliente, base), buscador.endereco))
+        aba_voz = voz.blocos(*voz.ler(ctx, cliente, base))
     else:
+        aba_voz = [{"tipo": "texto", "titulo": "Serviço parado", "texto": "Ligue o serviço (veja a aba Conexão) "
+                                                                          "para configurar a voz."}]
         aba = [{"tipo": "texto", "titulo": "Serviço parado", "texto": "Ligue o serviço (veja a aba Conexão) para "
                                                                       "ver e responder as conversas."}]
         aba_ia = [{"tipo": "texto", "titulo": "Serviço parado", "texto": "Ligue o serviço (veja a aba Conexão) para "
@@ -216,4 +225,5 @@ def montar(ctx, base=None):
                                        {"id": "ia", "titulo": "IA", "blocos": aba_ia},
                                        {"id": "leads", "titulo": "Leads", "blocos": aba_leads},
                                        {"id": "disparos", "titulo": "Disparos", "blocos": aba_disparos},
-                                       {"id": "buscador", "titulo": "Buscador", "blocos": aba_buscador}]}
+                                       {"id": "buscador", "titulo": "Buscador", "blocos": aba_buscador},
+                                       {"id": "voz", "titulo": "Voz", "blocos": aba_voz}]}
