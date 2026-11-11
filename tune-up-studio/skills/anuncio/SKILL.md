@@ -21,7 +21,7 @@ The prompt gives: the working folder (`{trabalho}`, your current folder), `Plata
 
 ## 2. Brand (read-only, as the `marca-ler` skill)
 
-Same as the `post` skill: read `<root>/.tune-up/estudio/marca/marca.json` (root = the working folder path cut right before `/.tune-up/`), use only `campos` colors and fonts, run `python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/fontes.py --trabalho W` once and paste every printed line at the top of each piece's `<style>`. An `.svg` logo in `<root>/.tune-up/estudio/marca/assets/`: Read it and Write the same text to `a<N>/fonte/assets/logo.svg`; any other logo type: leave it out and say so in `resultado.md`. Never write in the brand folder.
+Same as the `post` skill: read `<root>/.tune-up/estudio/marca/marca.json` (root = the working folder path cut right before `/.tune-up/`), use only `campos` colors and fonts, run `python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/fontes.py --trabalho W` once and paste every printed line at the top of each piece's `<style>`. Meta only (a Google piece carries no logo): an `.svg` logo in `<root>/.tune-up/estudio/marca/assets/`: Read it and Write the same text to `a<N>/fonte/assets/logo.svg`; any other logo type: leave it out and say so in `resultado.md`. Never write in the brand folder.
 
 ## 3. Texts
 
@@ -42,20 +42,21 @@ Then run `AN --exportar W --plataforma P`. Exit 0 = `export/` has the sheet. Exi
 
 For each piece of the plan write `a<N>/fonte/index.html`, sized `largura` x `altura` of that piece, with the skeleton, rules and forbidden list of the `post` skill (`#root` and `data-width`/`data-height` = the piece size; CSS only; colors only through `--` variables; fonts only `Brand Heading` / `Brand Body`; no `<script>`, no URL, no `data-layout-*`, no `gsap`, no image other than `assets/logo.svg`).
 
-- `a1` is the master: one headline from `titulos`, at most one short supporting line and the call to action from the briefing. Design it first.
-- Each adaptation keeps the master's message, colors and hierarchy, re-laid for its ratio (wide: side by side; square: stacked; tall: stacked with more room). Keep all text at least 80 px (wide pieces: 48 px) from the edges; tall pieces keep the top 14% and bottom 20% free of text.
+- **Google** (`P` = `google`): the sheet makes a Search campaign, and Google rejects a Search image asset that carries text, a logo or a graphic overlay. So a Google piece has **no text at all, no logo, no `assets/` folder and no `<img>`**: it is a clean picture of the product or scene of the briefing, drawn as one inline `<svg>` of shapes (`path`, `circle`, `rect`, gradients; no `<text>`, no `<image>`) in the brand colors only, on a brand-color background, one clear subject filling the middle. A frame of plain CSS boxes counts as empty for the check: the subject must be the `<svg>`. `a1` is the master; the adaptation draws the same subject re-laid for its ratio. The headline goes only in `titulos`.
+- **Meta** (`P` = `meta`): `a1` is the master: one headline from `titulos`, at most one short supporting line and the call to action from the briefing. Design it first. The adaptation keeps the master's message, colors and hierarchy, re-laid for its ratio (stacked, with more room). Keep all text at least 80 px from the edges.
+- **The 9:16 piece** (Stories/Reels): the app covers its top 14% and bottom 20%. Put every text inside one `<div id="safezone">`, styled by one rule that contains exactly `#safezone{position:absolute;top:14%;bottom:20%;left:80px;right:80px;overflow:hidden}`; nothing else names `safezone`, and no `position:fixed` or `!important` anywhere. Colors and shapes may fill the whole frame.
 - No fake button, no price or promise that is not in the briefing.
 
 Per piece (`HF` = `${CLAUDE_PLUGIN_ROOT}/node/node_modules/.bin/hyperframes`, absolute path; one command each, no `cd`, `;`, `>` or `|`):
 
 1. `HF snapshot a<N>/fonte --at 0 --no-end -o a<N>/snap` -> `a<N>/snap/frame-00-at-0s.png`.
 2. `HF check a<N>/fonte --json --strict`. Do not copy its output anywhere.
-3. `python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/qa_imagem.py --source a<N>/fonte --png W/a<N>/snap/frame-00-at-0s.png --width <largura> --height <altura> --out a<N>/qa.json`. Exit 0 = green. Never use `--formato` here.
+3. `python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/qa_imagem.py --source a<N>/fonte --png W/a<N>/snap/frame-00-at-0s.png --width <largura> --height <altura> --out a<N>/qa.json`. Exit 0 = green. Never use `--formato` here. The "no text" (Google) and "safe zone" (9:16) rules are checked by `AN --final`, not here.
 
 Fix rounds: if the QA is not green, read `a<N>/qa.json`, edit `a<N>/fonte/index.html` and redo steps 1 to 3. At most 2 fix rounds per piece. Never silence a check; never write inside `.hyperframes/`. A `snapshot` check with `Fonts failed` means the brand font is not on this machine: do not swap it and do not spend fix rounds on it.
 
 ## 5. Finish
 
 1. `AN --final W --plataforma P --out final.json`. It re-checks every piece at its own size, the texts and the sheet, and writes the final line in `linha`.
-2. Write `resultado.md`: platform, one line per piece (`a<N>/snap/frame-00-at-0s.png`, size, green or `precisa do seu olho` with the failed checks), every title and description, the sheet path (`export/google-ads-editor.csv` or `export/meta-experimental.csv`), and the sentence `Nada foi publicado; tudo está pausado.` For Meta add: `Planilha da Meta EXPERIMENTAL: o formato de importação não foi conferido numa fonte oficial.` Also anything left out (logo, missing brand field) and each generic brand font reported by `fontes.py`.
+2. Write `resultado.md`: platform, one line per piece (`a<N>/snap/frame-00-at-0s.png`, size, green or `precisa do seu olho` with the failed checks), every title and description, the sheet path (`export/google-ads-editor.csv` or `export/meta-experimental.csv`), and the sentence `Nada foi publicado; tudo está pausado.` Then where each image goes: Google: `As imagens não vão na planilha: depois de importar, adicione-as como recursos de imagem da campanha de Pesquisa (a 1:1 é a obrigatória).` Meta: `A planilha usa só a peça 4:5 (a1). A peça 9:16 (a2) sobe à mão no posicionamento Stories e Reels.` and `Planilha da Meta EXPERIMENTAL: o formato de importação não foi conferido numa fonte oficial.` Also anything left out (logo, missing brand field) and each generic brand font reported by `fontes.py`.
 3. Answer with the `linha` of `final.json`, exactly. Do not list or re-check files after that.

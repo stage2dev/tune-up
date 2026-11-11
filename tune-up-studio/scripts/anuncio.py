@@ -14,6 +14,7 @@ is Paused. Nothing is published and no ad API is called. Python 3.9, standard li
 """
 import argparse
 import csv
+import html.parser
 import io
 import json
 import os
@@ -45,6 +46,14 @@ META_COLS = ["Campaign Name", "Campaign Status", "Ad Set Name", "Ad Set Run Stat
 STATUS_COLS = {"google": ("Campaign Status", "Ad Group Status", "Status"),
                "meta": ("Campaign Status", "Ad Set Run Status", "Ad Status")}
 PAUSADO = {"google": "Paused", "meta": "PAUSED"}
+MAX_PROBLEMAS = 10
+# Google Search image assets are rejected with overlaid text, logo or graphics: a Google piece is a clean picture.
+# Inline <svg> shapes are the picture (HyperFrames counts a frame of plain boxes as empty); its <text> is text.
+FIGURAS = ("img", "picture", "canvas", "object", "embed", "iframe", "video", "input", "image")
+RE_CSS_TEXTO = re.compile(r"content\s*:\s*(?:\"[^\"]|'[^']|attr\(|counter)", re.I)
+# A 9:16 piece keeps every text inside #safezone, which must be exactly this box (formatos.json, 14% and 20%).
+RE_SAFEZONE = re.compile(r"#safezone\s*\{([^}]*)\}")
+SAFEZONE = {"position:absolute", "top:14%", "bottom:20%", "overflow:hidden"}
 
 
 def _entradas(path=None):
@@ -188,6 +197,62 @@ def ler_planilha(texto, plataforma, path=None):
     return problemas
 
 
+class _Texto(html.parser.HTMLParser):
+    """Visible text of a piece (and whether it sits inside #safezone) and its picture tags."""
+    VAZIOS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.pilha, self.textos, self.figuras = [], [], []
+
+    def handle_starttag(self, tag, attrs):
+        if tag in FIGURAS:
+            self.figuras.append(tag)
+        if tag not in self.VAZIOS:
+            self.pilha.append((tag, dict(attrs).get("id")))
+
+    def handle_endtag(self, tag):
+        for i in range(len(self.pilha) - 1, -1, -1):
+            if self.pilha[i][0] == tag:
+                del self.pilha[i:]
+                break
+
+    def handle_data(self, data):
+        if data.strip() and not any(t in ("style", "head", "title", "script") for t, _ in self.pilha):
+            self.textos.append((data.strip()[:40], any(i == "safezone" for _, i in self.pilha)))
+
+
+def checar_peca(fonte, plataforma, largura, altura):
+    """Problems the browser check cannot see (empty = ok): a Google piece has no text, logo, assets/ or <img>;
+    a 9:16 piece keeps every text inside #safezone (top 14% and bottom 20% free, clipped)."""
+    if plataforma != "google" and altura * 9 != largura * 16:
+        return []
+    caminho = os.path.join(fonte, "index.html")
+    if os.path.islink(caminho) or not os.path.isfile(caminho) or os.path.getsize(caminho) > 1024 * 1024:
+        return ["missing index.html"]
+    texto = qa_imagem.read_text(caminho)
+    p = _Texto()
+    try:
+        p.feed(texto)
+        p.close()
+    except Exception as exc:  # noqa: B902 - the 3.9 parser can raise on a broken declaration
+        return ["cannot read index.html: %s" % type(exc).__name__]
+    css = ["CSS content adds text"] if RE_CSS_TEXTO.search(texto) else []
+    if plataforma == "google":
+        logo = ["assets/ folder (no logo on a Google image)"] if os.path.lexists(os.path.join(fonte, "assets")) \
+            else []
+        return (["text on the image: %s" % t for t, _ in p.textos] + css + logo
+                + ["<%s> on the image (no logo or picture)" % t for t in p.figuras])[:MAX_PROBLEMAS]
+    problemas = ["text outside #safezone: %s" % t for t, dentro in p.textos if not dentro] + css
+    regras = RE_SAFEZONE.findall(texto)
+    decl = {d for d in re.sub(r"\s+", "", regras[0]).lower().split(";") if d} if len(regras) == 1 else set()
+    if not SAFEZONE <= decl or len(re.findall(r"safezone", texto, re.I)) != 2:
+        problemas.append("#safezone must be one rule with %s, and one element" % ";".join(sorted(SAFEZONE)))
+    if re.search(r"position\s*:\s*fixed|!\s*important", texto, re.I):
+        problemas.append("position:fixed or !important can move text out of #safezone")
+    return problemas[:MAX_PROBLEMAS]
+
+
 def ler_textos(pasta):
     """(object, problem) of <pasta>/textos.json: a small plain file, never a link."""
     caminho = os.path.join(pasta, "textos.json")
@@ -198,7 +263,7 @@ def ler_textos(pasta):
     try:
         with open(caminho, encoding="utf-8") as f:
             return json.load(f), None
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, RecursionError) as exc:
         return None, "cannot read textos.json: %s" % exc
 
 
@@ -239,6 +304,10 @@ def final(pasta, plataforma):
         base = os.path.join(pasta, p["id"])
         rep = qa_imagem.run(os.path.join(base, "fonte"), os.path.join(base, "snap", qa_imagem.STILL), None,
                             p["largura"], p["altura"], snapshot=True)
+        layout = checar_peca(os.path.join(base, "fonte"), plataforma, p["largura"], p["altura"])
+        rep["checks"].append(qa_imagem.result("sem_texto" if plataforma == "google" else "zona_segura",
+                                              not layout, layout or ["ok"]))
+        rep["ok"] = all(c["ok"] for c in rep["checks"])
         pecas.append({"peca": p["id"], "tamanho": "%dx%d" % (p["largura"], p["altura"]), "ok": rep["ok"],
                       "failed": [c["name"] for c in rep["checks"] if not c["ok"]], "checks": rep["checks"]})
     textos, erro = ler_textos(pasta)

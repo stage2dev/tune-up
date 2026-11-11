@@ -204,7 +204,7 @@ def load_json(path):
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, RecursionError) as exc:
         return None, "cannot read %s: %s" % (path, exc)
     if not isinstance(data, dict):
         return None, "%s is not a JSON object" % path

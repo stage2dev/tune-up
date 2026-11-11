@@ -32,7 +32,8 @@ MOTIVOS = {"png": "falta a imagem", "png_size": "imagem no tamanho errado", "png
            "engine_hyperframes": "o vídeo não veio do jeito pedido",
            "layout_allow_count": "texto pode sair do quadro", "no_gsap": "usa animação proibida",
            "network_lint": "busca coisas na internet", "no_script": "o desenho tem código",
-           "fonte": "arquivos do desenho com problema", "atalho": "pasta da peça com atalho",
+           "fonte": "arquivos do desenho com problema", "sem_texto": "imagem do Google com texto ou logo",
+           "zona_segura": "texto fora da zona segura do 9:16", "atalho": "pasta da peça com atalho",
            "conferencia_da_sessao": "a conferência do Claude não passou", "quadros": "número de quadros errado",
            "legenda": "falta a legenda", "formato": "formato desconhecido", "video": "falta o vídeo",
            "ffprobe": "falta o ffprobe para conferir o vídeo", "probe": "o vídeo não abre",
@@ -130,7 +131,7 @@ def pecas(ctx):
         if p and e.get("estado") != "rodando":
             try:
                 item["selo"] = selo.calcular(p, e["acao"], e.get("params") or {})
-            except (OSError, ValueError, MemoryError) as erro:  # pasta sumiu ou mudou no meio: vermelho, com o motivo
+            except Exception as erro:  # noqa: B902 - pasta sumiu ou mudou, JSON fundo: só esta peça fica vermelha
                 item["selo"] = {"ok": False, "linha": "PRECISA DO SEU OLHO: não consegui conferir (%s)"
                                 % type(erro).__name__, "arquivos": [], "falhas": ["conferir"]}
         out.append(item)

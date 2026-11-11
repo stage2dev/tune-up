@@ -28,17 +28,26 @@ URL = "https://exemplo.test/pao"
 TEXTOS = {"plataforma": "google", "url": URL, "titulos": ["Pão de fermentação natural", "Fornadas pequenas",
                                                           "Reserve pelo WhatsApp"],
           "descricoes": ["Pão assado de manhã cedo.", "Reserve o pão de amanhã pelo WhatsApp."], "caminhos": ["pao"]}
+LIMPA = "<html><body><div class='t'></div><style>.t{color:#123456}</style></body></html>\n"  # Google: sem texto
+SEGURA = ("<html><body><div id='safezone'>Oferta</div><style>#safezone{position:absolute;top:14%;bottom:20%;"
+          "left:0;right:0;overflow:hidden}</style></body></html>\n")  # 9:16: texto só na zona segura
+
+
+def desenho(plataforma, peca):
+    return LIMPA if plataforma == "google" else SEGURA if peca["altura"] * 9 == peca["largura"] * 16 else HTML
 
 
 class TesteAnuncio(BasePecas):
-    def anuncio(self, tid=TID, textos=None, plataforma="google", url=URL, **kw):
+    def anuncio(self, tid=TID, textos=None, plataforma="google", url=URL, kw_html=None, **kw):
+        kw_html = kw_html or {}
         p = self.execucao(tid, acao="estudio.anuncio", plataforma=plataforma, url=url, briefing="b", **kw)
         antes = time.time() - 60
         for peca in anuncio.plano(plataforma)["pecas"]:
-            escrever(os.path.join(p, peca["id"], "fonte", "index.html"), HTML)
+            escrever(os.path.join(p, peca["id"], "fonte", "index.html"), kw_html.get(peca["id"], desenho(plataforma, peca)))
             os.utime(os.path.join(p, peca["id"], "fonte", "index.html"), (antes, antes))
             png(os.path.join(p, peca["id"], "snap", "frame-00-at-0s.png"), peca["largura"], peca["altura"])
-        escrever(os.path.join(p, "textos.json"), json.dumps(textos or TEXTOS, ensure_ascii=False))
+        escrever(os.path.join(p, "textos.json"), textos if isinstance(textos, str) else
+                 json.dumps(textos or TEXTOS, ensure_ascii=False))
         with contextlib.redirect_stdout(io.StringIO()):
             anuncio.exportar(p, plataforma)
         escrever(os.path.join(p, "final.json"), json.dumps({"ok": True, "linha": "PRONTO: 2 de 2 pecas verdes"}))
@@ -114,6 +123,21 @@ class TesteAnuncio(BasePecas):
             m = json.load(f)
         self.assertEqual((m["plataforma"], m["experimental"]), ("meta-ads", True))
         self.assertEqual(m["export"][0]["nome"], "meta-experimental.csv")
+
+    def test_google_com_texto_e_9x16_fora_da_zona_segura_ficam_vermelhos(self):
+        self.anuncio(kw_html={"a2": HTML})  # texto sobre a imagem: a Pesquisa do Google reprova
+        self.assertIn("imagem do Google com texto ou logo", self.abas()["fila"])
+        self.lista.clear()
+        meta = {"plataforma": "meta", "url": URL, "titulos": ["Pão"], "textos_principais": ["Reserve já."]}
+        self.anuncio("0123456789ab", textos=meta, plataforma="meta")
+        self.assertIn("Pronto para aprovar", self.abas()["fila"])
+        self.lista.clear()
+        self.anuncio("bbbbbbbbbbbb", textos=meta, plataforma="meta", kw_html={"a2": HTML})
+        self.assertIn("texto fora da zona segura do 9:16", self.abas()["fila"])
+
+    def test_textos_json_fundo_demais_deixa_a_peca_vermelha_e_a_tela_de_pe(self):
+        self.anuncio(textos="[" * 5000 + "]" * 5000)
+        self.assertIn("títulos ou descrições fora dos limites", self.abas()["fila"])
 
 
 if __name__ == "__main__":

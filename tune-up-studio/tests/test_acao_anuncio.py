@@ -32,9 +32,15 @@ class AdAction(unittest.TestCase):
 
     def test_same_positive_list_env_and_skills_as_the_fixture(self):
         bash = [r for r in self.raw["negar"] if isinstance(r, dict)]
-        self.assertEqual(bash, load(RULES)["negar"])
+        # the studio list without ffmpeg/ffprobe: nothing may stretch a piece after its snapshot
+        comum = [r for r in load(RULES)["negar"] if not r["entrada"].startswith(("^ffmpeg", "^ffprobe"))]
+        self.assertEqual(bash[1:], comum[1:])
+        self.assertEqual(bash[0]["entrada"], "^(?!python3(?: |\\Z)|/)")
+        for cmd in ("ffmpeg -i a1/snap/frame-00-at-0s.png -vf scale=1200:1200 a2/snap/x.png", "ffprobe a1/x.png"):
+            self.assertRegex(cmd, bash[0]["entrada"])
+        self.assertNotRegex("python3 -I /x/tune-up-studio/scripts/anuncio.py --plano google", bash[0]["entrada"])
         fixture = load(FIXTURE)["acoes"][0]
-        self.assertEqual(bash, fixture["negar"])
+        self.assertEqual(load(RULES)["negar"], fixture["negar"])
         self.assertEqual(self.raw["env"], fixture["env"])
         self.assertEqual(self.raw["permitir"], fixture["permitir"])
         self.assertIn("Skill(hyperframes)", self.raw["negar"])

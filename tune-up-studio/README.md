@@ -197,7 +197,14 @@ landing URL (the panel refuses anything that is not `https://` without spaces).
 The session makes one master image and the adaptations the platform needs
 (Google: 1.91:1 1200x628 and 1:1 1200x1200 from `google-ads-pmax-imagem`;
 Meta: 4:5 1440x1800 and 9:16 1080x1920), each rendered and checked by
-`qa_imagem.py` at its own size; writes `textos.json`; and runs
+`qa_imagem.py` at its own size. Google pieces carry no text, logo or `<img>`
+(the subject is an inline SVG drawing): the sheet makes a Search campaign, and Google rejects Search image assets
+with overlaid text or logos; the owner adds the PNGs as image assets after the
+import (they are not in the sheet). On the 9:16 Meta piece every text sits in
+`#safezone` (top 14% and bottom 20% free, clipped); it is not in the sheet and
+goes up by hand on Stories/Reels. `anuncio.py --final` and the server seal
+check both rules statically from `index.html`. The session writes
+`textos.json` and runs
 `anuncio.py --exportar`, which checks counts, lengths, required fields and the
 URL, and only then writes the sheet. The script never judges claims: the skill
 forbids promises of results and prices that are not in the briefing. Nothing
@@ -205,7 +212,7 @@ is published, no ad API is called, nothing is spent.
 
 - `export/google-ads-editor.csv`: one campaign row (Search), one ad group row
   and one responsive search ad row, all `Paused`; names come from the work id.
-  No budget column is filled: set it in the Editor.
+  No budget column and no keyword is filled: set them in the Editor.
 - `export/meta-experimental.csv`: EXPERIMENTAL. Column names and status values
   were not checked against an official Meta source; every status is `PAUSED`
   and the image column names the master PNG. The 5-variation cap is ours, not
@@ -231,13 +238,18 @@ once approved, a download link: the media route serves `.csv` only from
 `Content-Disposition: attachment`.
 
 Measured by `painel/tests_reais/prova_anuncio_bg.py` (same harness as the
-post), model **opus**, Google, one run, one machine (macOS):
+post), model **opus**, one machine (macOS). The first row is the Google run
+before clean images were required (its pieces had text over them):
 
 | piece | wall clock | turns | tokens (input / cache creation / cache read / output) | QA final line | fix rounds |
 | --- | --- | --- | --- | --- | --- |
 | ad, Google, 2 images + 15 titles + 4 descriptions | 369 s (idle from 189 s; the harness waits for the transcript to go quiet) | 10 | 18 / 86,535 / 662,586 / 9,472 (758,611) | `PRONTO: 2 de 2 pecas verdes, textos e planilha ok` | 1 (1:1 piece) |
+| ad, Google, clean images (inline SVG, no text) | 157 s | 11 | 21 / 55,336 / 731,760 / 10,047 (797,164) | `PRONTO: 2 de 2 pecas verdes, textos e planilha ok` | not counted |
+| ad, Meta, 4:5 + 9:16 with `#safezone` | 351 s | 12 | 22 / 66,984 / 867,572 / 10,219 (944,797) | `PRONTO: 2 de 2 pecas verdes, textos e planilha ok` | not counted |
 
-The server seal said "Pronto para aprovar" for that run. Without a session,
+The server seal said "Pronto para aprovar" for each of these runs. A Google
+run whose pieces were plain CSS boxes failed HyperFrames' `first_frame_empty`
+(a frame with no text, image or SVG counts as empty): hence the inline SVG. Without a session,
 the same steps by hand: both pieces green, sheet written, approved over HTTP,
 CSV downloaded as an attachment (805 bytes) and 404 from the work folder.
 

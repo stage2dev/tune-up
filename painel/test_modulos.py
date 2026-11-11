@@ -234,10 +234,12 @@ class TesteAcoesDeModulo(unittest.TestCase):
             threading.Event().wait(0.01)
         self.assertEqual(modulos.agir(self.cfg, "loja", "salvar", {})[0], 200)  # ação não espera montar
         antes = self.mod.MONTAR[0]
-        cod, d = modulos.montar(self.cfg, "loja", usar_cache=False)  # montar rodando: espera e reusa
+        cod, d = modulos.montar(self.cfg, "loja", usar_cache=False)  # a montagem de antes da ação está velha
         self.assertEqual(cod, 200, d)
-        self.assertEqual(self.mod.MONTAR[0], antes)  # não montou de novo
-        self.assertEqual(d["abas"][0]["blocos"][0]["texto"], str(antes))
+        self.assertEqual(self.mod.MONTAR[0], antes + 1)  # montou de novo, não reusou a tela de antes
+        self.assertEqual(d["abas"][0]["blocos"][0]["texto"], str(antes + 1))
+        t.join(5)
+        self.assertEqual(modulos.montar(self.cfg, "loja")[1]["abas"][0]["blocos"][0]["texto"], str(antes + 1))
 
     def test_cache_fresco_e_acao_invalida_cache(self):
         self.assertEqual(modulos.montar(self.cfg, "loja")[0], 200)

@@ -202,7 +202,7 @@ def conferir(dado, inf):
     return saida
 
 
-def _rodar_montar(mod, ctx, mid, tempo):
+def _rodar_montar(mod, ctx, mid, tempo, chave=None):
     caixa = {}
 
     def alvo():
@@ -211,12 +211,12 @@ def _rodar_montar(mod, ctx, mid, tempo):
         except BaseException as e:  # noqa: B902 - um módulo quebrado não derruba o painel
             caixa["erro"] = e
 
-    with _lock:  # duas montagens juntas: a segunda espera a primeira e usa o resultado dela
+    with _lock:  # duas montagens juntas da mesma geração e pulso: a segunda espera a primeira e reusa
         t = _rodando.get(mid)
-        dono = t is None or not t.is_alive()
+        dono = t is None or not t.is_alive() or t.chave != chave
         if dono:
             t = _rodando[mid] = threading.Thread(target=alvo, name="modulo-%s" % mid, daemon=True)
-            t.caixa = caixa
+            t.caixa, t.chave = caixa, chave
             t.start()
     t.join(tempo)
     if t.is_alive():
@@ -245,7 +245,7 @@ def montar(cfg, mid, usar_cache=True, tempo=TEMPO_LIMITE, pulso=None):
             return item[1], item[2]
     try:
         mod = carregar(cfg, mid)
-        saida = conferir(_rodar_montar(mod, contexto(cfg), mid, tempo), info(mod, mid))
+        saida = conferir(_rodar_montar(mod, contexto(cfg), mid, tempo, (geracao, pulso)), info(mod, mid))
         codigo, corpo = 200, saida
     except ErroModulo as e:
         codigo, corpo = e.codigo, e.corpo()

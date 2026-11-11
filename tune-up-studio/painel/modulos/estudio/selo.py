@@ -219,6 +219,11 @@ def _anuncio(qi, pasta, params):
         return {"ok": False, "linha": "PRECISA DO SEU OLHO: plataforma desconhecida", "arquivos": [],
                 "export": [], "falhas": ["plataforma"]}
     arquivos = [_quadro(qi, pasta, p["id"], p["nome"], p["largura"], p["altura"]) for p in plano["pecas"]]
+    for a, p in zip(arquivos, plano["pecas"]):  # Google: imagem limpa; 9:16: texto só na zona segura
+        fonte = os.path.join(pasta, p["id"], "fonte")
+        if "atalho" not in a["falhas"] and not _fonte_ruim(fonte) and an.checar_peca(
+                fonte, plano["plataforma"], p["largura"], p["altura"]):
+            a["falhas"].append("sem_texto" if plano["plataforma"] == "google" else "zona_segura")
     extra = [] if _sessao(qi, os.path.join(pasta, "final.json"))["ok"] else ["conferencia_da_sessao"]
     t, falha = textos(pasta, params)
     planilha = "/".join(["export", plano["export"]])

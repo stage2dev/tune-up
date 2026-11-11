@@ -346,8 +346,8 @@
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "^(?!(?:ffmpeg|ffprobe|python3)(?: |\\Z)|/)",
-          "motivo": "Bash do estúdio: só ffmpeg, ffprobe, python3 com script do estúdio ou o hyperframes fixado"
+          "entrada": "^(?!python3(?: |\\Z)|/)",
+          "motivo": "Bash do anúncio: só python3 com script do estúdio ou o hyperframes fixado (sem ffmpeg: nada mexe na imagem depois do snapshot)"
         },
         {
           "ferramenta": "Bash",
@@ -360,18 +360,6 @@
           "campo": "command",
           "entrada": "^(?=/)(?!(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/node/node_modules/\\.bin/hyperframes +(?:render|check|lint|validate|inspect|snapshot|info|compositions)(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
           "motivo": "hyperframes: só render, check, lint, validate, inspect, snapshot, info e compositions, saída em {trabalho}"
-        },
-        {
-          "ferramenta": "Bash",
-          "campo": "command",
-          "entrada": "^ffmpeg(?= |\\Z)(?!(?: +(?:-protocol_whitelist +file,pipe +-i +(?:(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?)|(?!-i(?: |\\Z)|-protocol_whitelist(?: |\\Z))(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?)))* *\\Z)",
-          "motivo": "ffmpeg: cada -i precedido de -protocol_whitelist file,pipe, sem ':' nem caminho fora de {trabalho}, grafo em arquivo"
-        },
-        {
-          "ferramenta": "Bash",
-          "campo": "command",
-          "entrada": "^ffprobe(?= |\\Z)(?!(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
-          "motivo": "ffprobe: sem ':' nem caminho fora de {trabalho}"
         },
         {
           "ferramenta": "Bash",
@@ -411,7 +399,7 @@
             "google",
             "meta"
           ],
-          "ajuda": "google: planilha do Google Ads Editor. meta: planilha experimental do Gerenciador de Anúncios."
+          "ajuda": "google: planilha do Google Ads Editor (Pesquisa) e imagens limpas, sem texto, que você adiciona à mão. meta: planilha experimental do Gerenciador de Anúncios; a peça 9:16 sobe à mão."
         },
         {
           "nome": "url",

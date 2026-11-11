@@ -149,6 +149,39 @@ class Exportar(Base):
         self.assertTrue(rep["linha"].startswith("PRECISA DO SEU OLHO: 0 de 2 verdes"))
         self.assertEqual((rep["textos"], rep["planilha"]), ([], []))
 
+    def test_deep_json_is_a_problem_not_a_crash(self):
+        with open(os.path.join(self.pasta, "textos.json"), "w", encoding="utf-8") as f:
+            f.write("[" * 5000 + "]" * 5000)
+        self.assertEqual(anuncio.ler_textos(self.pasta)[0], None)
+        self.assertEqual(anuncio.qa_imagem.load_json(os.path.join(self.pasta, "textos.json"))[0], None)
+
+    def test_google_piece_is_clean_and_9x16_text_stays_in_the_safe_zone(self):
+        def html(corpo, css=""):
+            os.makedirs(self.pasta, exist_ok=True)
+            with open(os.path.join(self.pasta, "index.html"), "w", encoding="utf-8") as f:
+                f.write("<html><head><title>t</title><style>.a{color:#123}%s</style></head><body>%s</body></html>"
+                        % (css, corpo))
+        html("<div class='a'><svg viewBox='0 0 10 10'><circle cx='5' cy='5' r='4'/></svg></div>")
+        self.assertEqual(anuncio.checar_peca(self.pasta, "google", 1200, 1200), [])
+        for corpo, css in (("<p>Oferta</p>", ""), ("<img src='assets/logo.svg'>", ""), ("<div></div>", ".a::after{content:'x'}"),
+                           ("<svg><text x='1'>Pão</text></svg>", ""), ("<svg><image href='a.png'/></svg>", "")):
+            html(corpo, css)
+            self.assertTrue(anuncio.checar_peca(self.pasta, "google", 1200, 628), corpo + css)
+        html("<div></div>")
+        os.makedirs(os.path.join(self.pasta, "assets"))
+        self.assertTrue(anuncio.checar_peca(self.pasta, "google", 1200, 628))  # the logo copy lives in assets/
+        os.rmdir(os.path.join(self.pasta, "assets"))
+        zona = "#safezone{position:absolute;top:14%;bottom:20%;left:80px;right:80px;overflow:hidden}"
+        html("<div id='safezone'><h1>Oferta</h1></div>", zona)
+        self.assertEqual(anuncio.checar_peca(self.pasta, "meta", 1080, 1920), [])
+        self.assertEqual(anuncio.checar_peca(self.pasta, "meta", 1440, 1800), [])  # 4:5 is not a 9:16 piece
+        for corpo, css in (("<div id='safezone'></div><p>Fora</p>", zona), ("<div id='safezone'>x</div>", ""),
+                           ("<div id='safezone'>x</div>", zona.replace("14%", "2%")),
+                           ("<div id='safezone'>x</div>", zona + "#safezone{top:0}"),
+                           ("<div id='safezone'><p>x</p></div>", zona + "p{position:fixed}")):
+            html(corpo, css)
+            self.assertTrue(anuncio.checar_peca(self.pasta, "meta", 1080, 1920), corpo + css)
+
     def test_cli(self):
         self.textos(GOOGLE)
         out = os.path.join(self.pasta, "final.json")
