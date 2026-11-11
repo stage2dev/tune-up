@@ -1,7 +1,9 @@
 """Módulo `estudio` do painel (vem do plugin tune-up-studio; ligue com
 "modulos_de_plugins": ["tune-up-studio@<marketplace>:estudio"]).
 
-Comandos: `preparar` e, para a marca, `marca.aprovar` / `marca.editar`. A aprovação da marca é gravada
+Abas: Novo, Fila, Galeria, Aprovação (pecas.py; selo do servidor em selo.py), Marca e Ambiente (telas.py).
+Comandos: `preparar`; para a marca, `marca.aprovar` (exige o sha256 curto mostrado na tela) / `marca.editar` /
+`marca.redescobrir`; para as peças, `peca.aprovar` / `peca.recusar`. A aprovação da marca é gravada
 aqui (ctx["gravar_dono"] -> estudio-dono.json); as skills de marca só leem. `preparar`: roda scripts/preparar_estudio.py em segundo plano (npm ci
 leva mais que os 20 s de agir) e a tela mostra o <dados>/ambiente.json. O comando exige
 {"confirmar": true}: é o único passo do estúdio com rede (risco `codigo`).
@@ -13,14 +15,24 @@ import os
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))  # irmãos; o painel já põe e depois tira esta pasta
+try:
+    import pecas
+    import telas
+finally:
+    sys.path.remove(os.path.dirname(os.path.realpath(__file__)))
+
 try:
     import fcntl
 except ImportError:
     fcntl = None
 
-INFO = {"id": "estudio", "titulo": "Estúdio", "icone": "clapperboard", "acoes": ["preparar", "marca.aprovar", "marca.editar"],
-        "esquemas": {"preparar": {"confirmar": "booleano"}, "marca.aprovar": {"confirmar": "booleano"},
-                     "marca.editar": {"campo": "texto", "valor": "texto"}}}
+PECA = {"trabalho": "texto", "confirmar": "booleano"}
+INFO = {"id": "estudio", "titulo": "Estúdio", "icone": "clapperboard", "midia": ["trabalhos", "aprovados"],
+        "acoes": ["preparar", "marca.aprovar", "marca.editar", "marca.redescobrir", "peca.aprovar", "peca.recusar"],
+        "esquemas": {"preparar": {"confirmar": "booleano"}, "marca.aprovar": {"confirmar": "booleano", "sha256": "texto"},
+                     "marca.editar": {"campo": "texto", "valor": "texto"}, "marca.redescobrir": {"confirmar": "booleano"},
+                     "peca.aprovar": PECA, "peca.recusar": PECA}}
 REL_MARCA = ".tune-up/estudio/marca/marca.json"
 SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.realpath(__file__))))), "scripts", "preparar_estudio.py")
@@ -47,11 +59,20 @@ def _versao():
 def montar(ctx):
     r = _montar_ambiente(ctx)
     m = _marca(ctx)
-    if m is not None:  # o dono aprova o que vê aqui; o sha256 prende a aprovação a estes bytes
-        campos = ["%s=%s" % (k, v.get("valor")) for k, v in sorted(m[2]["campos"].items())
-                  if isinstance(v, dict) and v.get("valor") is not None]
-        r["alertas"].append({"nivel": "info", "texto": ("Marca (sha256 %s): %s" % (
-            hashlib.sha256(m[1]).hexdigest()[:12], "; ".join(campos) or "sem campos"))[:450]})
+    sha = hashlib.sha256(m[1]).hexdigest() if m else ""  # o dono aprova o que vê; o sha256 prende a estes bytes
+    falta = ctx.get("dono_faltando")
+    aprovada = m is not None and callable(falta) and not falta(["estudio.marca"])
+    lista = pecas.pecas(ctx)
+    ambiente = [{"tipo": "texto", "texto": a["texto"]} for a in r["alertas"]]
+    ambiente.append({"tipo": "formulario", "titulo": "Preparar estúdio", "acao": "preparar", "botao": "Preparar",
+                     "campos": [], "dados_fixos": {"confirmar": True},
+                     "confirmar": "Isto baixa o HyperFrames pela internet (cerca de 100 MB). Continuar?"})
+    r["abas"] = [{"id": "novo", "titulo": "Novo", "blocos": telas.aba_novo(ctx, aprovada)},
+                 {"id": "fila", "titulo": "Fila", "blocos": pecas.aba_fila(lista)},
+                 {"id": "galeria", "titulo": "Galeria", "blocos": pecas.aba_galeria(lista)},
+                 {"id": "aprovacao", "titulo": "Aprovação", "blocos": pecas.aba_aprovacao(lista)},
+                 {"id": "marca", "titulo": "Marca", "blocos": telas.aba_marca(m, sha, aprovada)},
+                 {"id": "ambiente", "titulo": "Ambiente", "blocos": ambiente}]
     return r
 
 
@@ -109,6 +130,9 @@ def _marca_aprovar(ctx, dados):
     m = _marca(ctx)
     if m is None:
         return {"feito": False, "mensagem": "Ainda não há marca descoberta. Rode a skill de marca antes."}
+    curto = dados.get("sha256")
+    if not isinstance(curto, str) or len(curto) < 12 or not hashlib.sha256(m[1]).hexdigest().startswith(curto.lower()):
+        return {"feito": False, "mensagem": "A marca mudou depois que a tela abriu. Atualize e confira de novo."}
     # dono.faltando confere o sha256 do arquivo no disparo: marca trocada depois disto perde a aprovação
     ctx["gravar_dono"]("marca", {"aprovado": True, "sha256": hashlib.sha256(m[1]).hexdigest(), "arquivo": REL_MARCA})
     return {"feito": True, "mensagem": "Marca aprovada."}
@@ -147,7 +171,28 @@ def _marca_editar(ctx, dados):
     return {"feito": True, "mensagem": "Campo %s salvo e travado. Aprove a marca de novo." % campo}
 
 
+def _marca_redescobrir(ctx, dados):
+    if dados.get("confirmar") is not True or not ctx.get("raiz"):
+        return {"feito": False, "mensagem": "Confirme que quer ler o projeto de novo."}
+    try:  # determinístico, sem rede: campos travados pelo dono ficam
+        p = subprocess.run([sys.executable, "-I", os.path.join(os.path.dirname(SCRIPT), "descobrir_marca.py"),
+                            "--projeto", ctx["raiz"]], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT, timeout=15)
+    except subprocess.TimeoutExpired:
+        return {"feito": False, "mensagem": "Ler a marca demorou demais."}
+    ctx["gravar_dono"]("marca", {"aprovado": False})
+    texto = p.stdout.decode("utf-8", "replace").strip()[:300]
+    return {"feito": p.returncode == 0, "mensagem": ("Marca lida de novo (%s). Confira e aprove." if p.returncode == 0
+                                                     else "Não consegui ler a marca: %s") % texto}
+
+
 def agir(ctx, acao, dados):
+    if acao == "peca.aprovar":
+        return pecas.aprovar(ctx, dados)
+    if acao == "peca.recusar":
+        return pecas.recusar(ctx, dados)
+    if acao == "marca.redescobrir":
+        return _marca_redescobrir(ctx, dados)
     if acao == "marca.aprovar":
         return _marca_aprovar(ctx, dados)
     if acao == "marca.editar":

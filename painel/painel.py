@@ -104,6 +104,7 @@ class App:
         self.porta = cfg.get("porta", 8787)
         self.estado = Estado(plans_dir, cfg, rodar_externos)
         self.lancador = lancador or lanc.Lancador(cfg, self.estado.dado)
+        cfg["_execucoes"] = getattr(self.lancador, "execucoes", None)  # ctx["execucoes"] dos módulos (fila do estúdio)
 
     def origens(self):
         return {"http://127.0.0.1:%d" % self.porta, "http://localhost:%d" % self.porta} \

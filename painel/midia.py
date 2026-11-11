@@ -1,6 +1,7 @@
 """Mídia de módulo: GET /api/modulos/<id>/arquivo?c=<caminho relativo>.
 
-O módulo declara INFO["midia"] = "pasta" (relativa ao <dados> do módulo). Sem declaração, 404.
+O módulo declara INFO["midia"] = "pasta" (relativa ao <dados> do módulo) ou uma lista de pastas, e então
+`c` começa pelo nome da pasta (ex.: "aprovados/x.png"). Sem declaração, 404.
 - `c` é relativo a essa pasta; nada de '..', '.', segmento que começa com ponto, barra
   invertida, byte nulo, caminho absoluto ou letra de unidade;
 - o caminho real (realpath) tem de ficar dentro da pasta real, que fica dentro de <dados>;
@@ -65,12 +66,20 @@ def _dentro(real, base):
     return real.startswith(base.rstrip(os.sep) + os.sep)
 
 
-def pasta_do_modulo(cfg, mid):
-    """Caminho real da pasta de mídia declarada pelo módulo ou ErroModulo(404)."""
+def pasta_do_modulo(cfg, mid, c=None):
+    """(caminho real da pasta de mídia, partes de `c` dentro dela) ou ErroModulo(404). INFO["midia"] é uma
+    pasta (`c` relativo a ela) ou uma lista de pastas (`c` começa pelo nome de uma delas). Partes None: `c` ruim."""
     mod = modulos.carregar(cfg, mid)
     decl = getattr(mod, "INFO", None)
     decl = decl.get("midia") if isinstance(decl, dict) else None
-    partes = _segmentos_ok(decl)
+    partes_c = _segmentos_ok(c)
+    if isinstance(decl, list):  # a primeira pasta da lista que é começo de `c` (e sobra um nome de arquivo)
+        lista = [p for p in (_segmentos_ok(d) for d in decl) if p]
+        partes = next((p for p in lista if partes_c and len(partes_c) > len(p) and partes_c[:len(p)] == p), None)
+        partes_c = partes_c[len(partes):] if partes else None
+        partes = partes or (lista[0] if lista else None)
+    else:
+        partes = _segmentos_ok(decl)
     dados = modulos.contexto(cfg)["dados"]
     if not partes or not dados:
         raise modulos.ErroModulo(404, "Esta tela não mostra arquivos.")
@@ -78,7 +87,7 @@ def pasta_do_modulo(cfg, mid):
     pasta = os.path.realpath(os.path.join(base_dados, *partes))
     if not _dentro(pasta, base_dados) or not os.path.isdir(pasta):
         raise modulos.ErroModulo(404, "Esta tela não mostra arquivos.")
-    return pasta
+    return pasta, partes_c
 
 
 def _intervalo(valor, total):
@@ -105,10 +114,9 @@ def _intervalo(valor, total):
 def abrir(cfg, mid, c, cab_range):
     """Aberto ou (codigo, corpo de erro, extra) com os cabeçalhos extras do erro."""
     try:
-        pasta = pasta_do_modulo(cfg, mid)
+        pasta, partes = pasta_do_modulo(cfg, mid, c)
     except modulos.ErroModulo as e:
         return e.codigo, {"erro": e.mensagem}, {}
-    partes = _segmentos_ok(c)
     ext = os.path.splitext(partes[-1])[1].lower() if partes else ""
     if not partes or ext not in TIPOS:
         return 404, {"erro": "Arquivo não encontrado."}, {}

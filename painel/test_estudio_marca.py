@@ -6,6 +6,7 @@ import sys
 
 sys.dont_write_bytecode = True
 
+import hashlib  # noqa: E402
 import json  # noqa: E402
 import os  # noqa: E402
 import unittest  # noqa: E402
@@ -48,6 +49,13 @@ class TesteMarca(Base):
     def agir(self, acao, dados):
         return modulos.agir(self.cfg, "estudio", acao, dados)
 
+    def sha(self):  # o sha256 curto que a aba Marca mostra
+        with open(self.marca, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()[:12]
+
+    def aprovar(self):
+        return self.agir("marca.aprovar", {"confirmar": True, "sha256": self.sha()})
+
     def recusa(self):
         with self.assertRaises(modulos.ErroModulo) as e:
             modulos.antes_de_disparar(self.cfg, ACAO)
@@ -55,7 +63,7 @@ class TesteMarca(Base):
 
     def test_409_sem_aprovacao_e_libera_depois_do_comando(self):
         self.assertEqual(self.recusa().codigo, 409)
-        cod, d = self.agir("marca.aprovar", {"confirmar": True})
+        cod, d = self.aprovar()
         self.assertEqual((cod, d["resultado"]["feito"]), (200, True))
         modulos.antes_de_disparar(self.cfg, ACAO)  # não levanta
         self.assertIs(self.aprovado(), True)
@@ -63,7 +71,8 @@ class TesteMarca(Base):
     def test_aprovar_sem_confirmar_ou_sem_marca_nao_grava(self):
         self.assertIs(self.agir("marca.aprovar", {"confirmar": False})[1]["resultado"]["feito"], False)
         os.remove(self.marca)
-        self.assertIs(self.agir("marca.aprovar", {"confirmar": True})[1]["resultado"]["feito"], False)
+        self.assertIs(self.agir("marca.aprovar", {"confirmar": True, "sha256": "0" * 12})[1]["resultado"]["feito"],
+                      False)
         self.assertFalse(os.path.exists(self.arq))
         self.assertEqual(self.recusa().codigo, 409)
 
@@ -75,7 +84,7 @@ class TesteMarca(Base):
         self.assertFalse(os.path.exists(self.arq))
 
     def test_editar_trava_campo_com_fonte_dono_e_derruba_aprovacao(self):
-        self.agir("marca.aprovar", {"confirmar": True})
+        self.aprovar()
         cod, d = self.agir("marca.editar", {"campo": "cores.primary", "valor": "rgb(255, 0, 0)"})
         self.assertEqual((cod, d["resultado"]["feito"]), (200, True))
         with open(self.marca, encoding="utf-8") as f:
@@ -92,7 +101,7 @@ class TesteMarca(Base):
             self.assertEqual(json.load(f), MARCA)
 
     def test_marca_trocada_depois_de_aprovar_perde_aprovacao(self):
-        self.agir("marca.aprovar", {"confirmar": True})
+        self.aprovar()
         trocada = json.loads(json.dumps(MARCA))
         trocada["campos"]["cores.primary"] = {"valor": "#FF00FF", "fonte": "sessao", "confianca": "alta",
                                               "travado": False}
@@ -104,9 +113,27 @@ class TesteMarca(Base):
         modulos.antes_de_disparar(self.cfg, ACAO)
 
     def test_montar_mostra_campos_e_sha_da_marca(self):
-        texto = " ".join(a["texto"] for a in modulos.montar(self.cfg, "estudio", usar_cache=False)[1]["alertas"])
-        self.assertIn("#112233", texto)
-        self.assertIn("Forno", texto)
+        abas = {a["id"]: a for a in modulos.montar(self.cfg, "estudio", usar_cache=False)[1]["abas"]}
+        texto = json.dumps(abas["marca"], ensure_ascii=False)
+        for esperado in ("#112233", "Forno", "a.css:1", self.sha(), "data:image/png;base64,"):
+            self.assertIn(esperado, texto)
+        self.assertIn("Marca não aprovada", json.dumps(abas["novo"], ensure_ascii=False))
+
+    def test_redescobrir_le_de_novo_e_derruba_aprovacao(self):
+        self.aprovar()
+        self.assertIs(self.agir("marca.redescobrir", {"confirmar": False})[1]["resultado"]["feito"], False)
+        cod, d = self.agir("marca.redescobrir", {"confirmar": True})
+        self.assertEqual((cod, d["resultado"]["feito"]), (200, True), d)
+        with open(self.marca, encoding="utf-8") as f:
+            self.assertIn("gerado_em", json.load(f))
+        self.assertEqual(self.recusa().codigo, 409)
+
+    def test_aprovar_exige_o_sha_mostrado(self):
+        for sha in (None, "", "abc", "0" * 12):
+            dados = {"confirmar": True} if sha is None else {"confirmar": True, "sha256": sha}
+            self.assertIs(self.agir("marca.aprovar", dados)[1]["resultado"]["feito"], False, sha)
+        self.assertEqual(self.recusa().codigo, 409)
+        self.assertIs(self.aprovar()[1]["resultado"]["feito"], True)
 
     @unittest.skipIf(not hasattr(os, "symlink") or os.name == "nt", "atalho")
     def test_editar_nao_segue_atalho_no_tmp(self):

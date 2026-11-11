@@ -203,7 +203,7 @@ class Lancador:
             estado = self._ultimo.get(reg["id"], "rodando")
         else:
             estado = self._ultimo[reg["id"]] = self._estado(reg, agentes.get(reg["id"]), agora)
-        out = {k: reg.get(k) for k in ("id", "nome", "acao", "titulo", "iniciada_em")}
+        out = {k: reg.get(k) for k in ("id", "nome", "acao", "titulo", "iniciada_em", "trabalho")}
         out["grupo"] = out["area"] = reg.get("grupo") or reg.get("area") or ""
         sid = reg.get("sessao_id") or ""
         # Responder acorda a sessão do CLI (com as travas dela) se está na lista; sandbox não (--resume sem --settings).

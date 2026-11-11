@@ -3,10 +3,10 @@
 Só carrega <pacote>/modulos/<id>/modulo.py de ids listados em painel.json
 "modulos" (ou, de plugin instalado, "modulos_de_plugins": ver modulos_plugin.py). O id segue ^[a-z0-9_-]{1,40}$ e o caminho real do arquivo tem de
 ficar dentro de <pacote>/modulos/<id>/ (atalho para fora é recusado). O módulo
-expõe INFO = {"id","titulo","icone"} e montar(ctx) -> dict; ctx = {"raiz",
-"pacote","dados","config","hoje"}. montar() roda com tempo limite, exceção vira
+expõe INFO = {"id","titulo","icone"} e montar(ctx) -> dict; ctx = {"raiz","pacote","dados","config","hoje",
+"execucoes" (função do lançador ou None),"dono_faltando"}. montar() roda com tempo limite, exceção vira
 erro só daquele módulo e a resposta passa por uma conferência mínima de forma.
-Opcional: INFO["acoes"] (lista de nomes) + agir(ctx, acao, dados) -> dict, INFO["esquemas"]
+Opcional: INFO["acoes"] (lista de nomes) + agir(ctx, acao, dados) -> dict ({"codigo": 409} = 409), INFO["esquemas"]
 ({acao: {campo: tipo}}: campo fora do esquema ou de outro tipo dá 400) e INFO["negar"]
 (regras de permissão negadas em toda sessão que o painel dispara).
 Os arquivos irmãos do módulo são importados isolados (ver _importar): nome igual a\num do núcleo ou de outro módulo não vaza.
@@ -163,7 +163,8 @@ def contexto(cfg):
     pacote = cfg.get("pacote_dir") or ""
     return {"raiz": cfg.get("raiz") or cfg.get("workspace"), "pacote": pacote,
             "dados": os.path.join(pacote, "dados") if pacote else "",
-            "config": dict(cfg.get("bruto") or {}), "hoje": datetime.date.today()}
+            "config": dict(cfg.get("bruto") or {}), "hoje": datetime.date.today(),
+            "execucoes": cfg.get("_execucoes"), "dono_faltando": lambda requer: dono.faltando(cfg, requer)}
 
 
 def _texto(v, n=500):
@@ -359,6 +360,8 @@ def agir(cfg, mid, acao, dados, tempo=TEMPO_LIMITE):
         resultado = _rodar_agir(mod, ctx, mid, acao, dados, tempo)  # já apagou o cache
     except ErroModulo as e:
         return e.codigo, e.corpo()
+    if isinstance(resultado, dict) and resultado.get("codigo") == 409:  # o módulo recusou: já feito ou em conflito
+        return 409, {"erro": str(resultado.get("mensagem") or "Isto já foi feito.")[:500], "avisos": []}
     try:  # a ação já aconteceu: resposta estranha vira 200 com aviso, para ninguém repetir
         if not isinstance(resultado, dict):
             raise TypeError
