@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(STUDIO, "scripts"))
 sys.path.insert(0, HERE)
 
 import qa_video  # noqa: E402
-from test_qa_imagem import bound, clean_check  # noqa: E402
+from test_qa_imagem import bound, clean_check, record_snapshot  # noqa: E402
 
 FIXTURES = os.path.join(HERE, "fixtures")
 VIDEO_SOURCE = os.path.join(STUDIO, "exemplos", "forno-miudo", "video-9x16", "fonte")
@@ -38,9 +38,13 @@ def has_x264():
 class VideoChecks(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
+        # A copy of the example source with the snapshot record HyperFrames would write.
+        self.source = os.path.join(self.tmp, "fonte")
+        shutil.copytree(VIDEO_SOURCE, self.source, ignore=shutil.ignore_patterns(".hyperframes"))
+        record_snapshot(self.source, os.path.join(self.tmp, "snap.png"))
         self.check = os.path.join(self.tmp, "check.json")
         with open(self.check, "w", encoding="utf-8") as f:
-            json.dump(bound(clean_check(layout={"ok": True, "findings": [], "duration": 3}), VIDEO_SOURCE), f)
+            json.dump(bound(clean_check(layout={"ok": True, "findings": [], "duration": 3}), self.source), f)
 
     def tearDown(self):
         shutil.rmtree(self.tmp)
@@ -56,8 +60,8 @@ class VideoChecks(unittest.TestCase):
     def moving(self, seconds=3):
         return ["-f", "lavfi", "-i", "testsrc2=size=%dx%d:rate=30:duration=%d" % (W, H, seconds)]
 
-    def report(self, video, duration=3.0, source=VIDEO_SOURCE):
-        return qa_video.run(source, video, self.check, W, H, duration, 30.0, FFMPEG, FFPROBE)
+    def report(self, video, duration=3.0, source=None):
+        return qa_video.run(source or self.source, video, self.check, W, H, duration, 30.0, FFMPEG, FFPROBE)
 
     def failed(self, rep):
         return sorted(c["name"] for c in rep["checks"] if not c["ok"])
@@ -88,7 +92,7 @@ class VideoChecks(unittest.TestCase):
 
     def test_wrong_duration_size_and_fps(self):
         video = self.make("ok.mp4", self.moving())
-        rep = qa_video.run(VIDEO_SOURCE, video, self.check, 1080, 1920, 10.0, 24.0, FFMPEG, FFPROBE)
+        rep = qa_video.run(self.source, video, self.check, 1080, 1920, 10.0, 24.0, FFMPEG, FFPROBE)
         self.assertEqual(self.failed(rep), ["duration", "fps", "frames", "hyperframes_check", "video_size"])
 
     def test_source_defects_still_counted(self):
@@ -131,7 +135,7 @@ class VideoChecks(unittest.TestCase):
 
     def test_main_exit_codes(self):
         video = self.make("ok.mp4", self.moving())
-        base = ["--source", VIDEO_SOURCE, "--video", video, "--check-json", self.check,
+        base = ["--source", self.source, "--video", video, "--check-json", self.check,
                 "--width", str(W), "--height", str(H), "--duration", "3", "--out",
                 os.path.join(self.tmp, "qa.json")]
         self.assertEqual(qa_video.main(base), 0)
@@ -141,7 +145,7 @@ class VideoChecks(unittest.TestCase):
         # The session never passes a copy of the check: the newest saved report is read.
         video = self.make("ok.mp4", self.moving())
         sheet, out = os.path.join(self.tmp, "folha.png"), os.path.join(self.tmp, "qa.json")
-        base = ["--source", VIDEO_SOURCE, "--video", video, "--width", str(W), "--height", str(H),
+        base = ["--source", self.source, "--video", video, "--width", str(W), "--height", str(H),
                 "--out", out, "--sheet", sheet]
         with open(os.devnull, "w") as devnull:
             old, sys.stdout = sys.stdout, devnull
@@ -158,6 +162,50 @@ class VideoChecks(unittest.TestCase):
         with open(sheet, "rb") as f:
             self.assertEqual(f.read(8), b"\x89PNG\r\n\x1a\n")
         self.assertEqual(qa_video.final_line({"ok": True, "checks": []}, "reserve"), "PRONTO: video verde (reserve)")
+
+    def test_mp4_older_than_source_or_check_fails(self):
+        video = self.make("ok.mp4", self.moving())
+        old = os.path.getmtime(video) - 60
+        os.utime(video, (old, old))
+        self.assertEqual(self.failed(self.report(video)), ["video_fresh"])  # the check report is newer
+        index = os.path.join(self.source, "index.html")
+        os.utime(index, None)
+        record_snapshot(self.source, os.path.join(self.tmp, "snap.png"))
+        rep = self.report(video)
+        self.assertIn("source changed after the MP4; render again", [d for c in rep["checks"]
+                                                                     if c["name"] == "video_fresh" for d in c["details"]])
+
+    def test_brand_font_that_failed_is_caught(self):
+        video = self.make("ok.mp4", self.moving())
+        record_snapshot(self.source, os.path.join(self.tmp, "snap.png"), ["Fonts failed: Brand Heading (400 normal)"])
+        rep = self.report(video)
+        self.assertEqual(self.failed(rep), ["brand_font"])
+        font = next(c for c in rep["checks"] if c["name"] == "brand_font")
+        self.assertIn("Fonts failed", font["details"][0])
+        os.remove(os.path.join(self.source, ".hyperframes", "video-state.json"))
+        self.assertEqual(self.failed(self.report(video)), ["brand_font"])
+
+    def test_sheet_frames_at_given_times(self):
+        video = self.make("ok.mp4", self.moving())
+        sheet = os.path.join(self.tmp, "folha.png")
+        base = ["--source", self.source, "--video", video, "--width", str(W), "--height", str(H),
+                "--duration", "3", "--sheet", sheet]
+        with open(os.devnull, "w") as devnull:
+            old, sys.stdout = sys.stdout, devnull
+            try:
+                self.assertEqual(qa_video.main(base + ["--at", "0,0.75,1.5,2.9"]), 0)
+            finally:
+                sys.stdout = old
+        with open(sheet, "rb") as f:
+            head = f.read(24)
+        self.assertEqual(struct.unpack(">II", head[16:24]), (4 * 216, 384))  # 4 frames in one row
+        with open(os.devnull, "w") as devnull, self.assertRaises(SystemExit) as ctx:
+            err, sys.stderr = sys.stderr, devnull
+            try:
+                qa_video.main(base + ["--at", "0,3"])  # 3 s is past the last frame of a 3 s video
+            finally:
+                sys.stderr = err
+        self.assertEqual(ctx.exception.code, 2)
 
 
 class Pure(unittest.TestCase):

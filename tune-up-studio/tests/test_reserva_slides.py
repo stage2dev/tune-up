@@ -19,7 +19,7 @@ sys.path.insert(0, HERE)
 import qa_video  # noqa: E402
 import reserva_slides  # noqa: E402
 import video_ou_reserva  # noqa: E402
-from test_qa_imagem import SAVED, bound, clean_check  # noqa: E402
+from test_qa_imagem import SAVED, bound, clean_check, record_snapshot  # noqa: E402
 
 SLIDES_SOURCE = os.path.join(STUDIO, "exemplos", "forno-miudo", "reserva-9x16", "fonte")
 FFMPEG, FFPROBE = shutil.which("ffmpeg"), shutil.which("ffprobe")
@@ -91,10 +91,16 @@ class Fallback(unittest.TestCase):
                             "testsrc2=s=540x960:r=1", "-vf", "hue=h=%d" % (i * 120), "-frames:v", "1",
                             os.path.join(cls.slides, "s%d.png" % i)], check=True)
         bound(clean_check(layout={"ok": True, "findings": [], "duration": 10}), SLIDES_SOURCE)
+        cls.state = os.path.join(SLIDES_SOURCE, ".hyperframes", "video-state.json")
+        cls.had_state = os.path.exists(cls.state)
+        if not cls.had_state:  # the slides were snapshots of this source, with no warning
+            record_snapshot(SLIDES_SOURCE, os.path.join(cls.slides, "s0.png"))
 
     @classmethod
     def tearDownClass(cls):
         shutil.rmtree(cls.tmp, ignore_errors=True)
+        if not cls.had_state and os.path.exists(cls.state):
+            os.remove(cls.state)
 
     def qa(self, video, engine="reserve"):
         return qa_video.run(SLIDES_SOURCE, video, None, 1080, 1920, 10.0, 30, FFMPEG, FFPROBE, engine)

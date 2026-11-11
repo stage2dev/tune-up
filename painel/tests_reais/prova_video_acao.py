@@ -10,7 +10,8 @@ descoberta e aprovada pelo comando de módulo, ação real com `--plugin-dir`), 
 `--rede-local` grava `{"estudio": {"video_rede_local": true}}` no painel.json do projeto. Imprime as
 ações de vídeo que o catálogo do projeto mostra (a `-motion` só aparece com a chave), estado, tempo,
 voltas e tokens; copia MP4, folha de quadros, contact sheet, qa.json, roteiro e resultado para
---saida; faz `claude stop` + `claude rm` e apaga o projeto. Sai com 2 se a espera acabou.
+--saida; faz `claude stop` + `claude rm` e apaga o projeto. Sai com 2 se a sessão não chegou a um
+estado final (espera acabou) e com 3 se o qa.json falta ou não diz PRONTO.
 """
 import argparse
 import json
@@ -107,16 +108,20 @@ def principal():
         for nome in COPIAR:
             if os.path.exists(os.path.join(pasta, nome)):
                 shutil.copy2(os.path.join(pasta, nome), os.path.join(saida, prefixo + nome.replace("/", "-")))
+        linha = ""
         try:
             with open(os.path.join(pasta, "qa.json"), encoding="utf-8") as f:
-                print("linha do qa:", json.load(f).get("linha"))
-        except (OSError, ValueError) as e:
+                linha = str(json.load(f).get("linha") or "")
+            print("linha do qa:", linha)
+        except (OSError, ValueError, AttributeError) as e:
             print("qa.json ilegível ou ausente:", e)
         print("copiado para:", saida)
         for sub in ("stop", "rm"):
             cod, out, err = lc.rodar([cfg["claude_bin"], sub, i], cfg["workspace"], 30)
             print("claude %s %s -> %s %s" % (sub, i, cod, (out + err).strip()[:160]))
-        return 0 if estado in FIM else 2  # 2 = estourou a espera
+        if estado not in FIM:
+            return 2  # estourou a espera
+        return 0 if linha.startswith("PRONTO") else 3  # 3 = qa vermelho ou ausente
     finally:
         shutil.rmtree(projeto, ignore_errors=True)
         shutil.rmtree(acoes, ignore_errors=True)

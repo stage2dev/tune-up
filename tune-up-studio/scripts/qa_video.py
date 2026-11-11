@@ -3,10 +3,12 @@
 
 Standard library plus ffprobe/ffmpeg. It does not run Chrome: it probes the
 MP4, runs ffmpeg blackdetect and freezedetect, scans the composition source
-folder and reads the `check --strict` report HyperFrames saved under
-`<source>/.hyperframes/` (never a copy the session wrote). The report carries a
-final line in `linha` (PRONTO / PRECISA DO SEU OLHO) and, with --sheet, a
-contact sheet PNG of the MP4 (one frame per second, 5 per row).
+folder and reads what HyperFrames saved under `<source>/.hyperframes/` (never a
+copy the session wrote): the `check --strict` report and the newest snapshot
+record, whose warnings list a brand font that failed to load. The MP4 must be
+newer than the source and than that check report. The report carries a final
+line in `linha` (PRONTO / PRECISA DO SEU OLHO) and, with --sheet, a contact
+sheet PNG of the MP4 (frames at --at seconds, else one per second; 5 per row).
 
 Exit code: 0 all green, 1 at least one check failed, 2 bad usage.
 """
@@ -21,7 +23,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from qa_imagem import (  # noqa: E402
-    GSAP_RE, LAYOUT_ALLOW_RE, NETWORK_PATTERNS, check_strict_json, result, scan)
+    GSAP_RE, LAYOUT_ALLOW_RE, NETWORK_PATTERNS, check_strict_json, load_json, newest_mtime,
+    newest_report, result, saved_report, scan, snapshot_records)
 from reserva_slides import MARK  # noqa: E402
 
 BLACK_FILTER = "blackdetect=d=0.5:pix_th=0.10"
@@ -152,12 +155,67 @@ def check_reserve_tag(data):
     return result("engine_reserve", tag == MARK, ["comment=%r (expected %r)" % (tag, MARK)])
 
 
-def contact_sheet(video, out, duration, ffmpeg):
-    """One frame per second of the MP4 in a 5-column grid PNG. Return the check result."""
-    count = max(1, int(round(duration)))
+def check_fresh(video, source, check_json):
+    """The MP4 must be newer than every source file and than the check report the QA reads."""
+    report = None
+    if check_json is not None:
+        data, _ = load_json(check_json)
+        report = saved_report(data, source) if data is not None else None
+    else:
+        report = newest_report(source)
+    try:
+        made = os.path.getmtime(video)
+    except OSError as exc:
+        return result("video_fresh", False, [str(exc)])
+    problems = []
+    if made < newest_mtime(source):
+        problems.append("source changed after the MP4; render again")
+    if report is not None and made < os.path.getmtime(report):
+        problems.append("check report is newer than the MP4; render again")
+    return result("video_fresh", not problems, problems or ["ok"])
+
+
+def check_fonts(source):
+    """Green only if the newest snapshot of `source` recorded no warning (a brand font that did not
+    load is one: "Fonts failed: ..."), as the post QA does."""
+    data, err = load_json(os.path.join(source, ".hyperframes", "video-state.json"))
+    if err:
+        return result("brand_font", False, [err])
+    found = [r for r in snapshot_records(data.get("snapshots"))
+             if isinstance(r.get("createdAt"), (int, float))]
+    if not found:
+        return result("brand_font", False, ["no snapshot recorded for %s; run snapshot" % source])
+    newest = max(r["createdAt"] for r in found)
+    problems = []
+    for r in found:
+        meta = r.get("metadata") if isinstance(r.get("metadata"), dict) else {}
+        warnings = meta.get("warnings")
+        if r["createdAt"] == newest:
+            problems += ["snapshot warning: %s" % w for w in warnings] if isinstance(warnings, list) \
+                else ["snapshot record has no warnings list"]
+    if newest / 1000.0 < newest_mtime(source):
+        problems.append("source changed after the snapshot; run snapshot again")
+    return result("brand_font", not problems, sorted(set(problems)) or ["ok"])
+
+
+def parse_times(text, duration):
+    """Comma list of seconds in [0, duration); raise ValueError otherwise."""
+    times = [float(t) for t in text.split(",") if t.strip()]
+    if not times or any(t < 0 or t >= duration for t in times):
+        raise ValueError("--at needs seconds from 0 to below %g" % duration)
+    return times
+
+
+def contact_sheet(video, out, duration, ffmpeg, times=None, fps=30.0):
+    """Frames of the MP4 at `times` (default: one per second) in a 5-column grid PNG."""
+    if times:
+        pick = "+".join("eq(n\\,%d)" % int(round(t * fps)) for t in times)
+        count, vf = len(times), "select=%s,scale=216:384" % pick
+    else:
+        count, vf = max(1, int(round(duration))), "fps=1,scale=216:384"
     rows = (count + 4) // 5
     code, _, err = run_tool([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", video, "-an",
-                             "-vf", "fps=1,scale=216:384,tile=5x%d" % rows, "-frames:v", "1", out])
+                             "-vf", "%s,tile=%dx%d" % (vf, min(count, 5), rows), "-frames:v", "1", out])
     ok = code == 0 and os.path.isfile(out)
     return result("contact_sheet", ok, [out if ok else "ffmpeg failed: %s" % err.strip()[-300:]])
 
@@ -186,6 +244,7 @@ def run(source, video, check_json, width, height, duration, fps, ffmpeg, ffprobe
         checks.append(result("no_gsap", not gsap, gsap or ["ok"]))
         net = scan(source, NETWORK_PATTERNS, strip_xmlns=True)
         checks.append(result("network_lint", not net, net or ["ok"]))
+        checks += [check_fresh(video, source, check_json), check_fonts(source)]
     if engine == "reserve":  # the slides are snapshots of the same composition: it is checked too
         checks.append(check_reserve_tag(data))
     elif check_reserve_tag(data)["ok"]:  # a reserve MP4 is never reported as a render
@@ -208,12 +267,17 @@ def main(argv=None):
     p.add_argument("--fps", type=float, default=30.0)
     p.add_argument("--out", help="also write the report to this file")
     p.add_argument("--sheet", help="also write a contact sheet PNG of the MP4 here")
+    p.add_argument("--at", help="sheet frame times in seconds, comma list (cover 0 and mid of each scene)")
     args = p.parse_args(argv)
+    try:
+        times = parse_times(args.at, args.duration) if args.at else None
+    except ValueError as exc:
+        p.error(str(exc))
     ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
     report = run(args.source, args.video, args.check_json, args.width, args.height,
                  args.duration, args.fps, ffmpeg, shutil.which("ffprobe") or "ffprobe", args.engine)
     if args.sheet:
-        report["checks"].append(contact_sheet(args.video, args.sheet, args.duration, ffmpeg))
+        report["checks"].append(contact_sheet(args.video, args.sheet, args.duration, ffmpeg, times, args.fps))
         report["ok"] = all(c["ok"] for c in report["checks"])
     report["linha"] = final_line(report, args.engine)
     text = json.dumps(report, ensure_ascii=False, indent=2)
