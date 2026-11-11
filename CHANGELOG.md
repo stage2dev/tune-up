@@ -2,6 +2,17 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## 2.7.0
+
+Studio plan, Part 2: a real post and a real video from a neutral example project, without GSAP.
+
+- `tune-up-studio/exemplos/forno-miudo/`: fictional bakery with a brand answer key, a 4:5 post (1080x1350) and a 10 s 9:16 video (1080x1920), both plain HTML and CSS keyframes. HyperFrames 0.9.6 seeks CSS-only animation frame by frame (measured), so GSAP is not needed and HyperFrames stays as the engine.
+- `tune-up-studio/scripts/`: `qa_imagem.py` and `qa_video.py` (stdlib + ffprobe). They catch the planted defects (text overflow, one black second, layout-silencing attributes, a runtime-built external fetch) and, after review, truncated PNG/MP4 files and a check report that belongs to another piece. `reserva_slides.py` builds an FFmpeg slide video when HyperFrames is unavailable.
+- `tune-up-studio/regras/bash-estudio.json`: positive list of commands for studio sessions (HyperFrames subcommands, ffmpeg with `-protocol_whitelist file,pipe`, the studio scripts), as hook rules.
+- Sandbox: `"sandbox": {"rede_local": true}` turns on `sandbox.network.allowLocalBinding`. HyperFrames `render` needs it (it listens on 127.0.0.1); `snapshot` does not. **Measured risk on macOS: with it on, the page being rendered can reach any service on localhost and on the machine's own LAN address; the outside network stays closed.** Off by default.
+- Measured (provisional): render of the 10 s video about 5 s and 460 MB; a background session that renders it about 21 s and 175k tokens (mostly cache).
+- Guard hook on Windows: the allowed `dados` folder is recognised with mixed separators (simulated; CI is the proof).
+
 ## 2.6.0
 
 Studio plan, Part 1: mechanisms in the panel core, proven with real background sessions.
