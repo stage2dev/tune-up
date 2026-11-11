@@ -14,7 +14,7 @@ The prompt gives: the working folder (`{trabalho}`, your current folder), `Forma
 
 1. Read the briefing file named in the prompt.
 2. Frames: `post` = 1 frame. `carrossel` = `Quadros` frames, at least 2 (if 1, make 2). One aspect ratio for all frames.
-3. Size from `${CLAUDE_PLUGIN_ROOT}/formatos.json`: 4:5 = `instagram-feed-organico-tamanho` (1080x1350), 1:1 = `instagram-feed-quadrado-tamanho` (1080x1080).
+3. Size from `${CLAUDE_PLUGIN_ROOT}/formatos.json`: 4:5 = `instagram-feed-organico-tamanho` (1080x1350), 1:1 = `instagram-feed-quadrado-tamanho` (1080x1080). `<R>` below is the ratio of `Formato` (`4:5` or `1:1`); the QA checks every PNG against that size.
 4. Text limits from the same file, entry `instagram-feed-anuncio-texto`: headline on the image up to `titulo` characters, caption up to `texto_principal` characters. Any other line on the image: up to 90 characters. Count characters; cut and rewrite until they fit.
 
 ## 2. Brand (read-only, as the `marca-ler` skill)
@@ -26,7 +26,12 @@ The project root is the working folder path cut right before `/.tune-up/`. Read 
 
 ## 3. Copy
 
-Write `copy.md`: for each frame, headline and at most 2 short lines; then the caption and the call to action from the briefing. A carousel tells one story: frame 1 hooks, the last frame has the call to action.
+Write `copy.md`: for each frame, headline and at most 2 short lines; then the caption and the call to action from the briefing. A carousel tells one story:
+- Frame 1 is only the hook: it raises the question and does not give the answer; it ends with a swipe cue (`arraste ->`).
+- Every middle frame brings one point the other frames do not say. Never repeat a fact already shown.
+- The last frame has the call to action.
+- If the briefing has fewer distinct points than `Quadros` asks, make fewer frames (at least 2) and write in `resultado.md`: `quadros: <made> de <asked>, briefing curto`. Never invent a fact, price, date or promise to fill a frame.
+- Vary the layout between frames (big number, short list, quote), same brand and size.
 
 ## 4. One HTML per frame
 
@@ -66,11 +71,13 @@ Rules:
 `HF` = `${CLAUDE_PLUGIN_ROOT}/node/node_modules/.bin/hyperframes` (absolute path, no `npx`). Run each as a single command, no `cd`, no `;`, no `>`, no `|`.
 
 1. `HF snapshot q<N>/fonte --at 0 --no-end -o q<N>/snap` -> `q<N>/snap/frame-00-at-0s.png`.
-2. `HF check q<N>/fonte --json --strict`. Write its JSON output, unchanged, to `q<N>/check.json` (Write tool). Exit 1 means findings: keep the JSON anyway.
-3. `python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/qa_imagem.py --source q<N>/fonte --png <working folder>/q<N>/snap/frame-00-at-0s.png --check-json q<N>/check.json --width <W> --height <H> --out q<N>/qa.json`. Exit 0 = green. Give `--png` with the absolute working-folder path: the file name has `-`, which the command list only accepts after that path.
+2. `HF check q<N>/fonte --json --strict`. Do not copy its output anywhere: HyperFrames saves the report under `q<N>/fonte/.hyperframes/` and the QA reads it from there. Exit 1 means findings.
+3. `python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/qa_imagem.py --source q<N>/fonte --png <working folder>/q<N>/snap/frame-00-at-0s.png --formato=<R> --out q<N>/qa.json`. Exit 0 = green. Give `--png` with the absolute working-folder path: the file name has `-`, which the command list only accepts after that path.
 
-Fix rounds: if the QA is not green, read the failed checks in `q<N>/qa.json`, edit `q<N>/fonte/index.html` (shorter text, smaller font, more room) and redo steps 1 to 3 (the check must be newer than the last edit). At most 2 fix rounds per frame. Never silence a check.
+Fix rounds: if the QA is not green, read the failed checks in `q<N>/qa.json`, edit `q<N>/fonte/index.html` (shorter text, smaller font, more room) and redo steps 1 to 3 (snapshot and check must be newer than the last edit). At most 2 fix rounds per frame. Never silence a check. A `snapshot` check with `Fonts failed` means the brand font is not on this machine: do not swap it for another font and do not spend fix rounds on it; that frame stays `precisa do seu olho`. Never write inside `.hyperframes/`.
 
 ## 6. Finish
 
-Write `resultado.md`: format, size, one line per frame (`q<N>/snap/frame-00-at-0s.png`, green or `precisa do seu olho` with the failed checks), the caption, and anything left out (logo, missing brand field). Then answer one line: `PRONTO: <k> de <n> quadros verdes` or `PRECISA DO SEU OLHO: <reason>`. Do not list or re-check files after that.
+1. `python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/qa_imagem.py --final <working folder> --formato=<R> --out final.json`. It re-checks every `q<N>/` frame (size of the format, saved check report, snapshot record) and writes the final line in `linha`: `PRONTO: <n> de <n> quadros verdes` only when every frame is green, otherwise `PRECISA DO SEU OLHO: <k> de <n> verdes, <frames and checks>`.
+2. Write `resultado.md`: format, size, one line per frame from `final.json` (`q<N>/snap/frame-00-at-0s.png`, green or `precisa do seu olho` with the failed checks; a failed font by name), the caption, and anything left out (logo, missing brand field, fewer frames than asked).
+3. Answer with the `linha` of `final.json`, exactly. Do not list or re-check files after that.

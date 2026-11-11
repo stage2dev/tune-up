@@ -2,14 +2,15 @@
 
 Não é teste de unidade (o unittest não descobre esta pasta): gasta 1 sessão de verdade.
 
-  python3 -B painel/tests_reais/prova_post_bg.py --saida <pasta> [--modelo haiku] [--formato "post 4:5"] [--quadros 1]
+  python3 -B painel/tests_reais/prova_post_bg.py --saida <pasta> [--modelo haiku] [--formato "post 4:5"] [--quadros 1] [--briefing "..."]
 
 Cria um projeto descartável sem git dentro de $HOME com o exemplo forno-miudo (sem as peças prontas),
 descobre a marca (descobrir_marca.py) e a aprova pelo comando de módulo `marca.aprovar` (módulo
 estudio real, por um módulo-ponte no pacote do projeto). Dispara pelo Lancador a ação real
 (`tune-up-studio/painel/acoes/estudio.json`, só o modelo trocado) com `--plugin-dir` do tune-up-studio
 (o plugin não está instalado aqui). Acompanha até o fim, imprime estado, tempo, voltas e tokens,
-copia PNG, qa.json e resultado.md para --saida e faz `claude stop` + `claude rm`. Apaga o projeto.
+copia PNG, qa.json, final.json e resultado.md para --saida e faz `claude stop` + `claude rm`. Apaga o projeto.
+Sai com 2 se a espera acabou antes de um estado terminal; use uma --saida por briefing.
 """
 import argparse
 import glob
@@ -60,6 +61,7 @@ def principal():
     ap.add_argument("--formato", default="post 4:5")
     ap.add_argument("--quadros", default="1")
     ap.add_argument("--espera", type=int, default=900, help="segundos no máximo")
+    ap.add_argument("--briefing", default=BRIEFING)
     arg = ap.parse_args()
     saida = os.path.realpath(arg.saida)
     os.makedirs(saida, exist_ok=True)
@@ -83,7 +85,7 @@ def principal():
         lc = lancador.Lancador(cfg, lambda: {})
         t0 = time.time()
         try:
-            ex = lc.iniciar("estudio.post", {"briefing": BRIEFING, "formato": arg.formato, "quadros": arg.quadros})
+            ex = lc.iniciar("estudio.post", {"briefing": arg.briefing, "formato": arg.formato, "quadros": arg.quadros})
         except Exception as e:  # disparo negado: registra e sai
             print("DISPARO FALHOU: %s" % getattr(e, "mensagem", e))
             return 1
@@ -118,14 +120,19 @@ def principal():
             qa = os.path.join(pasta, q, "qa.json")
             if os.path.exists(qa):
                 shutil.copy2(qa, os.path.join(saida, "%s-%s-qa.json" % (arg.modelo, q)))
-        for nome in ("resultado.md", "copy.md"):
+        for nome in ("resultado.md", "copy.md", "final.json"):
             if os.path.exists(os.path.join(pasta, nome)):
                 shutil.copy2(os.path.join(pasta, nome), os.path.join(saida, "%s-%s" % (arg.modelo, nome)))
+        try:
+            with open(os.path.join(pasta, "final.json"), encoding="utf-8") as f:
+                print("linha do qa final:", json.load(f).get("linha"))
+        except (OSError, ValueError) as e:
+            print("final.json ilegível ou ausente:", e)
         print("copiado para:", saida, sorted(os.listdir(saida)))
         for sub in ("stop", "rm"):
             cod, out, err = lc.rodar([cfg["claude_bin"], sub, i], cfg["workspace"], 30)
             print("claude %s %s -> %s %s" % (sub, i, cod, (out + err).strip()[:160]))
-        return 0
+        return 0 if estado in ("terminou", "parada", "precisa_de_voce", "sumiu") else 2  # 2 = estourou a espera
     finally:
         shutil.rmtree(projeto, ignore_errors=True)
         shutil.rmtree(acoes, ignore_errors=True)

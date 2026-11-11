@@ -1,10 +1,12 @@
 """Unit tests for scripts/qa_imagem.py. No Chrome, no network."""
+import atexit
 import json
 import os
 import shutil
 import struct
 import sys
 import tempfile
+import time
 import unittest
 import zlib
 
@@ -29,10 +31,38 @@ def write_png(path, width, height):
                 + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
 
 
+SAVED = []  # reports written under sources kept in the repo; removed at exit
+
+
 def bound(data, source):
-    """The check JSON names its saved report under the source it ran on."""
-    report = os.path.join(os.path.realpath(source), ".hyperframes", "artifacts", "checks", "t.json")
+    """The check JSON names its saved report under the source it ran on; HyperFrames wrote it there."""
+    checks = os.path.join(os.path.realpath(source), ".hyperframes", "artifacts", "checks")
+    os.makedirs(checks, exist_ok=True)
+    report = os.path.join(checks, "unittest-%d.json" % os.getpid())
+    with open(report, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    if report not in SAVED:
+        SAVED.append(report)
     return dict(data, saved={"report": report})
+
+
+def record_snapshot(source, png, warnings=(), created=None):
+    """What `hyperframes snapshot` records in <source>/.hyperframes/video-state.json (shape observed)."""
+    state = os.path.join(source, ".hyperframes", "video-state.json")
+    os.makedirs(os.path.dirname(state), exist_ok=True)
+    entry = {"scope": "full", "image": os.path.realpath(png), "time": 0,
+             "createdAt": time.time() * 1000 + 1000 if created is None else created,
+             "metadata": {"width": 1080, "height": 1350, "warnings": list(warnings),
+                          "partial": bool(warnings)}}
+    with open(state, "w", encoding="utf-8") as f:
+        json.dump({"version": 1, "checks": {}, "snapshots": {"latest": [entry], "unversioned": [entry]}}, f)
+
+
+@atexit.register
+def _remove_saved():
+    for report in SAVED:
+        if os.path.exists(report):
+            os.remove(report)
 
 
 def clean_check(**overrides):
@@ -219,26 +249,114 @@ class QaImagemTest(unittest.TestCase):
         folder = self.source("<p>ok</p>")
         path = self.check_file(clean_check(), folder)
         self.assertTrue(qa_imagem.check_strict_json(path, folder)["ok"])
-        os.utime(path, (1, 1))  # the source was edited after the check
+        with open(path, encoding="utf-8") as f:
+            os.utime(json.load(f)["saved"]["report"], (1, 1))  # the source was edited after the check
         self.assertFalse(qa_imagem.check_strict_json(path, folder)["ok"])
         path = self.check_file(clean_check(layout={"ok": True, "findings": [], "duration": 5}), folder)
         self.assertTrue(qa_imagem.check_strict_json(path, folder, duration=5.0)["ok"])
         self.assertFalse(qa_imagem.check_strict_json(path, folder, duration=10.0)["ok"])
 
-    def test_main_exit_codes_and_out_file(self):
-        out = os.path.join(self.tmp, "qa.json")
-        args = ["--source", POST_SOURCE, "--png", self.png,
-                "--check-json", self.check_file(clean_check(), POST_SOURCE), "--out", out]
+    def test_verdict_comes_from_the_saved_report_not_the_transcript(self):
+        # Observed in review: the session copies check output by hand; a copy that drops the
+        # findings must not turn a red check green. The report HyperFrames wrote decides.
+        folder = self.source("<p>ok</p>")
+        path = self.check_file(clean_check(), folder)
+        with open(path, encoding="utf-8") as f:
+            report = json.load(f)["saved"]["report"]
+        with open(report, "w", encoding="utf-8") as f:
+            json.dump(OVERFLOW_CHECK, f)
+        result = qa_imagem.check_strict_json(path, folder)
+        self.assertFalse(result["ok"], result)
+        os.remove(report)  # the transcript names a report that is not on disk
+        self.assertFalse(qa_imagem.check_strict_json(path, folder)["ok"])
+
+    def main_quiet(self, args):
         with open(os.devnull, "w") as devnull:
             stdout, sys.stdout = sys.stdout, devnull
             try:
-                self.assertEqual(qa_imagem.main(args), 0)
-                write_png(self.png, 10, 10)
-                self.assertEqual(qa_imagem.main(args), 1)
+                return qa_imagem.main(args)
             finally:
                 sys.stdout = stdout
+
+    def test_main_exit_codes_and_out_file(self):
+        out = os.path.join(self.tmp, "qa.json")
+        folder = self.source("<p>ok</p>")
+        bound(clean_check(), folder)
+        record_snapshot(folder, self.png)
+        args = ["--source", folder, "--png", self.png, "--formato=4:5", "--out", out]
+        self.assertEqual(self.main_quiet(args), 0)  # no --check-json: the saved report decides
+        self.assertEqual(self.main_quiet(args[:4] + ["--check-json", self.check_file(clean_check(), folder)]), 0)
+        self.assertEqual(self.main_quiet(args[:4] + ["--formato=1:1"]), 1)  # 1080x1350 is not 1:1
+        write_png(self.png, 10, 10)
+        self.assertEqual(self.main_quiet(args), 1)
         with open(out, encoding="utf-8") as f:
             self.assertFalse(json.load(f)["ok"])
+
+    def test_newest_saved_report_decides_without_check_json(self):
+        folder = self.source("<p>ok</p>")
+        self.assertFalse(qa_imagem.check_strict_json(None, folder)["ok"])  # check never ran
+        bound(clean_check(), folder)
+        self.assertTrue(qa_imagem.check_strict_json(None, folder)["ok"])
+        newer = os.path.join(folder, ".hyperframes", "artifacts", "checks", "z-newer.json")
+        with open(newer, "w", encoding="utf-8") as f:
+            json.dump(OVERFLOW_CHECK, f)
+        os.utime(newer, (time.time() + 5, time.time() + 5))
+        self.assertFalse(qa_imagem.check_strict_json(None, folder)["ok"])
+
+    def test_format_size_comes_from_formatos_json(self):
+        self.assertEqual(qa_imagem.format_size("post 4:5"), (1080, 1350))
+        self.assertEqual(qa_imagem.format_size("carrossel 1:1"), (1080, 1080))
+        self.assertEqual(qa_imagem.format_size("4x5"), (1080, 1350))
+        with self.assertRaises(ValueError):
+            qa_imagem.format_size("9:16")
+
+    def test_snapshot_record_guards(self):
+        folder = self.source("<p>ok</p>")
+        self.assertFalse(qa_imagem.check_snapshot(self.png, folder)["ok"])  # nothing recorded
+        record_snapshot(folder, self.png)
+        self.assertTrue(qa_imagem.check_snapshot(self.png, folder)["ok"])
+        other = os.path.join(self.tmp, "other.png")
+        write_png(other, 1080, 1350)
+        self.assertFalse(qa_imagem.check_snapshot(other, folder)["ok"])  # a PNG HyperFrames did not take
+        record_snapshot(folder, self.png, created=1000)  # the source was edited after the snapshot
+        self.assertFalse(qa_imagem.check_snapshot(self.png, folder)["ok"])
+        # Shape seen in the snapshot source: a brand font that does not load is a warning.
+        record_snapshot(folder, self.png, ["Fonts failed: Brand Heading (400 normal)"])
+        result = qa_imagem.check_snapshot(self.png, folder)
+        self.assertFalse(result["ok"])
+        self.assertIn("Fonts failed", result["details"][0])
+
+    def frame(self, work, n, size=(1080, 1350), warnings=()):
+        source = os.path.join(work, "q%d" % n, "fonte")
+        os.makedirs(source)
+        with open(os.path.join(source, "index.html"), "w", encoding="utf-8") as f:
+            f.write("<p>quadro %d</p>" % n)
+        png = os.path.join(work, "q%d" % n, "snap", qa_imagem.STILL)
+        os.makedirs(os.path.dirname(png))
+        write_png(png, *size)
+        bound(clean_check(), source)
+        record_snapshot(source, png, warnings)
+        return png
+
+    def test_final_carousel_needs_every_frame_green_at_the_format_size(self):
+        work = os.path.join(self.tmp, "trabalho")
+        self.assertIn("nenhum quadro", qa_imagem.run_final(work, 1080, 1350)["linha"])
+        self.frame(work, 1)
+        middle = self.frame(work, 2, size=(1080, 1080))  # a 1:1 frame in a 4:5 carousel
+        self.frame(work, 3, warnings=["Fonts failed: Brand Body (400 normal)"])
+        rep = qa_imagem.run_final(work, *qa_imagem.format_size("carrossel 4:5"))
+        self.assertFalse(rep["ok"])
+        self.assertEqual(rep["linha"], "PRECISA DO SEU OLHO: 1 de 3 verdes, q2: png_size; q3: snapshot")
+        write_png(middle, 1080, 1350)
+        record_snapshot(os.path.join(work, "q3", "fonte"), os.path.join(work, "q3", "snap", qa_imagem.STILL))
+        rep = qa_imagem.run_final(work, 1080, 1350)
+        self.assertTrue(rep["ok"], rep["linha"])
+        self.assertEqual(rep["linha"], "PRONTO: 3 de 3 quadros verdes")
+        out = os.path.join(self.tmp, "final.json")
+        self.assertEqual(self.main_quiet(["--final", work, "--formato=4:5", "--out", out]), 0)
+        self.assertEqual(self.main_quiet(["--final", work, "--formato=1:1", "--out", out]), 1)
+        with open(out, encoding="utf-8") as f:
+            self.assertTrue(json.load(f)["linha"].startswith("PRECISA DO SEU OLHO: 0 de 3"))
 
 
 if __name__ == "__main__":

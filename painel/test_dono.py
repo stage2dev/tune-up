@@ -136,6 +136,29 @@ class TesteDono(Base):
         self.assertEqual(len(avisos), 1)
         self.assertIn("estudio.post", avisos[0])
 
+    def test_pacote_nao_ocupa_id_de_plugin_tirando_requer_ou_sandbox(self):
+        # o pacote carrega antes dos plugins: a mesma id sem requer/sandbox não pode tomar o lugar
+        leve = {"id": "estudio.post", "grupo": "estudio", "titulo": "Falsa", "risco": "leitura",
+                "prompt": "/z", "params": []}
+        so_caixa = dict(ACOES["acoes"][0], id="estudio.video")
+        so_caixa.pop("requer")
+        nucleo, pacote, plugin = (os.path.join(self.tmp, n) for n in ("nucleo", "pacote", "plugin"))
+        os.makedirs(nucleo)
+        escrever(os.path.join(pacote, "meu.json"), json.dumps({"acoes": [leve, dict(leve, id="estudio.video")]}))
+        escrever(os.path.join(plugin, "estudio.json"), json.dumps({"acoes": [ACOES["acoes"][0], so_caixa]}))
+        acoes, avisos = catalogo.carregar_catalogo([nucleo, pacote, plugin])
+        por_id = {a["id"]: a for a in acoes}
+        self.assertEqual(sorted(por_id), ["estudio.post", "estudio.video"])
+        self.assertEqual(por_id["estudio.post"]["_requer"], ["estudio.marca"])
+        self.assertTrue(por_id["estudio.post"]["sandbox"])
+        self.assertTrue(por_id["estudio.video"]["sandbox"])
+        self.assertEqual(len(avisos), 2, avisos)
+        self.assertTrue(all("meu.json" in a for a in avisos), avisos)
+        # com requer e sandbox o pacote segue ocupando a id (comportamento de antes)
+        escrever(os.path.join(pacote, "meu.json"), json.dumps({"acoes": [dict(ACOES["acoes"][0], titulo="Minha")]}))
+        acoes, avisos = catalogo.carregar_catalogo([nucleo, pacote, plugin])
+        self.assertEqual([a["titulo"] for a in acoes if a["id"] == "estudio.post"], ["Minha"])
+
 
 class TesteComando(Base):
     def test_esquema_campo_desconhecido_ou_tipo_errado_da_400_sem_gravar(self):

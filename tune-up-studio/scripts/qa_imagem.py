@@ -2,8 +2,11 @@
 """QA for a still image (post) rendered by HyperFrames.
 
 Standard library only. It does not run Chrome: it reads the PNG, the
-composition source folder and the JSON written by
-`hyperframes check <dir> --json --strict`, and prints one JSON report.
+composition source folder and what HyperFrames itself saved under
+`<source>/.hyperframes/` (the newest `check --strict` report and the snapshot
+record, whose warnings list a brand font that failed to load), and prints one
+JSON report. `--formato 4:5|1:1` takes the size from formatos.json.
+`--final <working folder>` re-checks every `q<N>/` frame and gives the final line.
 
 Exit code: 0 all green, 1 at least one check failed, 2 bad usage.
 """
@@ -15,6 +18,10 @@ import struct
 import sys
 import zlib
 
+STUDIO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SIZE_IDS = {"4:5": "instagram-feed-organico-tamanho", "1:1": "instagram-feed-quadrado-tamanho"}
+STILL = "frame-00-at-0s.png"
+FRAME_RE = re.compile(r"q([1-9]\d*)\Z")
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 SKIP_DIRS = {".hyperframes", "node_modules", ".git"}
 MAX_DETAILS = 20
@@ -146,16 +153,43 @@ def newest_mtime(folder):
     return max([os.path.getmtime(p) for p in source_files(folder)] or [0.0])
 
 
+def format_size(formato, path=None):
+    """(width, height) of a post format ("post 4:5", "4:5", "1x1") read from formatos.json."""
+    m = re.search(r"(\d+)[:x](\d+)", formato or "")
+    key = "%s:%s" % m.groups() if m else None
+    if key not in SIZE_IDS:
+        raise ValueError("unknown format %r (use 4:5 or 1:1)" % formato)
+    with open(path or os.path.join(STUDIO, "formatos.json"), encoding="utf-8") as f:
+        entries = json.load(f)["formatos"]
+    values = next(e["valores"] for e in entries if e.get("id") == SIZE_IDS[key])
+    return int(values["largura"]), int(values["altura"])
+
+
+def newest_report(source):
+    """The newest report HyperFrames saved under `<source>/.hyperframes/artifacts/checks/`."""
+    checks = os.path.join(os.path.realpath(source), ".hyperframes", "artifacts", "checks")
+    try:
+        paths = [os.path.join(checks, n) for n in os.listdir(checks) if n.endswith(".json")]
+    except OSError:
+        return None
+    paths = [p for p in paths if os.path.isfile(p) and not os.path.islink(p)]
+    return max(paths, key=os.path.getmtime) if paths else None
+
+
+def saved_report(data, source):
+    """Path of the report HyperFrames itself wrote for this check, if it sits under the source."""
+    checks = os.path.join(os.path.realpath(source), ".hyperframes", "artifacts", "checks")
+    report = (data.get("saved") or {}).get("report") if isinstance(data.get("saved"), dict) else None
+    if isinstance(report, str) and os.path.realpath(report).startswith(checks + os.sep):
+        return os.path.realpath(report)
+    return None
+
+
 def check_binding(data, path, source, duration):
-    """Problems tying this check JSON to the source folder (and the video length)."""
+    """Problems tying this check report to the source folder (and the video length)."""
     problems = []
-    if source is not None:
-        root = os.path.realpath(source)
-        report = (data.get("saved") or {}).get("report") if isinstance(data.get("saved"), dict) else None
-        if not isinstance(report, str) or not os.path.realpath(report).startswith(root + os.sep):
-            problems.append("check was not run on this source: saved.report=%r, source=%s" % (report, root))
-        elif os.path.getmtime(path) < newest_mtime(source):
-            problems.append("source changed after the check; run check again")
+    if source is not None and os.path.getmtime(path) < newest_mtime(source):
+        problems.append("source changed after the check; run check again")
     if duration is not None:
         got = (data.get("layout") or {}).get("duration") if isinstance(data.get("layout"), dict) else None
         if not isinstance(got, (int, float)) or abs(got - duration) > 0.2:
@@ -163,15 +197,41 @@ def check_binding(data, path, source, duration):
     return problems
 
 
-def check_strict_json(path, source=None, duration=None):
-    """Green only if the strict check ran in a browser on `source` and found nothing above info."""
+def load_json(path):
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, ValueError) as exc:
-        return result("hyperframes_check", False, ["cannot read %s: %s" % (path, exc)])
+        return None, "cannot read %s: %s" % (path, exc)
     if not isinstance(data, dict):
-        return result("hyperframes_check", False, ["check output is not a JSON object"])
+        return None, "%s is not a JSON object" % path
+    return data, None
+
+
+def check_strict_json(path, source=None, duration=None):
+    """Green only if the strict check ran in a browser on `source` and found nothing above info.
+
+    With `source` the verdict is read from the report HyperFrames saved under
+    `<source>/.hyperframes/artifacts/checks/`, never from a copy the session wrote: the one
+    `path` names in `saved.report`, or the newest one when `path` is None.
+    """
+    data = None
+    if path is not None:
+        data, err = load_json(path)
+        if err:
+            return result("hyperframes_check", False, [err])
+    if source is not None:
+        report = saved_report(data, source) if data is not None else newest_report(source)
+        if report is None:
+            return result("hyperframes_check", False, ["no check report HyperFrames saved for this source "
+                                                       "(run check --json --strict on it): %s"
+                                                       % os.path.realpath(source)])
+        path = report
+        data, err = load_json(path)
+        if err:
+            return result("hyperframes_check", False, [err])
+    if data is None:
+        return result("hyperframes_check", False, ["no check output"])
     problems = []
     if data.get("strict") is not True:
         problems.append("check was not run with --strict")
@@ -191,7 +251,39 @@ def check_strict_json(path, source=None, duration=None):
     return result("hyperframes_check", not problems, problems or ["ok"])
 
 
-def run(source, png, check_json, width, height):
+def snapshot_records(node):
+    """Every snapshot record (a dict with an "image" path) inside video-state.json."""
+    if isinstance(node, dict):
+        if isinstance(node.get("image"), str):
+            yield node
+        for value in node.values():
+            yield from snapshot_records(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from snapshot_records(value)
+
+
+def check_snapshot(png, source):
+    """Green only if HyperFrames recorded `png` as a snapshot of `source`, after the last edit,
+    with no warning. A brand font that did not load is one ("Fonts failed: ...")."""
+    data, err = load_json(os.path.join(source, ".hyperframes", "video-state.json"))
+    if err:
+        return result("snapshot", False, [err])
+    want = os.path.realpath(png)
+    found = [r for r in snapshot_records(data.get("snapshots")) if os.path.realpath(r["image"]) == want]
+    if not found:
+        return result("snapshot", False, ["%s was not recorded by hyperframes snapshot of %s" % (png, source)])
+    last = max(found, key=lambda r: r.get("createdAt") if isinstance(r.get("createdAt"), (int, float)) else 0)
+    warnings = (last.get("metadata") or {}).get("warnings") if isinstance(last.get("metadata"), dict) else None
+    problems = ["snapshot warning: %s" % w for w in warnings] if isinstance(warnings, list) \
+        else ["snapshot record has no warnings list"]
+    created = last.get("createdAt")
+    if not isinstance(created, (int, float)) or created / 1000.0 < newest_mtime(source):
+        problems.append("source changed after the snapshot; run snapshot again")
+    return result("snapshot", not problems, problems or ["ok"])
+
+
+def run(source, png, check_json, width, height, snapshot=False):
     checks = [check_png(png, width, height)]
     if not os.path.isdir(source):
         checks.append(result("source", False, ["not a folder: %s" % source]))
@@ -205,20 +297,60 @@ def run(source, png, check_json, width, height):
         checks.append(result("network_lint", not net, net or ["ok"]))
         script = scan(source, [("script", SCRIPT_RE)])  # the post is CSS only
         checks.append(result("no_script", not script, script or ["ok"]))
+        if snapshot:
+            checks.append(check_snapshot(png, source))
     checks.append(check_strict_json(check_json, source))
     return {"ok": all(c["ok"] for c in checks), "checks": checks}
 
 
+def run_final(folder, width, height):
+    """Re-check every `q<N>/` frame (fonte/ + snap/) at the format size; PRONTO only if all are green."""
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        names = []
+    frames = sorted((int(m.group(1)), n) for n in names for m in [FRAME_RE.match(n)] if m)
+    out = []
+    for _, name in frames:
+        base = os.path.join(folder, name)
+        rep = run(os.path.join(base, "fonte"), os.path.join(base, "snap", STILL), None, width, height, snapshot=True)
+        out.append({"frame": name, "ok": rep["ok"], "failed": [c["name"] for c in rep["checks"] if not c["ok"]],
+                    "checks": rep["checks"]})
+    n, green = len(out), sum(1 for f in out if f["ok"])
+    ok = n > 0 and green == n
+    if ok:
+        line = "PRONTO: %d de %d quadros verdes" % (n, n)
+    else:
+        why = "; ".join("%s: %s" % (f["frame"], ", ".join(f["failed"])) for f in out if not f["ok"])
+        line = "PRECISA DO SEU OLHO: %d de %d verdes, %s" % (green, n, why or "nenhum quadro q<N> achado")
+    return {"ok": ok, "linha": line, "size": "%dx%d" % (width, height), "frames": out}
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--source", required=True, help="composition folder (fonte/)")
-    p.add_argument("--png", required=True, help="rendered still")
-    p.add_argument("--check-json", required=True, help="output of check --json --strict")
+    p.add_argument("--source", help="composition folder (fonte/)")
+    p.add_argument("--png", help="rendered still")
+    p.add_argument("--check-json", help="optional: output of check --json --strict; only its saved.report "
+                                         "path is used (default: newest report HyperFrames saved)")
+    p.add_argument("--formato", help="4:5 or 1:1: size from formatos.json (overrides --width/--height)")
+    p.add_argument("--final", metavar="FOLDER", help="re-check every q<N>/ frame in FOLDER (needs --formato)")
     p.add_argument("--width", type=int, default=1080)
     p.add_argument("--height", type=int, default=1350)
     p.add_argument("--out", help="also write the report to this file")
     args = p.parse_args(argv)
-    report = run(args.source, args.png, args.check_json, args.width, args.height)
+    if args.formato:
+        try:
+            args.width, args.height = format_size(args.formato)
+        except (OSError, ValueError, KeyError, StopIteration) as exc:
+            p.error("--formato: %s" % (exc or "not in formatos.json"))
+    if args.final:
+        if not args.formato:
+            p.error("--final needs --formato")
+        report = run_final(args.final, args.width, args.height)
+    elif not (args.source and args.png):
+        p.error("--source and --png are required")
+    else:
+        report = run(args.source, args.png, args.check_json, args.width, args.height, snapshot=True)
     text = json.dumps(report, ensure_ascii=False, indent=2)
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:

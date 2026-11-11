@@ -155,13 +155,19 @@ def _arquivos(pastas):
                 yield i, pasta, arq
 
 
+def _tira_trava(plugin, pacote):
+    """A ação do pacote perde algum `requer` ou o sandbox que a do plugin de mesmo id tem."""
+    return bool(set(plugin["_requer"]) - set(pacote["_requer"])) or (bool(plugin["sandbox"]) and not pacote["sandbox"])
+
+
 def carregar_catalogo(pastas):
     """Ações de cada pasta (núcleo primeiro, depois o pacote). Arquivo ou ação ruim vira aviso.
 
     Id repetido é ignorado, menos num caso: ação do pacote com "substitui": true troca a do
     núcleo de mesmo id, no mesmo lugar da lista (ex.: um nível do chat com as travas do projeto).
+    E a do pacote que ocupa a id de um plugin tirando `requer` ou sandbox perde o lugar, com aviso.
     """
-    acoes, avisos, vistos = [], [], {}
+    acoes, avisos, vistos, arquivos = [], [], {}, {}
     for origem, pasta, arq in _arquivos(pastas):
         nome = os.path.basename(arq)
         try:
@@ -182,13 +188,21 @@ def carregar_catalogo(pastas):
                 avisos.append("%s: %s" % (nome, e))
                 continue
             if limpa["id"] in vistos:
+                velha = [x["id"] for x in acoes].index(limpa["id"])
                 if limpa["_substitui"] and origem == 1 and vistos[limpa["id"]] == 0:  # só o pacote; plugin não
-                    acoes[[x["id"] for x in acoes].index(limpa["id"])] = limpa
+                    acoes[velha] = limpa
+                    vistos[limpa["id"]] = origem
+                elif origem > 1 and vistos[limpa["id"]] == 1 and _tira_trava(limpa, acoes[velha]):
+                    # o pacote carrega antes dos plugins: não pode ocupar a id e derrubar requer/sandbox
+                    avisos.append("%s: ação %s tira requer ou sandbox da ação de plugin de mesmo id; recusei a do pacote"
+                                  % (arquivos[limpa["id"]], limpa["id"]))
+                    acoes[velha] = limpa
                     vistos[limpa["id"]] = origem
                 else:
                     avisos.append("%s: ação %s repetida; ignorei" % (nome, limpa["id"]))
                 continue
             vistos[limpa["id"]] = origem
+            arquivos[limpa["id"]] = nome
             acoes.append(limpa)
     return acoes, avisos
 
