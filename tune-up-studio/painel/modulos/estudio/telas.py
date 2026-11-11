@@ -53,11 +53,23 @@ def _campo(p):
     return c
 
 
-def aba_novo(ctx, aprovada):
+ROTULOS = {"nome": "Nome", "descricao": "Descrição", "cores.bg": "Cor de fundo", "cores.surface": "Cor dos cartões",
+           "cores.primary": "Cor principal", "cores.text": "Cor do texto", "cores.accent": "Cor de destaque",
+           "fontes.heading": "Fonte dos títulos", "fontes.body": "Fonte do texto", "logo": "Logo"}
+CONFIANCA = {"alta": "alta", "media": "média", "baixa": "baixa"}
+
+
+def aba_novo(ctx, aprovada, pronto=True):
     """Um formulário por ação do estúdio (vídeo com movimento só se o projeto ligou a chave dele)."""
+    falta = []
+    if not pronto:
+        falta.append({"tipo": "texto", "titulo": "Estúdio não preparado",
+                      "texto": "Antes de criar peças, prepare o estúdio na aba 1. Ambiente."})
     if not aprovada:
-        return [{"tipo": "texto", "titulo": "Marca não aprovada",
-                 "texto": "Antes de criar peças, confira e aprove a marca na aba Marca."}]
+        falta.append({"tipo": "texto", "titulo": "Marca não aprovada",
+                      "texto": "Antes de criar peças, confira e aprove a marca na aba 2. Marca."})
+    if falta:
+        return falta
     blocos = []
     for a in _acoes():
         if a.get("so_com") and not _ligada(ctx.get("config"), a["so_com"]):
@@ -66,8 +78,8 @@ def aba_novo(ctx, aprovada):
                        "catalogo": a["id"], "botao": "Começar",
                        "campos": [_campo(p) for p in a.get("params") or [] if isinstance(p, dict) and p.get("nome")]})
     if not any(b["catalogo"] == "estudio.video-motion" for b in blocos):
-        blocos.append({"tipo": "texto", "texto": "Vídeo com movimento: o projeto não ligou estudio.video_rede_local "
-                       "no painel.json, então o vídeo sai pela reserva em slides."})
+        blocos.append({"tipo": "texto", "texto": "Vídeo com movimento está desligado neste projeto: o vídeo sai em "
+                       "slides, sem movimento dentro das cenas."})
     return blocos
 
 
@@ -78,11 +90,13 @@ def aba_marca(m, sha, aprovada):
     campos = m[2]["campos"]
     curto = sha[:12]
     estado = "aprovada" if aprovada else "ainda não aprovada"
-    linhas = [{"campo": k, "valor": str(v.get("valor")) if v.get("valor") is not None else "faltando",
-               "fonte": str(v.get("fonte") or ""), "confianca": str(v.get("confianca") or ""),
+    linhas = [{"campo": ROTULOS.get(k, k), "valor": str(v.get("valor")) if v.get("valor") is not None else "faltando",
+               "fonte": str(v.get("fonte") or ""),
+               "confianca": CONFIANCA.get(v.get("confianca"), str(v.get("confianca") or "")),
                "travado": "sim" if v.get("travado") else "não"}
               for k, v in sorted(campos.items()) if isinstance(v, dict)]
-    blocos = [{"tipo": "texto", "titulo": "Marca %s" % estado, "texto": "sha256 %s do marca.json." % curto},
+    blocos = [{"tipo": "texto", "titulo": "Marca %s" % estado,
+               "texto": "Confira os campos abaixo." if aprovada else "Passo 2 de 3: confira os campos abaixo e aprove."},
               {"tipo": "tabela", "titulo": "Campos", "colunas": [
                   {"id": "campo", "rotulo": "Campo"}, {"id": "valor", "rotulo": "Valor"},
                   {"id": "fonte", "rotulo": "De onde veio"}, {"id": "confianca", "rotulo": "Confiança"},
@@ -90,16 +104,16 @@ def aba_marca(m, sha, aprovada):
     for k, v in sorted(campos.items()):
         uri = amostra(v.get("valor")) if k.startswith("cores.") and isinstance(v, dict) else None
         if uri:
-            blocos.append({"tipo": "imagem", "titulo": k, "data_uri": uri, "alt": "Amostra de %s" % k,
+            blocos.append({"tipo": "imagem", "titulo": ROTULOS.get(k, k), "data_uri": uri, "alt": "Amostra de %s" % ROTULOS.get(k, k),
                            "legenda": str(v.get("valor"))})
     if not aprovada:
         blocos.append({"tipo": "formulario", "titulo": "Aprovar a marca", "acao": "marca.aprovar", "botao": "Aprovar",
                        "campos": [], "dados_fixos": {"confirmar": True, "sha256": curto},
-                       "confirmar": "Aprovar a marca com sha256 %s, como está na tabela?" % curto})
+                       "confirmar": "Aprovar a marca como está na tabela?"})
     blocos.append({"tipo": "formulario", "titulo": "Corrigir um campo", "acao": "marca.editar", "botao": "Salvar",
                    "campos": [{"id": "campo", "rotulo": "Campo", "tipo": "escolha", "obrigatorio": True,
                                "valor": sorted(campos)[0] if campos else "",
-                               "opcoes": [{"valor": k, "rotulo": k} for k in sorted(campos)]},
+                               "opcoes": [{"valor": k, "rotulo": ROTULOS.get(k, k)} for k in sorted(campos)]},
                               {"id": "valor", "rotulo": "Valor novo", "tipo": "texto", "obrigatorio": True}]})
     return blocos + [_redescobrir()]
 

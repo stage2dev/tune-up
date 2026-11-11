@@ -53,6 +53,10 @@ export const useModulo = (id: string | undefined) =>
 export async function postarAcao(id: string, req: ReqAcaoModulo): Promise<RespAcaoModulo> {
   const r = await apiPost<RespAcaoModulo | null>(`/api/modulos/${encodeURIComponent(id)}/acao`, req);
   if (r?.ok !== true) throw new ErroApi('O painel não confirmou que a ação foi feita.', 502); // 2xx sem { ok: true } nao e sucesso
+  if (r.resultado?.feito === false) { // o modulo recusou (selo vermelho, marca mudou...): nao e "Feito."
+    const m = r.resultado.mensagem;
+    throw new ErroApi(typeof m === 'string' && m ? m : 'A ação não foi feita.', 409);
+  }
   return r;
 }
 

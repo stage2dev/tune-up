@@ -67,19 +67,23 @@ def montar(ctx):
     ambiente.append({"tipo": "formulario", "titulo": "Preparar estúdio", "acao": "preparar", "botao": "Preparar",
                      "campos": [], "dados_fixos": {"confirmar": True},
                      "confirmar": "Isto baixa o HyperFrames pela internet (cerca de 100 MB). Continuar?"})
-    r["abas"] = [{"id": "novo", "titulo": "Novo", "blocos": telas.aba_novo(ctx, aprovada)},
+    amb = _ambiente(ctx["dados"]) if ctx.get("dados") else None
+    pronto = bool(amb) and amb.get("pronto") is True and amb.get("estudio") == _versao()
+    # na ordem do fluxo: preparar, aprovar a marca, pedir, acompanhar, ver e aprovar
+    r["abas"] = [{"id": "ambiente", "titulo": "1. Ambiente", "blocos": ambiente},
+                 {"id": "marca", "titulo": "2. Marca", "blocos": telas.aba_marca(m, sha, aprovada)},
+                 {"id": "novo", "titulo": "3. Novo", "blocos": telas.aba_novo(ctx, aprovada, pronto)},
                  {"id": "fila", "titulo": "Fila", "blocos": pecas.aba_fila(lista)},
                  {"id": "galeria", "titulo": "Galeria", "blocos": pecas.aba_galeria(lista)},
-                 {"id": "aprovacao", "titulo": "Aprovação", "blocos": pecas.aba_aprovacao(lista)},
-                 {"id": "marca", "titulo": "Marca", "blocos": telas.aba_marca(m, sha, aprovada)},
-                 {"id": "ambiente", "titulo": "Ambiente", "blocos": ambiente}]
+                 {"id": "aprovacao", "titulo": "Aprovação", "blocos": pecas.aba_aprovacao(lista)}]
     return r
 
 
 def _montar_ambiente(ctx):
     amb = _ambiente(ctx["dados"]) if ctx.get("dados") else None
     if amb is None:
-        return {"alertas": [{"nivel": "info", "texto": "Estúdio ainda não preparado. Use Preparar estúdio."}]}
+        return {"alertas": [{"nivel": "info", "texto": "Passo 1 de 3: o estúdio ainda não foi preparado. "
+                                         "Abra a aba 1. Ambiente e use Preparar."}]}
     if amb.get("estado") == "preparando":
         return {"alertas": [{"nivel": "info", "texto": "Preparando o estúdio (desde %s). Se nada mudar em 20 min, "
                              "o Preparar parou: veja dados/ambiente.log e use Preparar estúdio de novo."
@@ -88,7 +92,7 @@ def _montar_ambiente(ctx):
         return {"alertas": [{"nivel": "atencao", "texto": "Estúdio preparado para a versão %s do plugin; esta é a %s. "
                              "Use Preparar estúdio de novo." % (amb.get("estudio"), _versao())}]}
     if amb.get("pronto") is True:
-        return {"alertas": [{"nivel": "info", "texto": "Estúdio pronto (%s)." % amb.get("gravado_em", "")}]}
+        return {"alertas": [{"nivel": "info", "texto": "Estúdio pronto."}]}
     faltas = [i.get("texto", "") for i in amb.get("verificacao") or [] if isinstance(i, dict) and i.get("nivel") == "erro"]
     faltas += ["%s falhou" % p.get("passo", "") for p in amb.get("passos") or [] if isinstance(p, dict) and not p.get("ok")]
     if amb.get("erro"):

@@ -200,7 +200,7 @@ class TestModulo(Base):
 
     def test_montar_mostra_o_estado(self):
         mod = carregar_modulo()
-        self.assertIn("ainda não preparado", mod.montar({"dados": self.dados})["alertas"][0]["texto"])
+        self.assertIn("ainda não foi preparado", mod.montar({"dados": self.dados})["alertas"][0]["texto"])
         self.preparar(codigos=(1,))
         a = mod.montar({"dados": self.dados})["alertas"][0]
         self.assertEqual(a["nivel"], "atencao")

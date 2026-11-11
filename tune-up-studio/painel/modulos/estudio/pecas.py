@@ -18,8 +18,10 @@ import tempfile
 import selo
 
 RE_TRABALHO = re.compile(r"^[0-9a-f]{12}$")
+RE_DATA = re.compile(r"^\d{4}-(\d{2})-(\d{2})T(\d{2}):(\d{2})")
 MAX_PECAS = 30
-MAX_LEGENDA = 20000
+APROVAVEL = ("terminou", "precisa_de_voce")  # parada (teto, erro) ou ainda rodando: nunca vai para aprovação
+INDISPONIVEL = "A lista de peças não está disponível agora. Tente de novo em instantes."
 BLOCO = 64 * 1024
 FORMATO_VIDEO = "reel 9:16 %s s"
 
@@ -110,7 +112,7 @@ def pecas(ctx):
         if p and e.get("estado") != "rodando":
             try:
                 item["selo"] = selo.calcular(p, e["acao"], e.get("params") or {})
-            except (OSError, ValueError) as erro:  # pasta sumiu ou mudou no meio: vermelho, com o motivo
+            except (OSError, ValueError, MemoryError) as erro:  # pasta sumiu ou mudou no meio: vermelho, com o motivo
                 item["selo"] = {"ok": False, "linha": "PRECISA DO SEU OLHO: não consegui conferir (%s)"
                                 % type(erro).__name__, "arquivos": []}
         out.append(item)
@@ -118,16 +120,32 @@ def pecas(ctx):
 
 
 def _titulo(item):
+    """"Post de 11/11 às 08:23" (tipo da peça + quando começou)."""
     e = item["e"]
-    return "%s (%s, %s)" % (e.get("titulo") or e.get("acao"), item["id"], str(e.get("iniciada_em") or "")[:16])
+    tipo = "Vídeo" if selo.tipo(e.get("acao")) == "video" else (
+        "Carrossel" if str((e.get("params") or {}).get("formato") or "").startswith("carrossel") else "Post")
+    m = RE_DATA.match(str(e.get("iniciada_em") or ""))
+    return "%s de %s/%s às %s:%s" % ((tipo,) + m.groups()[1::-1] + m.groups()[2:]) if m else tipo
+
+
+def _nome(arquivo):
+    """"q2.png" -> "quadro 2"; o vídeo é "vídeo"."""
+    m = re.match(r"^q(\d+)\.png$", arquivo)
+    return "quadro %s" % m.group(1) if m else "vídeo"
+
+
+def _texto_selo(s):
+    if s["ok"]:
+        return "Pronto para aprovar."
+    return "Precisa do seu olho (%s)." % s["linha"].replace("PRECISA DO SEU OLHO: ", "", 1)[:300]
 
 
 def _galeria(item, titulo=None):
     s = item["selo"]
     return {"tipo": "galeria", "titulo": titulo or _titulo(item), "vazio": "Nenhum arquivo para mostrar.",
-            "itens": [{"arquivo": "trabalhos/%s/%s" % (item["id"], a["c"]), "rotulo": a["nome"],
-                       "selo": {"texto": "verde", "tom": "bom"} if not a["falhas"]
-                       else {"texto": "vermelho: " + ", ".join(a["falhas"])[:120], "tom": "ruim"}}
+            "itens": [{"arquivo": "trabalhos/%s/%s" % (item["id"], a["c"]), "rotulo": _nome(a["nome"]),
+                       "selo": {"texto": "pronto", "tom": "bom"} if not a["falhas"]
+                       else {"texto": "precisa do seu olho: " + ", ".join(a["falhas"])[:120], "tom": "ruim"}}
                       for a in s["arquivos"]]}
 
 
@@ -135,35 +153,48 @@ def aba_fila(lista):
     if lista is None:
         return [{"tipo": "texto", "texto": "A fila não está disponível nesta tela."}]
     itens = [{"titulo": _titulo(i), "selo": {"texto": i["palavra"], "tom": i["tom"]},
-              "detalhe": "O Claude ainda está trabalhando. Atualize a tela para ver o fim." if i["palavra"] == "rodando"
-              else (i["selo"] or {}).get("linha", "")} for i in lista]
+              "detalhe": "O Claude ainda está trabalhando. A tela se atualiza sozinha." if i["palavra"] == "rodando"
+              else _texto_selo(i["selo"]) if i["selo"] else ""} for i in lista]
     return [{"tipo": "lista", "titulo": "Peças do estúdio", "itens": itens,
              "vazio": "Nada na fila. Peça uma peça na aba Novo."}]
 
 
 def aba_galeria(lista):
-    prontas = [i for i in lista or [] if i["selo"] and i["selo"]["arquivos"]]
+    if lista is None:
+        return [{"tipo": "texto", "texto": INDISPONIVEL}]
+    prontas = [i for i in lista if i["selo"] and i["selo"]["arquivos"]]
     if not prontas:
         return [{"tipo": "texto", "texto": "Ainda não há peças prontas."}]
     blocos = []
     for i in prontas:
-        marca = " Aprovada." if i["aprovado"] else " Recusada." if i["recusado"] else ""
-        blocos += [_galeria(i), {"tipo": "texto", "texto": "Selo do painel: %s.%s" % (i["selo"]["linha"], marca)}]
+        marca = "Aprovada." if i["aprovado"] else "Recusada." if i["recusado"] else _texto_selo(i["selo"])
+        blocos += [_galeria(i, _titulo(i) + (" (aprovada)" if i["aprovado"] else " (recusada)" if i["recusado"] else "")),
+                   {"tipo": "texto", "texto": marca}]
     return blocos
 
 
 def aba_aprovacao(lista):
-    espera = [i for i in lista or [] if i["selo"] and i["selo"]["ok"] and not i["aprovado"] and not i["recusado"]]
+    if lista is None:
+        return [{"tipo": "texto", "texto": INDISPONIVEL}]
+    espera = [i for i in lista if i["selo"] and i["selo"]["ok"] and not i["aprovado"] and not i["recusado"]
+              and i["e"].get("estado") in APROVAVEL]
     if not espera:
-        return [{"tipo": "texto", "texto": "Nenhuma peça com selo verde esperando você."}]
+        return [{"tipo": "texto", "texto": "Nenhuma peça pronta esperando você. Peça uma na aba Novo; "
+                 "as já aprovadas ficam na Galeria."}]
     blocos = []
-    for i in espera:
-        fixos = {"trabalho": i["id"], "confirmar": True}
-        blocos += [_galeria(i), {"tipo": "formulario", "titulo": "Aprovar %s" % i["id"], "acao": "peca.aprovar",
-                                 "botao": "Aprovar", "campos": [], "dados_fixos": fixos,
-                                 "confirmar": "Aprovar a peça %s? Os arquivos vão para aprovados/%s." % (i["id"], i["id"])},
-                   {"tipo": "formulario", "titulo": "Recusar %s" % i["id"], "acao": "peca.recusar",
-                    "botao": "Recusar", "campos": [], "dados_fixos": fixos, "confirmar": "Recusar a peça %s?" % i["id"]}]
+    for i in espera:  # cada arquivo em tamanho cheio e a legenda que vai junto, antes dos botões
+        t, fixos = _titulo(i), {"trabalho": i["id"], "confirmar": True}
+        blocos += [{"tipo": "midia", "titulo": "%s: %s" % (t, _nome(a["nome"])),
+                    "arquivo": "trabalhos/%s/%s" % (i["id"], a["c"]), "alt": "%s, %s" % (t, _nome(a["nome"]))}
+                   for a in i["selo"]["arquivos"]]
+        texto = selo.legenda(i["pasta"]) if selo.tipo(i["e"].get("acao")) == "post" else None
+        if texto:
+            blocos.append({"tipo": "texto", "titulo": "Legenda que vai junto", "texto": texto})
+        blocos += [{"tipo": "formulario", "titulo": "Aprovar: %s" % t, "acao": "peca.aprovar", "botao": "Aprovar",
+                    "campos": [], "dados_fixos": fixos,
+                    "confirmar": "Aprovar %s? Os arquivos vão para a pasta de aprovados." % t.lower()},
+                   {"tipo": "formulario", "titulo": "Recusar: %s" % t, "acao": "peca.recusar", "botao": "Recusar",
+                    "campos": [], "dados_fixos": fixos, "confirmar": "Recusar %s?" % t.lower()}]
     return blocos
 
 
@@ -181,6 +212,8 @@ def _achar(ctx, dados):
         return "Não achei essa peça."
     if e.get("estado") == "rodando":
         return "O Claude ainda está trabalhando nesta peça. Espere terminar."
+    if e.get("estado") not in APROVAVEL:
+        return "Esta peça parou antes de terminar. Peça de novo na aba Novo."
     return e, p
 
 
@@ -197,13 +230,6 @@ def _copiar(origem, destino):
             h.update(pedaco)
             total += len(pedaco)
     return total, h.hexdigest()
-
-
-def _legenda(e, p):
-    if selo.tipo(e["acao"]) != "post" or selo.comum(os.path.join(p, "copy.md"), MAX_LEGENDA):
-        return None
-    with open(os.path.join(p, "copy.md"), encoding="utf-8", errors="replace") as f:
-        return f.read().strip() or None
 
 
 def aprovar(ctx, dados):
@@ -235,7 +261,7 @@ def aprovar(ctx, dados):
         manifesto = {"versao": 1, "trabalho": tid, "acao": e["acao"], "plataforma": "instagram",
                      "formato": params.get("formato") if selo.tipo(e["acao"]) == "post"
                      else FORMATO_VIDEO % params.get("duracao"),
-                     "legenda": _legenda(e, p), "selo": s["linha"], "arquivos": arquivos, "aprovado_em": _agora()}
+                     "legenda": selo.legenda(p) if selo.tipo(e["acao"]) == "post" else None, "selo": s["linha"], "arquivos": arquivos, "aprovado_em": _agora()}
         with open(os.path.join(tmp, "manifesto.json"), "x", encoding="utf-8") as f:  # por último
             json.dump(manifesto, f, ensure_ascii=False, indent=1)
         os.replace(tmp, destino)  # pasta com o mesmo nome já existe: falha (POSIX e Windows)
@@ -244,7 +270,7 @@ def aprovar(ctx, dados):
         if os.path.lexists(destino):
             return {"feito": False, "codigo": 409, "mensagem": "Esta peça já foi aprovada."}
         return {"feito": False, "mensagem": "Não consegui aprovar: %s" % str(erro)[:200]}
-    return {"feito": True, "mensagem": "Peça %s aprovada. Os arquivos estão em aprovados/%s." % (tid, tid)}
+    return {"feito": True, "mensagem": "Peça aprovada. Os arquivos estão na pasta de aprovados."}
 
 
 def recusar(ctx, dados):
@@ -263,4 +289,4 @@ def recusar(ctx, dados):
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump({"trabalho": tid, "recusado_em": _agora()}, f)
     os.replace(tmp, os.path.join(pasta_rec, tid + ".json"))
-    return {"feito": True, "mensagem": "Peça %s recusada." % tid}
+    return {"feito": True, "mensagem": "Peça recusada."}

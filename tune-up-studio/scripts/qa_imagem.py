@@ -51,6 +51,7 @@ LAYOUT_ALLOW_RE = re.compile(
     r"\blayout(?:Allow|Ignore|Bleed|Boundary|Check)\w*|\bdataset\b|setAttribute", re.I)
 SCRIPT_RE = re.compile(r"<script\b", re.I)
 PNG_CHANNELS = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}
+MAX_RAW = 1080 * 1920 * 8 + 1920 * 8  # biggest format (1080x1920) at 16-bit RGBA, plus filter bytes
 ADAM7 = ((0, 0, 8, 8), (4, 0, 8, 8), (0, 4, 4, 8), (2, 0, 4, 4), (0, 2, 2, 4), (1, 0, 2, 2), (0, 1, 1, 2))
 
 
@@ -100,6 +101,8 @@ def png_size(path):
         raise ValueError("bad IHDR chunk")
     width, height, depth, ctype, _, _, interlace = ihdr
     want = png_raw_size(width, height, depth, ctype, interlace)
+    if want > MAX_RAW:  # the header is free text: never inflate past the biggest real format
+        raise ValueError("PNG too large: IHDR says %dx%d" % (width, height))
     inflater = zlib.decompressobj()
     try:
         raw = inflater.decompress(b"".join(idat), want + 1)

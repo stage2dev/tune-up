@@ -60,6 +60,7 @@ class BasePecas(Base):
         antes = time.time() - 60
         os.utime(os.path.join(p, "q1", "fonte", "index.html"), (antes, antes))
         png(os.path.join(p, "q1", "snap", "frame-00-at-0s.png"), largura, altura)
+        escrever(os.path.join(p, "final.json"), json.dumps({"ok": True, "linha": "PRONTO: 1 de 1 quadros verdes"}))
         return p
 
     def abas(self):
@@ -72,23 +73,48 @@ class BasePecas(Base):
 
 
 class TesteSelo(BasePecas):
-    def test_post_verde_e_mentira_da_sessao_nao_muda_o_selo(self):
+    def test_post_verde_e_verde_da_sessao_nao_sobe_o_selo(self):
         self.post()
-        self.post(TID_V, largura=1080, altura=1080)  # PNG 1:1 num post 4:5: vermelho
-        for tid, ok in ((TID, "PRONTO"), (TID_V, "PRECISA DO SEU OLHO")):
-            p = os.path.join(self.dados, "trabalhos", tid)
-            # a sessão grava o contrário do que a peça é: verde no QA dela e "aprovado pelo dono"
-            linha = "PRECISA DO SEU OLHO: x" if ok == "PRONTO" else "PRONTO: 1 de 1 quadros verdes"
-            escrever(os.path.join(p, "final.json"), json.dumps({"ok": ok != "PRONTO", "linha": linha,
-                                                                "aprovado_pelo_dono": True}))
-            escrever(os.path.join(p, "q1", "qa.json"), json.dumps({"ok": ok != "PRONTO", "checks": []}))
+        self.post(TID_V, largura=1080, altura=1080)  # PNG 1:1 num post 4:5: vermelho, mesmo com a sessão dizendo PRONTO
+        escrever(os.path.join(self.dados, "trabalhos", TID_V, "q1", "qa.json"), json.dumps({"ok": True, "checks": []}))
         abas = self.abas()
-        self.assertIn("Selo do painel: PRONTO: 1 de 1 quadros verdes", abas["galeria"])
+        self.assertIn("Pronto para aprovar", abas["galeria"])
         self.assertIn("png_size", abas["galeria"])  # o 1:1 ficou vermelho pelo tamanho
-        self.assertIn("aprovar", abas["aprovacao"])
+        self.assertIn("peca.aprovar", abas["aprovacao"])
         self.assertIn(TID, abas["aprovacao"])
         self.assertNotIn(TID_V, abas["aprovacao"])
         self.assertIn("trabalhos/%s/q1/snap/frame-00-at-0s.png" % TID, abas["galeria"])
+
+    def test_vermelho_ou_falta_da_conferencia_da_sessao_baixa_o_selo(self):
+        p = self.post()
+        escrever(os.path.join(p, "final.json"), json.dumps(
+            {"ok": False, "linha": "PRECISA DO SEU OLHO: 0 de 1 verdes, q1: snapshot, hyperframes_check"}))
+        self.assertNotIn(TID, self.abas()["aprovacao"])
+        self.assertIs(self.agir("peca.aprovar")[1]["resultado"]["feito"], False)
+        os.remove(os.path.join(p, "final.json"))  # sessão cortada antes da conferência final
+        self.assertIn("conferencia_da_sessao", self.abas()["galeria"])
+        self.assertIs(self.agir("peca.aprovar")[1]["resultado"]["feito"], False)
+        self.assertFalse(os.path.exists(os.path.join(self.dados, "aprovados", TID)))
+
+    def test_quadros_que_nao_batem_com_o_formato_ou_sem_legenda_ficam_vermelhos(self):
+        self.post(formato="carrossel 4:5", quadros="5")  # carrossel de 1 quadro só
+        p = self.post(TID_V)
+        os.remove(os.path.join(p, "copy.md"))
+        abas = self.abas()
+        self.assertNotIn("Pronto para aprovar", abas["galeria"])
+        self.assertIn("quadros", abas["galeria"])
+        self.assertIn("legenda", abas["galeria"])
+        for tid in (TID, TID_V):
+            self.assertIs(self.agir("peca.aprovar", tid)[1]["resultado"]["feito"], False, tid)
+
+    @unittest.skipIf(not hasattr(os, "symlink") or os.name == "nt", "atalho")
+    def test_pasta_de_quadro_que_e_atalho_fica_vermelha(self):
+        p = self.post()
+        fora = os.path.join(self.tmp, "fora")
+        shutil.move(os.path.join(p, "q1"), fora)
+        os.symlink(fora, os.path.join(p, "q1"))
+        self.assertIn("q1 não é pasta", self.abas()["galeria"])
+        self.assertIs(self.agir("peca.aprovar")[1]["resultado"]["feito"], False)
 
     def test_gsap_url_e_layout_allow_na_fonte_ficam_vermelhos(self):
         for i, ruim in enumerate(("<script src='gsap.min.js'></script>", "<img src='https://x.example/a.png'>",
@@ -98,7 +124,7 @@ class TesteSelo(BasePecas):
             antes = time.time() - 60
             os.utime(os.path.join(p, "q1", "fonte", "index.html"), (antes, antes))
         texto = self.abas()["galeria"]
-        self.assertNotIn("PRONTO", texto)
+        self.assertNotIn("Pronto para aprovar", texto)
         for nome in ("no_gsap", "network_lint", "layout_allow_count"):
             self.assertIn(nome, texto)
 
@@ -144,6 +170,12 @@ class TesteAprovar(BasePecas):
         r = midia.abrir(self.cfg, "estudio", "aprovados/%s/q1.png" % TID, None)  # a rota serve o aprovado
         self.assertIsInstance(r, midia.Aberto)
         r.fechar()
+
+    def test_nao_aprova_parada_pelo_teto(self):
+        self.post(estado="parada")
+        self.assertNotIn(TID, self.abas()["aprovacao"])
+        self.assertIs(self.agir("peca.aprovar")[1]["resultado"]["feito"], False)
+        self.assertFalse(os.path.exists(os.path.join(self.dados, "aprovados", TID)))
 
     def test_nao_aprova_vermelho_rodando_ou_recusado(self):
         self.post(largura=10, altura=10)
@@ -199,6 +231,7 @@ class TesteVideo(BasePecas):
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=0x336699:s=1080x1920:r=30:d=10",
                         "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
                         os.path.join(p, "video.mp4")], check=True, stdout=subprocess.DEVNULL)
+        escrever(os.path.join(p, "qa.json"), json.dumps({"ok": True, "linha": "PRONTO: video verde (hyperframes)"}))
         return p
 
     def test_mp4_verde_e_truncado_fica_vermelho(self):
@@ -206,11 +239,14 @@ class TesteVideo(BasePecas):
         p = self.video(TID_V)
         with open(os.path.join(p, "video.mp4"), "r+b") as f:
             f.truncate(os.path.getsize(os.path.join(p, "video.mp4")) // 2)
-        escrever(os.path.join(p, "qa.json"), json.dumps({"ok": True, "linha": "PRONTO: video verde (hyperframes)"}))
         galeria = self.abas()["galeria"]
-        self.assertIn("Selo do painel: PRONTO: vídeo verde", galeria)
-        self.assertEqual(galeria.count("PRONTO"), 1, galeria)
-        self.assertIn("Selo do painel: PRECISA DO SEU OLHO", galeria)
+        self.assertEqual(galeria.count("Pronto para aprovar"), 1, galeria)
+        self.assertIn("Precisa do seu olho", galeria)
+
+    def test_qa_da_sessao_vermelho_baixa_o_selo_do_video(self):
+        p = self.video(TID)
+        escrever(os.path.join(p, "qa.json"), json.dumps({"ok": False, "linha": "PRECISA DO SEU OLHO: fonts"}))
+        self.assertNotIn("Pronto para aprovar", self.abas()["galeria"])
 
 
 if __name__ == "__main__":

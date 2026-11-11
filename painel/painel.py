@@ -337,6 +337,7 @@ def fazer_handler(app):
                 if caminho == "/api/execucoes":
                     ex = app.lancador.iniciar(corpo.get("acao"), corpo.get("params"))
                     app.estado.invalidar()
+                    modulos.esquecer()  # telas que listam execuções (fila do estúdio) mostram a nova já
                     return self._json(201, {"execucao": para_tela(ex)})
                 m = RE_ROTA_EXEC.match(caminho)
                 if m and m.group(2) == "parar":

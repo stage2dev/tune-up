@@ -133,6 +133,21 @@ class QaImagemTest(unittest.TestCase):
         report = qa_imagem.run(POST_SOURCE, self.png, self.check_file(clean_check(), POST_SOURCE), 1080, 1350)
         self.assertEqual(self.failed(report), ["png_size"])
 
+    def test_huge_declared_size_is_refused_before_inflating(self):
+        def chunk(kind, data):
+            return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+        with open(self.png, "wb") as f:  # IHDR says 100000x100000 (~30 GB raw): a decompression bomb
+            f.write(qa_imagem.PNG_SIGNATURE + chunk(b"IHDR", struct.pack(">IIBBBBB", 100000, 100000, 8, 2, 0, 0, 0))
+                    + chunk(b"IDAT", zlib.compress(b"\0" * 100000)) + chunk(b"IEND", b""))
+        real = qa_imagem.zlib.decompressobj
+        qa_imagem.zlib.decompressobj = lambda *a: self.fail("inflated a PNG bigger than any format")
+        try:
+            report = qa_imagem.check_png(self.png, 1080, 1350)
+        finally:
+            qa_imagem.zlib.decompressobj = real
+        self.assertFalse(report["ok"])
+        self.assertIn("too large", report["details"][0])
+
     def test_not_a_png_fails(self):
         with open(self.png, "wb") as f:
             f.write(b"GIF89a")

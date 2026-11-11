@@ -3,9 +3,11 @@
 Só checagens sem navegador, com as funções de scripts/qa_imagem.py e qa_video.py (importadas por
 caminho de arquivo): tamanho do PNG, ffprobe do MP4, contagem de `data-layout-allow*`, ausência de
 gsap, lint de rede e MP4/PNG não mais velho que a fonte. O servidor nunca abre no Chrome um HTML
-escrito pela sessão, e o qa.json / final.json da sessão não decidem nada aqui. Atalho, FIFO ou
-arquivo grande demais dentro da peça = vermelho (nada é seguido nem lido). O resultado fica em
-cache pela assinatura (nome, tamanho e mtime de tudo na pasta). Python 3.9, só biblioteca padrão.
+escrito pela sessão. O final.json (post) / qa.json (vídeo) da sessão só baixa o selo: vermelho ou
+ausente = vermelho; verde não sobe nada (é o único lugar onde o check com Chrome rodou). Post: 1 quadro;
+carrossel: de 2 até os quadros pedidos; legenda (copy.md) obrigatória. Atalho, FIFO ou arquivo grande
+demais dentro da peça = vermelho (nada é seguido nem lido). O resultado fica em cache pela assinatura
+(nome, tamanho e mtime de tudo na pasta). Python 3.9, só biblioteca padrão.
 """
 import importlib.util
 import json
@@ -24,6 +26,8 @@ PULAR = {".hyperframes", "node_modules", ".git"}  # o mesmo que o QA pula na fon
 MAX_FONTE = 20 * 1024 * 1024
 MAX_PNG = 50 * 1024 * 1024  # o QA lê o PNG inteiro na memória
 MAX_MP4 = 300 * 1024 * 1024
+MAX_JSON = 1024 * 1024
+MAX_LEGENDA = 20000
 MAX_CACHE = 200
 VIDEOS = {"estudio.video": "reserve", "estudio.video-motion": "hyperframes"}
 _lock = threading.Lock()
@@ -79,6 +83,31 @@ def comum(caminho, limite):
     return "%s grande demais" % os.path.basename(caminho) if st.st_size > limite else None
 
 
+def _pasta_real(caminho):
+    try:
+        return stat.S_ISDIR(os.lstat(caminho).st_mode)
+    except OSError:
+        return False
+
+
+def legenda(pasta):
+    """Texto do copy.md da peça (arquivo comum pequeno, não vazio) ou None."""
+    caminho = os.path.join(pasta, "copy.md")
+    if comum(caminho, MAX_LEGENDA):
+        return None
+    with open(caminho, encoding="utf-8", errors="replace") as f:
+        return f.read().strip() or None
+
+
+def _sessao(qi, caminho):
+    """A conferência que a sessão gravou só derruba: verde só se existe e diz PRONTO."""
+    ruim = comum(caminho, MAX_JSON)
+    d, erro = (None, ruim) if ruim else qi.load_json(caminho)
+    linha = str((d or {}).get("linha") or "")
+    ok = d is not None and d.get("ok") is True and linha.startswith("PRONTO")
+    return qi.result("conferencia_da_sessao", ok, [erro or linha[:300] or "sem linha final"])
+
+
 def _fonte_ruim(fonte):
     """Texto do problema da pasta-fonte (atalho, arquivo especial, grande demais) ou None."""
     try:
@@ -126,6 +155,10 @@ def _post(qi, pasta, params):
     arquivos = []
     for _, n in nomes:
         png, fonte = os.path.join(pasta, n, STILL), os.path.join(pasta, n, "fonte")
+        if not (_pasta_real(os.path.join(pasta, n)) and _pasta_real(os.path.join(pasta, n, "snap"))):
+            arquivos.append({"c": "/".join([n, "snap", "frame-00-at-0s.png"]), "nome": n + ".png",
+                             "falhas": ["%s não é pasta" % n]})  # atalho no meio do caminho: nada é lido
+            continue
         ruim = comum(png, MAX_PNG)
         checks = [qi.result("png", False, [ruim])] if ruim else [qi.check_png(png, largura, altura)]
         checks += _fonte(qi, fonte, True)
@@ -134,13 +167,25 @@ def _post(qi, pasta, params):
                                     ["a fonte mudou depois do PNG"]))
         arquivos.append({"c": "/".join([n, "snap", "frame-00-at-0s.png"]), "nome": n + ".png",
                          "falhas": [c["name"] for c in checks if not c["ok"]]})
+    extra = [_sessao(qi, os.path.join(pasta, "final.json"))]
+    try:
+        maximo = max(2, int(params.get("quadros") or 10))
+    except (TypeError, ValueError):
+        maximo = 10
+    carrossel = str(params.get("formato") or "").startswith("carrossel")
+    if not (2 <= len(arquivos) <= maximo if carrossel else len(arquivos) == 1):
+        extra.append(qi.result("quadros", False, ["%d quadros" % len(arquivos)]))
+    if legenda(pasta) is None:
+        extra.append(qi.result("legenda", False, ["falta o copy.md"]))
+    extra = [c["name"] for c in extra if not c["ok"]]
     verdes = sum(1 for a in arquivos if not a["falhas"])
-    ok = bool(arquivos) and verdes == len(arquivos)
+    ok = bool(arquivos) and verdes == len(arquivos) and not extra
     if ok:
         linha = "PRONTO: %d de %d quadros verdes" % (verdes, verdes)
     else:
         linha = "PRECISA DO SEU OLHO: %d de %d verdes, %s" % (verdes, len(arquivos), "; ".join(
-            "%s: %s" % (a["nome"][:-4], ", ".join(a["falhas"])) for a in arquivos if a["falhas"]) or "nenhum quadro")
+            ["%s: %s" % (a["nome"][:-4], ", ".join(a["falhas"])) for a in arquivos if a["falhas"]] + extra)
+            or "nenhum quadro")
     return {"ok": ok, "linha": linha, "arquivos": arquivos}
 
 
@@ -176,7 +221,7 @@ def _video(qi, qv, pasta, acao, params):
                 checks.append(tag)
             elif tag["ok"]:
                 checks.append(qi.result("engine_hyperframes", False, ["o MP4 é da reserva em slides"]))
-    checks += _fonte(qi, fonte, False)
+    checks += _fonte(qi, fonte, False) + [_sessao(qi, os.path.join(pasta, "qa.json"))]
     if not ruim and not _fonte_ruim(fonte):
         checks.append(qv.check_fresh(video, fonte, None))
     falhas = [c["name"] for c in checks if not c["ok"]]
