@@ -136,12 +136,17 @@ def _instalacoes(home=None):
     return saida
 
 
+def entrada_do_plugin(chave, home=None):
+    """Entrada do registro do plugin `plugin@marketplace` (nome exato), ou None. Com várias entradas
+    vale a de lastUpdated (ou installedAt) mais recente; empate fica com a última do arquivo."""
+    achados = [(_quando(e), i, e) for i, (c, e) in enumerate(_instalacoes(home) or []) if c == chave]
+    return sorted(achados, key=lambda t: t[:2])[-1][2] if achados else None
+
+
 def achar_plugin(chave, home=None):
-    """installPath do plugin `plugin@marketplace`, ou None. Com várias entradas vale a de
-    lastUpdated (ou installedAt) mais recente; empate fica com a última do arquivo."""
-    achados = [(_quando(e), i, e["installPath"]) for i, (c, e) in enumerate(_instalacoes(home) or [])
-               if c == chave]
-    return os.path.expanduser(sorted(achados)[-1][2]) if achados else None
+    """installPath do plugin `plugin@marketplace`, ou None (ver entrada_do_plugin)."""
+    e = entrada_do_plugin(chave, home)
+    return os.path.expanduser(e["installPath"]) if e else None
 
 
 def _ler_arquivo(caminho, avisos):

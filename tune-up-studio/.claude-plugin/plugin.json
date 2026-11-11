@@ -1,0 +1,18 @@
+{
+  "name": "tune-up-studio",
+  "displayName": "tune-up-studio",
+  "version": "0.3.0",
+  "description": "Studio module for the tune-up panel: posts and short videos from the project's brand, rendered locally with a pinned HyperFrames and checked by deterministic QA. macOS, Linux and WSL2 only.",
+  "author": {
+    "name": "tune-up contributors"
+  },
+  "keywords": [
+    "studio",
+    "marketing",
+    "video",
+    "hyperframes"
+  ],
+  "license": "MIT",
+  "repository": "https://github.com/stage2dev/tune-up",
+  "dependencies": ["tune-up"]
+}

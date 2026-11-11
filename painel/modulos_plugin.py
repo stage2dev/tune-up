@@ -9,7 +9,7 @@ Python 3.9, só biblioteca padrão.
 import os
 import re
 
-import config
+import extensoes
 
 RE_NOME = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
 RE_ID = re.compile(r"^[a-z0-9_-]{1,40}$")
@@ -41,9 +41,9 @@ def ligados(cfg):
 
 def caminho(cfg, mid, chave):
     """Caminho real de modulo.py do plugin, ou (None, aviso)."""
-    base = config.achar_plugin(chave, cfg.get("home"))
+    base, aviso = extensoes.conferir(cfg, chave)
     if not base:
-        return None, "plugin %s não está instalado; módulo %s recusado" % (chave, mid)
+        return None, "%s; módulo %s recusado" % (aviso, mid)
     pasta = os.path.join(os.path.realpath(base), "painel", "modulos", mid)
     real = os.path.realpath(os.path.join(pasta, "modulo.py"))
     if not real.startswith(os.path.realpath(pasta).rstrip(os.sep) + os.sep) \

@@ -2,6 +2,9 @@
 // do envio. Sem React aqui, para testar sem tela.
 import { ErroApi } from '../../api/cliente';
 
+/** O bloco como chega do servidor, antes de ser lido: qualquer campo pode faltar ou vir com outro tipo. So o renderizador usa isto. */
+export type BlocoCru = { tipo: string; titulo?: string; [campo: string]: unknown };
+
 export interface Opcao { valor: string; rotulo: string }
 export interface CampoLido { id: string; rotulo: string; tipo: 'texto' | 'texto_longo' | 'escolha' | 'segredo'; opcoes: Opcao[]; valor: string; obrigatorio: boolean; ajuda?: string }
 
@@ -86,12 +89,32 @@ export const copiaDoBotao = (x: Record<string, unknown>): BotaoCopia => ({
   acao: String(x.acao), dados: { ...objeto(x.dados) }, confirmar: textoOuNada(x.confirmar), rotulo: String(x.rotulo),
 });
 
-const COM_ESTADO = ['formulario', 'conversa'];
+const EXT_IMAGEM = ['png', 'jpg', 'jpeg', 'webp'];
+const EXT_VIDEO = ['mp4', 'webm'];
+/** Tipo de midia pela extensao do caminho (a mesma lista da rota do servidor); outra extensao = null. */
+export function tipoDaMidia(c: unknown): 'imagem' | 'video' | null {
+  if (typeof c !== 'string') return null;
+  const ext = c.split('.').pop()?.toLowerCase() ?? '';
+  return EXT_IMAGEM.includes(ext) ? 'imagem' : EXT_VIDEO.includes(ext) ? 'video' : null;
+}
+/** URL da rota de midia do modulo (GET /api/modulos/<id>/arquivo?c=<caminho>). */
+export const urlDoArquivo = (moduloId: string, c: string): string => `/api/modulos/${encodeURIComponent(moduloId)}/arquivo?c=${encodeURIComponent(c)}`;
+
+export const CONFIRMAR_PADRAO = 'Quer mesmo começar? Você poderá parar a qualquer momento na tela da execução.';
+/** Texto do dialogo antes de enviar, ou undefined = envia direto. Acao do catalogo com `confirmar` sempre pede,
+ *  mesmo com a descricao vazia (texto padrao); sem acao do catalogo vale o `confirmar` do bloco. */
+export function textoDeConfirmacao(acaoCat: { confirmar: boolean; descricao: string } | null, doBloco: unknown): string | undefined {
+  if (acaoCat) return acaoCat.confirmar ? (textoOuNada(acaoCat.descricao) ?? CONFIRMAR_PADRAO) : undefined;
+  return textoOuNada(doBloco);
+}
+
+const COM_ESTADO = ['formulario', 'conversa', 'cores', 'envio', 'opcoes'];
 /** Chave estavel do bloco: o que ele digita nao migra para outro quando a lista reordena. Indice so para blocos sem estado. */
 export function chaveDoBloco(b: { tipo?: unknown; [k: string]: unknown }, i: number): string {
   if (typeof b?.id === 'string' && b.id) return `id:${b.id}`;
   if (!COM_ESTADO.includes(String(b?.tipo))) return `i:${i}`;
-  return `${String(b.tipo)}|${String(b.acao ?? '')}|${JSON.stringify(b.dados_fixos ?? b.enviar ?? '')}`;
+  const extra = b.campo ?? b.destino; // opcoes e envio: o mesmo comando serve campos ou destinos diferentes
+  return `${String(b.tipo)}|${String(b.acao ?? b.catalogo ?? '')}|${JSON.stringify(b.dados_fixos ?? b.enviar ?? '')}${extra === undefined ? '' : `|${String(extra)}`}`;
 }
 /** Chaves de todos os blocos; iguais ganham sufixo para nao colidirem. */
 export function chavesDosBlocos(bs: { tipo?: unknown; [k: string]: unknown }[]): string[] {

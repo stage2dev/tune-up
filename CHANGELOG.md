@@ -2,6 +2,56 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## 2.9.0
+
+Studio plan, Part 10: a friendly Brand tab, `tune-up-studio` 0.3.0.
+
+- Panel core: `POST /api/modulos/{id}/envio?destino=<key>` takes one raw image per request for modules that declare `INFO["envios"]`. Same token and origin checks as the other POST routes, `Content-Length` required and checked before reading, 8 MB ceiling, type decided by the bytes (PNG, JPEG, WebP; dimensions read from the header and capped), file name chosen by the server, atomic write without following links. **SVG is refused**: no strict validator was written.
+- Panel screen: four new blocks, `cores` (color pickers with a low-contrast warning), `envio` (drag or pick a file, progress, errors in plain words), `previa` (a sample post that follows the edits right away) and `opcoes` (cards and on/off chips).
+- Studio: the Brand tab is now logo, business photos (up to 8), five colors in plain words, font pairs shown already written, the business in a few words, a live preview and one confirm button. Any change (color, font, logo, photo, text) drops the approval. "Take the colors from the logo" works for PNG and SVG logos only.
+- Studio: posts, videos and ads may use up to two business photos, copied by `scripts/fotos.py`; text always sits on a brand-color block. QA accepts images only from `assets/` inside the piece source.
+- Proven by clicking through the screen with one real Opus session: upload a logo and two photos, change a color and a font, confirm the brand, ask for a post that uses the photo, approve it.
+- Not proven: the Brand tab after the last review fixes was not looked at in a browser; video and ad with a photo in a real session; Safari; Linux and Windows for the studio (CI does not run `tune-up-studio/tests`).
+
+## 2.8.0
+
+Studio plan, Parts 1 to 9, and the new plugin `tune-up-studio` 0.2.0: posts, carousels, short videos and ads made from the project's brand, rendered locally and checked by scripts, run from the panel.
+
+Part 1, mechanisms in the panel core (proven with real background sessions):
+
+- Actions can declare a `sandbox` block, a work folder (`{trabalho}`, created by the server before launch; the session runs with that folder as cwd), a long text parameter saved to a file, `env`, and time limits (`max_minutos`, `max_bloqueado_min`: the panel stops the session and frees the slot).
+- Guard hook: relative paths in Bash are resolved against the session cwd; `dados/../` no longer escapes; backslash escapes (`.cla\ude`) are read the way a POSIX shell reads them; the owner approval file and `aprovados/` are never writable by a session.
+- Measured on CLI 2.1.32x with a fixture action, `pular_permissoes` on and off: network (curl, ffmpeg over https, WebFetch, MCP) denied; writes outside the work folder denied by Bash and by Write; `.env` unreadable; one write inside the work folder accepted; headless Chrome renders a frame inside the sandbox with no extra flag; model and effort reach the session.
+- `claude --bg` refuses a folder that is not trusted, and inside a git repository trust is checked at the git root. The launch error now shows the cause.
+- `tune-up-studio/node/`: HyperFrames pinned to 0.9.6 with a lockfile (newest stable release at least 7 days old on 2026-11-10); install with `npm ci --ignore-scripts`, then `npm audit signatures`. Known: `npm audit` reports undici 7.25.0 (pinned by HyperFrames, also in its latest release).
+- Not proven: the effect of `worktree.bgIsolation` inside a git project.
+
+Part 2, a real post and a real video from a neutral example project, without GSAP:
+
+- `tune-up-studio/exemplos/forno-miudo/`: fictional bakery with a brand answer key, a 4:5 post (1080x1350) and a 10 s 9:16 video (1080x1920), both plain HTML and CSS keyframes. HyperFrames 0.9.6 seeks CSS-only animation frame by frame (measured), so GSAP is not needed and HyperFrames stays as the engine.
+- `tune-up-studio/scripts/`: `qa_imagem.py` and `qa_video.py` (stdlib + ffprobe). They catch the planted defects (text overflow, one black second, layout-silencing attributes, a runtime-built external fetch) and, after review, truncated PNG/MP4 files and a check report that belongs to another piece. `reserva_slides.py` builds an FFmpeg slide video when HyperFrames is unavailable.
+- `tune-up-studio/regras/bash-estudio.json`: positive list of commands for studio sessions (HyperFrames subcommands, ffmpeg with `-protocol_whitelist file,pipe`, the studio scripts), as hook rules.
+- Sandbox: `"sandbox": {"rede_local": true}` turns on `sandbox.network.allowLocalBinding`. HyperFrames `render` needs it (it listens on 127.0.0.1); `snapshot` does not. **Measured risk on macOS: with it on, the page being rendered can reach any service on localhost and on the machine's own LAN address; the outside network stays closed.** Off by default.
+- Measured (provisional): render of the 10 s video about 5 s and 460 MB; a background session that renders it about 21 s and 175k tokens (mostly cache).
+- Guard hook on Windows: the allowed `dados` folder is recognised with mixed separators (simulated; CI is the proof).
+
+Parts 3 to 9, the studio:
+
+- Actions from installed plugins, opt-in per project in `painel.json` (`acoes_de_plugins`), pinned by version and sha256; a changed plugin is refused until `--aceitar-extensao` (`painel/extensoes.py`). Plugins with bytecode in `painel/` are refused.
+- Module commands take a schema. The owner's approval is written only by the server (`painel/dono.py`); an action with `requer` runs only after that approval and only with `sandbox`. Brand approval is bound to the sha256 of `marca.json`: a brand changed after approval answers 409 again.
+- Guard hook: denies writes that name the owner files anywhere; sandboxed sessions cannot Write/Edit HyperFrames reports in `.hyperframes/`, and only the pinned hyperframes may cite that folder in Bash (paths are NFKC-folded first).
+- `rede_local` needs `so_com`: an action with it exists only in a project that turns on the named key. `estudio.video-motion` (HyperFrames render) needs `"estudio": {"video_rede_local": true}` in `painel.json`; without it video goes through the FFmpeg slide reserve, which opens no local port.
+- `tune-up-studio` plugin: environment checker and a deterministic "Preparar estudio" script, `formatos.json` v1 (sizes, text limits, safe zones), brand discovery (`marca.json`, `MARCA.md`, logo copy, a no-brand mode) and local font stacks.
+- Skills and actions: `marca` / `marca-ler`, `post` (`estudio.post`, post and carousel), `video` (`estudio.video` by slide reserve, `estudio.video-motion` by render) and `anuncio` (`estudio.anuncio`: one piece per platform ratio, texts checked by script, `export/google-ads-editor.csv` generated by script with every row `Paused`, Google images clean for Search, the 9:16 safe zone checked by machine; the Meta sheet is marked experimental).
+- QA scripts judge what HyperFrames saved on disk, not what the session reports; a stale MP4, a failed font, a stopped or short piece stays red. A session's QA result can only lower the seal; the server recomputes it.
+- Panel: media route `GET /api/modulos/{id}/arquivo?c=` with Range (206/416), realpath and `O_NOFOLLOW`, CSP `media-src`; new blocks `galeria` and `midia`; the `formulario` block can start a catalog action, with confirmation. `.csv` downloads only from `aprovados/`, as an attachment.
+- Studio screen (module `estudio`): tabs Ambiente, Marca, Novo, Fila, Galeria, Aprovação, with a step-by-step guide; piece approval writes `manifesto.json` with the server's sha256; plain-language texts; the module run page is in words, with "Voltar para".
+- Merge with 2.6.0/2.7.0 (chat without the terminal, skills list): the chat skills block survives the prompt rebuilt with the work folder; a sandboxed session cannot be answered or interrupted from the chat (`--resume` does not carry the `--settings` with the sandbox block). To keep files under 450 lines, `registro.py` and `pergunta.py` came out of `lancador.py` and `travas_validar.py` out of `travas.py`.
+- Measured in real opus sessions: post 4:5 57 s; carousel of 5 139 s; 15 s reel by reserve 129 s; 10 s reel by render 144 s; Google ad set 2 of 2 in 369 s. Each piece cost about 0.7 to 1.4 million tokens, almost all of it cache reads. The screen flow was driven by clicks in headless Chrome: environment, brand approval, post, queue, approval, video playing in the gallery.
+- Measured risks: `rede_local` on macOS lets the rendered page reach localhost and the machine's LAN address (off by default; on Linux the key has no effect). A session WITHOUT sandbox in the same project can still write the approval file by indirect paths; accepted and documented (such a session already has the owner's whole disk), and every studio action with `requer` must run with sandbox. `npm audit` reports undici 7.25.0, pinned by hyperframes 0.9.6.
+- Not proven: Safari (video playback and the screen); Linux; Windows only through CI; the Meta sheet without a real session after the final skill; importing the CSV into Google Ads Editor (an owner test; a CSV without BOM may break accents there); the effect of `worktree.bgIsolation` inside a git project.
+- `painel/web/dist` rebuilt.
+
 ## 2.7.0
 
 The panel chat has a list of skills to pick from.

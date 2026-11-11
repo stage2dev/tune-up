@@ -1,0 +1,587 @@
+{
+ "versao": 1,
+ "gerado_em": "2026-11-10",
+ "nota": "status: oficial = pagina oficial aberta, com url; aproximado = fonte secundaria, snippet ou suposicao. Zonas seguras mudam: reconfira antes de confiar.",
+ "formatos": [
+  {
+   "id": "instagram-feed-anuncio-tamanho",
+   "plataforma": "instagram",
+   "formato": "feed anuncio 4:5",
+   "tipo": "tamanho",
+   "valores": {
+    "razao": "4:5",
+    "largura": 1440,
+    "altura": 1800,
+    "largura_min": 500,
+    "formatos": [
+     "jpg",
+     "png"
+    ],
+    "peso_max_mb": 30,
+    "razao_aceita": "4:5 a 1.91:1"
+   },
+   "fonte": "Meta ads guide, Instagram feed (pagina de objetivo Awareness)",
+   "url": "https://www.facebook.com/business/ads-guide/image/instagram-feed",
+   "verificado_em": "2026-11-10",
+   "status": "oficial"
+  },
+  {
+   "id": "instagram-feed-anuncio-texto",
+   "plataforma": "instagram",
+   "formato": "feed anuncio 4:5",
+   "tipo": "texto",
+   "valores": {
+    "texto_principal": 125,
+    "titulo": 40
+   },
+   "fonte": "Meta ads guide, Instagram feed (pagina de objetivo Awareness)",
+   "url": "https://www.facebook.com/business/ads-guide/image/instagram-feed",
+   "verificado_em": "2026-11-10",
+   "status": "oficial"
+  },
+  {
+   "id": "instagram-feed-organico-tamanho",
+   "plataforma": "instagram",
+   "formato": "feed organico 4:5",
+   "tipo": "tamanho",
+   "valores": {
+    "razao": "4:5",
+    "largura": 1080,
+    "altura": 1350
+   },
+   "fonte": "Guias de terceiros; sem pagina oficial lida",
+   "url": null,
+   "verificado_em": "2026-11-10",
+   "status": "aproximado",
+   "nota": "Fontes de terceiros divergem: algumas citam 3:4 (1080x1440) desde 2025."
+  },
+  {
+   "id": "instagram-feed-quadrado-tamanho",
+   "plataforma": "instagram",
+   "formato": "feed 1:1",
+   "tipo": "tamanho",
+   "valores": {
+    "razao": "1:1",
+    "largura": 1080,
+    "altura": 1080
+   },
+   "fonte": "Pratica comum; sem pagina oficial lida",
+   "url": null,
+   "verificado_em": "2026-11-10",
+   "status": "aproximado",
+   "nota": "Nao consta nas fontes pesquisadas; valor usual."
+  },
+  {
+   "id": "instagram-reels-tamanho",
+   "plataforma": "instagram",
+   "formato": "reels 9:16",
+   "tipo": "tamanho",
+   "valores": {
+    "razao": "9:16",
+    "largura": 1080,
+    "altura": 1920
+   },
+   "fonte": "Guias de terceiros; pagina oficial deu 404",
+   "url": null,
+   "verificado_em": "2026-11-10",
+   "status": "aproximado"
+  },
+  {
+   "id": "instagram-reels-zona-segura",
+   "plataforma": "instagram",
+   "formato": "reels 9:16",
+   "tipo": "zona_segura",
+   "valores": {
+    "margem_topo_px": 250,
+    "margem_base_px": 250,
+    "margem_topo_pct": 14,
+    "margem_base_pct": 20
+   },
+   "fonte": "Guias de terceiros (250 px) e resumo de busca de pagina Meta nao aberta (14% topo, 20% base)",
+   "url": null,
+   "verificado_em": "2026-11-10",
+   "status": "aproximado",
+   "nota": "Zona segura oficial NAO verificada; as duas fontes divergem. Grade do perfil corta Reels em 3:4 ou 4:5 (fontes divergem)."
+  },
+  {
+   "id": "instagram-stories-tamanho",
+   "plataforma": "instagram",
+   "formato": "stories 9:16",
+   "tipo": "tamanho",
+   "valores": {
+    "razao": "9:16",
+    "largura": 1080,
+    "altura": 1920
+   },
+   "fonte": "Guias de terceiros; pagina oficial de Stories deu 404",
+   "url": null,
+   "verificado_em": "2026-11-10",
+   "status": "aproximado"
+  },
+  {
+   "id": "instagram-stories-zona-segura",
+   "plataforma": "instagram",
+   "formato": "stories 9:16",
+   "tipo": "zona_segura",
+   "valores": {
+    "margem_topo_px": 250,
+    "margem_base_px": 250,
+    "margem_topo_pct": 14,
+    "margem_base_pct": 20
+   },
+   "fonte": "Guias de terceiros (250 px) e resumo de busca de pagina Meta nao aberta (14% topo, 20% base)",
+   "url": null,
+   "verificado_em": "2026-11-10",
+   "status": "aproximado",
+   "nota": "Zona segura oficial NAO verificada; as duas fontes divergem."
+  },
+  {
+   "id": "facebook-feed-anuncio-tamanho",
+   "plataforma": "facebook",
+   "formato": "feed anuncio 4:5",
+   "tipo": "tamanho",
+   "valores": {
+    "razao": "4:5",
+    "largura": 1440,
+    "altura": 1800,
+    "largura_min": 600,
+    "altura_min": 750,
+    "formatos": [
+     "jpg",
+     "png"
+    ],
+    "peso_max_mb": 30
+   },
+   "fonte": "Meta ads guide, Facebook feed, objetivo trafego",
+   "url": "https://www.facebook.com/business/ads-guide/update/image/facebook-feed/traffic",
+   "verificado_em": "2026-11-10",
+   "status": "oficial"
+  },
+  {
+   "id": "facebook-feed-anuncio-texto",
+   "plataforma": "facebook",
+   "formato": "feed anuncio 4:5",
+   "tipo": "texto",
+   "valores": {
+    "texto_principal_recomendado_min": 50,
+    "texto_principal_recomendado_max": 150,
+    "titulo": 27
+   },
+   "fonte": "Meta ads guide, Facebook feed, objetivo trafego",
+   "url": "https://www.facebook.com/business/ads-guide/update/image/facebook-feed/traffic",
+   "verificado_em": "2026-11-10",
+   "status": "oficial"
+  },
+  {
+   "id": "facebook-organico-tamanho",
+   "plataforma": "facebook",
+   "formato": "feed organico",
+   "tipo": "tamanho",
+   "valores": {
+    "razoes": [
+     "4:5",
+     "1:1"
+    ],
+    "tamanhos": [
+     "1080x1350",
+     "1080x1080"
+    ]
+   },
+   "fonte": "Suposicao: reaproveita os tamanhos do Instagram; pagina oficial de carrossel deu 404",
+   "url": null,
+   "verificado_em": "2026-11-10",
+   "status": "aproximado",
+   "nota": "NAO verificado."
+  },
+  {
+   "id": "facebook-stories-tamanho",
+   "plataforma": "facebook",
+   "formato": "stories 9:16",
+   "tipo": "tamanho",
+   "valores": {
+    "razao": "9:16",
+    "largura": 1080,
+    "altura": 1920
+   },
+   "fonte": "Suposicao; pagina oficial deu 404",
+   "url": null,
+   "verificado_em": "2026-11-10",
+   "status": "aproximado",
+   "nota": "NAO verificado."
+  },
+  {
+   "id": "meta-ads-stories-tamanho",
+   "plataforma": "meta-ads",
+   "formato": "stories 9:16",
+   "tipo": "tamanho",
+   "valores": {
+    "razao": "9:16",
+    "largura_min": 1080,
+    "altura_min": 1920,
+    "video_peso_max_gb": 4
+   },
+   "fonte": "Resumo de busca de pagina Meta nao aberta",
+   "url": null,
+   "verificado_em": "2026-11-10",
+   "status": "aproximado",
+   "nota": "Duracao diverge entre paginas (1 s a 60 min contra 1 a 15 s)."
+  },
+  {
+   "id": "meta-ads-stories-zona-segura",
+   "plataforma": "meta-ads",
+   "formato": "stories 9:16",
+   "tipo": "zona_segura",
+   "valores": {
+    "margem_topo_pct": 14,
+    "margem_base_pct": 20
+   },
+   "fonte": "Resumo de busca de pagina Meta nao aberta",
+   "url": null,
+   "verificado_em": "2026-11-10",
+   "status": "aproximado"
+  },
+  {
+   "id": "meta-ads-stories-texto",
+   "plataforma": "meta-ads",
+   "formato": "stories 9:16",
+   "tipo": "texto",
+   "valores": {
+    "texto_principal": 125
+   },
+   "fonte": "Resumo de busca de pagina Meta nao aberta",
+   "url": null,
+   "verificado_em": "2026-11-10",
+   "status": "aproximado"
+  },
+  {
+   "id": "linkedin-imagem-tamanho",
+   "plataforma": "linkedin",
+   "formato": "imagem unica",
+   "tipo": "tamanho",
+   "valores": {
+    "tamanhos": [
+     {
+      "razao": "1.91:1",
+      "largura": 1200,
+      "altura": 628
+     },
+     {
+      "razao": "1:1",
+      "largura": 1200,
+      "altura": 1200
+     },
+     {
+      "razao": "4:5",
+      "largura": 720,
+      "altura": 900,
+      "so_mobile": true
+     }
+    ],
+    "formatos": [
+     "jpg",
+     "png",
+     "gif"
+    ],
+    "peso_max_mb": 5
+   },
+   "fonte": "LinkedIn Help, imagem unica",
+   "url": "https://www.linkedin.com/help/lms/answer/a426534",
+   "verificado_em": "2026-11-10",
+   "status": "oficial"
+  },
+  {
+   "id": "linkedin-imagem-texto",
+   "plataforma": "linkedin",
+   "formato": "imagem unica",
+   "tipo": "texto",
+   "valores": {
+    "introducao_sem_truncar": 150,
+    "introducao_max": 3000,
+    "titulo_sem_truncar": 70,
+    "titulo_max": 200,
+    "descricao_lead_gen_sem_truncar": 100,
+    "descricao_lead_gen_max": 300
+   },
+   "fonte": "LinkedIn Help, imagem unica",
+   "url": "https://www.linkedin.com/help/lms/answer/a426534",
+   "verificado_em": "2026-11-10",
+   "status": "oficial"
+  },
+  {
+   "id": "linkedin-carrossel-tamanho",
+   "plataforma": "linkedin",
+   "formato": "carrossel",
+   "tipo": "tamanho",
+   "valores": {
+    "cards_min": 2,
+    "cards_max": 10,
+    "razao": "1:1",
+    "largura": 1080,
+    "altura": 1080,
+    "peso_max_mb_por_card": 10,
+    "formatos": [
+     "jpg",
+     "png"
+    ]
+   },
+   "fonte": "LinkedIn Help; valores lidos no resumo da mesma pagina, nao no corpo",
+   "url": "https://www.linkedin.com/help/lms/answer/a426534",
+   "verificado_em": "2026-11-10",
+   "status": "oficial",
+   "nota": "Titulo corta em 2 linhas."
+  },
+  {
+   "id": "tiktok-video-tamanho",
+   "plataforma": "tiktok",
+   "formato": "video 9:16",
+   "tipo": "tamanho",
+   "valores": {
+    "razao": "9:16",
+    "largura_min": 540,
+    "altura_min": 960,
+    "largura_usual": 1080,
+    "altura_usual": 1920,
+    "peso_max_mb": 500,
+    "formatos": [
+     "mp4",
+     "mov"
+    ],
+    "outras_razoes_min": {
+     "16:9": "960x540",
+     "1:1": "640x640"
+    }
+   },
+   "fonte": "TikTok Ads Help, video ad specifications (Last updated: June 2026)",
+   "url": "https://ads.tiktok.com/help/article/video-ads-specifications?lang=en",
+   "verificado_em": "2026-11-10",
+   "status": "oficial",
+   "nota": "A pagina tambem lista mpeg, 3gp e avi."
+  },
+  {
+   "id": "tiktok-video-zona-segura",
+   "plataforma": "tiktok",
+   "formato": "video 9:16",
+   "tipo": "zona_segura",
+   "valores": {
+    "fixa": false
+   },
+   "fonte": "Pagina oficial diz que depende da legenda e do formato; o TikTok publica arquivos de safe zone para baixar",
+   "url": "https://ads.tiktok.com/help/article/video-ads-specifications?lang=en",
+   "verificado_em": "2026-11-10",
+   "status": "aproximado",
+   "nota": "Sem percentuais: os de blogs nao foram verificados."
+  },
+  {
+   "id": "tiktok-anuncio-texto",
+   "plataforma": "tiktok",
+   "formato": "anuncio",
+   "tipo": "texto",
+   "valores": {
+    "texto_max": 100,
+    "texto_max_cjk": 50,
+    "texto_recomendado_min": 4,
+    "texto_recomendado_max": 60
+   },
+   "fonte": "Pagina antiga de preview; nao confirmado",
+   "url": null,
+   "verificado_em": "2026-11-10",
+   "status": "aproximado"
+  },
+  {
+   "id": "youtube-shorts-video",
+   "plataforma": "youtube-shorts",
+   "formato": "short vertical",
+   "tipo": "tamanho",
+   "valores": {
+    "orientacao": "vertical",
+    "duracao_max_s": 180,
+    "resolucao_max": "1080p"
+   },
+   "fonte": "YouTube Help, Shorts",
+   "url": "https://support.google.com/youtube/answer/10059070",
+   "verificado_em": "2026-11-10",
+   "status": "oficial",
+   "nota": "A pagina nao fixa a razao."
+  },
+  {
+   "id": "youtube-shorts-razao",
+   "plataforma": "youtube-shorts",
+   "formato": "short vertical",
+   "tipo": "tamanho",
+   "valores": {
+    "razao": "9:16",
+    "largura": 1080,
+    "altura": 1920
+   },
+   "fonte": "Pratica comum (fonte secundaria)",
+   "url": null,
+   "verificado_em": "2026-11-10",
+   "status": "aproximado"
+  },
+  {
+   "id": "x-anuncio-carrossel-tamanho",
+   "plataforma": "x",
+   "formato": "anuncio carrossel",
+   "tipo": "tamanho",
+   "valores": {
+    "razoes": [
+     {
+      "razao": "1.91:1",
+      "largura": 800,
+      "altura": 418
+     },
+     {
+      "razao": "1:1",
+      "largura": 800,
+      "altura": 800
+     }
+    ],
+    "razao_unica_por_carrossel": true
+   },
+   "fonte": "Trecho da busca da pagina oficial; pagina deu 403 ao abrir",
+   "url": "https://business.x.com/en/help/campaign-setup/creative-ad-specifications",
+   "verificado_em": "2026-11-10",
+   "status": "aproximado",
+   "nota": "Contagem de cards (2-6) e 5 MB sao de terceiros e ficaram de fora."
+  },
+  {
+   "id": "x-anuncio-video",
+   "plataforma": "x",
+   "formato": "anuncio video",
+   "tipo": "tamanho",
+   "valores": {
+    "razoes": [
+     "16:9",
+     "1:1"
+    ]
+   },
+   "fonte": "Trecho da busca da pagina oficial; pagina deu 403 ao abrir",
+   "url": "https://business.x.com/en/help/campaign-setup/creative-ad-specifications",
+   "verificado_em": "2026-11-10",
+   "status": "aproximado"
+  },
+  {
+   "id": "google-ads-rsa-texto",
+   "plataforma": "google-ads",
+   "formato": "RSA",
+   "tipo": "texto",
+   "valores": {
+    "titulos_min": 3,
+    "titulos_max": 15,
+    "titulo_chars": 30,
+    "descricoes_min": 2,
+    "descricoes_max": 4,
+    "descricao_chars": 90,
+    "caminho_chars": 15,
+    "caracteres_cjk_contam": 2
+   },
+   "fonte": "Google Ads Help, anuncio responsivo de pesquisa (lido em resumo)",
+   "url": "https://support.google.com/google-ads/answer/7684791",
+   "verificado_em": "2026-11-10",
+   "status": "oficial"
+  },
+  {
+   "id": "google-ads-pmax-texto",
+   "plataforma": "google-ads",
+   "formato": "Performance Max",
+   "tipo": "texto",
+   "valores": {
+    "titulos_min": 3,
+    "titulos_max": 15,
+    "titulo_chars": 30,
+    "titulo_curto_ao_menos_um_chars": 15,
+    "titulos_longos_min": 1,
+    "titulos_longos_max": 5,
+    "titulo_longo_chars": 90,
+    "descricoes_min": 2,
+    "descricoes_max": 5,
+    "descricao_chars": 90,
+    "nome_empresa_chars": 25,
+    "caminho_chars": 15
+   },
+   "fonte": "Google Ads Help, Performance Max (lido em resumo)",
+   "url": "https://support.google.com/google-ads/answer/17091269",
+   "verificado_em": "2026-11-10",
+   "status": "oficial"
+  },
+  {
+   "id": "google-ads-pmax-imagem",
+   "plataforma": "google-ads",
+   "formato": "Performance Max",
+   "tipo": "tamanho",
+   "valores": {
+    "tamanhos": [
+     {
+      "razao": "1.91:1",
+      "largura": 1200,
+      "altura": 628,
+      "min": "600x314",
+      "qtd": "4 a 20"
+     },
+     {
+      "razao": "1:1",
+      "largura": 1200,
+      "altura": 1200,
+      "min": "300x300",
+      "qtd": "4 a 20"
+     },
+     {
+      "razao": "4:5",
+      "largura": 960,
+      "altura": 1200,
+      "opcional": true
+     }
+    ],
+    "formatos": [
+     "jpg",
+     "png"
+    ],
+    "peso_max_mb": 5
+   },
+   "fonte": "Google Ads Help, Performance Max (lido em resumo)",
+   "url": "https://support.google.com/google-ads/answer/17091269",
+   "verificado_em": "2026-11-10",
+   "status": "oficial"
+  },
+  {
+   "id": "google-ads-pmax-video",
+   "plataforma": "google-ads",
+   "formato": "Performance Max",
+   "tipo": "tamanho",
+   "valores": {
+    "razoes": [
+     "16:9",
+     "1:1",
+     "9:16"
+    ],
+    "duracao_min_s": 10,
+    "videos_max": 15
+   },
+   "fonte": "Google Ads Help, Performance Max (lido em resumo)",
+   "url": "https://support.google.com/google-ads/answer/17091269",
+   "verificado_em": "2026-11-10",
+   "status": "oficial"
+  },
+  {
+   "id": "google-ads-demand-gen",
+   "plataforma": "google-ads",
+   "formato": "Demand Gen",
+   "tipo": "texto",
+   "valores": {
+    "titulo_chars": 40,
+    "descricao_chars": 90,
+    "razoes_imagem": [
+     "1.91:1",
+     "1:1",
+     "4:5"
+    ],
+    "duracao_video_recomendada_s": "10 a 60"
+   },
+   "fonte": "Resultado de busca; paginas answer/13704860, 17140672 e 17141078 nao abertas",
+   "url": null,
+   "verificado_em": "2026-11-10",
+   "status": "aproximado",
+   "nota": "Paginas divergem sobre minimo e quantidade."
+  }
+ ]
+}

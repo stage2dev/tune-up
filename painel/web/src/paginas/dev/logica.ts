@@ -1,6 +1,6 @@
 // Funcoes puras das telas de desenvolvimento (sem React), testadas em logica.test.ts.
 import { apiPost, ErroApi } from '../../api/cliente';
-import type { Execucao, EventoExecucao } from '../../api/tipos';
+import type { Execucao, EventoExecucao, ResumoModulo } from '../../api/tipos';
 import type { Estado, Fase, ItemRevisado, Parte, Pendencia, StatusParte } from './tipos';
 
 // ---------------------------------------------------------------- estado
@@ -183,4 +183,29 @@ export function traduzirErroInicio(e: unknown): ResultadoErro {
     return { tipo: 'erro', texto: e.message };
   }
   return { tipo: 'erro', texto: 'Algo deu errado. Tente de novo.' };
+}
+
+// ---------------------------------------------------------------- execucao de modulo
+/** Modulo dono da execucao (acao de modulo/plugin: o grupo da acao e o id do modulo), ou undefined. */
+export function moduloDaExecucao(e: Pick<Execucao, 'grupo' | 'area'>, modulos: ResumoModulo[] | undefined): ResumoModulo | undefined {
+  const grupo = e.grupo ?? e.area;
+  return grupo ? (modulos ?? []).find((m) => m.id === grupo) : undefined;
+}
+
+/** O estado de uma execucao de modulo em palavras simples, sem comando de terminal. */
+export function estadoEmPalavras(estado: string | undefined, modulo: string): string {
+  switch (estado) {
+    case 'rodando':
+      return `O Claude está fazendo isto agora. Pode voltar para ${modulo}: o resultado aparece lá quando ficar pronto.`;
+    case 'precisa_de_voce':
+      return `O Claude parou de trabalhar. Veja o resultado em ${modulo}.`;
+    case 'terminou':
+      return `Terminou. Veja o resultado em ${modulo}.`;
+    case 'parada':
+      return `Esta execução foi parada. O que ficou pronto continua em ${modulo}.`;
+    case 'sumiu':
+      return `Não acho mais esta sessão. Veja em ${modulo} o que ficou pronto.`;
+    default:
+      return `Ainda não sei o estado desta execução. Veja em ${modulo}.`;
+  }
 }

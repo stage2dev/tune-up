@@ -1,5 +1,5 @@
 // Abas acessiveis (setas esquerda/direita, Home, End). O conteudo de cada aba e quem usa que renderiza.
-import { useId, useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type KeyboardEvent, type ReactNode } from 'react';
 
 export interface Aba {
   id: string;
@@ -18,6 +18,10 @@ interface Props {
 export function Abas({ abas, ativa, aoTrocar, children }: Props) {
   const base = useId();
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
+  // no celular a barra rola de lado: a aba ativa (inclusive a ultima) fica sempre a vista
+  useEffect(() => {
+    refs.current[ativa]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [ativa]);
 
   const teclado = (e: KeyboardEvent, i: number) => {
     let j = i;

@@ -1,0 +1,9 @@
+{
+  "name": "tune-up-studio-node",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pinned HyperFrames install for tune-up-studio.",
+  "dependencies": {
+    "hyperframes": "0.9.6"
+  }
+}

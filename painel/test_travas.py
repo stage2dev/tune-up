@@ -7,6 +7,7 @@ import base64  # noqa: E402
 import io  # noqa: E402
 import json  # noqa: E402
 import os  # noqa: E402
+import shlex  # noqa: E402
 import shutil  # noqa: E402
 import subprocess  # noqa: E402
 import tempfile  # noqa: E402
@@ -15,6 +16,7 @@ import unittest  # noqa: E402
 import catalogo  # noqa: E402
 import lancador  # noqa: E402
 import travas  # noqa: E402
+import travas_validar  # noqa: E402
 from test_lancador import CLIFalso, cfg_teste  # noqa: E402
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
@@ -85,7 +87,7 @@ class TesteValidacao(unittest.TestCase):
         self.assertEqual(decisao(c, "mcp__x__apagar"), "deny")
         self.assertIsNone(decisao(c, "mcp__x__ferramenta_7"))
         with self.assertRaises(ValueError):
-            catalogo.validar_acao(dict(ACAO_CODIGO, negar=[{"ferramenta": "a" * (travas.MAX_REGEX + 1)}]))
+            catalogo.validar_acao(dict(ACAO_CODIGO, negar=[{"ferramenta": "a" * (travas_validar.MAX_REGEX + 1)}]))
 
 
 class TesteDecisao(unittest.TestCase):
@@ -207,7 +209,7 @@ class TesteArgv(unittest.TestCase):
         self.assertIn("Edit(**/.claude/settings*.json)", cfg["permissions"]["deny"])
         self.assertEqual(cfg["permissions"]["allow"], ["mcp__servico__LER"])
         gancho = cfg["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
-        c = travas._decodificar(gancho.rsplit(" ", 1)[1])
+        c = travas._decodificar(shlex.split(gancho)[4])  # python -I -B travas.py <conf> || exit 2
         self.assertEqual((c["falha"], len(c["n"]), len(c["p"])), ("deny", 4, 1))
         self.assertIn(os.path.join(self.tmp, "pacote"), c["prot"])
         self.assertIn(AQUI, c["prot"])

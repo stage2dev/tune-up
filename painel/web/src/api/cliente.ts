@@ -93,3 +93,45 @@ async function enviar(caminho: string, corpo: unknown, tentarDeNovo: boolean): P
 export async function apiPost<T>(caminho: string, corpo?: unknown): Promise<T> {
   return (await enviar(caminho, corpo, true)) as T;
 }
+
+/** O pedaco do XMLHttpRequest que o envio usa (o teste troca por um falso). */
+export interface XhrMinimo {
+  open(metodo: string, url: string): void;
+  setRequestHeader(nome: string, valor: string): void;
+  send(corpo: Blob): void;
+  upload: { onprogress: ((e: { lengthComputable: boolean; loaded: number; total: number }) => void) | null };
+  onload: (() => void) | null;
+  onerror: (() => void) | null;
+  onabort: (() => void) | null;
+  status: number;
+  responseText: string;
+}
+
+/**
+ * POST de um arquivo cru (bytes no corpo, sem JSON) com progresso de 0 a 1. XMLHttpRequest porque fetch nao
+ * conta o envio. Mesmo token e a mesma renovacao uma vez no 403 do apiPost.
+ */
+export async function apiEnviarArquivo<T>(caminho: string, arquivo: Blob, aoProgresso?: (fracao: number) => void,
+  novoXhr: () => XhrMinimo = () => new XMLHttpRequest() as unknown as XhrMinimo, tentarDeNovo = true): Promise<T> {
+  const sessao = await obterSessao();
+  const { status, corpo } = await new Promise<{ status: number; corpo: unknown }>((ok, falha) => {
+    const x = novoXhr();
+    x.open('POST', caminho);
+    x.setRequestHeader('X-Painel-Token', sessao.token);
+    x.setRequestHeader('Content-Type', arquivo.type || 'application/octet-stream');
+    x.upload.onprogress = (e) => { if (e.lengthComputable && e.total > 0) aoProgresso?.(Math.min(1, e.loaded / e.total)); };
+    x.onload = () => {
+      let c: unknown = null;
+      try { c = x.responseText ? (JSON.parse(x.responseText) as unknown) : null; } catch { c = null; }
+      ok({ status: x.status, corpo: c });
+    };
+    x.onerror = x.onabort = () => falha(new ErroApi(MSG_SEM_SERVIDOR, 0));
+    x.send(arquivo);
+  });
+  if (status === 403 && tentarDeNovo) {
+    esquecerSessao();
+    return apiEnviarArquivo<T>(caminho, arquivo, aoProgresso, novoXhr, false);
+  }
+  if (status < 200 || status >= 300) throw erroDe({ status } as Response, corpo);
+  return corpo as T;
+}

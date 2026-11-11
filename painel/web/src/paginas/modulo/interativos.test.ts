@@ -159,6 +159,13 @@ describe('POST da acao', () => {
       expect(await postarAcao('m', { acao: 'a', dados: {} }).catch((x: unknown) => x)).toBeInstanceOf(ErroApi);
     }
   });
+  it('resultado com feito: false e erro com a mensagem do modulo, nao "Feito."', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => (url === '/api/sessao' ? resp(200, { token: 'T', projeto: { nome: 'p' }, versao: '1' })
+      : resp(200, { ok: true, resultado: { feito: false, mensagem: 'O selo desta peça não está verde.' } }))));
+    const e = await postarAcao('m', { acao: 'peca.aprovar', dados: {} }).catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(ErroApi);
+    expect(mensagemDoErro(e)).toBe('O selo desta peça não está verde.');
+  });
   it('mensagem de 403 sem texto do servidor fica clara', () => {
     expect(mensagemDoErro(new ErroApi('Algo deu errado (código 403).', 403))).toBe('Você não tem permissão para fazer isso.');
     expect(mensagemDoErro(new ErroApi('Sem acesso a isso.', 403))).toBe('Sem acesso a isso.');

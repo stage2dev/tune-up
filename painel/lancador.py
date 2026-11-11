@@ -6,110 +6,38 @@ sem shell e sem modo que pula permissão; guarda o registro em
 <pacote>/dados/execucoes.json (0600, escrita atômica, trava de arquivo); cruza o registro
 com `claude agents --json --all` para dizer o estado; para e abre no Terminal.
 """
-import datetime
 import json
 import os
 import re
 import shlex
-import stat
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 
-from catalogo import (ErroAcao, RE_ID_ACAO, carregar_catalogo, montar, nome_da_sessao,  # noqa: F401
+from catalogo import (ErroAcao, RE_ID_ACAO, carregar_catalogo, catalogo_do_projeto, montar, nome_da_sessao,  # noqa: F401
                       publica, texto_livre, validar_params)
 from habilidades import anexar as anexar_habilidades, pedido as pedido_com_habilidades
 import mascara
 import modulos
+import teto
+import trabalho
 from estado_exec import GRACA, OCIOSO, mapear_estado  # noqa: F401
 from modelos import Modelos
+import pergunta
+from pergunta import PERGUNTA_VALE  # noqa: F401
+from registro import MAX_REGISTRO, PRAZO_OCUPADO, RE_ID_EXEC, Registro, agora_iso  # noqa: F401
 from trava import PRAZO_TRAVA, _TravaArquivo  # noqa: F401
 from travas import argv_travas
 
-RE_ID_EXEC = re.compile(r"^[0-9a-f]{6,16}$")
 RE_SESSAO = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 RE_SAIDA = re.compile(r"backgrounded\s*·\s*([0-9a-f]{6,16})\b")
 RE_ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 ATIVOS = ("rodando", "precisa_de_voce")
-PERGUNTA_MAX = 64 * 1024
-PERGUNTA_VALE = 120  # s: quanto a conversa pode andar depois da pergunta sem ela ficar para trás
 RESPONDIVEIS = ("terminou", "parada")  # a sessão acabou a vez dela: dá para mandar outra mensagem
 TTL_AGENTES = 3
-MAX_REGISTRO = 200
-# s: no Windows, abrir/trocar execucoes.json dá PermissionError enquanto outro thread o lê; insiste até isto
-PRAZO_OCUPADO = 2 if os.name == "nt" else 0
 SCRIPT_TERMINAL = ["on run argv", 'tell application "Terminal"', "activate",
                    "do script (item 1 of argv)", "end tell", "end run"]
-
-
-def agora_iso(t):
-    return datetime.datetime.fromtimestamp(t, datetime.timezone.utc).astimezone().isoformat(timespec="seconds")
-
-
-def _insistir(fazer):
-    """Roda `fazer`; em PermissionError tenta de novo até PRAZO_OCUPADO s e então sobe o erro."""
-    limite = time.monotonic() + PRAZO_OCUPADO
-    while True:
-        try:
-            return fazer()
-        except PermissionError:
-            if time.monotonic() >= limite:
-                raise
-            time.sleep(0.05)
-
-
-class Registro:
-    """dados/execucoes.json: lista de execuções. 0600, escrita atômica, trava de arquivo."""
-
-    def __init__(self, pasta):
-        self.pasta = pasta
-        self.arquivo = os.path.join(pasta, "execucoes.json")
-        self.arquivo_trava = os.path.join(pasta, "execucoes.lock")
-
-    def trava(self):
-        os.makedirs(self.pasta, mode=0o700, exist_ok=True)
-        os.chmod(self.pasta, 0o700)
-        return _TravaArquivo(self.arquivo_trava)
-
-    def ler(self):
-        try:
-            dado = _insistir(self._ler_json)
-        except FileNotFoundError:
-            return []
-        except PermissionError:
-            raise  # Windows: aberto por outro além do prazo; lista vazia aqui apagaria o registro
-        except (OSError, ValueError):
-            return []
-        if not isinstance(dado, list):
-            return []
-        return [x for x in dado if isinstance(x, dict) and RE_ID_EXEC.match(str(x.get("id", "")))]
-
-    def _ler_json(self):
-        with open(self.arquivo, encoding="utf-8") as f:
-            return json.load(f)
-
-    def gravar(self, lista):
-        """Chame com a trava na mão."""
-        fd, tmp = tempfile.mkstemp(prefix=".execucoes-", dir=self.pasta)  # nasce 0600
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(lista[-MAX_REGISTRO:], f, ensure_ascii=False, indent=1)
-            os.chmod(tmp, 0o600)
-            _insistir(lambda: os.replace(tmp, self.arquivo))
-        except BaseException:
-            if os.path.exists(tmp):
-                os.unlink(tmp)
-            raise
-
-    def atualizar(self, exec_id, **campos):
-        with self.trava():
-            lista = self.ler()
-            for r in lista:
-                if r["id"] == exec_id:
-                    r.update(campos)
-            self.gravar(lista)
 
 
 def rodar_padrao(cmd, cwd, timeout):
@@ -143,7 +71,7 @@ class Lancador:
         return self.modelos.resumo(self.catalogo()[0])
 
     def catalogo(self):
-        return carregar_catalogo([self.cfg["acoes_dir"], self.cfg.get("acoes_pacote_dir")])
+        return catalogo_do_projeto(self.cfg)
 
     def acoes(self):
         acoes, avisos = self.catalogo()
@@ -180,11 +108,13 @@ class Lancador:
         if agente and sid:
             try:
                 import transcricao
-                ult = transcricao.ultima_atividade(self.cfg["projects_dir"], sid, self.cfg["workspace"])
+                ult = transcricao.ultima_atividade(self.cfg["projects_dir"], sid, reg.get("cwd") or self.cfg["workspace"])
                 ocioso = None if ult is None else time.time() - ult
             except Exception:
                 ocioso = ult = None
         estado = mapear_estado(reg, agente, agora, ocioso)
+        if reg.get("falha") and estado in ATIVOS:  # o painel já rodou `claude stop`; o CLI pode demorar a mostrar
+            return "parada"
         # Acabou de receber uma resposta: o CLI ainda pode mostrar a linha velha (done/idle) por alguns segundos.
         # Vale só enquanto a conversa não andou depois da resposta; se já escreveu, o "terminou" é de verdade.
         respondida = float(reg.get("respondida_ts") or 0)
@@ -208,17 +138,18 @@ class Lancador:
             estado = self._ultimo.get(reg["id"], "rodando")
         else:
             estado = self._ultimo[reg["id"]] = self._estado(reg, agentes.get(reg["id"]), agora)
-        out = {k: reg.get(k) for k in ("id", "nome", "acao", "titulo", "iniciada_em")}
+        out = {k: reg.get(k) for k in ("id", "nome", "acao", "titulo", "iniciada_em", "trabalho")}
         out["grupo"] = out["area"] = reg.get("grupo") or reg.get("area") or ""
         sid = reg.get("sessao_id") or ""
         # Responder acorda a sessão guardada pelo CLI (com as travas dela): só vale se ela ainda está na lista.
+        # Sandbox não: --resume não leva o --settings com o bloco sandbox.
         linha = (agentes or {}).get(reg["id"])
         # Medido no CLI 2.1.322: a vez acabou com uma pergunta escrita -> state=blocked + status=idle (sem
         # waitingFor). É "precisa de você", mas a resposta é texto comum: vale como vez terminada.
         perguntou = (estado == "precisa_de_voce" and linha is not None and not linha.get("waitingFor")
                      and str(linha.get("status") or "").lower() == "idle")
         # As regras de negar dos módulos de agora têm de caber nas que a sessão levou (vale para os dois jeitos).
-        acorda = bool(RE_SESSAO.match(sid)) and linha is not None and (
+        acorda = bool(RE_SESSAO.match(sid)) and linha is not None and not reg.get("sandbox") and (
             (estado in RESPONDIVEIS or perguntou or estado in ATIVOS)
             and self._regras_cabem(reg, {} if caixa is None else caixa))
         responde = acorda and (estado in RESPONDIVEIS or perguntou)
@@ -230,10 +161,10 @@ class Lancador:
         # Espera presa no terminal (pedido de permissão): escrever no chat cancela o pedido, não o responde.
         out["espera_terminal"] = bool(estado == "precisa_de_voce" and not perguntou
                                       and linha is not None and linha.get("waitingFor"))
-        pergunta = self._pergunta(sid, reg) if responde else None
-        if pergunta:
-            out["pergunta"] = pergunta
-        for k in ("fase", "parte"):
+        achada = pergunta.ler(self.cfg, sid, reg) if responde else None
+        if achada:
+            out["pergunta"] = achada
+        for k in ("fase", "parte", "falha"):
             if reg.get(k):
                 out[k] = reg[k]
         return out
@@ -254,6 +185,11 @@ class Lancador:
                 r["sessao_id"] = novos.setdefault(r["id"], {})["sessao_id"] = sid
             if a and not r.get("terminou_em") and self._estado(r, a, agora) == "terminou":
                 r["terminou_em"] = novos.setdefault(r["id"], {})["terminou_em"] = agora_iso(agora)
+            if agentes is not None and teto.tem_teto(r):  # passou do tempo: `claude stop` e marca falha
+                campos = teto.conferir(r, self._estado(r, agentes.get(r["id"]), agora), agora, self._parar_cli)
+                if campos:
+                    r.update(campos)
+                    novos.setdefault(r["id"], {}).update(campos)
         if novos:
             if travado:
                 self.registro.gravar(regs)
@@ -262,7 +198,7 @@ class Lancador:
                     atual = self.registro.ler()
                     for r in atual:
                         for k, v in novos.get(r["id"], {}).items():
-                            if not r.get(k):
+                            if not r.get(k) or k in teto.SEMPRE:
                                 r[k] = v
                     self.registro.gravar(atual)
         caixa = {}  # regras dos módulos: lidas no máximo uma vez por lista
@@ -288,11 +224,13 @@ class Lancador:
         precisa_estado = any(p["tipo"] in ("fase", "parte") for p in acao["params"])
         valores = validar_params(acao, params, self.obter_estado() if precisa_estado else {})
         mascarados = {k: mascara.mascarar(v) if isinstance(v, str) else v for k, v in valores.items()}
-        prompt, nome = montar(acao["_prompt"], valores), nome_da_sessao(acao, mascarados)
-        prompt, nomes_hab = pedido_com_habilidades(self.cfg, acao["grupo"], prompt, habilidades)  # vazio: 400
+        # "trabalho" só para conferir aqui; dentro da trava o prompt é refeito com a pasta de verdade
+        base, nome = trabalho.montar_prompt(acao, valores, "trabalho"), nome_da_sessao(acao, mascarados)
+        prompt, nomes_hab = pedido_com_habilidades(self.cfg, acao["grupo"], base, habilidades)  # vazio: 400
+        sufixo = prompt[len(base.rstrip()):] if nomes_hab else ""  # bloco das skills: volta no prompt refeito
         chave = json.dumps(valores, sort_keys=True, ensure_ascii=False)
-        try:  # INFO["negar"] dos módulos vale em toda ação; lido antes das travas, com tempo limite
-            extra = modulos.regras_de_negar(self.cfg)
+        try:  # `requer` (aprovação do dono) e INFO["negar"] dos módulos; antes das travas, com tempo limite
+            extra = modulos.antes_de_disparar(self.cfg, acao)
         except modulos.ErroModulo as e:  # módulo que não carrega: fecha, não dispara sem as regras
             raise ErroAcao(e.mensagem, e.codigo)
         if extra:
@@ -311,70 +249,43 @@ class Lancador:
             if len(ativas) >= self.cfg["max_execucoes"]:
                 raise ErroAcao("Já tem %d rodando ao mesmo tempo. Espere uma acabar ou pare uma."
                                % len(ativas), 409, ativas[0]["id"])
+            pasta = trabalho.nova_pasta(self.cfg["dados_dir"], acao)  # None: a ação não usa {trabalho}
+            cwd = pasta if acao.get("sandbox") else self.cfg["workspace"]  # sandbox: cwd = pasta de trabalho
+            if pasta:  # o id do trabalho fica fora de `valores` (a checagem de duplicata acima não o vê)
+                prompt, acao = trabalho.montar_prompt(acao, valores, pasta), trabalho.resolver_travas(acao, pasta)
+                prompt = prompt.rstrip() + sufixo if sufixo else prompt
             # travas de verdade (deny + gancho) no argv; o prompt vai por último, nunca começa com '-'
             # pular_permissoes: some so o pedido comum de permissao. Medido no CLI 2.1.322: regra de negar,
             # gancho que nega e gancho que pergunta continuam valendo com essa flag.
             pular = ["--dangerously-skip-permissions"] if self.cfg.get("pular_permissoes") else []
+            # --effort aceita max (claude --help); a chave de esforço do --settings vai só até xhigh (não
+            # medido aqui), então uma reserva pelo --settings não cobriria max. Esforço vai só pela opção.
             escolha = (["--model", modelo] if modelo else []) + (["--effort", esforco] if esforco else [])
             cmd = ([self.cfg["claude_bin"], "--bg", "-n", nome] + escolha + pular
                    + argv_travas(acao, self.cfg) + [prompt])
-            cod, out, err = self.rodar(cmd, self.cfg["workspace"], 60)
-            m = RE_SAIDA.search(RE_ANSI.sub("", out + "\n" + err))
-            if cod != 0 or not m:
-                raise ErroAcao("Não consegui começar a sessão do Claude. Veja se o comando claude funciona.", 500)
+            try:
+                trabalho.criar(pasta, acao, valores)
+                cod, out, err = self.rodar(cmd, cwd, 60)
+            except BaseException:
+                trabalho.apagar(pasta)
+                raise
+            if cod != 0 or not (m := RE_SAIDA.search(RE_ANSI.sub("", out + "\n" + err))):
+                trabalho.apagar(pasta)
+                raise ErroAcao("Não consegui começar a sessão do Claude (%s). Veja se o comando claude funciona."
+                               % mascara.primeira_linha(err + "\n" + out), 500)  # causa: workspace sem confiança...
             t = self.relogio()
             reg = {"id": m.group(1), "sessao_id": "", "nome": nome, "acao": acao_id, "grupo": acao["grupo"],
                    "titulo": acao["titulo"], "params": valores, "iniciada_em": agora_iso(t),
-                   "iniciada_ts": t, "cwd": self.cfg["workspace"], "risco": acao["risco"],
-                   "modelo": modelo, "esforco": esforco, "negar_modulos": sorted(extra), "habilidades": nomes_hab}
+                   "iniciada_ts": t, "cwd": cwd, "risco": acao["risco"], "sandbox": bool(acao.get("sandbox")),
+                   "modelo": modelo, "esforco": esforco, "negar_modulos": sorted(extra), "habilidades": nomes_hab,
+                   "trabalho": os.path.basename(pasta) if pasta else "",
+                   **{c: acao.get(c) for c in teto.CAMPOS}}
             for p in acao["params"]:
                 if p["tipo"] in ("fase", "parte") and valores.get(p["nome"]):
                     reg[p["tipo"]] = valores[p["nome"]]
             self.registro.gravar([r for r in self.registro.ler() if r["id"] != reg["id"]] + [reg])
         self.esquecer_agentes()
         return self._como_execucao(reg, {}, t)
-
-    def _arquivo_pergunta(self, sid):
-        return os.path.join(self.cfg["dados_dir"], "perguntas", sid + ".json")
-
-    def _pergunta(self, sid, reg=None):
-        """Pergunta de múltipla escolha que a sessão quis fazer (gravada pelo gancho em travas.py).
-
-        O arquivo mora numa pasta em que a sessão pode escrever: é lido como dado não confiável
-        (só arquivo comum, sem bloquear, até 64 KB, forma conferida, texto mascarado) e qualquer
-        problema vira "sem pergunta". Pergunta velha não volta: tem de ser mais nova que o começo
-        da vez (início ou última resposta) e a conversa não pode ter seguido muito depois dela.
-        """
-        try:
-            arq = self._arquivo_pergunta(sid)
-            fd = os.open(arq, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0))
-            with os.fdopen(fd, "rb") as f:
-                info = os.fstat(f.fileno())
-                if not stat.S_ISREG(info.st_mode) or info.st_size > PERGUNTA_MAX:
-                    return None
-                dado = json.loads(f.read(PERGUNTA_MAX + 1).decode("utf-8"))
-            comeco = max(float((reg or {}).get("iniciada_ts") or 0), float((reg or {}).get("respondida_ts") or 0))
-            if info.st_mtime < comeco - 2:
-                return None
-            import transcricao
-            ult = transcricao.ultima_atividade(self.cfg["projects_dir"], sid, self.cfg["workspace"])
-            if ult is not None and ult > info.st_mtime + PERGUNTA_VALE:
-                return None  # a sessão seguiu trabalhando depois de perguntar: a pergunta ficou para trás
-            from travas import limpar_perguntas
-            lista = dado.get("perguntas") if isinstance(dado, dict) else None
-            perguntas = limpar_perguntas({"questions": [
-                {"question": q.get("pergunta"), "header": q.get("cabecalho"), "multiSelect": q.get("multipla"),
-                 "options": [{"label": o.get("rotulo"), "description": o.get("descricao")}
-                             for o in (q.get("opcoes") if isinstance(q.get("opcoes"), list) else [])
-                             if isinstance(o, dict)]}
-                for q in (lista if isinstance(lista, list) else []) if isinstance(q, dict)]})
-            for q in perguntas:  # mesma máscara de tudo que a tela mostra de uma sessão
-                q["pergunta"], q["cabecalho"] = mascara.mascarar(q["pergunta"]), mascara.mascarar(q["cabecalho"])
-                for o in q["opcoes"]:
-                    o["rotulo"], o["descricao"] = mascara.mascarar(o["rotulo"]), mascara.mascarar(o["descricao"])
-        except Exception:  # arquivo ausente, ruim ou trocado por outra coisa
-            return None
-        return {"perguntas": perguntas} if perguntas else None
 
     def responder(self, exec_id, texto, interromper=False, habilidades=None):
         """Manda outra mensagem para a MESMA sessão. Levanta ErroAcao.
@@ -448,9 +359,10 @@ class Lancador:
                                    "alguns segundos ou comece uma nova.", 500)
                 self.dormir(2)
             t = self.relogio()
-            self.registro.atualizar(exec_id, respondida_ts=t, terminou_em="", parada_pelo_painel=False)
+            self.registro.atualizar(exec_id, respondida_ts=t, terminou_em="", parada_pelo_painel=False,
+                                    falha="", bloqueada_ts=0)
             try:
-                os.unlink(self._arquivo_pergunta(ex["sessao_id"]))  # a pergunta foi respondida
+                os.unlink(pergunta.arquivo(self.cfg, ex["sessao_id"]))  # a pergunta foi respondida
             except OSError:
                 pass
         self.esquecer_agentes()
@@ -469,6 +381,10 @@ class Lancador:
                 return True
             self.dormir(pausa)
         return False
+
+    def _parar_cli(self, exec_id):
+        cod, out, err = self.rodar([self.cfg["claude_bin"], "stop", exec_id], self.cfg["workspace"], 20)
+        return cod == 0 or "No job matching" in err + out
 
     def parar(self, exec_id):
         if self.achar(exec_id) is None:
