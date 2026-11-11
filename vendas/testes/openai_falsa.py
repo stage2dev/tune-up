@@ -23,6 +23,7 @@ def erro(status, codigo, mensagem="Incorrect API key provided"):
 
 class OpenAIFalsa:
     DORMIR = "dormir"
+    CORTADO = "cortado"  # anuncia Content-Length 500, manda 10 bytes e fecha
 
     def __init__(self):
         self.pedidos = []
@@ -46,11 +47,16 @@ class OpenAIFalsa:
                 if item == OpenAIFalsa.DORMIR:
                     time.sleep(1.5)
                     item = (200, {})
-                dado = json.dumps(item[1]).encode("utf-8")
+                anunciado = None
+                if item == OpenAIFalsa.CORTADO:
+                    self.close_connection = True
+                    item, dado, anunciado = (200, None), b'{"choices"', 500
+                else:
+                    dado = json.dumps(item[1]).encode("utf-8")
                 try:
                     self.send_response(item[0])
                     self.send_header("Content-Type", "application/json")
-                    self.send_header("Content-Length", str(len(dado)))
+                    self.send_header("Content-Length", str(anunciado or len(dado)))
                     self.end_headers()
                     self.wfile.write(dado)
                 except OSError:

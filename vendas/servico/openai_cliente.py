@@ -1,6 +1,7 @@
 """Pedidos à OpenAI por urllib: tempo limite por tentativa e UMA nova tentativa (rede, tempo, 5xx ou 429 que não
 seja falta de crédito). O erro vem do corpo (`error.code`); a mensagem do corpo não é guardada (pode trazer parte
 da chave). A URL base vem SÓ do argumento/ambiente de subida do serviço (testes), nunca de um pedido."""
+import http.client
 import json
 import socket
 import urllib.error
@@ -63,6 +64,8 @@ def _uma(url, chave, metodo, corpo, tempo):
         raise ErroOpenAI(_codigo_do_corpo(bruto, e.code), e.code)
     except (socket.timeout, TimeoutError):
         raise ErroOpenAI("tempo_esgotado")
+    except http.client.HTTPException:  # corpo cortado, linha de status ruim: não é OSError
+        raise ErroOpenAI("rede")
     except urllib.error.URLError as e:
         raise ErroOpenAI("tempo_esgotado" if isinstance(e.reason, (socket.timeout, TimeoutError)) else "rede")
     except OSError:

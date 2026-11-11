@@ -85,7 +85,17 @@ class Cerebro:
 
     def responder(self, con, conversa_id, mensagens):
         """mensagens: [{"role": "user"|"assistant", "content": texto}]. Devolve {texto, links, precisa_de_voce,
-        motivo, chamadas, custo_usd}. texto None = nada a enviar."""
+        motivo, chamadas, custo_usd}. texto None = nada a enviar. Erro inesperado: marca "precisa de você" e sobe."""
+        try:
+            return self._responder(con, conversa_id, mensagens)
+        except Exception:
+            try:
+                marcar_precisa_de_voce(con, conversa_id, "erro_interno")
+            except Exception:
+                pass  # a exceção original é a que importa; ela sobe abaixo
+            raise
+
+    def _responder(self, con, conversa_id, mensagens):
         r = {"texto": None, "links": [], "precisa_de_voce": False, "motivo": None, "chamadas": 0, "custo_usd": 0.0}
         segredo = chave.ler(self.pasta_dados)
         modelo = banco.ler_config(con, "ia_modelo")

@@ -180,6 +180,30 @@ class TesteFalhas(Base):
         self.assertEqual(self.responder()["motivo"], "sem_modelo")
         self.assertEqual(self.falsa.pedidos, [])
 
+    def test_resposta_cortada_tenta_de_novo_e_marca(self):
+        self.falsa.fila = [OpenAIFalsa.CORTADO, OpenAIFalsa.CORTADO, resposta_texto("tarde demais")]
+        r = self.responder()
+        self.assertIsNone(r["texto"])
+        self.assertEqual(r["motivo"], "rede")
+        self.assertEqual(len(self.falsa.chamadas_chat()), 2)
+        self.assertEqual(self.precisa(), 1)
+
+    def test_resposta_cortada_uma_vez_e_depois_ok(self):
+        self.falsa.fila = [OpenAIFalsa.CORTADO, resposta_texto("Oi!")]
+        self.assertEqual(self.responder()["texto"], "Oi!")
+        self.assertEqual(self.precisa(), 0)
+
+    def test_erro_inesperado_marca_e_sobe(self):
+        original = openai_cliente.pedir
+
+        def explode(*_a, **_k):
+            raise RuntimeError("inesperado")
+        openai_cliente.pedir = explode
+        self.addCleanup(setattr, openai_cliente, "pedir", original)
+        with self.assertRaises(RuntimeError):
+            self.responder()
+        self.assertEqual(self.precisa(), 1)
+
     def test_ferramenta_em_laco_para_e_marca(self):
         self.falsa.fila = [resposta_ferramenta("qualificar", {"nivel": "morno"})] * cerebro.RODADAS_MAX
         r = self.responder()
@@ -239,6 +263,14 @@ class TesteCliente(unittest.TestCase):
         with self.assertRaises(openai_cliente.ErroOpenAI) as e:
             openai_cliente.pedir(falsa.url, CHAVE, "GET", "/v1/x", tempo=1)
         self.assertEqual(e.exception.codigo, "http_302")
+
+    def test_listar_modelos_cortado_vira_erro_openai(self):
+        falsa = OpenAIFalsa()
+        self.addCleanup(falsa.fechar)
+        falsa.fila = [OpenAIFalsa.CORTADO, OpenAIFalsa.CORTADO]
+        with self.assertRaises(openai_cliente.ErroOpenAI) as e:
+            openai_cliente.listar_modelos(falsa.url, CHAVE, tempo=1)
+        self.assertEqual(e.exception.codigo, "rede")
 
 
 if __name__ == "__main__":
