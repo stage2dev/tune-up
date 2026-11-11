@@ -4,7 +4,6 @@ import errno
 import os
 import secrets
 
-from servico import pasta
 
 try:
     import fcntl
@@ -60,13 +59,24 @@ class TravaDoProcesso:
 
 
 def gravar_segredo(caminho, valor):
-    """Grava o segredo num arquivo 0600 (criado já com esse modo), trocando o conteúdo inteiro."""
-    pasta.arquivo_privado(caminho)
-    fd = os.open(caminho, os.O_WRONLY | os.O_TRUNC)
+    """Grava o segredo de forma atômica: temporário 0600 (criado já com esse modo) na mesma pasta + os.replace.
+    Falha no meio = o arquivo antigo fica inteiro e o temporário é apagado."""
+    temp = "%s.%s.tmp" % (caminho, secrets.token_hex(6))
+    fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
-        os.write(fd, valor.encode("utf-8"))
+        try:
+            dado = valor.encode("utf-8")
+            while dado:
+                dado = dado[os.write(fd, dado):]
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        if os.name != "nt":
+            os.chmod(temp, 0o600)
+        os.replace(temp, caminho)
     finally:
-        os.close(fd)
+        if os.path.exists(temp):
+            os.remove(temp)
 
 
 def ler_segredo(caminho):

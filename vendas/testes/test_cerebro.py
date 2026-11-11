@@ -1,6 +1,7 @@
 """Cérebro (servico/cerebro.py) contra a OpenAI FALSA em 127.0.0.1: ida e volta de cada ferramenta, link fora da
 lista recusado, sem links.json = nenhum link, error.code lido do corpo, tempo esgotado = nada a enviar + "precisa de
-você", teto atingido = 0 chamadas, conta de preço pela usage, nunca reasoning_effort, uma nova tentativa só."""
+você", teto atingido = 0 chamadas, conta de preço pela usage, nunca reasoning_effort, POST sem nova tentativa depois
+de tempo esgotado ou resposta cortada."""
 import sys
 
 sys.dont_write_bytecode = True
@@ -154,13 +155,13 @@ class TesteFalhas(Base):
         self.assertEqual(self.precisa(), 1)
         self.assertEqual(len(self.falsa.chamadas_chat()), 1)  # 401 não tenta de novo
 
-    def test_tempo_esgotado_tenta_uma_vez_mais_e_nao_envia(self):
-        self.falsa.fila = [OpenAIFalsa.DORMIR, OpenAIFalsa.DORMIR, resposta_texto("tarde demais")]
+    def test_tempo_esgotado_nao_tenta_de_novo_e_nao_envia(self):
+        self.falsa.fila = [OpenAIFalsa.DORMIR, resposta_texto("tarde demais")]
         r = self.responder()
         self.assertIsNone(r["texto"])
         self.assertTrue(r["precisa_de_voce"])
         self.assertEqual(r["motivo"], "tempo_esgotado")
-        self.assertEqual(len(self.falsa.chamadas_chat()), 2)
+        self.assertEqual(len(self.falsa.chamadas_chat()), 1)  # a 1ª pode ter sido cobrada: nunca repete
         self.assertEqual(self.precisa(), 1)
 
     def test_500_tenta_de_novo_uma_vez(self):
@@ -181,29 +182,27 @@ class TesteFalhas(Base):
         self.assertEqual(self.responder()["motivo"], "sem_modelo")
         self.assertEqual(self.falsa.pedidos, [])
 
-    def test_resposta_cortada_tenta_de_novo_e_marca(self):
-        self.falsa.fila = [OpenAIFalsa.CORTADO, OpenAIFalsa.CORTADO, resposta_texto("tarde demais")]
+    def test_resposta_cortada_nao_tenta_de_novo_e_marca(self):
+        self.falsa.fila = [OpenAIFalsa.CORTADO, resposta_texto("tarde demais")]
         r = self.responder()
         self.assertIsNone(r["texto"])
         self.assertEqual(r["motivo"], "rede")
-        self.assertEqual(len(self.falsa.chamadas_chat()), 2)
+        self.assertEqual(len(self.falsa.chamadas_chat()), 1)
         self.assertEqual(self.precisa(), 1)
 
-    def test_resposta_cortada_uma_vez_e_depois_ok(self):
-        self.falsa.fila = [OpenAIFalsa.CORTADO, resposta_texto("Oi!")]
-        self.assertEqual(self.responder()["texto"], "Oi!")
-        self.assertEqual(self.precisa(), 0)
-
-    def test_erro_inesperado_marca_e_sobe(self):
+    def test_erro_inesperado_nada_a_enviar_e_marca(self):
         original = openai_cliente.pedir
 
         def explode(*_a, **_k):
             raise RuntimeError("inesperado")
         openai_cliente.pedir = explode
         self.addCleanup(setattr, openai_cliente, "pedir", original)
-        with self.assertRaises(RuntimeError):
-            self.responder()
+        r = self.responder()   # não sobe: termina com nada a enviar
+        self.assertIsNone(r["texto"])
+        self.assertEqual((r["precisa_de_voce"], r["motivo"]), (True, "erro_interno"))
         self.assertEqual(self.precisa(), 1)
+        self.assertEqual(self.con.execute("SELECT modo FROM conversas WHERE id = ?", (self.conversa,)).fetchone()[0],
+                         "humano")
 
     def test_ferramenta_em_laco_para_e_marca(self):
         self.falsa.fila = [resposta_ferramenta("qualificar", {"nivel": "morno"})] * cerebro.RODADAS_MAX
@@ -231,13 +230,19 @@ class TesteTeto(Base):
         self.assertAlmostEqual(r["custo_usd"], 0.15 + 0.30)
         self.assertAlmostEqual(precos.gasto_hoje(self.con), 0.45)
 
-    def test_tabela_configuravel_e_modelo_desconhecido_cobra_o_mais_caro(self):
-        with open(os.path.join(self.pasta, precos.ARQUIVO), "w", encoding="utf-8") as f:
-            json.dump({"barato": [1, 2], "caro": [10, 20]}, f)
+    def test_modelo_sem_preco_nao_chama_e_precos_json_soma_a_tabela(self):
+        banco.gravar_config(self.con, "ia_teto_usd", "100")
         banco.gravar_config(self.con, "ia_modelo", "modelo-novo")
+        self.falsa.fila = [resposta_texto("não devia")]
+        r = self.responder()
+        self.assertEqual((r["motivo"], r["chamadas"]), ("preco_desconhecido", 0))
+        self.assertEqual(self.falsa.pedidos, [])
+        self.assertEqual(self.precisa(), 1)
+        with open(os.path.join(self.pasta, precos.ARQUIVO), "w", encoding="utf-8") as f:
+            json.dump({"modelo-novo": [10, 20]}, f)
         self.falsa.fila = [resposta_texto("Oi", entrada=1000000, saida=1000000)]
         self.assertAlmostEqual(self.responder()["custo_usd"], 30.0)
-        self.assertEqual(precos.preco(precos.tabela(self.pasta), "modelo-novo"), ([10.0, 20.0], False))
+        self.assertEqual(precos.preco(precos.tabela(self.pasta), "gpt-4o"), [2.5, 10.0])  # PADRAO continua
 
     def test_teto_conta_entre_rodadas_e_vira_o_dia(self):
         banco.gravar_config(self.con, "ia_teto_usd", "0.10")
@@ -249,11 +254,16 @@ class TesteTeto(Base):
         self.assertAlmostEqual(precos.gasto_hoje(self.con, "2000-01-01"), 0.0)
         self.assertAlmostEqual(precos.somar(self.con, 0.01, "2000-01-01"), 0.01)
 
-    def test_resposta_sem_usage_nao_vale(self):
+    def test_resposta_sem_usage_cobra_o_pior_caso(self):
         self.falsa.fila = [(200, {"choices": [{"message": {"content": "Oi"}}]})]
         r = self.responder()
         self.assertIsNone(r["texto"])
         self.assertEqual(r["motivo"], "resposta_invalida")
+        corpo = self.falsa.chamadas_chat()[0]["corpo"]
+        self.assertEqual(corpo["max_completion_tokens"], cerebro.SAIDA_MAX)
+        pior = (len(json.dumps(corpo, ensure_ascii=False).encode("utf-8")) * 0.15 + cerebro.SAIDA_MAX * 0.60) / 1e6
+        self.assertGreater(precos.gasto_hoje(self.con), cerebro.SAIDA_MAX * 0.60 / 1e6)
+        self.assertAlmostEqual(precos.gasto_hoje(self.con), pior, places=5)
 
 
 class TesteCliente(unittest.TestCase):

@@ -1,9 +1,10 @@
 """Aba IA: chave da OpenAI (campo segredo, vai ao serviço e fica só na pasta de dados externa), modelo escolhido
-pelo dono (lista da conta; lista falhou = nome digitado), teto diário em US$ e gasto de hoje. A tela só vê
+pelo dono (lista da conta; lista falhou = nome digitado), preço do modelo, teto diário em US$ e gasto de hoje. A tela só vê
 'configurada' e os 4 últimos caracteres; nenhuma mensagem de ação ecoa a chave."""
 
 ACOES = ("ia_chave", "ia_config", "ia_apagar_chave", "ia_modo")
-TEMPO_MODELOS_S = 12  # o serviço espera a OpenAI até 8 s por tentativa
+TEMPO_MODELOS_S = 12  # o serviço espera a OpenAI até 6 s, uma tentativa só
+SEM_LISTA = "Lista de modelos indisponível: digite o nome do modelo."
 
 
 def _erro(codigo, r, padrao):
@@ -18,9 +19,12 @@ def ler(ctx, cliente, base=None):
             return None, None, _erro(codigo, r, "O serviço recusou (%d).")
         if not (r.get("chave") or {}).get("configurada"):
             return r, None, None
-        codigo, m = cliente.chamar(ctx, "GET", "/ia/modelos", base=base, tempo=TEMPO_MODELOS_S)
     except cliente.Recusa as e:
         return None, None, str(e)
+    try:   # lista lenta ou fora do ar não derruba a aba: chave, trocar/apagar e o nome digitado continuam
+        codigo, m = cliente.chamar(ctx, "GET", "/ia/modelos", base=base, tempo=TEMPO_MODELOS_S)
+    except cliente.Recusa:
+        return r, None, SEM_LISTA
     if codigo == 200 and isinstance(m, dict) and isinstance(m.get("modelos"), list) and m["modelos"]:
         return r, [str(x) for x in m["modelos"]], None
     motivo = (m or {}).get("codigo") if isinstance(m, dict) else None
@@ -41,8 +45,13 @@ def blocos(estado, modelos, aviso):
     saida = [{"tipo": "kpis", "titulo": "IA de vendas", "itens": itens}]
     if modelo and not estado.get("preco_conhecido", True):
         saida.append({"tipo": "texto", "titulo": "Preço do modelo desconhecido",
-                      "texto": "O modelo %s não está na tabela de preços. O gasto é contado pelo preço da entrada "
-                               "mais cara da tabela (precos.json na pasta de dados)." % modelo})
+                      "texto": "O modelo %s não tem preço. A IA NÃO chama a OpenAI (as conversas ficam \"precisa "
+                               "de você\") até você informar o preço de entrada e de saída por 1 milhão de tokens "
+                               "em \"Modelo e teto diário\" abaixo." % modelo})
+    if estado.get("precos_invalido"):
+        saida.append({"tipo": "texto", "titulo": "precos.json inválido",
+                      "texto": "O precos.json da pasta de dados é inválido e foi ignorado: vale só a tabela padrão. "
+                               "Corrija ou apague o arquivo para salvar preços."})
     saber = estado.get("conhecimento")
     if saber:
         sim = lambda ok, falta: ("ok" if ok else falta)  # noqa: E731
@@ -75,17 +84,28 @@ def blocos(estado, modelos, aviso):
                                   {"valor": "automatico", "rotulo": "Automático (a IA envia)"}]}]})
     if modelos:
         opcoes = [{"valor": m, "rotulo": m} for m in modelos]
+        if modelo and modelo not in modelos:   # salvar outro campo nunca troca o modelo escondido
+            opcoes.insert(0, {"valor": modelo, "rotulo": "%s (fora da lista da conta)" % modelo})
         campo = {"id": "modelo", "rotulo": "Modelo", "tipo": "escolha", "opcoes": opcoes, "obrigatorio": True,
-                 "valor": modelo if modelo in modelos else (sugestao if sugestao in modelos else modelos[0]),
+                 "valor": modelo or (sugestao if sugestao in modelos else modelos[0]),
                  "ajuda": "Modelos da sua conta. Sugestão: %s." % sugestao}
     else:
         campo = {"id": "modelo", "rotulo": "Modelo", "tipo": "texto", "valor": modelo or sugestao,
                  "obrigatorio": True, "ajuda": "Nome do modelo da OpenAI. Sugestão: %s." % sugestao}
+    par = estado.get("preco")
+    atual = ("Preço atual de %s: US$ %s entrada / US$ %s saída. " % (modelo, par[0], par[1])
+             if modelo and isinstance(par, list) and len(par) == 2 else "")
+    ajuda = atual + "US$ por 1 milhão de tokens (veja openai.com/api/pricing). Vale para o modelo salvo junto; " \
+                    "deixe em branco para manter."
     saida.append({"tipo": "formulario", "id": "ia_config", "titulo": "Modelo e teto diário",
                   "descricao": "Ao chegar no teto do dia, a IA não chama a OpenAI e a conversa fica "
                                "\"precisa de você\".", "acao": "ia_config", "botao": "Salvar", "campos": [
                       campo, {"id": "teto_usd", "rotulo": "Teto diário (US$)", "tipo": "texto", "obrigatorio": True,
-                              "valor": "%.2f" % float(estado.get("teto_usd") or 0)}]})
+                              "valor": "%.2f" % float(estado.get("teto_usd") or 0)},
+                      {"id": "preco_entrada", "rotulo": "Preço de entrada (US$ / 1M tokens)", "tipo": "texto",
+                       "ajuda": ajuda},
+                      {"id": "preco_saida", "rotulo": "Preço de saída (US$ / 1M tokens)", "tipo": "texto",
+                       "ajuda": ajuda}]})
     if k.get("configurada"):
         saida.append({"tipo": "formulario", "id": "ia_apagar_chave", "titulo": "Apagar a chave",
                       "descricao": "Sem chave a IA para e as conversas ficam \"precisa de você\".",
@@ -110,7 +130,9 @@ def agir(ctx, cliente, acao, dados, base=None):
     elif acao == "ia_modo":
         caminho, corpo = "/ia/modo", {"modo": dados.get("modo")}
     else:
-        caminho, corpo = "/ia/config", {"modelo": dados.get("modelo"), "teto_usd": dados.get("teto_usd")}
+        caminho, corpo = "/ia/config", {"modelo": dados.get("modelo"), "teto_usd": dados.get("teto_usd"),
+                                        "preco_entrada": dados.get("preco_entrada"),
+                                        "preco_saida": dados.get("preco_saida")}
     try:
         codigo, r = cliente.chamar(ctx, "POST", caminho, corpo, base=base)
     except cliente.Recusa as e:

@@ -1,7 +1,8 @@
 """Cérebro da IA de vendas: OpenAI Chat Completions com 4 ferramentas de lista fechada (guardar_dado_do_lead,
 qualificar, enviar_link, pedir_humano). Nunca manda `reasoning_effort` (quebra junto com function tools).
-Teto diário em US$ conferido ANTES de cada chamada: atingido = não chama. Erro, tempo esgotado, teto, sem chave ou
-sem modelo = texto None (nada a enviar) e a conversa fica "precisa de você". Aqui nada envia: quem chama decide."""
+Antes de cada chamada reserva o pior caso no teto diário (BEGIN IMMEDIATE); não cabe = não chama. Modelo sem preço
+= não chama. Erro, tempo esgotado, teto, sem preço, sem chave, sem modelo ou exceção inesperada = texto None (nada a
+enviar) e a conversa fica "precisa de você". Aqui nada envia: quem chama decide."""
 import json
 import os
 import re
@@ -11,6 +12,7 @@ from servico import banco, chave, conhecimento, openai_cliente, precos
 
 SUGESTAO_MODELO = "gpt-4o-mini"  # só sugestão na tela; o dono escolhe
 RODADAS_MAX = 3
+SAIDA_MAX = 2000  # max_completion_tokens de cada chamada: também é o pior caso da reserva
 NIVEIS = ("frio", "morno", "quente")
 CAMPO = re.compile(r"^[a-z_]{1,32}$")
 VALOR_MAX = 500
@@ -77,18 +79,17 @@ class Cerebro:
 
     def responder(self, con, conversa_id, mensagens):
         """mensagens: [{"role": "user"|"assistant", "content": texto}]. Devolve {texto, links, precisa_de_voce,
-        motivo, chamadas, custo_usd}. texto None = nada a enviar. Erro inesperado: marca "precisa de você" e sobe."""
-        try:
-            return self._responder(con, conversa_id, mensagens)
-        except Exception:
-            try:
-                marcar_precisa_de_voce(con, conversa_id, "erro_interno", True)
-            except Exception:
-                pass  # a exceção original é a que importa; ela sobe abaixo
-            raise
-
-    def _responder(self, con, conversa_id, mensagens):
+        motivo, chamadas, custo_usd}. texto None = nada a enviar. Exceção inesperada = nada a enviar, IA fora da
+        conversa e "precisa de você" (motivo erro_interno); só sobe se nem marcar der certo (quem chama registra)."""
         r = {"texto": None, "links": [], "precisa_de_voce": False, "motivo": None, "chamadas": 0, "custo_usd": 0.0}
+        try:
+            return self._responder(con, conversa_id, mensagens, r)
+        except Exception:
+            if con.in_transaction:
+                con.execute("ROLLBACK")
+            return self._parar(con, conversa_id, r, "erro_interno", True)
+
+    def _responder(self, con, conversa_id, mensagens, r):
         segredo = chave.ler(self.pasta_dados)
         modelo = banco.ler_config(con, "ia_modelo")
         if not segredo or not modelo:
@@ -96,27 +97,23 @@ class Cerebro:
         saber = conhecimento.ler(self.raiz)
         if not saber["oferta"]:   # sem oferta.md a IA não vende: nada de preço inventado
             return self._parar(con, conversa_id, r, "sem_oferta")
-        links, tab = ler_links(self.raiz), precos.tabela(self.pasta_dados)
+        par = precos.preco(precos.tabela(self.pasta_dados), modelo)
+        if par is None:   # sem preço não há teto confiável: o dono informa o preço na aba IA
+            return self._parar(con, conversa_id, r, "preco_desconhecido")
+        links = ler_links(self.raiz)
         historico = [{"role": "system", "content": conhecimento.instrucoes(saber)}] + list(mensagens)
         for _ in range(RODADAS_MAX):
-            if precos.no_teto(con):
-                return self._parar(con, conversa_id, r, "teto_diario")
-            corpo = {"model": modelo, "messages": historico, "tools": ferramentas(links), "tool_choice": "auto"}
-            try:
-                r["chamadas"] += 1
-                resposta = openai_cliente.pedir(self.base, segredo, "POST", "/v1/chat/completions", corpo, self.tempo)
-            except openai_cliente.ErroOpenAI as e:
-                return self._parar(con, conversa_id, r, e.codigo)
-            custo = precos.custo_usd(tab, modelo, resposta.get("usage") if isinstance(resposta, dict) else None)
+            corpo = {"model": modelo, "messages": historico, "tools": ferramentas(links), "tool_choice": "auto",
+                     "max_completion_tokens": SAIDA_MAX}
+            resposta, custo = self._chamar(con, segredo, par, corpo, r)
+            if resposta is None:
+                return self._parar(con, conversa_id, r, custo)
             try:
                 msg = resposta["choices"][0]["message"]
                 chamadas = msg.get("tool_calls") or []
             except (KeyError, IndexError, TypeError, AttributeError):
                 msg = None
-            if custo is not None:
-                precos.somar(con, custo)
-                r["custo_usd"] += custo
-            if custo is None or msg is None or not isinstance(chamadas, list):
+            if msg is None or not isinstance(chamadas, list):
                 return self._parar(con, conversa_id, r, "resposta_invalida")
             if not chamadas:
                 texto = msg.get("content")
@@ -133,27 +130,44 @@ class Cerebro:
                 return r
         return self._parar(con, conversa_id, r, "rodadas", True)
 
+    def _chamar(self, con, segredo, par, corpo, r):
+        """Reserva o pior caso, chama e acerta pelo custo real. (resposta, custo) ou (None, motivo).
+        Erro com resposta HTTP ou conexão recusada = não cobrado: libera a reserva. Tempo esgotado ou resposta
+        cortada = talvez cobrado: a reserva fica. 200 sem `usage` = cobra o pior caso e vale como resposta_invalida."""
+        pior = precos.pior_caso_usd(par, corpo, SAIDA_MAX)
+        reserva = precos.reservar(con, pior)
+        if reserva is None:
+            return None, "teto_diario"
+        try:
+            r["chamadas"] += 1
+            resposta = openai_cliente.pedir(self.base, segredo, "POST", "/v1/chat/completions", corpo, self.tempo)
+        except openai_cliente.ErroOpenAI as e:
+            if e.status is not None or e.recusada:
+                precos.acertar(con, reserva, 0)
+            else:
+                r["custo_usd"] += pior
+            return None, e.codigo
+        custo = precos.custo_usd(par, resposta.get("usage") if isinstance(resposta, dict) else None)
+        precos.acertar(con, reserva, pior if custo is None else custo)
+        r["custo_usd"] += pior if custo is None else custo
+        return (None, "resposta_invalida") if custo is None else (resposta, custo)
+
     def reescrever(self, con, texto, pedido):
-        """UMA chamada SEM ferramentas pedindo outra versão do rascunho. Texto novo ou None (sem chave/modelo, teto,
-        erro, resposta inválida). Não marca nada: quem chama (servico/saida.py) decide."""
+        """UMA chamada SEM ferramentas pedindo outra versão do rascunho. Texto novo ou None (sem chave/modelo/preço,
+        teto, erro, resposta inválida). Não marca nada: quem chama (servico/saida.py) decide."""
         segredo, modelo = chave.ler(self.pasta_dados), banco.ler_config(con, "ia_modelo")
-        if not segredo or not modelo or precos.no_teto(con):
+        par = precos.preco(precos.tabela(self.pasta_dados), modelo) if modelo else None
+        if not segredo or par is None:
             return None
         corpo = {"model": modelo, "messages": [{"role": "system", "content": conhecimento.REGRAS + " " + pedido},
-                                               {"role": "user", "content": "Rascunho a reescrever:\n" + texto}]}
-        try:
-            resposta = openai_cliente.pedir(self.base, segredo, "POST", "/v1/chat/completions", corpo, self.tempo)
-        except openai_cliente.ErroOpenAI:
-            return None
-        custo = precos.custo_usd(precos.tabela(self.pasta_dados), modelo,
-                                 resposta.get("usage") if isinstance(resposta, dict) else None)
-        if custo is not None:
-            precos.somar(con, custo)
+                                               {"role": "user", "content": "Rascunho a reescrever:\n" + texto}],
+                 "max_completion_tokens": SAIDA_MAX}
+        resposta, _ = self._chamar(con, segredo, par, corpo, {"chamadas": 0, "custo_usd": 0.0})
         try:
             novo = resposta["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError):
             return None
-        return novo.strip() if custo is not None and isinstance(novo, str) and novo.strip() else None
+        return novo.strip() if isinstance(novo, str) and novo.strip() else None
 
     def _parar(self, con, conversa_id, r, motivo, desligar=False):
         marcar_precisa_de_voce(con, conversa_id, motivo, desligar)

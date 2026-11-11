@@ -1,5 +1,6 @@
-"""Pedidos à OpenAI por urllib: tempo limite por tentativa e UMA nova tentativa (rede, tempo, 5xx ou 429 que não
-seja falta de crédito). O erro vem do corpo (`error.code`); a mensagem do corpo não é guardada (pode trazer parte
+"""Pedidos à OpenAI por urllib: tempo limite por tentativa e UMA nova tentativa. POST (pode ter sido cobrado) só tenta
+de novo com conexão recusada, 5xx ou 429 que não seja falta de crédito; nunca depois de tempo esgotado ou resposta
+cortada. GET tenta de novo também em rede e tempo. O erro vem do corpo (`error.code`); a mensagem do corpo não é guardada (pode trazer parte
 da chave). A URL base vem SÓ do argumento/ambiente de subida do serviço (testes), nunca de um pedido."""
 import http.client
 import json
@@ -11,16 +12,19 @@ from urllib.parse import urlsplit
 URL_PADRAO = "https://api.openai.com"
 VAR_URL = "VENDAS_OPENAI_URL"
 TEMPO_S = 30
+TEMPO_MODELOS_S = 6  # o painel espera 12 s pela rota /ia/modelos
 SEM_NOVA_TENTATIVA = ("insufficient_quota", "invalid_api_key")
 
 
 class ErroOpenAI(RuntimeError):
-    """codigo: `error.code` do corpo, 'tempo_esgotado', 'rede' ou 'http_<n>'. Nunca leva a chave."""
+    """codigo: `error.code` do corpo, 'tempo_esgotado', 'rede' ou 'http_<n>'. Nunca leva a chave.
+    recusada=True: a conexão nem abriu (o pedido não chegou à OpenAI)."""
 
-    def __init__(self, codigo, status=None):
+    def __init__(self, codigo, status=None, recusada=False):
         super().__init__(codigo)
         self.codigo = codigo
         self.status = status
+        self.recusada = recusada
 
 
 class _SemRedirecionar(urllib.request.HTTPRedirectHandler):
@@ -67,29 +71,35 @@ def _uma(url, chave, metodo, corpo, tempo):
     except http.client.HTTPException:  # corpo cortado, linha de status ruim: não é OSError
         raise ErroOpenAI("rede")
     except urllib.error.URLError as e:
-        raise ErroOpenAI("tempo_esgotado" if isinstance(e.reason, (socket.timeout, TimeoutError)) else "rede")
+        if isinstance(e.reason, (socket.timeout, TimeoutError)):
+            raise ErroOpenAI("tempo_esgotado")
+        raise ErroOpenAI("rede", recusada=isinstance(e.reason, ConnectionRefusedError))
+    except ConnectionRefusedError:
+        raise ErroOpenAI("rede", recusada=True)
     except OSError:
         raise ErroOpenAI("rede")
     except (ValueError, UnicodeDecodeError):
         raise ErroOpenAI("resposta_invalida")
 
 
-def pedir(base, chave, metodo, caminho, corpo=None, tempo=TEMPO_S):
-    """JSON da resposta ou ErroOpenAI depois de no máximo 2 tentativas."""
+def pedir(base, chave, metodo, caminho, corpo=None, tempo=TEMPO_S, nova_tentativa=True):
+    """JSON da resposta ou ErroOpenAI depois de no máximo 2 tentativas (1 com nova_tentativa=False)."""
     url = base.rstrip("/") + caminho
     try:
         return _uma(url, chave, metodo, corpo, tempo)
     except ErroOpenAI as e:
-        de_novo = e.codigo in ("tempo_esgotado", "rede") or (e.status or 0) >= 500 or (
+        incerto = e.codigo in ("tempo_esgotado", "rede") and not e.recusada  # pode ter chegado e sido cobrado
+        de_novo = e.recusada or (incerto and metodo == "GET") or (e.status or 0) >= 500 or (
             e.status == 429 and e.codigo not in SEM_NOVA_TENTATIVA)
-        if not de_novo:
+        if not de_novo or not nova_tentativa:
             raise
     return _uma(url, chave, metodo, corpo, tempo)
 
 
-def listar_modelos(base, chave, tempo=8):
-    """Ids dos modelos da conta (GET /v1/models), em ordem alfabética."""
-    r = pedir(base, chave, "GET", "/v1/models", tempo=tempo)
+def listar_modelos(base, chave, tempo=TEMPO_MODELOS_S):
+    """Ids dos modelos da conta (GET /v1/models), em ordem alfabética. UMA tentativa: o painel espera menos que
+    duas."""
+    r = pedir(base, chave, "GET", "/v1/models", tempo=tempo, nova_tentativa=False)
     itens = r.get("data") if isinstance(r, dict) else None
     if not isinstance(itens, list):
         raise ErroOpenAI("resposta_invalida")
