@@ -3,7 +3,8 @@
 da reserva; aqui ficam o jitter entre envios e as esperas. Nenhuma transação de escrita fica aberta durante a chamada
 ao conector (o portão grava 'pendente', chama, fecha). Reiniciar no meio não duplica: a chave campanha+contato+passo
 já ocupada volta 'duplicado' e o contato fica com o estado do envio. 'incerto' nunca é reenviado daqui; 'falhou'
-(prova de que não saiu) volta depois de ESPERA_FALHA_S pelo portao.reenviar, que reconfere as regras na reserva."""
+(prova de que não saiu) volta depois de ESPERA_FALHA_S pelo portao.reenviar, que reconfere as regras na reserva,
+até campanha.TENTATIVAS_FALHOU vezes; número inexistente (numero_invalido) nunca volta."""
 import datetime
 import random
 import sys

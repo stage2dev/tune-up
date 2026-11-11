@@ -3,14 +3,18 @@
 Contato da campanha: 'pendente' (na fila) -> 'enviado' | 'incerto' (pode ter saído: o agendador nunca reenvia; só o
 dono, na aba Conversas) | 'negado' (opt-out ou número inválido: nunca mais) | 'respondeu' (o lead falou: sai da
 campanha e a conversa fica com o recebimento/IA). 'falhou' (prova de que não saiu) continua 'pendente' com o envio_id
-e `tentar_depois`: o agendador tenta de novo a MESMA linha pelo portao.reenviar. Negado por janela ou teto continua
-'pendente', com o motivo guardado e `tentar_depois`. 5 falhas seguidas do conector pausam a campanha com o motivo."""
+e `tentar_depois`: o agendador tenta de novo a MESMA linha pelo portao.reenviar, depois dos contatos ainda não
+tentados, até TENTATIVAS_FALHOU vezes; aí o contato fica 'falhou' (final, o dono vê na contagem). 'falhou' com
+numero_invalido (o WhatsApp disse que o número não existe) vira 'negado' na hora e não conta como falha seguida.
+Negado por janela ou teto continua 'pendente', com o motivo guardado e `tentar_depois`. 5 falhas seguidas do conector
+pausam a campanha com o motivo."""
 import re
 
 from servico import banco
 
 ESTADOS = ("rascunho", "ativa", "pausada", "concluida")
 FALHAS_PARA_PAUSAR = 5
+TENTATIVAS_FALHOU = 3   # 'falhou' de transporte: tentativas por contato antes de desistir dele
 PERMANENTES = ("optout", "numero_invalido")   # negado assim = nunca mais, em nenhuma campanha
 ATIVOS = ("pendente", "enviado", "incerto")     # envio que pode ter saído (o mesmo critério do portão)
 ROTA = re.compile(r"^/campanhas(?:/(\d+)/(pausar|retomar))?$")
@@ -75,7 +79,8 @@ def concluir_prontas(con):
 
 
 def proximo(con, agora_iso, so_conhecidos=False, instancia=None):
-    """Próximo contato vencido das campanhas ativas (campanha mais antiga, depois a ordem), ou None.
+    """Próximo contato vencido das campanhas ativas (campanha mais antiga; quem nunca foi adiado antes de quem volta
+    de uma falha ou de um teto; depois a ordem), ou None.
     so_conhecidos=True: só quem já recebeu algo desta instância (o teto de NOVOS do dia acabou)."""
     extra = ""
     if so_conhecidos:
@@ -85,17 +90,29 @@ def proximo(con, agora_iso, so_conhecidos=False, instancia=None):
         "SELECT cc.campanha_id, cc.contato_id, cc.passo, cc.envio_id, c.modelo, ct.telefone FROM campanha_contatos cc "
         "JOIN campanhas c ON c.id = cc.campanha_id JOIN contatos ct ON ct.id = cc.contato_id "
         "WHERE c.estado = 'ativa' AND cc.estado = 'pendente' AND (cc.tentar_depois IS NULL OR cc.tentar_depois <= ?)"
-        + extra + " ORDER BY c.id, cc.ordem, cc.contato_id LIMIT 1",
+        + extra + " ORDER BY c.id, cc.tentar_depois IS NOT NULL, cc.ordem, cc.contato_id LIMIT 1",
         (agora_iso,) + (((instancia,) + ATIVOS) if so_conhecidos else ())).fetchone()
 
 
+def _falhou(con, envio_id, motivo):
+    """'falhou': número inexistente = 'negado' na hora; senão volta à fila (None) até TENTATIVAS_FALHOU vezes."""
+    if motivo in PERMANENTES:
+        return "negado"
+    feitas = con.execute("SELECT COUNT(*) FROM tentativas WHERE envio_id = ?", (envio_id,)).fetchone()[0]
+    return "falhou" if feitas >= TENTATIVAS_FALHOU else None
+
+
 def _estado_do_contato(con, r):
-    """Estado do contato na campanha pelo resultado do portão; None = continua 'pendente' ('falhou' volta à fila)."""
+    """Estado do contato na campanha pelo resultado do portão; None = continua 'pendente'."""
     if r["estado"] in ("enviado", "incerto"):
         return r["estado"]
+    if r["estado"] == "falhou":
+        return _falhou(con, r["envio_id"], r.get("motivo"))
     if r["estado"] == "duplicado":   # já reservado antes (reinício no meio): vale o que a linha do envio diz
-        linha = con.execute("SELECT estado FROM envios WHERE id = ?", (r["envio_id"],)).fetchone()
+        linha = con.execute("SELECT estado, motivo FROM envios WHERE id = ?", (r["envio_id"],)).fetchone()
         estado = linha["estado"] if linha else None
+        if estado == "falhou":
+            return _falhou(con, r["envio_id"], linha["motivo"])
         return "incerto" if estado == "pendente" else estado if estado in ("enviado", "incerto") else None
     if r["estado"] == "negado" and r["motivo"] in PERMANENTES:
         return "negado"
@@ -114,7 +131,7 @@ def registrar(con, linha, r, tentar_depois=None):
              linha["campanha_id"], linha["contato_id"])))
         if r["estado"] == "enviado":
             con.execute("UPDATE campanhas SET falhas_seguidas = 0 WHERE id = ?", (linha["campanha_id"],))
-        elif r["estado"] in ("falhou", "incerto"):
+        elif r["estado"] == "incerto" or (r["estado"] == "falhou" and r.get("motivo") not in PERMANENTES):
             contar_falha(con, linha["campanha_id"], r.get("motivo") or r["estado"])
         return estado or "pendente"
     return _transacao(con, fazer)

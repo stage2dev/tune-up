@@ -77,8 +77,8 @@ class Evolution(base.Conector):
             recusa_provada = envio and erro.code == 400 and _numero_inexistente(erro)
             erro.close()
             classe = NaoEnviado if erro.code < 500 else EnvioIncerto
-            if envio and erro.code == 400 and not recusa_provada:
-                classe = EnvioIncerto
+            if envio and erro.code == 400:
+                classe = base.NumeroInexistente if recusa_provada else EnvioIncerto
             raise classe("Evolution respondeu HTTP %d" % erro.code, erro.code)
         except urllib.error.URLError as erro:
             # urllib embrulha em URLError só o que falha ANTES da resposta: conectar ou escrever o pedido.

@@ -166,6 +166,7 @@ class TestEvolution(unittest.TestCase):
         with self.assertRaises(NaoEnviado) as ctx:
             self.con.enviar_texto("loja", "5511900000001", "oi")
         self.assertNotIsInstance(ctx.exception, EnvioIncerto)
+        self.assertIsInstance(ctx.exception, base.NumeroInexistente)   # recusa provada do número: nunca reenviar
         self.assertEqual(ctx.exception.status, 400)
 
     def test_404_da_instancia_no_envio_e_nao_enviado(self):
@@ -173,6 +174,7 @@ class TestEvolution(unittest.TestCase):
         with self.assertRaises(NaoEnviado) as ctx:
             self.con.enviar_texto("loja", "5511900000001", "oi")
         self.assertNotIsInstance(ctx.exception, EnvioIncerto)
+        self.assertNotIsInstance(ctx.exception, base.NumeroInexistente)   # instância ausente não é número ruim
 
     def test_400_depois_de_enviar_e_incerto(self):
         # A Evolution entrega e depois cai no catch geral (ex.: erro do banco) e responde 400.

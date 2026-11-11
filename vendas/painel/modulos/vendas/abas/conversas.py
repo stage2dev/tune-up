@@ -18,6 +18,7 @@ MOTIVOS = {
     "teto_hora": "Muitas mensagens na última hora. Espere um pouco e tente de novo.",
     "pausa_humana": "A conversa está com você; a IA não escreve nela.",
     "fora_da_janela": "Fora do horário permitido para esse tipo de envio.",
+    "numero_invalido": "Este número não está no WhatsApp; a mensagem não saiu.",
     "fuso_invalido": "O fuso do projeto está inválido; corrija a configuração.",
     "nao_reenviavel": "Este envio não pode mais ser reenviado.",
     "nao_incerto": "Este envio já foi decidido.",

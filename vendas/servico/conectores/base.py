@@ -1,6 +1,7 @@
 """Interface do conector de WhatsApp e os dois erros que o portão distingue.
 
 NaoEnviado: com certeza não saiu (conexão recusada, 4xx, arquivo ilegível) -> pode virar `falhou`.
+NumeroInexistente (um NaoEnviado): o número não está no WhatsApp -> `falhou` com motivo numero_invalido.
 EnvioIncerto: o pedido pode ter sido entregue (timeout ou conexão caída depois de escrever o pedido, 5xx,
 resposta sem id) -> vira `incerto`, nunca reenvio automático."""
 import re
@@ -20,6 +21,10 @@ class ErroConector(RuntimeError):
 
 class NaoEnviado(ErroConector):
     """Com certeza o pedido não teve efeito do outro lado."""
+
+
+class NumeroInexistente(NaoEnviado):
+    """O WhatsApp provou que o número não existe (nada saiu): o portão fecha como numero_invalido, nunca reenviar."""
 
 
 class EnvioIncerto(ErroConector):

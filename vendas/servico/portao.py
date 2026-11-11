@@ -2,10 +2,10 @@
 
 Cada origem tem a sua função (enviar_manual, enviar_ia, ...): a origem vem de QUAL função o serviço chama, nunca do
 corpo de um pedido. Passos: reserva em BEGIN IMMEDIATE (reconfere opt-out, pausa, janela e tetos NA HORA DE ENVIAR)
--> linha 'pendente' gravada ANTES do conector -> 'enviado' (id_externo) | 'falhou' (NaoEnviado) | 'incerto'
-(EnvioIncerto ou erro desconhecido). Negado grava o motivo e não ocupa a chave; chave já ocupada = 'duplicado'
-(sem linha nova, sem conector). Na subida, todo 'pendente' vira 'incerto' e nada é reenviado sozinho: só
-reenviar(), por ação explícita do dono, volta a MESMA linha a 'pendente'."""
+-> linha 'pendente' gravada ANTES do conector -> 'enviado' (id_externo) | 'falhou' (NaoEnviado; numero_invalido
+se o número não existe) | 'incerto' (EnvioIncerto ou erro desconhecido). Negado grava o motivo e não ocupa a
+chave; chave já ocupada = 'duplicado' (sem linha nova, sem conector). Na subida, todo 'pendente' vira 'incerto' e
+nada é reenviado sozinho: só reenviar(), por ação explícita do dono, volta a MESMA linha a 'pendente'."""
 import datetime
 import re
 
@@ -257,6 +257,8 @@ def _entregar(con, conector, instancia, envio_id, tipo, numero, conteudo):
             ident = conector.enviar_audio(instancia, numero, conteudo)
         else:
             ident = conector.enviar_texto(instancia, numero, conteudo)
+    except base.NumeroInexistente:
+        return _fechar(con, envio_id, "falhou", "numero_invalido")
     except base.NaoEnviado as e:
         return _fechar(con, envio_id, "falhou", "nao_enviado" + (":%s" % e.status if e.status else ""))
     except base.EnvioIncerto as e:
