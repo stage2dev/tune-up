@@ -4,7 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 import type { Bloco } from '../../api/tipos';
 import { RenderBloco } from './Blocos';
-import { carga, CARGA_INICIAL, duracaoCurta, lerMidia, tamanhoCurto, urlDaMidia } from './MidiaMensagem';
+import { carga, CARGA_INICIAL, duracaoCurta, lerMidia, marcaDaMidia, tamanhoCurto, urlDaMidia } from './MidiaMensagem';
+import type { Carga } from './MidiaMensagem';
 
 const html = (b: Bloco, moduloId: string | null = 'vendas') =>
   renderToStaticMarkup(createElement(QueryClientProvider, { client: new QueryClient() }, createElement(RenderBloco, { bloco: b, moduloId: moduloId ?? undefined })));
@@ -26,17 +27,45 @@ describe('midia da mensagem: logica', () => {
     expect(lerMidia('ok')).toBeNull();
     expect(lerMidia({ ref: 'ok', tipo: 'audio', estado: 'xyz' })?.estado).toBe('pronta');
   });
-  it('erro de carga: tenta de novo uma vez, depois falha; dado novo do modulo limpa a falha', () => {
+  it('erro de carga: tenta de novo uma vez, depois falha; o link da falha tenta mais uma vez', () => {
     let c = carga(CARGA_INICIAL, 'erro');
     expect(c.falhou).toBe(false); // primeiro erro (ex.: 503 com as vagas cheias): ainda nao mostra falha
     c = carga(c, 'tentar');
     expect(c.chave).toBe(CARGA_INICIAL.chave + 1); // remonta o elemento: o navegador pede de novo
     c = carga(c, 'erro');
     expect(c.falhou).toBe(true);
-    c = carga(c, 'dado-novo');
-    expect(c).toEqual({ ...c, falhou: false, restam: 1 });
-    expect(carga(c, 'erro').falhou).toBe(false); // de novo com direito a uma tentativa
-    expect(carga(CARGA_INICIAL, 'dado-novo')).toBe(CARGA_INICIAL); // sem falha nada muda (o player nao reinicia)
+    c = carga(c, 'de-novo');
+    expect(c).toMatchObject({ falhou: false, restam: 0, chave: CARGA_INICIAL.chave + 2 });
+    expect(carga(c, 'erro').falhou).toBe(true); // o pedido manual nao ganha outra automatica
+  });
+  // Tentativas = vezes que o <img>/<audio> e montado de novo (chave nova ou a falha some).
+  const tentativas = (a: Carga, b: Carga) => (b.falhou ? 0 : a.falhou || a.chave !== b.chave ? 1 : 0);
+  const quebrada = (midia: string) => {
+    let c: Carga = { ...CARGA_INICIAL, midia };
+    c = carga(carga(carga(c, 'erro'), 'tentar'), 'erro');
+    expect(c.falhou).toBe(true);
+    return c;
+  };
+  it('falhou e o modulo atualiza 5 vezes com a mesma midia: nenhum pedido novo', () => {
+    const marca = marcaDaMidia({ ref: 'r1', estado: 'pronta' });
+    let c = quebrada(marca);
+    let n = 0;
+    for (let i = 0; i < 5; i++) {
+      const d = carga(c, { midia: marca });
+      n += tentativas(c, d);
+      c = d;
+    }
+    expect(n).toBe(0);
+    expect(c.falhou).toBe(true);
+  });
+  it('a midia desta mensagem mudou (pendente -> pronta, ou ref nova): uma tentativa nova', () => {
+    let c = quebrada(marcaDaMidia({ ref: 'r1', estado: 'pendente' }));
+    const d = carga(c, { midia: marcaDaMidia({ ref: 'r1', estado: 'pronta' }) });
+    expect(tentativas(c, d)).toBe(1);
+    expect(d).toMatchObject({ falhou: false, restam: 1 });
+    c = carga(d, { midia: marcaDaMidia({ ref: 'r1', estado: 'pronta' }) });
+    expect(c).toBe(d); // repetir a mesma midia nao muda nada
+    expect(carga(CARGA_INICIAL, { midia: '' })).toBe(CARGA_INICIAL); // carregou bem: o player nao reinicia
   });
   it('duracao e tamanho curtos', () => {
     expect(duracaoCurta(75)).toBe('1:15');

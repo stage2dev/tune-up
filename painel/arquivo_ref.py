@@ -2,7 +2,8 @@
 
 O módulo expõe arquivo(ctx, ref) -> {"mime": str, "dados": bytes, "nome"?: str, "baixar"?: bool} e levanta
 FileNotFoundError quando não acha (só ela vira 404; outra exceção é defeito do módulo = 500 com o nome do tipo
-em `avisos`). Serve dado pessoal (áudio, foto, documento de uma conversa), então:
+em `avisos` e uma linha no stderr do painel com o id do módulo e o nome do tipo, porque <img>/<audio> descartam o
+corpo JSON do erro). Serve dado pessoal (áudio, foto, documento de uma conversa), então:
 - exige Sec-Fetch-Site same-origin (sem o cabeçalho ou de outro site = 403), além do Host já conferido;
 - `ref` opaca, até 200 letras de [A-Za-z0-9._:-], sem '..' nem ponto no começo: recusada antes do módulo;
 - mime só da lista MIMES (fora = 415), até 25 MB (acima = 413);
@@ -16,6 +17,7 @@ Range de um intervalo dá 206 (o Safari só toca áudio assim). Python 3.9, só 
 """
 import json
 import re
+import sys
 import threading
 import unicodedata
 import urllib.parse
@@ -30,7 +32,7 @@ SEMPRE_ANEXO = ("application/pdf", "application/octet-stream")
 MAX_BYTES = 25 * 1024 * 1024
 TEMPO_LIMITE = 20.0
 VAGAS = 4
-ESPERA_VAGA = 5.0
+ESPERA_VAGA = 3.0
 CSP = "default-src 'none'; sandbox"
 _vagas = threading.BoundedSemaphore(VAGAS)
 RE_LOG_REF = re.compile(r"([?&]ref=)[^&\s\"]*")
@@ -90,8 +92,10 @@ def _chamar(mod, mid, ctx, ref, tempo):
     if "erro" in caixa:
         if isinstance(caixa["erro"], FileNotFoundError):
             raise modulos.ErroModulo(404, "Arquivo não encontrado.")
-        raise modulos.ErroModulo(500, "Não consegui abrir este arquivo.",  # só o tipo: a mensagem pode trazer a ref
-                                 ["%s.arquivo quebrou: %s" % (mid, type(caixa["erro"]).__name__)])
+        # só o tipo: a mensagem pode trazer a ref
+        aviso = "%s.arquivo quebrou: %s" % (mid, type(caixa["erro"]).__name__)
+        sys.stderr.write("painel: %s\n" % aviso)
+        raise modulos.ErroModulo(500, "Não consegui abrir este arquivo.", [aviso])
     return caixa.get("dado")
 
 

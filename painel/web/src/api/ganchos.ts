@@ -60,12 +60,6 @@ export const useModulo = (id: string | undefined) =>
     refetchIntervalInBackground: false,
   });
 
-/** Hora da ultima chegada dos dados do modulo: muda a cada busca, mesmo com dados iguais (o structural sharing
- *  guarda os objetos). So escuta o cache: quem busca e o useModulo da pagina. */
-export const useModuloAtualizado = (id: string): number =>
-  useQuery({ queryKey: chaves.modulo(id), enabled: false, queryFn: () => buscarModulo(id), notifyOnChangeProps: ['dataUpdatedAt'] })
-    .dataUpdatedAt;
-
 /** Chama uma acao do modulo (POST) e, se der certo, puxa o modulo de novo sem o cache do servidor. */
 export async function postarAcao(id: string, req: ReqAcaoModulo): Promise<RespAcaoModulo> {
   const r = await apiPost<RespAcaoModulo | null>(`/api/modulos/${encodeURIComponent(id)}/acao`, req);

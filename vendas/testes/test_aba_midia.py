@@ -1,6 +1,6 @@
 """Mídia na aba Conversas e arquivo() do módulo (M4): bytes e mime de um serviço semeado, ref de outra forma recusada,
-serviço de outro projeto ou parado = não encontrado, blocos de áudio pronta/pendente/falhou/expirada, imagem e
-documento, prévias da lista, o botão de tentar de novo chega ao serviço e nenhum token ou caminho aparece."""
+serviço de outro projeto ou parado = erro (nunca 'não encontrado'), blocos de áudio pronta/pendente/falhou/expirada,
+imagem e documento, prévias da lista, o botão de tentar de novo chega ao serviço e nenhum token ou caminho aparece."""
 import sys
 
 sys.dont_write_bytecode = True
@@ -92,14 +92,14 @@ class TesteArquivo(Midias):
     def test_servico_de_outro_projeto_recusado_sem_pedir_o_token(self):
         mid, _ = self.chegou("audio", OGG)
         banco.gravar_config(self.con, "servico_marca", "outramarca0000000")
-        with self.assertRaises(FileNotFoundError):
+        with self.assertRaises(self.mod.cliente.Recusa):   # erro (500 no painel), nunca 404 calado
             self.mod.arquivo(self.ctx, "m:%d" % mid, base=self.base)
 
-    def test_servico_parado_e_nao_encontrado(self):
+    def test_servico_parado_e_erro_nao_nao_encontrado(self):
         mid, _ = self.chegou("audio", OGG)
         self.parar_batimento()
         self.con.execute("UPDATE batimento SET em = '2000-01-01T00:00:00+00:00' WHERE id = 1")
-        with self.assertRaises(FileNotFoundError):
+        with self.assertRaises(self.mod.cliente.Recusa):
             self.mod.arquivo(self.ctx, "m:%d" % mid, base=self.base)
 
     def test_leitura_para_no_teto(self):

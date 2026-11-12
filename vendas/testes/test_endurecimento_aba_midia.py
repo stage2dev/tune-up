@@ -8,6 +8,7 @@ sys.dont_write_bytecode = True
 
 import importlib.util  # noqa: E402
 import os  # noqa: E402
+import socket  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
 import types  # noqa: E402
@@ -55,6 +56,8 @@ class Falso(BaseHTTPRequestHandler):
             self.wfile.write(b"OggS" + b"\x00" * 6)   # 10 de 100 bytes e fecha
             self.close_connection = True
             return
+        if type(self).modo == "lento":
+            time.sleep(1.0)
         if type(self).modo == "redireciona":
             self.send_response(302)
             self.send_header("Location", "http://127.0.0.1:%d/roubar" % type(self).outra)
@@ -116,6 +119,32 @@ class TesteArquivoDoServico(Midias):
         falso = types.SimpleNamespace(Recusa=self.cli.Recusa, baixar=lambda *a: (404, {}, b""))
         with self.assertRaises(FileNotFoundError):
             arquivo.ler(self.ctx, falso, "m:1")
+
+    def test_so_ref_desconhecida_ou_404_viram_nao_encontrado(self):
+        for codigo in (500, 502, 503, 504):   # 5xx do serviço
+            falso = types.SimpleNamespace(Recusa=self.cli.Recusa, baixar=lambda *a, c=codigo: (c, {}, b""))
+            with self.assertRaises(Exception, msg=codigo) as ctx:
+                arquivo.ler(self.ctx, falso, "m:1")
+            self.assertNotIsInstance(ctx.exception, FileNotFoundError)
+        Falso.modo = "lento"   # tempo esgotado no serviço
+        with mock.patch.object(self.cli, "TEMPO_REDE_S", 0.2), self.assertRaises(Exception) as ctx:
+            arquivo.ler(self.ctx, self.cli, "m:1")
+        self.assertNotIsInstance(ctx.exception, FileNotFoundError)
+        s = socket.socket()   # serviço parado: porta sem ninguém ouvindo
+        s.bind(("127.0.0.1", 0))
+        fechada = s.getsockname()[1]
+        s.close()
+        with mock.patch.object(self.cli, "_acesso", return_value=("http://127.0.0.1:%d" % fechada, {})), \
+                self.assertRaises(Exception) as ctx:
+            arquivo.ler(self.ctx, self.cli, "m:1")
+        self.assertNotIsInstance(ctx.exception, FileNotFoundError)
+        recusa = types.SimpleNamespace(Recusa=self.cli.Recusa, baixar=mock.Mock(side_effect=self.cli.Recusa("parado")))
+        with self.assertRaises(self.cli.Recusa):   # batimento velho / outro projeto: Recusa antes do pedido
+            arquivo.ler(self.ctx, recusa, "m:1")
+        for ref in ("m:x", "1", None):   # ref desconhecida: não encontrado, sem pedir ao serviço
+            with self.assertRaises(FileNotFoundError):
+                arquivo.ler(self.ctx, recusa, ref)
+        self.assertEqual(recusa.baixar.call_count, 1)
 
 
 class TesteBotaoDaAba(Midias):

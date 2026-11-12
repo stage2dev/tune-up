@@ -6,6 +6,7 @@ import sys
 
 sys.dont_write_bytecode = True
 
+import io  # noqa: E402
 import json  # noqa: E402
 import os  # noqa: E402
 import shutil  # noqa: E402
@@ -13,6 +14,7 @@ import tempfile  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
 import unittest  # noqa: E402
+from unittest import mock  # noqa: E402
 
 import arquivo_ref  # noqa: E402
 import config  # noqa: E402
@@ -178,6 +180,16 @@ class TesteArquivoRef(unittest.TestCase):
             corpo = json.loads(dados)
             self.assertEqual(corpo["avisos"], ["arq.arquivo quebrou: %s" % tipo])
             self.assertNotIn(ref, json.dumps(corpo))
+
+    def test_bug_do_modulo_uma_linha_no_stderr_so_com_id_e_tipo(self):
+        # <img>/<audio> jogam fora o corpo JSON: sem esta linha o defeito do modulo some
+        for ref, tipo in (("chave", "KeyError"), ("quebra", "RuntimeError")):
+            with mock.patch.object(sys, "stderr", io.StringIO()) as err:
+                self.assertEqual(self.arq(ref)[0], 500)
+            self.assertEqual(err.getvalue(), "painel: arq.arquivo quebrou: %s\n" % tipo)
+        with mock.patch.object(sys, "stderr", io.StringIO()) as err:   # nao achou nao e defeito: nada no stderr
+            self.assertEqual(self.arq("sumiu")[0], 404)
+        self.assertEqual(err.getvalue(), "")
 
     def test_audio_aac_servido(self):
         st, cab, _d = self.arq("aac")

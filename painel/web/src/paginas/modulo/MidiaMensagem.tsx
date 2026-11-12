@@ -3,7 +3,6 @@
 // montada aqui so com o id do modulo da pagina e a ref (nunca uma URL vinda do modulo).
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { FileText } from 'lucide-react';
-import { useModuloAtualizado } from '../../api/ganchos';
 import { Botao } from '../../componentes';
 import { textoOuNada } from './interativos';
 import { AvisoEnvio, useEnvio } from './useEnvio';
@@ -64,31 +63,47 @@ export function tamanhoCurto(b: number | undefined): string {
 }
 
 const SUAVE = 'text-xs opacity-80';
-const ESPERA_NOVA_TENTATIVA = 1500; // ms; o servidor segura ate 5 s por uma vaga, entao uma tentativa basta
+const ESPERA_NOVA_TENTATIVA = 1500; // ms; o servidor segura ate 3 s por uma vaga, entao uma tentativa basta
 
-export interface Carga { chave: number; restam: number; falhou: boolean }
-export const CARGA_INICIAL: Carga = { chave: 0, restam: 1, falhou: false };
+export interface Carga { chave: number; restam: number; falhou: boolean; midia: string }
+export type EventoCarga = 'erro' | 'tentar' | 'de-novo' | { midia: string };
+export const CARGA_INICIAL: Carga = { chave: 0, restam: 1, falhou: false, midia: '' };
+/** O que identifica a midia da mensagem: so quando isto muda a falha e esquecida. */
+export const marcaDaMidia = (m: Pick<MidiaLida, 'ref' | 'estado'>): string => `${m.ref}|${m.estado}`;
 
 /** Carga do <img>/<audio>: o 1o erro gasta a tentativa ('tentar' remonta o elemento depois da espera); o 2o
- *  mostra a falha; 'dado-novo' (chegaram dados do modulo) limpa a falha sem remontar o que carregou bem. */
-export function carga(c: Carga, e: 'erro' | 'tentar' | 'dado-novo'): Carga {
+ *  mostra a falha. A falha so e esquecida quando a midia DESTA mensagem muda (ref ou estado): o modulo se
+ *  atualiza a cada poucos segundos com os mesmos dados e isso nao pode pedir de novo um arquivo quebrado.
+ *  'de-novo' e o link da falha: uma tentativa a mais, sem a automatica. */
+export function carga(c: Carga, e: EventoCarga): Carga {
   if (e === 'erro') return c.restam > 0 ? { ...c, restam: c.restam - 1 } : { ...c, falhou: true };
   if (e === 'tentar') return { ...c, chave: c.chave + 1 };
-  return c.falhou || c.restam < 1 ? { ...c, restam: 1, falhou: false } : c;
+  if (e === 'de-novo') return { ...c, chave: c.chave + 1, restam: 0, falhou: false };
+  if (e.midia === c.midia) return c;
+  return c.falhou || c.restam < 1 ? { ...c, restam: 1, falhou: false, midia: e.midia } : { ...c, midia: e.midia };
 }
 
-function useCarga(moduloId: string) {
-  const fonte = useModuloAtualizado(moduloId);
-  const [c, dispara] = useReducer(carga, CARGA_INICIAL);
+function useCarga(m: MidiaLida) {
+  const marca = marcaDaMidia(m);
+  const [c, dispara] = useReducer(carga, marca, (midia: string) => ({ ...CARGA_INICIAL, midia }));
   const timer = useRef<number | undefined>(undefined);
-  useEffect(() => dispara('dado-novo'), [fonte]);
+  useEffect(() => dispara({ midia: marca }), [marca]);
   useEffect(() => () => window.clearTimeout(timer.current), []);
   const aoErro = () => {
     const tenta = c.restam > 0;
     dispara('erro');
     if (tenta) timer.current = window.setTimeout(() => dispara('tentar'), ESPERA_NOVA_TENTATIVA);
   };
-  return { chave: c.chave, falhou: c.falhou, aoErro };
+  return { chave: c.chave, falhou: c.falhou, aoErro, deNovo: () => dispara('de-novo') };
+}
+
+function FalhaDeCarga({ texto, deNovo }: { texto: string; deNovo: () => void }) {
+  return (
+    <span role="alert" className={SUAVE}>
+      {texto}{' '}
+      <button type="button" className="underline" onClick={deNovo}>Tentar carregar de novo</button>
+    </span>
+  );
 }
 
 function Ampliada({ url, nome, aberta, aoFechar }: { url: string; nome: string; aberta: boolean; aoFechar: () => void }) {
@@ -121,10 +136,10 @@ function Ampliada({ url, nome, aberta, aoFechar }: { url: string; nome: string; 
   );
 }
 
-function Imagem({ url, nome, moduloId }: { url: string; nome: string; moduloId: string }) {
+function Imagem({ url, nome, m }: { url: string; nome: string; m: MidiaLida }) {
   const [aberta, setAberta] = useState(false);
-  const { chave, falhou, aoErro } = useCarga(moduloId);
-  if (falhou) return <span role="alert" className={SUAVE}>Não deu para carregar esta imagem.</span>;
+  const { chave, falhou, aoErro, deNovo } = useCarga(m);
+  if (falhou) return <FalhaDeCarga texto="Não deu para carregar esta imagem." deNovo={deNovo} />;
   return (
     <>
       <button type="button" onClick={() => setAberta(true)} aria-label={`Ampliar ${nome}`} className="w-fit rounded-lg overflow-hidden">
@@ -135,12 +150,12 @@ function Imagem({ url, nome, moduloId }: { url: string; nome: string; moduloId: 
   );
 }
 
-function Audio({ url, m, moduloId }: { url: string; m: MidiaLida; moduloId: string }) {
-  const { chave, falhou, aoErro } = useCarga(moduloId);
+function Audio({ url, m }: { url: string; m: MidiaLida }) {
+  const { chave, falhou, aoErro, deNovo } = useCarga(m);
   return (
     <div className="grid gap-1">
       {falhou ? (
-        <span role="alert" className={SUAVE}>Não deu para carregar este áudio.</span>
+        <FalhaDeCarga texto="Não deu para carregar este áudio." deNovo={deNovo} />
       ) : (
         <audio key={chave} controls preload="none" src={url} aria-label={m.nome ?? 'Áudio'} className="max-w-full" onError={aoErro} />
       )}
@@ -191,7 +206,7 @@ export function MidiaDaMensagem({ m, moduloId }: { m: MidiaLida; moduloId: strin
   if (m.estado === 'pendente') return <span role="status" className={SUAVE}>baixando…</span>;
   if (m.estado === 'falhou' || m.estado === 'expirada') return <Falhou m={m} moduloId={moduloId} />;
   const url = urlDaMidia(moduloId, m.ref);
-  if (m.tipo === 'audio') return <Audio url={url} m={m} moduloId={moduloId} />;
-  if (m.tipo === 'imagem') return <Imagem url={url} nome={m.nome ?? 'Imagem'} moduloId={moduloId} />;
+  if (m.tipo === 'audio') return <Audio url={url} m={m} />;
+  if (m.tipo === 'imagem') return <Imagem url={url} nome={m.nome ?? 'Imagem'} m={m} />;
   return <Documento url={url} m={m} />;
 }
