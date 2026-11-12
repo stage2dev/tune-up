@@ -405,8 +405,9 @@ export interface RespAgentes {
 // Telas extras do pacote: <pacote>/modulos/<id>/modulo.py com INFO = {id, titulo, icone} e montar(ctx).
 // Só ids listados em painel.json "modulos" (^[a-z0-9_-]{1,40}$). montar() tem 20 s; resultado fica 30 s em cache.
 // GET /api/modulos/<id>/arquivo?ref=<ref>: bytes de arquivo(ctx, ref) do módulo (áudio/imagem/documento de uma
-// mensagem). Exige Sec-Fetch-Site same-origin (403); ref inválida 400; sem arquivo() ou não achado 404; mime fora
-// da lista 415; acima de 25 MB 413; 20 s 504; vagas cheias 503. Erro = { erro } em JSON.
+// mensagem). Exige Sec-Fetch-Site same-origin (403); ref inválida 400; sem arquivo() ou FileNotFoundError 404;
+// outra exceção 500 com avisos ["<id>.arquivo quebrou: <Tipo>"]; mime fora da lista 415; acima de 25 MB 413;
+// 20 s 504; vagas cheias por 5 s 503; HEAD 405. Erro = { erro, avisos? } em JSON.
 export interface ResumoModulo {
   id: string;
   titulo: string;

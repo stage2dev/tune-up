@@ -286,7 +286,7 @@ def fazer_handler(app):
                                                   pulso=pulso))
             m = RE_ROTA_MODULO_ARQ.match(caminho)
             if m and "ref" in query:  # arquivo(ctx, ref) do módulo (arquivo_ref.py); ?c= é a pasta de mídia
-                return self._enviar(**arquivo_ref.servir(app.cfg, m.group(1), query["ref"], self.headers))
+                return self._enviar(**arquivo_ref.servir(app.cfg, m.group(1), query["ref"], self.headers, self.command))
             if m:
                 return self._arquivo(urllib.parse.unquote(m.group(1)), (query.get("c") or [None])[0])
             m = RE_ROTA_EXEC.match(caminho)

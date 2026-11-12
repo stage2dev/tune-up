@@ -49,9 +49,15 @@ def arquivo(ctx, ref):
     if ref.startswith("lento:"):
         time.sleep(float(ref.split(":")[1]))
         return {"mime": "audio/ogg", "dados": b"x"}
+    if ref == "aac":
+        return {"mime": "audio/aac", "dados": b"\\xff\\xf1aac"}
     if ref == "quebra":
         raise RuntimeError("segredo " + ref)
-    raise KeyError(ref)
+    if ref == "chave":
+        raise KeyError("segredo " + ref)
+    if ref == "indice":
+        raise IndexError("segredo " + ref)
+    raise FileNotFoundError(ref)
 '''
 
 
@@ -90,9 +96,11 @@ class TesteArquivoRef(unittest.TestCase):
         self.chamadas = modulos.carregar(self.cfg, "arq").CHAMADAS
         del self.chamadas[:]
         self.tempo_antes = arquivo_ref.TEMPO_LIMITE
+        self.espera_antes = getattr(arquivo_ref, "ESPERA_VAGA", None)
 
     def tearDown(self):
         arquivo_ref.TEMPO_LIMITE = self.tempo_antes
+        arquivo_ref.ESPERA_VAGA = self.espera_antes
         _esperar_vagas()
 
     def arq(self, ref, mid="arq", metodo="GET", sfs="same-origin", **cab):
@@ -110,9 +118,10 @@ class TesteArquivoRef(unittest.TestCase):
         self.assertNotIn("script-src", cab["content-security-policy"])
         self.assertNotIn("content-disposition", cab)
 
-    def test_head_sem_corpo_e_range_206(self):
-        st, cab, dados = self.arq("audio", metodo="HEAD")
-        self.assertEqual((st, dados, cab["content-length"]), (200, b"", "15"))
+    def test_head_405_sem_chamar_o_modulo_e_range_206(self):
+        st, _c, dados = self.arq("audio", metodo="HEAD")
+        self.assertEqual((st, dados), (405, b""))
+        self.assertEqual(self.chamadas, [])
         st, cab, dados = self.arq("audio", Range="bytes=0-3")
         self.assertEqual((st, dados, cab["content-range"]), (206, b"OggS", "bytes 0-3/15"))
 
@@ -161,9 +170,22 @@ class TesteArquivoRef(unittest.TestCase):
         self.assertNotIn(b"segredo", dados)
         self.assertEqual(self.arq("torto")[0], 500)
 
+    def test_bug_do_modulo_500_com_so_o_nome_do_tipo(self):
+        for ref, tipo in (("chave", "KeyError"), ("indice", "IndexError"), ("quebra", "RuntimeError")):
+            st, _c, dados = self.arq(ref)
+            self.assertEqual(st, 500, ref)
+            self.assertNotIn(b"segredo", dados)
+            corpo = json.loads(dados)
+            self.assertEqual(corpo["avisos"], ["arq.arquivo quebrou: %s" % tipo])
+            self.assertNotIn(ref, json.dumps(corpo))
+
+    def test_audio_aac_servido(self):
+        st, cab, _d = self.arq("aac")
+        self.assertEqual((st, cab["content-type"]), (200, "audio/aac"))
+
     def test_ref_com_cara_de_caminho_recusada_antes_do_modulo(self):
         for ref in ("..", "../x", "..%2F..%2Fetc%2Fpasswd", "a%2Fb", "%2E%2E", ".oculto", "a..b", "a%5Cb",
-                    "a%00b", "a+b", "x" * 201, "aud%C3%ADo"):
+                    "a%00b", "a+b", "x" * 201, "aud%C3%ADo", "audio%0A", "audio%0D%0A"):
             st, _c, _d = self.arq(ref)
             self.assertEqual(st, 400, ref)
         st, _c, _d = self.pedir("GET", "/api/modulos/arq/arquivo?ref=audio&ref=pdf",
@@ -178,11 +200,23 @@ class TesteArquivoRef(unittest.TestCase):
         self.assertEqual(st, 504)
         self.assertLess(time.monotonic() - inicio, 0.9)
 
-    def test_vagas_limitadas_503_sem_chamar_e_voltam(self):
+    def test_seis_fotos_de_uma_vez_esperam_a_vaga(self):
+        res = []
+        ts = [threading.Thread(target=lambda: res.append(self.arq("lento:0.3")[0])) for _ in range(6)]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join(10)
+        self.assertEqual(res, [200] * 6)
+
+    def test_vagas_limitadas_503_depois_da_espera_sem_chamar_e_voltam(self):
         arquivo_ref.TEMPO_LIMITE = 0.1
+        arquivo_ref.ESPERA_VAGA = 0.3
         for _ in range(arquivo_ref.VAGAS):
             self.assertEqual(self.arq("lento:1.2")[0], 504)
+        inicio = time.monotonic()
         self.assertEqual(self.arq("audio")[0], 503)
+        self.assertGreaterEqual(time.monotonic() - inicio, 0.25)
         self.assertNotIn("audio", self.chamadas)
         _esperar_vagas()
         self.assertEqual(self.arq("audio")[0], 200)
@@ -194,8 +228,14 @@ class TesteArquivoRef(unittest.TestCase):
 
     def test_registro_sem_ref(self):
         linha = '"GET /api/modulos/arq/arquivo?ref=conversa:123&x=1 HTTP/1.1" 200 -'
-        self.assertEqual(arquivo_ref.sem_ref(linha), '"GET /api/modulos/arq/arquivo?ref=*&x=1 HTTP/1.1" 200 -')
+        self.assertEqual(arquivo_ref.sem_ref(linha), '"GET /api/modulos/arq/arquivo?* HTTP/1.1" 200 -')
         self.assertEqual(arquivo_ref.sem_ref('"GET /x?a=1&ref=abc HTTP/1.1"'), '"GET /x?a=1&ref=* HTTP/1.1"')
+
+    def test_registro_esconde_a_query_mesmo_com_a_chave_codificada(self):
+        for q in ("%72ef=conversa:123", "x=1&%72%65%66=conversa:123", "REF=conversa:123"):
+            linha = arquivo_ref.sem_ref('"GET /api/modulos/arq/arquivo?%s HTTP/1.1" 200 -' % q)
+            self.assertNotIn("conversa", linha, q)
+            self.assertIn("/api/modulos/arq/arquivo?", linha)
 
 
 INF = {"id": "m", "titulo": "M"}
@@ -224,6 +264,11 @@ class TesteConferirMidia(unittest.TestCase):
         s = conferir(_conv(*[{"id": str(i), "texto": "t", "midia": m} for i, m in enumerate(ruins)]), INF)
         self.assertTrue(all("midia" not in m and m["texto"] == "t" for m in self.msgs(s)))
         self.assertEqual(len(s["avisos"]), len(ruins))
+
+    def test_ref_com_quebra_de_linha_sai(self):
+        s = conferir(_conv({"id": "1", "midia": dict(BOA, ref="msg:1\n")}), INF)
+        self.assertNotIn("midia", self.msgs(s)[0])
+        self.assertEqual(len(s["avisos"]), 1)
 
     def test_transcricao_que_nao_e_texto_sai(self):
         s = conferir(_conv({"id": "1", "transcricao": {"x": 1}}), INF)

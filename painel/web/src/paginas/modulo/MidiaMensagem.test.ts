@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 import type { Bloco } from '../../api/tipos';
 import { RenderBloco } from './Blocos';
-import { duracaoCurta, lerMidia, tamanhoCurto, urlDaMidia } from './MidiaMensagem';
+import { carga, CARGA_INICIAL, duracaoCurta, lerMidia, tamanhoCurto, urlDaMidia } from './MidiaMensagem';
 
 const html = (b: Bloco, moduloId: string | null = 'vendas') =>
   renderToStaticMarkup(createElement(QueryClientProvider, { client: new QueryClient() }, createElement(RenderBloco, { bloco: b, moduloId: moduloId ?? undefined })));
@@ -25,6 +25,18 @@ describe('midia da mensagem: logica', () => {
     expect(lerMidia({ ref: 'ok', tipo: 'video' })).toBeNull();
     expect(lerMidia('ok')).toBeNull();
     expect(lerMidia({ ref: 'ok', tipo: 'audio', estado: 'xyz' })?.estado).toBe('pronta');
+  });
+  it('erro de carga: tenta de novo uma vez, depois falha; dado novo do modulo limpa a falha', () => {
+    let c = carga(CARGA_INICIAL, 'erro');
+    expect(c.falhou).toBe(false); // primeiro erro (ex.: 503 com as vagas cheias): ainda nao mostra falha
+    c = carga(c, 'tentar');
+    expect(c.chave).toBe(CARGA_INICIAL.chave + 1); // remonta o elemento: o navegador pede de novo
+    c = carga(c, 'erro');
+    expect(c.falhou).toBe(true);
+    c = carga(c, 'dado-novo');
+    expect(c).toEqual({ ...c, falhou: false, restam: 1 });
+    expect(carga(c, 'erro').falhou).toBe(false); // de novo com direito a uma tentativa
+    expect(carga(CARGA_INICIAL, 'dado-novo')).toBe(CARGA_INICIAL); // sem falha nada muda (o player nao reinicia)
   });
   it('duracao e tamanho curtos', () => {
     expect(duracaoCurta(75)).toBe('1:15');
@@ -73,6 +85,16 @@ describe('midia da mensagem: tela', () => {
     expect(e).toContain('Este arquivo expirou.');
     expect(e).not.toContain('Tentar de novo');
     expect(e).not.toContain('<img');
+  });
+  it('transcricao aparece com o audio pendente, expirado, falho ou sem midia valida', () => {
+    for (const estado of ['pendente', 'expirada', 'falhou']) {
+      const h = html(conversa({ ref: 'a1', tipo: 'audio', estado }, { transcricao: 'quero agendar' }));
+      expect(h, estado).toContain('Transcrição: </span>quero agendar');
+    }
+    expect(html(conversa({ ref: '../x', tipo: 'audio' }, { transcricao: 'quero agendar' }))).toContain('Transcrição: </span>quero agendar');
+    expect(html(conversa(undefined, { transcricao: 'quero agendar' }))).toContain('Transcrição: </span>quero agendar');
+    const uma = html(conversa({ ref: 'a1', tipo: 'audio' }, { transcricao: 'quero agendar' }));
+    expect(uma.split('Transcrição:').length).toBe(2); // uma vez so com o player
   });
   it('sem midia (ou ruim, ou sem id do modulo): fica a etiqueta do tipo', () => {
     expect(html(conversa(undefined))).toContain('Áudio – ouça no celular');

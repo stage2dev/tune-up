@@ -49,14 +49,22 @@ export function intervaloDeAtualizacao(v: unknown): number {
 
 /** Uma tela de modulo (alertas, abas e blocos). Relê no ritmo de `atualizar_em` (2..60 s; sem ele, 15 s);
  *  com a aba do navegador escondida, para (refetchIntervalInBackground: false). */
+const buscarModulo = (id: string) => apiGet<DadosModulo>(`/api/modulos/${encodeURIComponent(id)}`);
+
 export const useModulo = (id: string | undefined) =>
   useQuery({
     queryKey: chaves.modulo(id ?? ''),
     enabled: !!id,
-    queryFn: () => apiGet<DadosModulo>(`/api/modulos/${encodeURIComponent(id ?? '')}`),
+    queryFn: () => buscarModulo(id ?? ''),
     refetchInterval: (q) => intervaloDeAtualizacao(q.state.data?.atualizar_em),
     refetchIntervalInBackground: false,
   });
+
+/** Hora da ultima chegada dos dados do modulo: muda a cada busca, mesmo com dados iguais (o structural sharing
+ *  guarda os objetos). So escuta o cache: quem busca e o useModulo da pagina. */
+export const useModuloAtualizado = (id: string): number =>
+  useQuery({ queryKey: chaves.modulo(id), enabled: false, queryFn: () => buscarModulo(id), notifyOnChangeProps: ['dataUpdatedAt'] })
+    .dataUpdatedAt;
 
 /** Chama uma acao do modulo (POST) e, se der certo, puxa o modulo de novo sem o cache do servidor. */
 export async function postarAcao(id: string, req: ReqAcaoModulo): Promise<RespAcaoModulo> {

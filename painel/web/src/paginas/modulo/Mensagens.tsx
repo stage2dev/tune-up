@@ -3,7 +3,7 @@
 import { FileText, Image, Mic, Paperclip } from 'lucide-react';
 import { fioComDias, horaDaMensagem, legendaDe, rotuloDoTipo } from './entrada';
 import { textoOuNada } from './interativos';
-import { lerMidia, MidiaDaMensagem } from './MidiaMensagem';
+import { lerMidia, MidiaDaMensagem, Transcricao } from './MidiaMensagem';
 
 const QUEM = { contato: 'Contato', eu: 'Você', ia: 'IA' } as const;
 const ESTADO: Record<string, string> = { pendente: 'Enviando…', enviado: 'Enviado', falhou: 'Falhou', incerto: 'Não sei se chegou', negado: 'Não permitido' };
@@ -27,6 +27,7 @@ function Balao({ m, moduloId }: { m: Record<string, unknown>; moduloId?: string 
   const texto = tipo ? legendaDe(m.texto) : typeof m.texto === 'string' ? m.texto : '';
   const hora = horaDaMensagem(m.quando);
   const midia = moduloId ? lerMidia(m.midia) : null; // sem midia valida fica a etiqueta do tipo
+  const transcricao = textoOuNada(m.transcricao); // aparece em qualquer estado da midia
   const cor =
     de === 'contato'
       ? 'rounded-bl-sm bg-[var(--color-bg-tertiary)] text-[var(--color-text)]'
@@ -39,10 +40,11 @@ function Balao({ m, moduloId }: { m: Record<string, unknown>; moduloId?: string 
       <div className={`max-w-[85%] min-w-0 rounded-2xl px-3 py-2 text-sm grid gap-1 ${cor}`}>
         {de !== 'contato' && <span className={`text-[11px] ${suave}`}>{QUEM[de]}</span>}
         {midia && moduloId ? (
-          <MidiaDaMensagem m={midia} moduloId={moduloId} transcricao={textoOuNada(m.transcricao)} />
+          <MidiaDaMensagem m={midia} moduloId={moduloId} />
         ) : (
           tipo && <Etiqueta tipo={String(m.tipo)} rotulo={tipo} />
         )}
+        {transcricao && <Transcricao texto={transcricao} />}
         {texto && <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{texto}</p>}
         {textoOuNada(m.nota) && <span className={`text-xs break-words ${suave}`}>{textoOuNada(m.nota)}</span>}
         <span className={`flex justify-end gap-1.5 text-[11px] ${suave}`}>

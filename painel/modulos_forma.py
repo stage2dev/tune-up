@@ -11,7 +11,7 @@ NIVEIS = ("info", "atencao", "critico")
 MAX_ABAS = 30
 MAX_BLOCOS = 100
 MAX_ALERTAS = 50
-RE_REF = re.compile(r"^[A-Za-z0-9._:-]{1,200}$")
+RE_REF = re.compile(r"[A-Za-z0-9._:-]{1,200}")
 TIPOS_MIDIA = ("audio", "imagem", "documento")
 ESTADOS_MIDIA = ("pronta", "pendente", "falhou", "expirada")
 
@@ -35,7 +35,7 @@ def _texto(v, n=500):
 
 def ref_ok(ref):
     """Referência opaca de arquivo de módulo (arquivo_ref.py): sem '..' nem ponto no começo."""
-    return isinstance(ref, str) and bool(RE_REF.match(ref)) and ".." not in ref and not ref.startswith(".")
+    return isinstance(ref, str) and bool(RE_REF.fullmatch(ref)) and ".." not in ref and not ref.startswith(".")
 
 
 def _midia(m):

@@ -1,8 +1,9 @@
 // Arquivo de uma mensagem da conversa (campo `midia`): player de audio com a transcricao, miniatura de imagem que
 // abre ampliada, ou linha de documento com "Baixar". Os bytes vem de GET /api/modulos/<id>/arquivo?ref=: a URL e
 // montada aqui so com o id do modulo da pagina e a ref (nunca uma URL vinda do modulo).
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 import { FileText } from 'lucide-react';
+import { useModuloAtualizado } from '../../api/ganchos';
 import { Botao } from '../../componentes';
 import { textoOuNada } from './interativos';
 import { AvisoEnvio, useEnvio } from './useEnvio';
@@ -63,6 +64,32 @@ export function tamanhoCurto(b: number | undefined): string {
 }
 
 const SUAVE = 'text-xs opacity-80';
+const ESPERA_NOVA_TENTATIVA = 1500; // ms; o servidor segura ate 5 s por uma vaga, entao uma tentativa basta
+
+export interface Carga { chave: number; restam: number; falhou: boolean }
+export const CARGA_INICIAL: Carga = { chave: 0, restam: 1, falhou: false };
+
+/** Carga do <img>/<audio>: o 1o erro gasta a tentativa ('tentar' remonta o elemento depois da espera); o 2o
+ *  mostra a falha; 'dado-novo' (chegaram dados do modulo) limpa a falha sem remontar o que carregou bem. */
+export function carga(c: Carga, e: 'erro' | 'tentar' | 'dado-novo'): Carga {
+  if (e === 'erro') return c.restam > 0 ? { ...c, restam: c.restam - 1 } : { ...c, falhou: true };
+  if (e === 'tentar') return { ...c, chave: c.chave + 1 };
+  return c.falhou || c.restam < 1 ? { ...c, restam: 1, falhou: false } : c;
+}
+
+function useCarga(moduloId: string) {
+  const fonte = useModuloAtualizado(moduloId);
+  const [c, dispara] = useReducer(carga, CARGA_INICIAL);
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => dispara('dado-novo'), [fonte]);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const aoErro = () => {
+    const tenta = c.restam > 0;
+    dispara('erro');
+    if (tenta) timer.current = window.setTimeout(() => dispara('tentar'), ESPERA_NOVA_TENTATIVA);
+  };
+  return { chave: c.chave, falhou: c.falhou, aoErro };
+}
 
 function Ampliada({ url, nome, aberta, aoFechar }: { url: string; nome: string; aberta: boolean; aoFechar: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -94,36 +121,30 @@ function Ampliada({ url, nome, aberta, aoFechar }: { url: string; nome: string; 
   );
 }
 
-function Imagem({ url, nome }: { url: string; nome: string }) {
+function Imagem({ url, nome, moduloId }: { url: string; nome: string; moduloId: string }) {
   const [aberta, setAberta] = useState(false);
-  const [falhou, setFalhou] = useState(false);
+  const { chave, falhou, aoErro } = useCarga(moduloId);
   if (falhou) return <span role="alert" className={SUAVE}>Não deu para carregar esta imagem.</span>;
   return (
     <>
       <button type="button" onClick={() => setAberta(true)} aria-label={`Ampliar ${nome}`} className="w-fit rounded-lg overflow-hidden">
-        <img src={url} alt={nome} loading="lazy" className="max-h-60 max-w-full object-contain" onError={() => setFalhou(true)} />
+        <img key={chave} src={url} alt={nome} loading="lazy" className="max-h-60 max-w-full object-contain" onError={aoErro} />
       </button>
       <Ampliada url={url} nome={nome} aberta={aberta} aoFechar={() => setAberta(false)} />
     </>
   );
 }
 
-function Audio({ url, m, transcricao }: { url: string; m: MidiaLida; transcricao?: string }) {
-  const [falhou, setFalhou] = useState(false);
+function Audio({ url, m, moduloId }: { url: string; m: MidiaLida; moduloId: string }) {
+  const { chave, falhou, aoErro } = useCarga(moduloId);
   return (
     <div className="grid gap-1">
       {falhou ? (
         <span role="alert" className={SUAVE}>Não deu para carregar este áudio.</span>
       ) : (
-        <audio controls preload="none" src={url} aria-label={m.nome ?? 'Áudio'} className="max-w-full" onError={() => setFalhou(true)} />
+        <audio key={chave} controls preload="none" src={url} aria-label={m.nome ?? 'Áudio'} className="max-w-full" onError={aoErro} />
       )}
       {m.duracao !== undefined && <span className={`${SUAVE} tabular-nums`}>Áudio de {duracaoCurta(m.duracao)}</span>}
-      {transcricao && (
-        <p className={`${SUAVE} whitespace-pre-wrap break-words`}>
-          <span className="font-medium">Transcrição: </span>
-          {transcricao}
-        </p>
-      )}
     </div>
   );
 }
@@ -141,7 +162,7 @@ function Documento({ url, m }: { url: string; m: MidiaLida }) {
 }
 
 function Falhou({ m, moduloId }: { m: MidiaLida; moduloId: string }) {
-  const { enviar, enviando, erro } = useEnvio(moduloId);
+  const { enviar, enviando, ok, erro } = useEnvio(moduloId);
   const padrao = m.estado === 'expirada' ? 'Este arquivo expirou.' : 'Não deu para baixar este arquivo.';
   return (
     <div className="grid gap-1">
@@ -151,16 +172,26 @@ function Falhou({ m, moduloId }: { m: MidiaLida; moduloId: string }) {
           <Botao variante="secundario" enviando={enviando} onClick={() => { if (m.acao) void enviar(m.acao.acao, m.acao.dados); }}>Tentar de novo</Botao>
         </div>
       )}
-      <AvisoEnvio ok={false} erro={erro} />
+      <AvisoEnvio ok={ok} erro={erro} />
     </div>
   );
 }
 
-export function MidiaDaMensagem({ m, moduloId, transcricao }: { m: MidiaLida; moduloId: string; transcricao?: string }) {
+/** Texto do audio: aparece sempre que existe, qualquer que seja o estado da midia (Mensagens.tsx). */
+export function Transcricao({ texto }: { texto: string }) {
+  return (
+    <p className={`${SUAVE} whitespace-pre-wrap break-words`}>
+      <span className="font-medium">Transcrição: </span>
+      {texto}
+    </p>
+  );
+}
+
+export function MidiaDaMensagem({ m, moduloId }: { m: MidiaLida; moduloId: string }) {
   if (m.estado === 'pendente') return <span role="status" className={SUAVE}>baixando…</span>;
   if (m.estado === 'falhou' || m.estado === 'expirada') return <Falhou m={m} moduloId={moduloId} />;
   const url = urlDaMidia(moduloId, m.ref);
-  if (m.tipo === 'audio') return <Audio url={url} m={m} transcricao={transcricao} />;
-  if (m.tipo === 'imagem') return <Imagem url={url} nome={m.nome ?? 'Imagem'} />;
+  if (m.tipo === 'audio') return <Audio url={url} m={m} moduloId={moduloId} />;
+  if (m.tipo === 'imagem') return <Imagem url={url} nome={m.nome ?? 'Imagem'} moduloId={moduloId} />;
   return <Documento url={url} m={m} />;
 }

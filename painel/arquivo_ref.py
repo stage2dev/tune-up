@@ -1,15 +1,17 @@
 """Arquivo de módulo por referência: GET /api/modulos/<id>/arquivo?ref=<ref>.
 
 O módulo expõe arquivo(ctx, ref) -> {"mime": str, "dados": bytes, "nome"?: str, "baixar"?: bool} e levanta
-LookupError (KeyError) ou FileNotFoundError quando não acha. Serve dado pessoal (áudio, foto, documento de
-uma conversa), então:
+FileNotFoundError quando não acha (só ela vira 404; outra exceção é defeito do módulo = 500 com o nome do tipo
+em `avisos`). Serve dado pessoal (áudio, foto, documento de uma conversa), então:
 - exige Sec-Fetch-Site same-origin (sem o cabeçalho ou de outro site = 403), além do Host já conferido;
 - `ref` opaca, até 200 letras de [A-Za-z0-9._:-], sem '..' nem ponto no começo: recusada antes do módulo;
 - mime só da lista MIMES (fora = 415), até 25 MB (acima = 413);
-- arquivo() roda numa thread com tempo limite; no máximo VAGAS de uma vez (cheio = 503, sem chamar o módulo);
+- arquivo() roda numa thread com tempo limite; no máximo VAGAS de uma vez (cheio = espera ESPERA_VAGA s por
+  uma vaga e só então 503, sem chamar o módulo); HEAD = 405 sem chamar o módulo;
 - resposta com nosniff, Cache-Control private max-age=300, CSP sandbox; anexo (Content-Disposition com nome
   ASCII e filename* RFC 5987) quando `baixar` ou o mime é pdf/octet-stream;
-- nada vai para disco nem para o registro; o texto da exceção do módulo nunca sai (pode trazer a ref).
+- nada vai para disco nem para o registro (a query inteira desta rota sai mascarada); o texto da exceção do
+  módulo nunca sai (pode trazer a ref).
 Range de um intervalo dá 206 (o Safari só toca áudio assim). Python 3.9, só biblioteca padrão.
 """
 import json
@@ -22,24 +24,28 @@ import midia
 import modulos
 from modulos_forma import ref_ok
 
-MIMES = ("audio/ogg", "audio/mpeg", "audio/mp4", "audio/wav", "image/jpeg", "image/png", "image/webp",
-         "application/pdf", "application/octet-stream")
+MIMES = ("audio/ogg", "audio/mpeg", "audio/mp4", "audio/aac", "audio/wav", "image/jpeg", "image/png", "image/webp",
+         "application/pdf", "application/octet-stream")  # audio/aac: ADTS, voz comum que o navegador toca
 SEMPRE_ANEXO = ("application/pdf", "application/octet-stream")
 MAX_BYTES = 25 * 1024 * 1024
 TEMPO_LIMITE = 20.0
 VAGAS = 4
+ESPERA_VAGA = 5.0
 CSP = "default-src 'none'; sandbox"
 _vagas = threading.BoundedSemaphore(VAGAS)
 RE_LOG_REF = re.compile(r"([?&]ref=)[^&\s\"]*")
+RE_LOG_ARQ = re.compile(r"(/api/modulos/[^/?\s\"]*/arquivo\?)[^\s\"]*")
 
 
 def sem_ref(texto):
-    """Linha de registro sem o valor de ?ref= (a ref pode apontar para uma conversa)."""
-    return RE_LOG_REF.sub(r"\1*", texto)
+    """Linha de registro sem o valor de ?ref= (a ref pode apontar para uma conversa) e sem a query inteira da
+    rota de arquivo (a chave pode vir codificada: ?%72ef=)."""
+    return RE_LOG_REF.sub(r"\1*", RE_LOG_ARQ.sub(r"\1*", texto))
 
 
-def _erro(codigo, msg, extra=None):
-    corpo = json.dumps({"erro": msg}, ensure_ascii=False).encode("utf-8")
+def _erro(codigo, msg, extra=None, avisos=None):
+    dado = dict({"erro": msg}, **({"avisos": avisos} if avisos else {}))
+    corpo = json.dumps(dado, ensure_ascii=False).encode("utf-8")
     return {"codigo": codigo, "corpo": corpo, "tipo": "application/json; charset=utf-8", "csp": CSP,
             "extra": extra or {}}
 
@@ -58,9 +64,9 @@ def nome_anexo(nome, mime):
     return valor
 
 
-def _chamar(mod, ctx, ref, tempo):
+def _chamar(mod, mid, ctx, ref, tempo):
     """arquivo(ctx, ref) numa thread; a vaga só volta quando a thread termina (mesmo depois do tempo)."""
-    if not _vagas.acquire(blocking=False):
+    if not _vagas.acquire(timeout=ESPERA_VAGA):
         raise modulos.ErroModulo(503, "Muitos arquivos sendo abertos agora. Tente de novo daqui a pouco.")
     caixa = {}
 
@@ -82,16 +88,19 @@ def _chamar(mod, ctx, ref, tempo):
     if t.is_alive():
         raise modulos.ErroModulo(504, "O arquivo demorou demais para abrir.")
     if "erro" in caixa:
-        if isinstance(caixa["erro"], (LookupError, FileNotFoundError)):
+        if isinstance(caixa["erro"], FileNotFoundError):
             raise modulos.ErroModulo(404, "Arquivo não encontrado.")
-        raise modulos.ErroModulo(500, "Não consegui abrir este arquivo.")
+        raise modulos.ErroModulo(500, "Não consegui abrir este arquivo.",  # só o tipo: a mensagem pode trazer a ref
+                                 ["%s.arquivo quebrou: %s" % (mid, type(caixa["erro"]).__name__)])
     return caixa.get("dado")
 
 
-def servir(cfg, mid, refs, cabecalhos, tempo=None):
+def servir(cfg, mid, refs, cabecalhos, metodo="GET", tempo=None):
     """Argumentos nomeados de _enviar() do painel para GET .../arquivo?ref=. `mid` ainda codificado (vem do
     caminho); `refs` é a lista do parse_qs."""
     mid = urllib.parse.unquote(mid)
+    if metodo != "GET":
+        return _erro(405, "Use GET nesta rota.", {"Allow": "GET"})
     if cabecalhos.get("Sec-Fetch-Site") != "same-origin":
         return _erro(403, "Pedido de outro site recusado.")
     ref = refs[0] if isinstance(refs, list) and len(refs) == 1 else None
@@ -101,9 +110,9 @@ def servir(cfg, mid, refs, cabecalhos, tempo=None):
         mod = modulos.carregar(cfg, mid)
         if not callable(getattr(mod, "arquivo", None)):
             raise modulos.ErroModulo(404, "Esta tela não serve arquivos.")
-        r = _chamar(mod, modulos.contexto(cfg), ref, TEMPO_LIMITE if tempo is None else tempo)
+        r = _chamar(mod, mid, modulos.contexto(cfg), ref, TEMPO_LIMITE if tempo is None else tempo)
     except modulos.ErroModulo as e:
-        return _erro(e.codigo, e.mensagem)
+        return _erro(e.codigo, e.mensagem, avisos=e.avisos)
     if not isinstance(r, dict) or not isinstance(r.get("dados"), (bytes, bytearray)) \
             or not isinstance(r.get("mime"), str):
         return _erro(500, "Esta tela devolveu um arquivo estranho.")
