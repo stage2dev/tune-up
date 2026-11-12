@@ -100,6 +100,18 @@ class Detector(unittest.TestCase):
         self.assertEqual(len(h), 64)
         self.assertGreater(tam, 0)
 
+    def test_palavra_hash_dispara_de_verdade(self):
+        # Swap the pair list for a harmless word built at runtime; a line containing it must be reported.
+        global PROIBIDAS
+        palavra = "ban" + "ana"
+        original = PROIBIDAS
+        PROIBIDAS = [(len(palavra), hashlib.sha256(palavra.encode("utf-8")).hexdigest())]
+        try:
+            self.assertIn("palavra proibida", achados_na_linha("x = 'Ban" + "ana split'"))
+            self.assertNotIn("palavra proibida", achados_na_linha("x = 'apple'"))
+        finally:
+            PROIBIDAS = original
+
 
 if __name__ == "__main__":
     unittest.main()
