@@ -16,7 +16,7 @@ from unittest import mock  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from servico import midia, recebimento, rotas  # noqa: E402
+from servico import banco, midia, recebimento, rotas  # noqa: E402
 from servico.conectores import base, evolution  # noqa: E402
 from testes.test_midia import INST, OGG, PDF, Base, corpo  # noqa: E402
 
@@ -129,6 +129,21 @@ class TesteServir(Rotas):
         self.assertEqual(self.pedir("POST", "/midia/%d/baixar-de-novo" % mid)[0], 409)   # duplo clique
         self.assertEqual(self.pedir("POST", "/midia/9999/baixar-de-novo")[0], 409)
         self.assertEqual(self.pedir("GET", "/midia/%d/baixar-de-novo" % mid)[0], 404)
+
+    def test_ia_de_novo_so_ganha_a_vez_sem_resposta_depois_do_arquivo(self):
+        chamadas = []
+        recebimento.registrar_gancho(lambda c, m: chamadas.append((c, m)))
+        self.addCleanup(recebimento.registrar_gancho, None)
+        mid = self.pronta("S8")
+        cid = self.con.execute("SELECT id FROM conversas").fetchone()[0]
+        self.con.execute("UPDATE midias SET falha_ia = 'transcricao_falhou' WHERE id = ?", (mid,))
+        status, _, corpo_ = self.pedir("POST", "/midia/%d/baixar-de-novo" % mid)
+        self.assertEqual((status, json.loads(corpo_.decode("utf-8"))["responde"], len(chamadas)), (202, True, 1))
+        banco.registrar_mensagem(self.con, cid, "saida", "respondi", "dono1", "texto")
+        self.con.execute("UPDATE midias SET falha_ia = 'transcricao_falhou' WHERE id = ?", (mid,))
+        status, _, corpo_ = self.pedir("POST", "/midia/%d/baixar-de-novo" % mid)
+        self.assertEqual((status, json.loads(corpo_.decode("utf-8"))["responde"], len(chamadas)), (202, False, 1))
+        self.assertIsNone(self.con.execute("SELECT falha_ia FROM midias").fetchone()[0])
 
     def test_conversa_mostra_a_midia(self):
         mid = self.pronta("S7")

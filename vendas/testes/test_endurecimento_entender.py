@@ -55,6 +55,23 @@ class TesteTranscricaoQueFalhou(Comum):
         self.rodar(t2)
         self.assertEqual(len(self.falsa.chamadas_transcricao()), 2)
 
+    def test_tentar_de_novo_depois_da_resposta_do_dono_nao_responde(self):
+        self.cerebro.tempo_transcricao = 0.3
+        audio, _ = self.chegar("a1", "audio", OGG)
+        self.falsa.fila.append(OpenAIFalsa.DORMIR)
+        self.assertIsNone(self.rodar(audio))
+        cid = self.con.execute("SELECT conversa_id FROM mensagens WHERE id = ?", (audio,)).fetchone()[0]
+        banco.registrar_mensagem(self.con, cid, "saida", "Não consegui ouvir, pode escrever?", "dono1", "texto")
+        mid = self.con.execute("SELECT id FROM midias").fetchone()[0]
+        alvo = midia.entender_de_novo(self.con, mid)
+        self.assertEqual(tuple(alvo), (cid, None))   # a IA não ganha a vez: o dono já respondeu
+        self.assertIsNone(self.con.execute("SELECT falha_ia FROM midias").fetchone()[0])   # a falha foi limpa
+        self.falsa.fila += [resposta_transcricao("quanto custa"), resposta_texto("O plano custa R$ 100.")]
+        if alvo[1] is not None:   # o que a rota faz
+            self.ia.responder(alvo[0], alvo[1], agora=AGORA)
+        self.assertEqual(self.falsa.chamadas_chat(), [])
+        self.assertEqual(self.envios(), [])
+
 
 class TesteImagemRecusada(Comum):
     def test_400_que_nao_e_sem_visao_tem_motivo_proprio_e_a_imagem_nao_vai_de_novo(self):
@@ -104,6 +121,18 @@ class TesteSairNoLote(Comum):
         self.falsa.fila.append(resposta_transcricao("quanto custa?"))
         self.assertIsNone(self.rodar(audio))
         self.assertEqual(self.falsa.chamadas_chat(), [])
+        self.assertEqual(self.precisa(), 1)
+        self.assertEqual(self.motivos(), ["pausa_humana"])
+        self.assertIsNone(self.optout())
+        self.assertEqual(self.envios(), [])
+
+    def test_modo_humano_com_audio_nao_transcreve_e_fica_precisa_de_voce(self):
+        audio, _ = self.chegar("a1", "audio", OGG)
+        self.con.execute("UPDATE conversas SET modo = 'humano'")
+        self.falsa.fila.append(resposta_transcricao("Parar"))
+        self.assertIsNone(self.rodar(audio))
+        self.assertEqual(self.falsa.chamadas_transcricao(), [])   # a voz do contato não vai à OpenAI
+        self.assertEqual(self.falsa.pedidos, [])
         self.assertEqual(self.precisa(), 1)
         self.assertEqual(self.motivos(), ["pausa_humana"])
         self.assertIsNone(self.optout())

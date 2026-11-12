@@ -248,15 +248,17 @@ def baixar(abrir, conector, pasta_dados, midia_id):
 
 
 def entender_de_novo(con, midia_id):
-    """Ação do dono numa pronta em que a IA falhou: limpa falha_ia. Devolve a conversa e a última entrada confiável
-    dela (quem chama dá a vez à IA) ou None se não havia falha da IA."""
+    """Ação do dono numa pronta em que a IA falhou: limpa falha_ia. Devolve (conversa, última entrada confiável dela)
+    -- quem chama dá a vez à IA -- ou None se não havia falha da IA. Se já saiu mensagem depois da mídia (o dono
+    respondeu), a entrada volta None: a IA não responde agora com um contexto que não viu essa resposta."""
     cur = con.execute("UPDATE midias SET falha_ia = NULL WHERE id = ? AND estado = 'pronta' AND falha_ia IS NOT NULL",
                       (midia_id,))
     if cur.rowcount != 1:
         return None
-    return con.execute("SELECT m.conversa_id, (SELECT MAX(id) FROM mensagens WHERE conversa_id = m.conversa_id "
-                       "AND direcao = 'entrada' AND confiavel = 1) FROM midias d JOIN mensagens m ON m.id = "
-                       "d.mensagem_id WHERE d.id = ?", (midia_id,)).fetchone()
+    return con.execute("SELECT m.conversa_id, CASE WHEN EXISTS (SELECT 1 FROM mensagens WHERE conversa_id = "
+                       "m.conversa_id AND direcao = 'saida' AND id > m.id) THEN NULL ELSE (SELECT MAX(id) FROM "
+                       "mensagens WHERE conversa_id = m.conversa_id AND direcao = 'entrada' AND confiavel = 1) END "
+                       "FROM midias d JOIN mensagens m ON m.id = d.mensagem_id WHERE d.id = ?", (midia_id,)).fetchone()
 
 
 def pedir_de_novo(con, midia_id):

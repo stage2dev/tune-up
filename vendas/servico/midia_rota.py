@@ -54,7 +54,7 @@ def atender(handler, app, token_ok):
                 if alvo[1] is not None:
                     from servico import recebimento   # aqui dentro: no topo fecharia um ciclo de import (rotas)
                     recebimento.ao_receber_mensagem_de_lead(alvo[0], alvo[1])
-                return handler._json(202, {"id": midia_id, "estado": "pronta"})
+                return handler._json(202, {"id": midia_id, "estado": "pronta", "responde": alvo[1] is not None})
             return handler._erro(409, "Esta mídia não pode ser tentada de novo (não falhou, já está sendo baixada ou "
                                       "a falha se repetiria).")
         linha = con.execute("SELECT tipo, mimetype, nome_arquivo, arquivo FROM midias WHERE id = ? AND estado = "

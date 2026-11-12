@@ -27,7 +27,8 @@
   qualquer passo = o modelo não é chamado, nada sai, "precisa de você" com o motivo. Documento nunca chega
   aqui (o recebimento marca documento_recebido). Imagem que a API recusou fica marcada (midias.falha_ia).
 - Conversa pausada (dono ou modo humano) com mídia no lote: o modelo não é chamado, mas a triagem de SAIR roda nas
-  transcrições e legendas (com 'IA entende' ligado) e a conversa fica "precisa de você" (pausa_humana)."""
+  transcrições e legendas (com 'IA entende' ligado) e a conversa fica "precisa de você" (pausa_humana). Em modo
+  humano o áudio não é transcrito (só a legenda passa pela triagem)."""
 import datetime
 import json
 import re
@@ -251,9 +252,13 @@ class Atendente:
         recebimento.executar_depois(con, conector, [("sair", conversa["telefone"])])
 
     def _na_pausa(self, con, conversa_id, gatilho_id, conversa, agora):
-        """Pausada: nada vai ao modelo. SAIR falado ou na legenda ainda vale; mídia no lote = "precisa de você"."""
+        """Pausada: nada vai ao modelo. SAIR falado ou na legenda ainda vale; mídia no lote = "precisa de você".
+        Modo humano ('IA desligada' na conversa): o áudio NÃO é transcrito (nada da voz vai à OpenAI); só a legenda."""
+        entende = self.entende
+        if conversa["modo"] == "humano" and entende is not None:
+            entende = lambda c, tipo: tipo != "audio" and self.entende(c, tipo)  # noqa: E731
         try:   # espera e rede, fora de transação
-            ent = entender.preparar(self.cerebro, con, conversa_id, gatilho_id, self._parar, self.entende,
+            ent = entender.preparar(self.cerebro, con, conversa_id, gatilho_id, self._parar, entende,
                                     so_triagem=True)
         except Exception as e:
             if con.in_transaction:
