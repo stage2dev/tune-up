@@ -60,6 +60,29 @@ jobs:
         run: |
           echo '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git status"},"cwd":"."}' | python scripts/guarda.py bash
 
+  mkt:
+    name: mkt ${{ matrix.os }} / py${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.9", "3.12"]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Marketing module tests
+        working-directory: tune-up-mkt
+        run: python -B -m unittest discover -s tests -t . -v
+
   panel-web:
     name: panel screens (vitest + build + dist is fresh)
     runs-on: ubuntu-latest
