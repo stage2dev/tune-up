@@ -404,6 +404,10 @@ export interface RespAgentes {
 // ---------------------------------------------------------------- GET /api/modulos e /api/modulos/<id>
 // Telas extras do pacote: <pacote>/modulos/<id>/modulo.py com INFO = {id, titulo, icone} e montar(ctx).
 // Só ids listados em painel.json "modulos" (^[a-z0-9_-]{1,40}$). montar() tem 20 s; resultado fica 30 s em cache.
+// GET /api/modulos/<id>/arquivo?ref=<ref>: bytes de arquivo(ctx, ref) do módulo (áudio/imagem/documento de uma
+// mensagem). Exige Sec-Fetch-Site same-origin (403); ref inválida 400; sem arquivo() ou FileNotFoundError 404;
+// outra exceção 500 com avisos ["<id>.arquivo quebrou: <Tipo>"]; mime fora da lista 415; acima de 25 MB 413;
+// 20 s 504; vagas cheias por 5 s 503; HEAD 405. Erro = { erro, avisos? } em JSON.
 export interface ResumoModulo {
   id: string;
   titulo: string;
@@ -417,7 +421,7 @@ export interface RespModulos {
 }
 
 import type { Bloco } from './blocos';
-export type { Tom, Bloco, CampoFormulario, BlocoFormulario, MensagemConversa, BlocoConversa, BlocoImagem, BlocoGaleria, BlocoMidia, BlocoCores, BlocoEnvio, BlocoPrevia, BlocoOpcoes, ReqAcaoModulo, RespAcaoModulo } from './blocos';
+export type { Tom, Bloco, CampoFormulario, BlocoFormulario, MensagemConversa, BlocoConversa, BlocoCaixa, BlocoImagem, BlocoGaleria, BlocoMidia, BlocoCores, BlocoEnvio, BlocoPrevia, BlocoOpcoes, ReqAcaoModulo, RespAcaoModulo } from './blocos';
 
 /** 200. 404 { erro, avisos? } se o id não está habilitado; 500 { erro, avisos } se montar() quebra ou demora;
  *  503 { erro } se uma montagem anterior ainda está rodando. O servidor confere só a forma mínima
@@ -427,8 +431,9 @@ export interface RespModulo {
   titulo: string;
   gerado_em: string;
   alertas: { nivel: 'info' | 'atencao' | 'critico'; texto: string }[];
-  abas: { id: string; titulo: string; blocos: Bloco[] }[];
+  abas: { id: string; titulo: string; blocos: Bloco[]; alerta?: number }[]; // alerta: selo na aba (inteiro >= 1)
   avisos: string[];
+  atualizar_em?: number; // segundos entre releituras, preso em 2..60 (sem número: 15)
 }
 
 /** POST /api/modulos/<id>/envio?destino=<chave> — corpo = bytes crus da imagem (não é JSON nem multipart).

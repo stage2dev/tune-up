@@ -225,8 +225,21 @@ export interface MensagemConversa {
   de: 'contato' | 'eu' | 'ia';
   texto: string;
   quando: string;
+  tipo?: 'texto' | 'audio' | 'imagem' | 'documento' | 'outro';
   estado?: 'pendente' | 'enviado' | 'falhou' | 'incerto' | 'negado';
   nota?: string;
+  midia?: MidiaMensagem;
+  transcricao?: string;
+}
+export interface MidiaMensagem {
+  ref: string;
+  tipo: 'audio' | 'imagem' | 'documento';
+  nome?: string;
+  tamanho?: number;
+  duracao?: number;
+  estado?: 'pronta' | 'pendente' | 'falhou' | 'expirada';
+  aviso?: string;
+  acao?: { acao: string; dados?: Record<string, unknown> };
 }
 export interface BlocoConversa {
   tipo: 'conversa';
@@ -236,6 +249,24 @@ export interface BlocoConversa {
   enviar?: { acao: string; dados_fixos?: Record<string, unknown>; rotulo?: string };
   botoes?: { rotulo: string; acao: string; dados?: Record<string, unknown>; confirmar?: string }[];
   vazio?: string;
+}
+export interface BlocoCaixa {
+  tipo: 'caixa';
+  id?: string;
+  titulo?: string;
+  conversas: {
+    id: string;
+    titulo: string;
+    detalhe?: string;
+    quando?: string;
+    selo?: { texto: string; tom: TomBloco };
+    nao_lidas?: number;
+    ativa?: boolean;
+  }[];
+  abrir: { acao: string; dados_fixos?: Record<string, unknown> };
+  conversa?: Omit<BlocoConversa, 'tipo'>;
+  vazio?: string;
+  vazio_conversa?: string;
 }
 export interface BlocoImagem { tipo: 'imagem'; titulo?: string; data_uri: string; alt: string; legenda?: string }
 export interface BlocoGaleria {
@@ -317,7 +348,7 @@ export interface BlocoOpcoes {
 export interface BlocoDesconhecido { tipo: string; titulo?: string; [campo: string]: unknown }
 export type Bloco =
   | BlocoKpis | BlocoTabela | BlocoLista | BlocoSerie | BlocoTexto | BlocoAcoes
-  | BlocoFormulario | BlocoConversa | BlocoImagem | BlocoGaleria | BlocoMidia
+  | BlocoFormulario | BlocoConversa | BlocoCaixa | BlocoImagem | BlocoGaleria | BlocoMidia
   | BlocoCores | BlocoEnvio | BlocoPrevia | BlocoOpcoes | BlocoDesconhecido;
 
 /** Corpo e resposta de POST /api/modulos/<id>/acao (blocos formulario e conversa). */
@@ -334,6 +365,8 @@ export interface AbaModulo {
   id: string;
   titulo: string;
   blocos: Bloco[];
+  /** Selo pequeno no titulo da aba (inteiro >= 1). */
+  alerta?: number;
 }
 
 export interface DadosModulo {
@@ -343,4 +376,6 @@ export interface DadosModulo {
   alertas: AlertaModulo[];
   abas: AbaModulo[];
   avisos: string[];
+  /** Segundos entre releituras (o servidor e a tela prendem em 2..60). */
+  atualizar_em?: number;
 }

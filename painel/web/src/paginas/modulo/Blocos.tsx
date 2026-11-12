@@ -1,5 +1,5 @@
-// Renderizador dos blocos do contrato de modulo (kpis, tabela, lista, serie, texto, acoes, formulario, conversa, imagem, galeria, midia,
-// cores, envio, previa, opcoes).
+// Renderizador dos blocos do contrato de modulo (kpis, tabela, lista, serie, texto, acoes, formulario, conversa, caixa, imagem, galeria,
+// midia, cores, envio, previa, opcoes).
 // Cada bloco chega de um pacote de projeto e pode vir incompleto: tudo aqui e lido com cuidado.
 import type { CSSProperties, ReactNode } from 'react';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -7,6 +7,7 @@ import type { Bloco } from '../../api/tipos';
 import { Botao, Cartao, EstadoVazio, Selo } from '../../componentes';
 import type { Tom } from '../../componentes/Selo';
 import { BotoesDoGrupo } from './BotaoAcao';
+import { Caixa } from './Caixa';
 import { Conversa } from './Conversa';
 import { Cores } from './Cores';
 import { Envio } from './Envio';
@@ -234,6 +235,8 @@ export function RenderBloco({ bloco, moduloId, aoIrAba }: { bloco: Bloco; modulo
       return <Formulario b={b} moduloId={moduloId} />;
     case 'conversa':
       return <Conversa b={b} moduloId={moduloId} />;
+    case 'caixa':
+      return <Caixa b={b} moduloId={moduloId} />;
     case 'imagem':
       return <Imagem b={b} desconhecido={() => <Desconhecido tipo="imagem" />} />;
     case 'galeria':

@@ -15,6 +15,7 @@ export type Bloco =
   | { tipo: 'acoes'; titulo?: string; grupo: string }
   | BlocoFormulario
   | BlocoConversa
+  | BlocoCaixa
   | BlocoImagem
   | BlocoGaleria
   | BlocoMidia
@@ -58,8 +59,30 @@ export interface MensagemConversa {
   de: 'contato' | 'eu' | 'ia';
   texto: string;
   quando: string;
+  /** Sem tipo (ou 'texto') = texto. O resto vira uma etiqueta ("Áudio – ouça no celular"); texto "[audio]" some. */
+  tipo?: 'texto' | 'audio' | 'imagem' | 'documento' | 'outro';
   estado?: 'pendente' | 'enviado' | 'falhou' | 'incerto' | 'negado';
   nota?: string;
+  /** Arquivo da mensagem, servido por GET /api/modulos/<id>/arquivo?ref=<ref> (arquivo(ctx, ref) do módulo).
+   *  A tela monta a URL só com o id do módulo e a ref; o servidor descarta (com aviso) a midia fora da forma. */
+  midia?: MidiaMensagem;
+  /** Texto do áudio, mostrado em letra menor embaixo do player ("Transcrição"). */
+  transcricao?: string;
+}
+/** ref: até 200 letras de [A-Za-z0-9._:-], sem '..' nem ponto no começo. Sem estado = 'pronta'. */
+export interface MidiaMensagem {
+  ref: string;
+  tipo: 'audio' | 'imagem' | 'documento';
+  nome?: string;
+  /** Bytes. */
+  tamanho?: number;
+  /** Segundos. */
+  duracao?: number;
+  estado?: 'pronta' | 'pendente' | 'falhou' | 'expirada';
+  /** Texto mostrado quando falhou ou expirou. */
+  aviso?: string;
+  /** Botão "Tentar de novo" (falhou/expirada): posta { acao, dados } na rota de ação do módulo. */
+  acao?: { acao: string; dados?: Record<string, unknown> };
 }
 /** Enviar posta { acao, dados: { ...dados_fixos, texto, id_cliente } }; um id_cliente por mensagem, o mesmo nas tentativas de reenvio. */
 export interface BlocoConversa {
@@ -71,6 +94,29 @@ export interface BlocoConversa {
   enviar?: { acao: string; dados_fixos?: Record<string, unknown>; rotulo?: string };
   botoes?: { rotulo: string; acao: string; dados?: Record<string, unknown>; confirmar?: string }[];
   vazio?: string;
+}
+/** Caixa de entrada: lista de conversas (busca no navegador) e a conversa aberta ao lado; tela estreita = uma por vez.
+ *  Clicar numa linha posta { acao: abrir.acao, dados: { ...abrir.dados_fixos, conversa_id: id } } e relê o módulo.
+ *  O servidor descarta o bloco sem `abrir.acao` e as linhas sem id/titulo (com aviso). */
+export interface BlocoCaixa {
+  tipo: 'caixa';
+  id?: string;
+  titulo?: string;
+  conversas: {
+    id: string;
+    titulo: string;
+    /** Prévia da última mensagem (uma linha). */
+    detalhe?: string;
+    quando?: string;
+    selo?: { texto: string; tom: Tom };
+    nao_lidas?: number;
+    ativa?: boolean;
+  }[];
+  abrir: { acao: string; dados_fixos?: Record<string, unknown> };
+  /** A conversa aberta: mesmo formato do bloco conversa (sem tipo). */
+  conversa?: Omit<BlocoConversa, 'tipo'>;
+  vazio?: string;
+  vazio_conversa?: string;
 }
 /** Só data:image/png;base64 e data:image/jpeg;base64 (svg pode carregar script). */
 export interface BlocoImagem {
@@ -168,7 +214,8 @@ export interface BlocoOpcoes {
   vazio?: string;
 }
 
-/** POST /api/modulos/<id>/acao. 200 { ok: true, resultado }; erros { erro } com 400/403/404/409/500/503.
+/** POST /api/modulos/<id>/acao. 200 { ok: true, resultado }; erros { erro } com 400/403/404/409/422/500/503
+ *  (422: agir devolveu { ok: false, mensagem }; erro = mensagem).
  *  GET /api/modulos/<id>?fresco=1 devolve o módulo sem o cache do servidor. */
 export interface ReqAcaoModulo {
   acao: string;

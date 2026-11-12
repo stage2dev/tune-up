@@ -24,14 +24,11 @@ import time
 import dono
 import modulos_plugin
 import travas_validar
+from modulos_forma import ErroModulo, conferir  # noqa: F401 - modulos.ErroModulo/conferir seguem valendo
 
 RE_ID = re.compile(r"^[a-z0-9_-]{1,40}$")
-NIVEIS = ("info", "atencao", "critico")
 TEMPO_LIMITE = 20.0
 TTL = 30.0
-MAX_ABAS = 30
-MAX_BLOCOS = 100
-MAX_ALERTAS = 50
 
 _lock = threading.Lock()
 _lock_import = threading.Lock()  # um import de módulo por vez (mexe em sys.path/sys.modules)
@@ -41,19 +38,6 @@ _rodando = {}      # id -> thread
 _lock_agir = threading.Lock()  # trava das ações, separada da de montar
 _agindo = {}       # id -> thread de agir()
 _geracao = {}      # id -> sobe a cada agir() que volta; montar() em voo não grava cache velho
-
-
-class ErroModulo(Exception):
-    def __init__(self, codigo, mensagem, avisos=None):
-        Exception.__init__(self, mensagem)
-        self.codigo, self.mensagem, self.avisos = codigo, mensagem, list(avisos or [])
-
-    def corpo(self):
-        return {"erro": self.mensagem, "avisos": self.avisos}
-
-
-def _agora():
-    return datetime.datetime.now().astimezone().isoformat(timespec="seconds")
 
 
 def caminho_do_modulo(cfg, mid):
@@ -165,41 +149,6 @@ def contexto(cfg):
             "dados": os.path.join(pacote, "dados") if pacote else "",
             "config": dict(cfg.get("bruto") or {}), "hoje": datetime.date.today(),
             "execucoes": cfg.get("_execucoes"), "dono_faltando": lambda requer: dono.faltando(cfg, requer)}
-
-
-def _texto(v, n=500):
-    return v[:n] if isinstance(v, str) else ""
-
-
-def conferir(dado, inf):
-    """Forma mínima da resposta de montar(). Peça ruim sai com aviso; o resto passa."""
-    if not isinstance(dado, dict):
-        raise ErroModulo(500, "Esta tela devolveu algo estranho.", ["montar() não devolveu um objeto"])
-    avisos = [_texto(a) for a in dado.get("avisos") or [] if isinstance(a, str)][:50]
-    alertas = []
-    for a in dado.get("alertas") or []:
-        if isinstance(a, dict) and a.get("nivel") in NIVEIS and isinstance(a.get("texto"), str):
-            alertas.append({"nivel": a["nivel"], "texto": _texto(a["texto"])})
-        else:
-            avisos.append("um alerta fora do formato foi ignorado")
-    abas = []
-    for aba in (dado.get("abas") or [])[:MAX_ABAS]:
-        if not isinstance(aba, dict) or not isinstance(aba.get("id"), str) or not isinstance(aba.get("blocos"), list):
-            avisos.append("uma aba fora do formato foi ignorada")
-            continue
-        blocos = [b for b in aba["blocos"][:MAX_BLOCOS] if isinstance(b, dict) and isinstance(b.get("tipo"), str)]
-        if len(blocos) != len(aba["blocos"][:MAX_BLOCOS]):
-            avisos.append("aba %s: bloco sem 'tipo' ignorado" % _texto(aba["id"], 40))
-        abas.append(dict(aba, id=_texto(aba["id"], 40), titulo=_texto(aba.get("titulo") or aba["id"], 80),
-                         blocos=blocos))
-    gerado = dado.get("gerado_em") if isinstance(dado.get("gerado_em"), str) else _agora()
-    saida = {"id": inf["id"], "titulo": _texto(dado.get("titulo"), 60) or inf["titulo"], "gerado_em": gerado,
-             "alertas": alertas[:MAX_ALERTAS], "abas": abas, "avisos": avisos}
-    try:
-        json.dumps(saida, ensure_ascii=False, allow_nan=False)
-    except (TypeError, ValueError) as e:
-        raise ErroModulo(500, "Esta tela devolveu algo estranho.", ["resposta não vira JSON: %s" % e])
-    return saida
 
 
 def _rodar_montar(mod, ctx, mid, tempo, chave=None):
@@ -371,6 +320,9 @@ def agir(cfg, mid, acao, dados, tempo=TEMPO_LIMITE):
     except (TypeError, ValueError):
         return 200, {"ok": True, "resultado": {},
                      "avisos": ["A ação foi feita, mas a tela devolveu uma resposta inesperada."]}
+    if resultado.get("ok") is False:  # o módulo diz que não deu certo: a tela mostra erro, nunca "Feito."
+        msg = resultado.get("mensagem")
+        return 422, {"erro": msg if isinstance(msg, str) and msg else "A ação não foi feita.", "avisos": []}
     return 200, {"ok": True, "resultado": resultado}
 
 

@@ -108,7 +108,7 @@ export function textoDeConfirmacao(acaoCat: { confirmar: boolean; descricao: str
   return textoOuNada(doBloco);
 }
 
-const COM_ESTADO = ['formulario', 'conversa', 'cores', 'envio', 'opcoes'];
+const COM_ESTADO = ['formulario', 'conversa', 'caixa', 'cores', 'envio', 'opcoes'];
 /** Chave estavel do bloco: o que ele digita nao migra para outro quando a lista reordena. Indice so para blocos sem estado. */
 export function chaveDoBloco(b: { tipo?: unknown; [k: string]: unknown }, i: number): string {
   if (typeof b?.id === 'string' && b.id) return `id:${b.id}`;

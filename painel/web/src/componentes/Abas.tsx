@@ -5,6 +5,8 @@ export interface Aba {
   id: string;
   rotulo: string;
   contador?: number;
+  /** Selo pequeno de alerta (ex.: mensagens nao lidas). */
+  alerta?: number;
 }
 
 interface Props {
@@ -62,6 +64,11 @@ export function Abas({ abas, ativa, aoTrocar, children }: Props) {
               {a.rotulo}
               {a.contador !== undefined && (
                 <span className="ml-1.5 text-xs text-[var(--color-text-tertiary)]">{a.contador}</span>
+              )}
+              {a.alerta !== undefined && a.alerta > 0 && (
+                <span data-alerta className="ml-1.5 inline-grid place-items-center min-w-4 h-4 px-1 rounded-full bg-[var(--color-accent)] text-[var(--color-on-accent)] text-[10px] font-medium tabular-nums" aria-label={`${a.alerta} novos`}>
+                  {a.alerta > 99 ? '99+' : a.alerta}
+                </span>
               )}
             </button>
           );

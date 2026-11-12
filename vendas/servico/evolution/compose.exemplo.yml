@@ -1,0 +1,46 @@
+# Modelo do compose da Evolution local (tune-up-vendas). NÃO rode este arquivo: o comando
+#   python3 -B <plugin>/servico/evolution_local.py preparar --projeto <raiz>
+# grava compose.yml e .env (0600, chave e senha novas) na pasta de dados EXTERNA do projeto.
+# Toda porta publicada fica presa em 127.0.0.1; Postgres e Redis não publicam porta nenhuma.
+# Webhook: o serviço registra http://host.docker.internal:__PORTA_SERVICO__/webhook/<instancia> em cada
+# instância, com o segredo no header. No Linux, host.docker.internal pode não alcançar um serviço
+# preso em 127.0.0.1 do host (veja o README).
+name: __NOME__
+
+services:
+  api:
+    image: evoapicloud/evolution-api:v2.3.7
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - "127.0.0.1:__PORTA_EVOLUTION__:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - .env
+    volumes:
+      - instancias:/evolution/instances
+
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: evolution
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?rode o preparar de novo}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis:/data
+
+volumes:
+  instancias:
+  postgres:
+  redis:

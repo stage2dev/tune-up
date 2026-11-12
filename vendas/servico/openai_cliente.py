@@ -1,0 +1,122 @@
+"""Pedidos à OpenAI por urllib: tempo limite por tentativa e UMA nova tentativa. POST (pode ter sido cobrado) só tenta
+de novo com conexão recusada, 5xx ou 429 que não seja falta de crédito; nunca depois de tempo esgotado ou resposta
+cortada. GET tenta de novo também em rede e tempo. O erro vem do corpo (`error.code`); a mensagem do corpo não é guardada (pode trazer parte
+da chave). A URL base vem SÓ do argumento/ambiente de subida do serviço (testes), nunca de um pedido."""
+import http.client
+import json
+import re
+import socket
+import urllib.error
+import urllib.request
+from urllib.parse import urlsplit
+
+URL_PADRAO = "https://api.openai.com"
+VAR_URL = "VENDAS_OPENAI_URL"
+TEMPO_S = 30
+TEMPO_MODELOS_S = 6  # o painel espera 12 s pela rota /ia/modelos
+SEM_NOVA_TENTATIVA = ("insufficient_quota", "invalid_api_key")
+# o erro real de modelo sem visão ("Invalid content type. image_url is only supported by certain models."); só a
+# classificação sai daqui, o texto do erro nunca é guardado
+SEM_VISAO = re.compile(r"image_url is only supported|(does not|doesn't) support (image|vision)|"
+                       r"image inputs? (is|are) not supported", re.I)
+
+
+class ErroOpenAI(RuntimeError):
+    """codigo: `error.code` do corpo, 'tempo_esgotado', 'rede' ou 'http_<n>'. Nunca leva a chave.
+    recusada=True: a conexão nem abriu (o pedido não chegou à OpenAI). sem_visao=True: o corpo do erro diz que o
+    modelo não aceita imagem (SEM_VISAO)."""
+
+    def __init__(self, codigo, status=None, recusada=False, sem_visao=False):
+        super().__init__(codigo)
+        self.codigo = codigo
+        self.status = status
+        self.recusada = recusada
+        self.sem_visao = sem_visao
+
+
+class _SemRedirecionar(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *_):
+        return None  # 3xx vira erro: o cabeçalho com a chave nunca segue para outro endereço
+
+
+def _abridor(url):
+    extra = [_SemRedirecionar()]
+    if urlsplit(url).hostname in ("127.0.0.1", "localhost"):
+        extra.append(urllib.request.ProxyHandler({}))  # servidor falso local: sem proxy
+    return urllib.request.build_opener(*extra)
+
+
+def _codigo_do_corpo(bruto, status):
+    try:
+        erro = json.loads(bruto.decode("utf-8")).get("error") or {}
+        codigo = erro.get("code") or erro.get("type")
+    except (ValueError, AttributeError, UnicodeDecodeError):
+        codigo = None
+    return str(codigo) if isinstance(codigo, str) and codigo else "http_%d" % status
+
+
+def _sem_visao(bruto):
+    try:
+        erro = json.loads(bruto.decode("utf-8")).get("error") or {}
+        mensagem = erro.get("message")
+    except (ValueError, AttributeError, UnicodeDecodeError):
+        return False
+    return isinstance(mensagem, str) and bool(SEM_VISAO.search(mensagem))
+
+
+def _uma(url, chave, metodo, corpo, tempo):
+    cab = {"Authorization": "Bearer " + chave}
+    dados = None
+    if corpo is not None:
+        dados = json.dumps(corpo).encode("utf-8")
+        cab["Content-Type"] = "application/json"
+    pedido = urllib.request.Request(url, data=dados, method=metodo, headers=cab)
+    try:
+        with _abridor(url).open(pedido, timeout=tempo) as r:
+            return json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        try:
+            bruto = e.read()
+        except OSError:
+            bruto = b""
+        finally:
+            e.close()
+        raise ErroOpenAI(_codigo_do_corpo(bruto, e.code), e.code, sem_visao=_sem_visao(bruto))
+    except (socket.timeout, TimeoutError):
+        raise ErroOpenAI("tempo_esgotado")
+    except http.client.HTTPException:  # corpo cortado, linha de status ruim: não é OSError
+        raise ErroOpenAI("rede")
+    except urllib.error.URLError as e:
+        if isinstance(e.reason, (socket.timeout, TimeoutError)):
+            raise ErroOpenAI("tempo_esgotado")
+        raise ErroOpenAI("rede", recusada=isinstance(e.reason, ConnectionRefusedError))
+    except ConnectionRefusedError:
+        raise ErroOpenAI("rede", recusada=True)
+    except OSError:
+        raise ErroOpenAI("rede")
+    except (ValueError, UnicodeDecodeError):
+        raise ErroOpenAI("resposta_invalida")
+
+
+def pedir(base, chave, metodo, caminho, corpo=None, tempo=TEMPO_S, nova_tentativa=True):
+    """JSON da resposta ou ErroOpenAI depois de no máximo 2 tentativas (1 com nova_tentativa=False)."""
+    url = base.rstrip("/") + caminho
+    try:
+        return _uma(url, chave, metodo, corpo, tempo)
+    except ErroOpenAI as e:
+        incerto = e.codigo in ("tempo_esgotado", "rede") and not e.recusada  # pode ter chegado e sido cobrado
+        de_novo = e.recusada or (incerto and metodo == "GET") or (e.status or 0) >= 500 or (
+            e.status == 429 and e.codigo not in SEM_NOVA_TENTATIVA)
+        if not de_novo or not nova_tentativa:
+            raise
+    return _uma(url, chave, metodo, corpo, tempo)
+
+
+def listar_modelos(base, chave, tempo=TEMPO_MODELOS_S):
+    """Ids dos modelos da conta (GET /v1/models), em ordem alfabética. UMA tentativa: o painel espera menos que
+    duas."""
+    r = pedir(base, chave, "GET", "/v1/models", tempo=tempo, nova_tentativa=False)
+    itens = r.get("data") if isinstance(r, dict) else None
+    if not isinstance(itens, list):
+        raise ErroOpenAI("resposta_invalida")
+    return sorted({i["id"] for i in itens if isinstance(i, dict) and isinstance(i.get("id"), str)})
