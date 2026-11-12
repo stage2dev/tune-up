@@ -1,5 +1,8 @@
 """OpenAI FALSA em 127.0.0.1 para os testes: guarda cada pedido (caminho, cabeçalhos, corpo) e responde da fila
-(código, corpo) ou dorme além do tempo limite do cliente. Nunca fala com a rede de verdade."""
+(código, corpo) ou dorme além do tempo limite do cliente. Nunca fala com a rede de verdade.
+Multipart (transcrição): o corpo guardado é {"campos": {nome: valor}, "arquivo": {"nome", "tipo", "dados"}}."""
+import email.parser
+import email.policy
 import json
 import os
 import threading
@@ -27,6 +30,29 @@ def resposta_ferramenta(nome, argumentos, entrada=1000, saida=100, ident="call_1
         "usage": {"prompt_tokens": entrada, "completion_tokens": saida}}
 
 
+def ler_multipart(tipo, bruto):
+    msg = email.parser.BytesParser(policy=email.policy.HTTP).parsebytes(
+        b"Content-Type: " + tipo.encode("ascii") + b"\r\n\r\n" + bruto)
+    r = {"campos": {}, "arquivo": None}
+    for parte in msg.iter_parts():
+        nome, arquivo = parte.get_param("name", header="content-disposition"), parte.get_filename()
+        if arquivo is not None:
+            r["arquivo"] = {"nome": arquivo, "tipo": parte.get_content_type(), "dados": parte.get_payload(decode=True)}
+        else:
+            r["campos"][nome] = parte.get_payload(decode=True).decode("utf-8")
+    return r
+
+
+def resposta_transcricao(texto):
+    return 200, {"text": texto, "usage": {"type": "tokens", "input_tokens": 50, "output_tokens": 10}}
+
+
+def imagens_do_pedido(corpo):
+    """Partes image_url de todas as mensagens do pedido de chat."""
+    return [p for m in (corpo or {}).get("messages", []) if isinstance(m.get("content"), list)
+            for p in m["content"] if p.get("type") == "image_url"]
+
+
 def erro(status, codigo, mensagem="Incorrect API key provided"):
     return status, {"error": {"message": mensagem, "type": "invalid_request_error", "code": codigo}}
 
@@ -47,7 +73,12 @@ class OpenAIFalsa:
 
             def _responder(self):
                 tamanho = int(self.headers.get("Content-Length") or 0)
-                corpo = json.loads(self.rfile.read(tamanho).decode("utf-8")) if tamanho else None
+                bruto = self.rfile.read(tamanho) if tamanho else b""
+                tipo = self.headers.get("Content-Type") or ""
+                if tipo.startswith("multipart/"):
+                    corpo = ler_multipart(tipo, bruto)
+                else:
+                    corpo = json.loads(bruto.decode("utf-8")) if tamanho else None
                 falsa.pedidos.append({"metodo": self.command, "caminho": self.path,
                                       "cab": dict(self.headers), "corpo": corpo})
                 if self.path == "/v1/models" and not falsa.fila:
@@ -83,6 +114,9 @@ class OpenAIFalsa:
 
     def chamadas_chat(self):
         return [p for p in self.pedidos if p["caminho"] == "/v1/chat/completions"]
+
+    def chamadas_transcricao(self):
+        return [p for p in self.pedidos if p["caminho"] == "/v1/audio/transcriptions"]
 
     def fechar(self):
         self.servidor.shutdown()

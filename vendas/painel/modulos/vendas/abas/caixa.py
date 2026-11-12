@@ -93,6 +93,8 @@ def _mensagens(r):
         item = {"id": m["id"], "de": m["de"], "texto": m["texto"], "quando": _quando(m["quando"])}
         if m.get("tipo") and m["tipo"] != "texto":
             item["tipo"] = m["tipo"]
+        if isinstance(m.get("transcricao"), str) and m["transcricao"]:   # o que a IA entendeu do áudio
+            item["transcricao"] = m["transcricao"]
         if m["de"] != "contato" and m.get("estado"):
             item["estado"] = m["estado"]
             if m["estado"] in ESTADOS_NOTA and m.get("motivo"):

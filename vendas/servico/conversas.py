@@ -117,7 +117,7 @@ def abrir(con, conversa_id, query, agora=None):
         return None
     limite = _limite(query, LIMITE_CONVERSA)
     itens = []
-    for m in con.execute("SELECT m.id, m.direcao, m.tipo, m.texto, m.criado_em, e.origem, e.estado, e.motivo, "
+    for m in con.execute("SELECT m.id, m.direcao, m.tipo, m.texto, m.transcricao, m.criado_em, e.origem, e.estado, e.motivo, "
                          "d.id AS d_id, d.estado AS d_estado, d.motivo AS d_motivo, d.mimetype, d.bytes, d.duracao_s, "
                          "d.nome_arquivo FROM mensagens m LEFT JOIN envios e ON e.id = m.envio_id "
                          "LEFT JOIN midias d ON d.mensagem_id = m.id WHERE m.conversa_id = ? "
@@ -125,7 +125,7 @@ def abrir(con, conversa_id, query, agora=None):
         de = "contato" if m["direcao"] == "entrada" else ("ia" if m["origem"] in ("ia", "audio_ia") else "eu")
         itens.append({"id": "m%d" % m["id"], "de": de, "tipo": m["tipo"] or "outro", "texto": m["texto"] or
                       _previa(None, m["tipo"]), "quando": m["criado_em"], "estado": m["estado"], "motivo": m["motivo"],
-                      "midia": None if m["d_id"] is None else {
+                      "transcricao": m["transcricao"], "midia": None if m["d_id"] is None else {
                           "id": m["d_id"], "tipo": m["tipo"], "estado": m["d_estado"], "motivo": m["d_motivo"],
                           "mimetype": m["mimetype"], "bytes": m["bytes"], "duracao_s": m["duracao_s"],
                           "nome_arquivo": m["nome_arquivo"]}})

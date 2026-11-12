@@ -18,7 +18,7 @@ import secrets  # noqa: E402
 import signal  # noqa: E402
 import threading  # noqa: E402
 
-from servico import (agendador, banco, candidatos, cerebro, evolution_local, midia, openai_cliente, pasta, places, portao, rascunhos,  # noqa: E402
+from servico import (agendador, banco, candidatos, cerebro, entender, evolution_local, midia, openai_cliente, pasta, places, portao, rascunhos,  # noqa: E402
                      revisao, recebimento, rotas, travas, voz_cliente)
 from servico.atendente import Atendente  # noqa: E402
 from servico.conectores import evolution  # noqa: E402
@@ -124,9 +124,11 @@ def rodar(args, avisar=print):
         finally:
             con.close()
         app.conector = conector(pasta_dados, app.porta, segredo, avisar)
+        entende = lambda c, tipo: entender.ligado(c, pasta_dados, tipo)  # noqa: E731
         ia = Atendente(app.abrir, cerebro.Cerebro(pasta_dados, raiz, args.openai_url), lambda: app.conector,
-                       app=app)
+                       app=app, entende=entende)
         recebimento.registrar_gancho(ia.receber)
+        recebimento.registrar_entende(entende)
         baixador = midia.Baixador(app.abrir, lambda: app.conector, pasta_dados)
         midia.registrar_baixador(baixador)
         baixador.iniciar(parar)   # limpa a retenção na subida e uma vez por dia
@@ -146,6 +148,7 @@ def rodar(args, avisar=print):
         servidor.shutdown()
         servidor.server_close()
         recebimento.registrar_gancho(None)
+        recebimento.registrar_entende(None)
         midia.registrar_baixador(None)
         ia.parar()
         disparos.join(60)   # um envio no meio termina (o conector tem timeout) antes de sair

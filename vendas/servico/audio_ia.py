@@ -1,7 +1,8 @@
 """Ferramenta responder_em_audio: a IA responde em nota de voz. O CÓDIGO decide se ela existe para o modelo: voz
 ligada (chave, ffmpeg, voz escolhida, consentimento se clonada) E (a mensagem do lead logo antes do gatilho foi um
-áudio OU uma das últimas RECENTES mensagens de texto dele pede áudio). O áudio do lead nunca vai à IA (o recebimento
-marca "precisa de você"); a ferramenta aparece na próxima mensagem de texto dele.
+áudio, ou o próprio gatilho é um áudio transcrito (servico/entender.py), OU uma das últimas RECENTES mensagens de
+texto dele pede áudio). Com 'IA entende áudios' desligado o áudio do lead não vai à IA e a ferramenta aparece na
+próxima mensagem de texto dele.
 O texto falado passa pelo MESMO sanitizador da saída de texto (saida.preparar); depois os links saem do áudio (vão
 num balão de texto separado) e a fala fica em 4 frases e voz.LIMITE_TEXTO caracteres. Sobrou algo com cara de link
 na fala = vai como texto.
@@ -43,7 +44,7 @@ def oferecer(app, con, conversa_id, gatilho_id):
     """True = responder_em_audio vai na lista de ferramentas desta rodada."""
     linhas = con.execute("SELECT tipo, texto FROM mensagens WHERE conversa_id = ? AND id <= ? AND confiavel = 1 AND "
                          "direcao = 'entrada' ORDER BY id DESC LIMIT ?", (conversa_id, gatilho_id, RECENTES)).fetchall()
-    quer = (len(linhas) > 1 and linhas[1]["tipo"] == "audio") or any(
+    quer = any(l["tipo"] == "audio" for l in linhas[:2]) or any(
         l["tipo"] == "texto" and pediu_audio(l["texto"]) for l in linhas)
     return quer and voz_ligada(app, con)
 

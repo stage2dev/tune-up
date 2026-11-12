@@ -19,7 +19,12 @@
   Grupo, fromMe, mídia e mensagem velha nem chegam aqui (o recebimento não chama o gancho).
 - parar(): as esperas acabam sem responder e as threads terminam (join com tempo limite).
 - Áudio (servico/audio_ia.py): com `app` (voz) a rodada oferece responder_em_audio só quando o código decide; a IA
-  usou = o texto vai como nota de voz (falha da voz = texto) ou fica como rascunho 'enviar como áudio'."""
+  usou = o texto vai como nota de voz (falha da voz = texto) ou fica como rascunho 'enviar como áudio'.
+- Áudio e imagem do lead (servico/entender.py, chaves da aba IA): o gatilho pode ser um áudio ou uma imagem. Antes
+  do modelo a rodada espera o download, transcreve o áudio e lê a imagem; a transcrição vai como DADO (mesmo
+  delimitador e mesmo filtro de injeção do texto, rotulada como transcrição de áudio) e a imagem como parte
+  image_url (detail low). Falha em qualquer passo = o modelo não é chamado, nada sai, "precisa de você" com o
+  motivo. Documento nunca chega aqui (o recebimento marca documento_recebido)."""
 import datetime
 import json
 import re
@@ -27,7 +32,7 @@ import sys
 import threading
 import time
 
-from servico import audio_ia, banco, cerebro, chave, rascunhos, saida
+from servico import audio_ia, banco, cerebro, chave, entender, rascunhos, saida
 
 UTC = datetime.timezone.utc
 ESPERA_S = 12
@@ -39,6 +44,9 @@ INJECAO = re.compile(
     r"|(previous|prior)\s+instructions|system\s*prompt|prompt\s+do\s+sistema|desconsider\w*\s+(as\s+)?instru"
     r"|(^|\n)\s*(system|assistant|developer|sistema)\s*:|<\|?\s*(system|im_start|im_end)|\[/?inst\]"
     r"|voc[eê]\s+agora\s+[eé]|you\s+are\s+now|act\s+as|aja\s+como|finja\s+que", re.I)
+ROTULO_AUDIO = "Transcrição automática de um áudio do lead (pode ter erros de transcrição):"
+ROTULO_IMAGEM = "O lead mandou a imagem anexa. Legenda dele:"
+GATILHOS = ("texto", "audio", "imagem")
 
 
 def suspeita(texto):
@@ -66,39 +74,54 @@ def _pausada(conversa, agora):
     return (ate if ate.tzinfo else ate.replace(tzinfo=UTC)) > agora
 
 
-def contexto(con, conversa_id, gatilho_id, limite=CONTEXTO):
+def _conteudo(m, imagens):
+    """(conteúdo da mensagem do lead para o modelo, texto que passa pelo filtro de injeção)."""
+    if m["tipo"] == "audio" and m["transcricao"]:
+        return "%s\n%s" % (ROTULO_AUDIO, como_dado(m["transcricao"])), m["transcricao"]
+    if m["id"] in imagens:
+        legenda = m["texto"] or ""
+        return [{"type": "text", "text": "%s\n%s" % (ROTULO_IMAGEM, como_dado(legenda))},
+                {"type": "image_url", "image_url": {"url": imagens[m["id"]], "detail": "low"}}], legenda
+    texto = m["texto"] if m["tipo"] == "texto" else "[%s]" % m["tipo"]
+    return como_dado(texto), texto
+
+
+def contexto(con, conversa_id, gatilho_id, limite=CONTEXTO, imagens=None):
     """(mensagens para o cérebro, linha do gatilho, suspeitas). Só linhas confiáveis até gatilho_id. Gatilho None
-    (nada a responder) se gatilho_id não é texto confiável do lead ou se já há entrada confiável mais nova que tem
-    rodada própria (texto) ou já marcou 'precisa de você' (mídia). Tipo 'outro' (reação, figurinha, vídeo) não cala."""
+    (nada a responder) se gatilho_id não é texto/áudio/imagem confiável do lead ou se já há entrada confiável mais nova
+    que tem rodada própria ou já marcou 'precisa de você'. Tipo 'outro' (reação, figurinha, vídeo) não cala.
+    imagens: {mensagem_id: data URL} desta rodada (entender.preparar); áudio com transcricao gravada vai como dado."""
     if gatilho_id is None or con.execute("SELECT 1 FROM mensagens WHERE conversa_id = ? AND id > ? AND confiavel = 1 "
                                          "AND direcao = 'entrada' AND tipo IN ('texto', 'audio', 'imagem', "
                                          "'documento')", (conversa_id, gatilho_id)).fetchone():
         return [], None, []
-    linhas = con.execute("SELECT id, id_externo, direcao, tipo, texto FROM mensagens WHERE conversa_id = ? "
+    linhas = con.execute("SELECT id, id_externo, direcao, tipo, texto, transcricao FROM mensagens WHERE conversa_id = ? "
                          "AND id <= ? AND confiavel = 1 ORDER BY id DESC LIMIT ?",
                          (conversa_id, gatilho_id, limite)).fetchall()[::-1]
     if not linhas or linhas[-1]["id"] != gatilho_id or linhas[-1]["direcao"] != "entrada" \
-            or linhas[-1]["tipo"] != "texto" or not linhas[-1]["id_externo"]:
+            or linhas[-1]["tipo"] not in GATILHOS or not linhas[-1]["id_externo"]:
         return [], None, []
     mensagens, suspeitas = [], []
     for m in linhas:
-        texto = m["texto"] if m["tipo"] == "texto" else "[%s]" % m["tipo"]
         if m["direcao"] == "saida":
+            texto = m["texto"] if m["tipo"] == "texto" else "[%s]" % m["tipo"]
             mensagens.append({"role": "assistant", "content": texto or ""})
             continue
+        conteudo, texto = _conteudo(m, imagens or {})
         if suspeita(texto):
             suspeitas.append(m["id"])
-        mensagens.append({"role": "user", "content": como_dado(texto)})
+        mensagens.append({"role": "user", "content": conteudo})
     return mensagens, linhas[-1], suspeitas
 
 
 class Atendente:
     """abrir() devolve uma conexão nova; obter_conector() o conector atual (ou None); app = o do serviço (voz:
-    pasta_dados, conector, elevenlabs_url); sem app a IA nunca responde em áudio."""
+    pasta_dados, conector, elevenlabs_url); sem app a IA nunca responde em áudio. entende(con, tipo) = a mesma função
+    do recebimento.registrar_entende; None = a IA não entende áudio nem imagem."""
 
-    def __init__(self, abrir, cerebro_ia, obter_conector, espera=ESPERA_S, app=None):
+    def __init__(self, abrir, cerebro_ia, obter_conector, espera=ESPERA_S, app=None, entende=None):
         self.abrir, self.cerebro, self.obter_conector, self.espera = abrir, cerebro_ia, obter_conector, espera
-        self.app = app
+        self.app, self.entende = app, entende
         self._mutex = threading.Lock()
         self._prazos = {}      # conversa -> prazo (monotonic) do debounce
         self._gatilhos = {}    # conversa -> maior mensagem_id entregue pelo gancho nesta espera
@@ -171,6 +194,25 @@ class Atendente:
         conector, instancia = self.obter_conector(), banco.ler_config(con, "instancia")
         if conector is None or not instancia:
             cerebro.marcar_precisa_de_voce(con, conversa_id, "sem_conector")
+            return None
+        try:   # espera e rede, fora de transação
+            ent = entender.preparar(self.cerebro, con, conversa_id, gatilho["id"], self._parar, self.entende)
+        except Exception as e:   # como no cérebro: nada sai, IA fora da conversa, o dono vê
+            if con.in_transaction:
+                con.execute("ROLLBACK")
+            _avisar("mídia", e)
+            cerebro.marcar_precisa_de_voce(con, conversa_id, "erro_interno", True, type(e).__name__)
+            return None
+        for motivo in [ent["motivo"]] if not ent["ok"] else ent["avisos"]:
+            cerebro.marcar_precisa_de_voce(con, conversa_id, motivo)
+        if not ent["ok"] or self._parar.is_set():
+            return None   # falha nunca chega ao modelo como fala do lead
+        conversa = con.execute("SELECT c.modo, c.pausada_ate, k.telefone, k.optout_em FROM conversas c JOIN contatos k "
+                               "ON k.id = c.contato_id WHERE c.id = ?", (conversa_id,)).fetchone()
+        if conversa["optout_em"] or _pausada(conversa, agora):   # mudou durante a espera
+            return None
+        mensagens, gatilho, suspeitas = contexto(con, conversa_id, gatilho_id, imagens=ent["imagens"])
+        if gatilho is None:
             return None
         if suspeitas:   # autocommit: nada fica travado
             cerebro.marcar_precisa_de_voce(con, conversa_id, "injecao_suspeita")

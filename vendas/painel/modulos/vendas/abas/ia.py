@@ -1,8 +1,9 @@
 """Aba IA: chave da OpenAI (campo segredo, vai ao serviço e fica só na pasta de dados externa), modelo escolhido
-pelo dono (lista da conta; lista falhou = nome digitado), preço do modelo, teto diário em US$ e gasto de hoje. A tela só vê
+pelo dono (lista da conta; lista falhou = nome digitado), preço do modelo, teto diário em US$, gasto de hoje e as
+chaves 'IA entende áudios' e 'IA entende imagens' (modelo de transcrição e preço por minuto). A tela só vê
 'configurada' e os 4 últimos caracteres; nenhuma mensagem de ação ecoa a chave."""
 
-ACOES = ("ia_chave", "ia_config", "ia_apagar_chave", "ia_modo")
+ACOES = ("ia_chave", "ia_config", "ia_apagar_chave", "ia_modo", "ia_entender")
 TEMPO_MODELOS_S = 12  # o serviço espera a OpenAI até 6 s, uma tentativa só
 SEM_LISTA = "Lista de modelos indisponível: digite o nome do modelo."
 
@@ -30,6 +31,27 @@ def ler(ctx, cliente, base=None):
     motivo = (m or {}).get("codigo") if isinstance(m, dict) else None
     return r, None, "Não consegui a lista de modelos da conta%s. Digite o nome do modelo." % (
         " (%s)" % motivo if motivo else "")
+
+
+def _sim_nao(campo, rotulo, ligado):
+    return {"id": campo, "rotulo": rotulo, "tipo": "escolha", "obrigatorio": True, "valor": "sim" if ligado else "nao",
+            "opcoes": [{"valor": "sim", "rotulo": "Sim"}, {"valor": "nao", "rotulo": "Não"}]}
+
+
+def _form_entender(e):
+    minuto = e.get("preco_minuto")
+    atual = "Preço atual: US$ %s por minuto. " % minuto if minuto else "Sem preço: a IA não transcreve. "
+    return {"tipo": "formulario", "id": "ia_entender", "titulo": "Áudios e imagens do lead",
+            "descricao": "Sim: a IA ouve o áudio (transcrição pela OpenAI) e vê a imagem antes de responder; o gasto "
+                         "entra no mesmo teto diário. Não: a conversa fica \"precisa de você\". Documento nunca vai "
+                         "para a IA.", "acao": "ia_entender", "botao": "Salvar", "campos": [
+                _sim_nao("audio", "IA entende áudios", e.get("audio")),
+                _sim_nao("imagem", "IA entende imagens", e.get("imagem")),
+                {"id": "modelo_transcricao", "rotulo": "Modelo de transcrição", "tipo": "texto", "obrigatorio": True,
+                 "valor": e.get("modelo_transcricao") or e.get("sugestao_transcricao") or "",
+                 "ajuda": "Sugestão: %s." % (e.get("sugestao_transcricao") or "")},
+                {"id": "preco_minuto", "rotulo": "Preço da transcrição (US$ por minuto)", "tipo": "texto",
+                 "ajuda": atual + "Veja openai.com/api/pricing; deixe em branco para manter."}]}
 
 
 def blocos(estado, modelos, aviso):
@@ -106,6 +128,7 @@ def blocos(estado, modelos, aviso):
                        "ajuda": ajuda},
                       {"id": "preco_saida", "rotulo": "Preço de saída (US$ / 1M tokens)", "tipo": "texto",
                        "ajuda": ajuda}]})
+    saida.append(_form_entender(estado.get("entende") or {}))
     if k.get("configurada"):
         saida.append({"tipo": "formulario", "id": "ia_apagar_chave", "titulo": "Apagar a chave",
                       "descricao": "Sem chave a IA para e as conversas ficam \"precisa de você\".",
@@ -129,6 +152,12 @@ def agir(ctx, cliente, acao, dados, base=None):
         caminho, corpo = "/ia/chave/apagar", {"confirmar": True}
     elif acao == "ia_modo":
         caminho, corpo = "/ia/modo", {"modo": dados.get("modo")}
+    elif acao == "ia_entender":
+        if dados.get("audio") not in ("sim", "nao") or dados.get("imagem") not in ("sim", "nao"):
+            return {"ok": False, "mensagem": "Escolha sim ou não para áudios e imagens."}
+        caminho, corpo = "/ia/entender", {"audio": dados["audio"] == "sim", "imagem": dados["imagem"] == "sim",
+                                          "modelo_transcricao": dados.get("modelo_transcricao"),
+                                          "preco_minuto": dados.get("preco_minuto")}
     else:
         caminho, corpo = "/ia/config", {"modelo": dados.get("modelo"), "teto_usd": dados.get("teto_usd"),
                                         "preco_entrada": dados.get("preco_entrada"),
@@ -144,6 +173,10 @@ def agir(ctx, cliente, acao, dados, base=None):
     if acao == "ia_modo":
         return {"ok": True, "mensagem": "Modo padrão da IA: %s." % ("automático" if r.get("modo_padrao") ==
                                                                   "automatico" else "rascunho")}
+    if acao == "ia_entender":
+        e = r.get("entende") or {}
+        return {"ok": True, "mensagem": "IA entende áudios: %s; imagens: %s." % (
+            "sim" if e.get("audio") else "não", "sim" if e.get("imagem") else "não")}
     if acao == "ia_apagar_chave":
         return {"ok": True, "mensagem": "Chave apagada." if r.get("apagada") else "Não havia chave."}
     return {"ok": True, "mensagem": "Modelo %s e teto de US$ %.2f salvos." % (r.get("modelo"), r.get("teto_usd"))}

@@ -222,4 +222,6 @@ MIGRACOES = [
             baixada_em TEXT)""",
         "CREATE INDEX midias_estado ON midias(estado, baixada_em)",
     ],
+    # 19: transcrição de um áudio do lead (servico/transcricao.py); NULL = não transcrito (ou falhou)
+    ["ALTER TABLE mensagens ADD COLUMN transcricao TEXT"],
 ]

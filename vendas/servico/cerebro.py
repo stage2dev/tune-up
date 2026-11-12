@@ -2,7 +2,9 @@
 qualificar, enviar_link, pedir_humano e, só quando quem chama oferece, responder_em_audio). Nunca manda `reasoning_effort` (quebra junto com function tools).
 Antes de cada chamada reserva o pior caso no teto diário (BEGIN IMMEDIATE); não cabe = não chama. Modelo sem preço
 = não chama. Erro, tempo esgotado, teto, sem preço, sem chave, sem modelo ou exceção inesperada = texto None (nada a
-enviar) e a conversa fica "precisa de você". Aqui nada envia: quem chama decide."""
+enviar) e a conversa fica "precisa de você". Aqui nada envia: quem chama decide.
+Imagem do lead (servico/entender.py) vai como parte image_url; o pior caso conta precos.IMAGEM_TOKENS por imagem.
+Modelo que recusa imagem (HTTP 400 num pedido com imagem) = modelo_sem_visao: a imagem não vai de novo sem aviso."""
 import json
 import os
 import re
@@ -87,6 +89,12 @@ def _cortada(resposta):
         return False
 
 
+def _com_imagem(corpo):
+    achadas = [0]
+    precos._sem_imagens(corpo, achadas)
+    return achadas[0] > 0
+
+
 class Cerebro:
     """base_url só vem da subida do serviço (argumento/ambiente), nunca de um pedido."""
 
@@ -166,6 +174,8 @@ class Cerebro:
                 precos.acertar(con, reserva, 0)
             else:
                 r["custo_usd"] += pior
+            if e.status == 400 and _com_imagem(corpo):
+                return None, "modelo_sem_visao"
             return None, e.codigo
         custo = precos.custo_usd(par, resposta.get("usage") if isinstance(resposta, dict) else None)
         precos.acertar(con, reserva, pior if custo is None else custo)

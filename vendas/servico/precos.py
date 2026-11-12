@@ -2,6 +2,8 @@
 Tabela de preço (US$ por 1 milhão de tokens): PADRAO mais o `precos.json` da pasta de dados (o dono informa o preço
 de qualquer modelo na aba IA; confira em openai.com/api/pricing: os valores mudam). Modelo SEM preço = a IA não
 chama a OpenAI. precos.json inválido = ignorado inteiro (vale só PADRAO) e a tela avisa.
+Transcrição (servico/transcricao.py): US$ por minuto de áudio, PADRAO_MINUTO mais a chave "por_minuto" do precos.json.
+Imagem (visão): cada imagem conta IMAGEM_TOKENS tokens de entrada no pior caso (os bytes da imagem não contam).
 Antes de cada chamada, reservar() guarda o pior caso dentro de BEGIN IMMEDIATE (conversas ao mesmo tempo não passam
 juntas do teto); depois acertar() troca a reserva pelo custo real. O gasto fica no banco em micro-dólares por dia."""
 import datetime
@@ -23,6 +25,12 @@ PADRAO = {  # entrada, saída
     "gpt-4.1-mini": [0.40, 1.60],
     "gpt-4.1-nano": [0.10, 0.40],
 }
+MINUTO = "por_minuto"   # chave do precos.json: {modelo de transcrição: US$ por minuto}
+PADRAO_MINUTO = {"gpt-4o-mini-transcribe": 0.003, "gpt-4o-transcribe": 0.006, "whisper-1": 0.006}
+# Imagem com detail "low" (guia de visão da OpenAI, "Calculating costs"): 85 tokens no gpt-4o/4.1, 2833 no
+# gpt-4o-mini; nos modelos por blocos de 32 px o teto é 1536 blocos x multiplicador (2,46 no gpt-4.1-nano = 3779).
+# 4000 cobre todos esses; um modelo que conte mais furaria o teto por essa diferença.
+IMAGEM_TOKENS = 4000
 _GRAVANDO = threading.Lock()
 
 
@@ -35,22 +43,25 @@ def _valor_ok(v):
 
 
 def _ler_arquivo(pasta_dados):
-    """({modelo: [entrada, saída]} do precos.json, inválido?). Ausente = ({}, False). Uma entrada ruim invalida tudo."""
+    """({modelo: [entrada, saída]}, inválido?, {modelo: US$ por minuto}) do precos.json. Ausente = ({}, False, {}).
+    Uma entrada ruim invalida tudo."""
     try:
         with open(os.path.join(pasta_dados, ARQUIVO), encoding="utf-8") as f:
             dado = json.load(f)
     except FileNotFoundError:
-        return {}, False
+        return {}, False, {}
     except (OSError, ValueError):
-        return {}, True
+        return {}, True, {}
     if not isinstance(dado, dict):
-        return {}, True
-    limpa = {}
+        return {}, True, {}
+    limpa, minuto = {}, dado.pop(MINUTO, {})
+    if not isinstance(minuto, dict) or not all(_valor_ok(v) for v in minuto.values()):
+        return {}, True, {}
     for modelo, par in dado.items():
         if not (isinstance(par, list) and len(par) == 2 and all(_valor_ok(v) for v in par)):
-            return {}, True
+            return {}, True, {}
         limpa[str(modelo)] = [float(par[0]), float(par[1])]
-    return limpa, False
+    return limpa, False, {str(m): float(v) for m, v in minuto.items()}
 
 
 def tabela(pasta_dados):
@@ -64,17 +75,23 @@ def arquivo_invalido(pasta_dados):
     return _ler_arquivo(pasta_dados)[1]
 
 
-def gravar_preco(pasta_dados, modelo, entrada, saida):
-    """Grava o preço do modelo no precos.json (temporário + travas.substituir). Arquivo inválido = PrecosInvalidos
-    (não apaga o que o dono escreveu à mão)."""
-    if not _valor_ok(entrada) or not _valor_ok(saida):
+def gravar_preco(pasta_dados, modelo, entrada, saida, por_minuto=False):
+    """Grava o preço do modelo no precos.json (temporário + travas.substituir); por_minuto=True: entrada é o US$ por
+    minuto de um modelo de transcrição (saida ignorada). Arquivo inválido = PrecosInvalidos (não apaga o que o dono
+    escreveu à mão)."""
+    if not _valor_ok(entrada) or not (por_minuto or _valor_ok(saida)):
         raise PrecosInvalidos("Preço inválido (maior que 0 e até %d dólares por 1 milhão de tokens)."
                               % PRECO_MAX_USD)
     with _GRAVANDO:
-        atual, invalido = _ler_arquivo(pasta_dados)
+        atual, invalido, minuto = _ler_arquivo(pasta_dados)
         if invalido:
             raise PrecosInvalidos("O precos.json da pasta de dados é inválido. Corrija ou apague o arquivo.")
-        atual[modelo] = [float(entrada), float(saida)]
+        if por_minuto:
+            minuto[modelo] = float(entrada)
+        else:
+            atual[modelo] = [float(entrada), float(saida)]
+        if minuto:
+            atual[MINUTO] = minuto
         destino = os.path.join(pasta_dados, ARQUIVO)
         temp = "%s.%s.tmp" % (destino, secrets.token_hex(6))
         try:
@@ -91,6 +108,13 @@ def preco(tab, modelo):
     return tab.get(modelo)
 
 
+def preco_minuto(pasta_dados, modelo):
+    """US$ por minuto do modelo de transcrição (PADRAO_MINUTO mais o precos.json), ou None (não chama)."""
+    tab = dict(PADRAO_MINUTO)
+    tab.update(_ler_arquivo(pasta_dados)[2])
+    return tab.get(modelo)
+
+
 def custo_usd(par, usage):
     """Custo de UMA resposta pela usage (prompt_tokens e completion_tokens), ou None sem usage legível: usage {} ou
     sem os dois inteiros = None (quem chama cobra o pior caso; 0 liberaria a reserva e furaria o teto)."""
@@ -102,9 +126,24 @@ def custo_usd(par, usage):
     return (entrada * par[0] + saida * par[1]) / 1000000.0
 
 
+def _sem_imagens(valor, achadas):
+    """Cópia do corpo com o data URL de cada parte image_url vazio; conta as imagens em achadas[0]."""
+    if isinstance(valor, dict):
+        if valor.get("type") == "image_url":
+            achadas[0] += 1
+            return {"type": "image_url", "image_url": {}}
+        return {k: _sem_imagens(v, achadas) for k, v in valor.items()}
+    if isinstance(valor, list):
+        return [_sem_imagens(v, achadas) for v in valor]
+    return valor
+
+
 def pior_caso_usd(par, corpo, saida_max):
-    """Pior caso de UMA chamada: cada byte do pedido como 1 token de entrada + saida_max tokens de saída."""
-    entrada = len(json.dumps(corpo, ensure_ascii=False).encode("utf-8"))
+    """Pior caso de UMA chamada: cada byte do pedido como 1 token de entrada + saida_max tokens de saída; cada imagem
+    conta IMAGEM_TOKENS (no lugar dos bytes do base64)."""
+    achadas = [0]
+    sem = _sem_imagens(corpo, achadas)
+    entrada = len(json.dumps(sem, ensure_ascii=False).encode("utf-8")) + achadas[0] * IMAGEM_TOKENS
     return (entrada * par[0] + saida_max * par[1]) / 1000000.0
 
 

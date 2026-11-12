@@ -8,8 +8,9 @@ DEPOIS do commit, fora da transação.
 - @lid: usa remoteJidAlt/senderPn (e aprende o mapa lid -> telefone); sem alternativa nem mapa, linha em eventos.
 - Nome do perfil (pushName) do lead vira nome_whatsapp só se o contato não tem nome do CSV/dono; o de fromMe é do
   dono e é ignorado; webhook sem segredo não grava nome.
-- Áudio, imagem e documento do lead: grava o tipo e a linha em `midias`, marca "precisa de você", sem IA; o
-  download (midia.py) entra na fila depois do commit, só com segredo válido.
+- Áudio, imagem e documento do lead: grava o tipo e a linha em `midias`; o download (midia.py) entra na fila depois
+  do commit, só com segredo válido. Áudio/imagem com 'IA entende' ligado (registrar_entende) chamam o gancho como
+  texto; desligado, marca "precisa de você", sem IA. Documento: "precisa de você" (documento_recebido), nunca a IA.
 - Mensagem com mais de 30 min: sem IA, marca "precisa de você" (a subida busca o que chegou com o serviço parado).
 - fromMe: eco de envio nosso (pelo id devolvido ou texto igual em até 5 s) nunca pausa a IA; fromMe que não casa é o
   dono respondendo do celular: grava e pausa a IA da conversa por 15 min.
@@ -24,7 +25,7 @@ import re
 import sys
 import unicodedata
 
-from servico import banco, campanha, midia, portao, telefone
+from servico import banco, campanha, cerebro, midia, portao, telefone
 from servico.conectores import evolution
 
 UTC = datetime.timezone.utc
@@ -39,6 +40,13 @@ CONFIRMACAO_SAIR = "Pronto, você não vai mais receber mensagens deste número.
 JANELA = "recuperar_desde"   # config: início do que ainda falta buscar no conector (some só depois da busca)
 
 _gancho = None
+_entende = None
+
+
+def registrar_entende(funcao):
+    """funcao(con, tipo) -> a IA entende 'audio'/'imagem' agora? None (padrão) = nunca: mídia só marca."""
+    global _entende
+    _entende = funcao
 
 
 def registrar_gancho(funcao):
@@ -48,7 +56,8 @@ def registrar_gancho(funcao):
 
 
 def ao_receber_mensagem_de_lead(conversa_id, mensagem_id):
-    """Único gancho: chamado depois do commit, só para texto de lead que a IA pode responder."""
+    """Único gancho: chamado depois do commit, só para texto de lead (ou áudio/imagem com 'IA entende' ligado) que a
+    IA pode responder."""
     if _gancho is not None:
         _gancho(conversa_id, mensagem_id)
 
@@ -169,13 +178,28 @@ def processar(con, ev, agora, depois, confiavel=True):
         banco.marcar_optout(con, numero, _iso(momento))
         depois.append(("sair", numero))
         return
-    if tipo in MIDIA or agora - momento > VELHA or (tipo == "texto" and tem_sinal(ev.get("texto"))):
+    velha = agora - momento > VELHA
+    entende = tipo in ("audio", "imagem") and not velha and _entende_agora(con, tipo)
+    if tipo == "documento" and not velha:   # a IA nunca lê documento (decisão no README)
+        return cerebro.marcar_precisa_de_voce(con, conversa_id, "documento_recebido")
+    if (tipo in MIDIA and not entende) or velha or (tipo == "texto" and tem_sinal(ev.get("texto"))):
         _marcar(con, conversa_id, "precisa_de_voce", 1)
-        if tipo != "texto" or agora - momento > VELHA:
+        if tipo != "texto" or velha:
             return
-    if tipo != "texto" or banco.em_optout(con, numero):
+    if (tipo != "texto" and not entende) or banco.em_optout(con, numero):
         return
     depois.append(("gancho", conversa_id, mensagem_id))
+
+
+def _entende_agora(con, tipo):
+    """Falha ao decidir = não entende (como antes): a gravação da mensagem nunca cai por isso."""
+    if _entende is None:
+        return False
+    try:
+        return bool(_entende(con, tipo))
+    except Exception as e:
+        _avisar("entende", e)
+        return False
 
 
 def _avisar(onde, erro):
