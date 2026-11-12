@@ -285,6 +285,31 @@ class TesteSistemaDeVerdade(Base):
         self.assertIn(str(porta), r["comando"])
         self.assertEqual(s.chamadas, [])   # nada de pull nem up contra o programa de outro
 
+    def test_servidor_que_responde_200_html_a_tudo_nao_conta_como_evolution(self):
+        class PegaTudo(Evolution):
+            def do_GET(self):
+                corpo = b"<!doctype html><html><body>app</body></html>"
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(corpo)))
+                self.end_headers()
+                self.wfile.write(corpo)
+        servidor = http.server.HTTPServer(("127.0.0.1", 0), PegaTudo)
+        threading.Thread(target=servidor.serve_forever, daemon=True).start()
+        self.addCleanup(servidor.server_close)
+        self.addCleanup(servidor.shutdown)
+        porta = servidor.server_address[1]
+        evolution_local.preparar(self.projeto, self.base, porta_evolution=porta)
+
+        class HttpDeVerdade(SistemaFalso):
+            http = preparo_sistema.Sistema.http
+            porta_livre = preparo_sistema.Sistema.porta_livre
+        s = HttpDeVerdade()
+        r = preparo_evolution.evolution_no_ar(preparo.Execucao(self.projeto, self.base, sistema=s, avisar=mudo))
+        self.assertEqual(r["estado"], "precisa_do_dono", r)
+        self.assertIn(str(porta), r["comando"])
+        self.assertEqual(s.chamadas, [])
+
     def test_porta_fechada_nao_responde_e_falha_com_espera_limitada(self):
         livre = preparo_sistema.Sistema().porta_qualquer()
         self.assertEqual(preparo_sistema.Sistema().http("http://127.0.0.1:%d/" % livre, 2), (None, b""))

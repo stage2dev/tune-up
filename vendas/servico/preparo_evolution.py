@@ -55,10 +55,16 @@ def _citar(caminho):
     return '"%s"' % caminho if os.name == "nt" else shlex.quote(caminho)
 
 
-def _codigo(ex, url, chave):
-    """Código HTTP de uma chamada autenticada; só 200 prova que é a NOSSA Evolution (aceita a chave do .env)."""
-    codigo, _ = ex.sistema.http(url.rstrip("/") + "/instance/fetchInstances", cabecalhos={"apikey": chave})
-    return codigo
+def _sondar(ex, url, chave):
+    """(código HTTP, é a nossa Evolution). Só é a nossa quando aceita a chave do .env (200) E devolve a lista JSON de
+    instâncias ([] quando não há): um servidor "pega tudo" que responde 200 com HTML não é a Evolution."""
+    codigo, corpo = ex.sistema.http(url.rstrip("/") + "/instance/fetchInstances", cabecalhos={"apikey": chave})
+    if codigo != 200:
+        return codigo, False
+    try:
+        return codigo, isinstance(json.loads((corpo or b"").decode("utf-8")), list)
+    except ValueError:
+        return codigo, False
 
 
 def _quem_usa(ex, porta):
@@ -72,13 +78,13 @@ def evolution_no_ar(ex):
     url, chave = ambiente.get(VAR_URL), ambiente.get(VAR_CHAVE)
     if not url or not chave:
         return falhou("Falta a configuração da Evolution; rode o preparo de novo.")
-    codigo = _codigo(ex, url, chave)
-    if codigo == 200:
+    codigo, nossa = _sondar(ex, url, chave)
+    if nossa:
         return feito("A Evolution já está no ar em %s." % url)
     porta = urllib.parse.urlsplit(url).port
-    if codigo is not None and porta:   # alguém respondeu HTTP nessa porta, mas não aceita a nossa chave
-        return dono("A porta %d da Evolution já é usada por outro programa (respondeu HTTP %d e não aceitou a chave "
-                    "da Evolution). Não liguei nada. Rode este comando num terminal para ver qual programa é, feche "
+    if codigo is not None and porta:   # alguém respondeu HTTP nessa porta, mas não é a nossa Evolution
+        return dono("A porta %d da Evolution já é usada por outro programa (respondeu HTTP %d e não respondeu como a "
+                    "Evolution). Não liguei nada. Rode este comando num terminal para ver qual programa é, feche "
                     "esse programa e clique de novo." % (porta, codigo), _quem_usa(ex, porta))
     compose = ex.dados.get("compose")
     if not compose:
@@ -99,7 +105,7 @@ def evolution_no_ar(ex):
     ex.registrar(saida)
     if codigo != 0:
         return falhou("O Docker não conseguiu ligar a Evolution. Veja o detalhe e clique de novo.", ultimas(saida))
-    if esperar(ex, lambda: _codigo(ex, url, chave) == 200, ESPERA_EVOLUTION, "a Evolution responder"):
+    if esperar(ex, lambda: _sondar(ex, url, chave)[1], ESPERA_EVOLUTION, "a Evolution responder"):
         return feito("A Evolution está no ar em %s." % url)
     return falhou("A Evolution não respondeu em %d minutos. Clique de novo; se repetir, veja o log do preparo."
                   % (ESPERA_EVOLUTION // 60), ultimas(saida))

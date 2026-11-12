@@ -246,6 +246,27 @@ class TesteEvolutionEServico(Base):
         self.assertFalse([c for c in s.chamadas if "pull" in c or "up" in c])
         self.assertEqual(s.soltos, [])
 
+    def test_outro_programa_que_responde_200_html_nao_conta_como_evolution(self):
+        evolution_local.preparar(self.projeto, self.base)
+        s = self.sistema()
+        s.estranho = 200   # servidor "pega tudo" (página de app web) na porta da Evolution
+        e = self.rodar(s)
+        p = self.passo(e, "evolution_no_ar")
+        self.assertEqual(p["estado"], "precisa_do_dono", p)
+        self.assertIn("8080", p["comando"])
+        self.assertNotEqual(e["estado"], "feito")
+        self.assertFalse([c for c in s.chamadas if "pull" in c or "up" in c])
+        self.assertEqual(s.soltos, [])
+
+    def test_espera_apos_up_exige_lista_json_da_evolution(self):
+        s = self.sistema()
+        s.corpo_evolution = b"<!doctype html><html></html>"
+        e = self.rodar(s)
+        p = self.passo(e, "evolution_no_ar")
+        self.assertEqual(p["estado"], "falhou", p)
+        self.assertTrue([c for c in s.chamadas if "up" in c])
+        self.assertEqual(s.soltos, [])
+
     def test_evolution_que_recusa_a_chave_nao_conta(self):
         s = self.sistema()
         s.chave_aceita = "outra-chave"

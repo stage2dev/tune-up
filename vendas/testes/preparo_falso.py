@@ -39,6 +39,7 @@ class SistemaFalso(Sistema):
         self.estranho = None              # código HTTP de outro programa que ocupa a porta da Evolution
         self.chave_aceita = None          # None = a Evolution aceita qualquer apikey não vazia
         self.pedidos = []                 # (url, cabeçalhos) de cada GET
+        self.corpo_evolution = b"[]"      # o que a porta da Evolution devolve com 200
 
     # sistema
     def achar(self, nome):
@@ -102,13 +103,13 @@ class SistemaFalso(Sistema):
                 return 200, json.dumps({"ok": True, "marca": self.marca}).encode("utf-8")
             return None, b""
         if self.estranho is not None:
-            return self.estranho, b"Not Found"
+            return self.estranho, b"<!doctype html><html></html>"
         if not self.evolution_no_ar:
             return None, b""
         chave = (cabecalhos or {}).get("apikey")
         if not url.endswith("/instance/fetchInstances") or not chave:
             return 401, b"{}"
-        return (200, b"[]") if self.chave_aceita in (None, chave) else (401, b"{}")
+        return (200, self.corpo_evolution) if self.chave_aceita in (None, chave) else (401, b"{}")
 
     def porta_livre(self, porta):
         return porta not in self.ocupadas
