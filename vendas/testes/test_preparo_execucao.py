@@ -201,9 +201,12 @@ class TesteIniciar(Base):
 
 
 class Evolution(http.server.BaseHTTPRequestHandler):
+    chave = None
+
     def do_GET(self):
-        corpo = b'{"status":200}'
-        self.send_response(200)
+        ok = self.path == "/instance/fetchInstances" and self.headers.get("apikey") == self.chave
+        corpo = b"[]" if ok else b'{"status":401}'
+        self.send_response(200 if ok else 401)
         self.send_header("Content-Length", str(len(corpo)))
         self.end_headers()
         self.wfile.write(corpo)
@@ -248,14 +251,39 @@ class TesteSistemaDeVerdade(Base):
         self.addCleanup(servidor.shutdown)
         porta = servidor.server_address[1]
         evolution_local.preparar(self.projeto, self.base, porta_evolution=porta)
+        Evolution.chave = evolution_local.ler_ambiente(self.pasta_dados)["VENDAS_EVOLUTION_CHAVE"]
+        self.addCleanup(setattr, Evolution, "chave", None)
 
         class HttpDeVerdade(SistemaFalso):
             http = preparo_sistema.Sistema.http
+            porta_livre = preparo_sistema.Sistema.porta_livre
         s = HttpDeVerdade(marca=os.path.basename(self.pasta_dados))
         ex = preparo.Execucao(self.projeto, self.base, sistema=s, avisar=mudo)
         r = preparo_evolution.evolution_no_ar(ex)
         self.assertEqual(r["estado"], "feito", r)
-        self.assertEqual(s.chamadas, [])   # já respondia: nem pull nem up
+        self.assertEqual(s.chamadas, [])   # já respondia com a nossa chave: nem pull nem up
+
+    def test_outro_servidor_http_na_porta_vira_precisa_do_dono(self):
+        class Estranho(Evolution):
+            def do_GET(self):
+                self.send_response(404)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+        servidor = http.server.HTTPServer(("127.0.0.1", 0), Estranho)
+        threading.Thread(target=servidor.serve_forever, daemon=True).start()
+        self.addCleanup(servidor.server_close)
+        self.addCleanup(servidor.shutdown)
+        porta = servidor.server_address[1]
+        evolution_local.preparar(self.projeto, self.base, porta_evolution=porta)
+
+        class HttpDeVerdade(SistemaFalso):
+            http = preparo_sistema.Sistema.http
+            porta_livre = preparo_sistema.Sistema.porta_livre
+        s = HttpDeVerdade()
+        r = preparo_evolution.evolution_no_ar(preparo.Execucao(self.projeto, self.base, sistema=s, avisar=mudo))
+        self.assertEqual(r["estado"], "precisa_do_dono", r)
+        self.assertIn(str(porta), r["comando"])
+        self.assertEqual(s.chamadas, [])   # nada de pull nem up contra o programa de outro
 
     def test_porta_fechada_nao_responde_e_falha_com_espera_limitada(self):
         livre = preparo_sistema.Sistema().porta_qualquer()

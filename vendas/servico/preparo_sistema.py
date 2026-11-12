@@ -121,11 +121,11 @@ class Sistema:
     def dormir(self, segundos):
         time.sleep(segundos)
 
-    def http(self, url, tempo=5):
+    def http(self, url, tempo=5, cabecalhos=None):
         """(código, corpo até 64 KB) de um GET local sem proxy e sem redirecionar; (None, b"") sem resposta."""
         abridor = urllib.request.build_opener(urllib.request.ProxyHandler({}), _SemRedirecionar())
         try:
-            with abridor.open(url, timeout=tempo) as r:
+            with abridor.open(urllib.request.Request(url, headers=cabecalhos or {}), timeout=tempo) as r:
                 return r.status, r.read(65536)
         except urllib.error.HTTPError as e:
             e.close()

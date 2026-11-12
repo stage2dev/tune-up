@@ -232,6 +232,30 @@ class TesteEvolutionEServico(Base):
         with open(env, "rb") as f:
             self.assertEqual(f.read(), antes)
 
+    def test_outro_programa_na_porta_do_env_nao_conta_como_evolution(self):
+        evolution_local.preparar(self.projeto, self.base)   # .env antigo (fluxo de 3 passos) na 8080
+        s = self.sistema()
+        s.estranho = 404
+        s.ocupadas.add(8080)
+        e = self.rodar(s)
+        p = self.passo(e, "evolution_no_ar")
+        self.assertEqual(p["estado"], "precisa_do_dono", p)
+        self.assertIn("8080", p["mensagem"])
+        self.assertIn("8080", p["comando"])
+        self.assertNotEqual(e["estado"], "feito")
+        self.assertFalse([c for c in s.chamadas if "pull" in c or "up" in c])
+        self.assertEqual(s.soltos, [])
+
+    def test_evolution_que_recusa_a_chave_nao_conta(self):
+        s = self.sistema()
+        s.chave_aceita = "outra-chave"
+        e = self.rodar(s)
+        self.assertEqual(self.passo(e, "evolution_no_ar")["estado"], "falhou")
+        chave = evolution_local.ler_ambiente(self.pasta_dados)["VENDAS_EVOLUTION_CHAVE"]
+        self.assertTrue(any(c.get("apikey") == chave and u.endswith("/instance/fetchInstances")
+                            for u, c in s.pedidos))
+        self.assertGreaterEqual(s.agora, 300)
+
     def test_porta_da_evolution_ocupada_por_outro_escolhe_outra(self):
         s = self.sistema()
         s.ocupadas.add(8080)

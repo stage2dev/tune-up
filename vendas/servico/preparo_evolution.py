@@ -4,9 +4,10 @@ import json
 import os
 import shlex
 import sys
+import urllib.parse
 
 from servico import evolution_local, pasta, travas
-from servico.conectores.evolution import VAR_URL
+from servico.conectores.evolution import VAR_CHAVE, VAR_URL
 from servico.preparo_docker import achar_docker
 from servico.preparo_sistema import dono, esperar, falhou, feito, ultimas
 
@@ -54,17 +55,31 @@ def _citar(caminho):
     return '"%s"' % caminho if os.name == "nt" else shlex.quote(caminho)
 
 
-def _responde(ex, url):
-    codigo, _ = ex.sistema.http(url.rstrip("/") + "/")
-    return codigo is not None and 200 <= codigo < 500
+def _codigo(ex, url, chave):
+    """Código HTTP de uma chamada autenticada; só 200 prova que é a NOSSA Evolution (aceita a chave do .env)."""
+    codigo, _ = ex.sistema.http(url.rstrip("/") + "/instance/fetchInstances", cabecalhos={"apikey": chave})
+    return codigo
+
+
+def _quem_usa(ex, porta):
+    if ex.sistema.windows:
+        return "netstat -ano | findstr :%d" % porta
+    return "lsof -nP -iTCP:%d -sTCP:LISTEN" % porta
 
 
 def evolution_no_ar(ex):
-    url = evolution_local.ler_ambiente(ex.pasta_dados).get(VAR_URL)
-    if not url:
+    ambiente = evolution_local.ler_ambiente(ex.pasta_dados)
+    url, chave = ambiente.get(VAR_URL), ambiente.get(VAR_CHAVE)
+    if not url or not chave:
         return falhou("Falta a configuração da Evolution; rode o preparo de novo.")
-    if _responde(ex, url):
+    codigo = _codigo(ex, url, chave)
+    if codigo == 200:
         return feito("A Evolution já está no ar em %s." % url)
+    porta = urllib.parse.urlsplit(url).port
+    if codigo is not None and porta:   # alguém respondeu HTTP nessa porta, mas não aceita a nossa chave
+        return dono("A porta %d da Evolution já é usada por outro programa (respondeu HTTP %d e não aceitou a chave "
+                    "da Evolution). Não liguei nada. Rode este comando num terminal para ver qual programa é, feche "
+                    "esse programa e clique de novo." % (porta, codigo), _quem_usa(ex, porta))
     compose = ex.dados.get("compose")
     if not compose:
         achado = achar_docker(ex)
@@ -84,7 +99,7 @@ def evolution_no_ar(ex):
     ex.registrar(saida)
     if codigo != 0:
         return falhou("O Docker não conseguiu ligar a Evolution. Veja o detalhe e clique de novo.", ultimas(saida))
-    if esperar(ex, lambda: _responde(ex, url), ESPERA_EVOLUTION, "a Evolution responder"):
+    if esperar(ex, lambda: _codigo(ex, url, chave) == 200, ESPERA_EVOLUTION, "a Evolution responder"):
         return feito("A Evolution está no ar em %s." % url)
     return falhou("A Evolution não respondeu em %d minutos. Clique de novo; se repetir, veja o log do preparo."
                   % (ESPERA_EVOLUTION // 60), ultimas(saida))
