@@ -30,6 +30,7 @@ WL = "-protocol_whitelist file,pipe -i "
 
 ALLOWED = [
     HF + " render fonte -o video.mp4 --fps 30 --quiet",
+    HF + " render fonte -o video.mp4 --fps 30 --quality delivery --experimental-fast-capture=false --quiet",
     HF + " check fonte --json --strict",
     HF + " snapshot fonte --at 0.2,1.0,9.8",
     HF + " lint fonte",
@@ -46,6 +47,9 @@ ALLOWED = [
     PY + "fontes.py",
     PY + "fontes.py --trabalho " + WORK,
     PY + "fotos.py --trabalho " + WORK + " --para q1/fonte --logo --quantas 1",
+    PY + "montar.py --tipo post --peca peca.json --heroi heroi.svg --out q1/fonte --formato=4:5 --quadro capa",
+    PY + "montar.py --tipo video --peca peca.json --heroi heroi.svg --out fonte --duracao 15",
+    PY + "montar.py --tipo video --peca peca.json --out " + WORK + "/fonte",
     PY + "anuncio.py --plano google",
     PY + "anuncio.py --exportar " + WORK + " --plataforma meta",
     PY + "anuncio.py --final " + WORK + " --plataforma google --out final.json",
@@ -93,6 +97,10 @@ DENIED = [
     PY + "qa_video.py --out /tmp/qa.json",
     PY + "outro.py",
     PY + "fontes.py --trabalho /tmp/outro",
+    PY + "montar.py --tipo post --peca /etc/passwd --out q1/fonte",
+    PY + "montar.py --tipo post --peca peca.json --out /tmp/fora",
+    PY + "montar.py --tipo post --peca peca.json --out ../fora",
+    "python3 -I " + WORK + "/tune-up-studio/scripts/montar.py --tipo post --peca peca.json --out q1/fonte",
     PY + "fotos.py --trabalho " + WORK + " --para ../fora",
     PY + "fotos.py --trabalho /tmp/outro --para q1",
     PY + "anuncio.py --exportar /tmp/outro --plataforma google",

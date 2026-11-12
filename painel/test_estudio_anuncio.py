@@ -41,7 +41,8 @@ class TesteAnuncio(BasePecas):
     def anuncio(self, tid=TID, textos=None, plataforma="google", url=URL, kw_html=None, **kw):
         kw_html = kw_html or {}
         p = self.execucao(tid, acao="estudio.anuncio", plataforma=plataforma, url=url, briefing="b", **kw)
-        antes = time.time() - 60
+        escrever(os.path.join(p, "entrada.md"), "Padaria de pão de fermentação natural; reservas pelo WhatsApp.")
+        antes = time.time() - 60  # o painel grava o briefing (texto_longo) em entrada.md; os scripts leem os fatos dali
         for peca in anuncio.plano(plataforma)["pecas"]:
             escrever(os.path.join(p, peca["id"], "fonte", "index.html"), kw_html.get(peca["id"], desenho(plataforma, peca)))
             os.utime(os.path.join(p, peca["id"], "fonte", "index.html"), (antes, antes))

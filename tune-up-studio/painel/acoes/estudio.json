@@ -59,7 +59,7 @@
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "^python3(?= |\\Z)(?! +-I(?: +-B)? +(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/scripts/(?:qa_video|qa_imagem|reserva_slides|video_ou_reserva|fontes|anuncio|fotos)\\.py(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
+          "entrada": "^python3(?= |\\Z)(?! +-I(?: +-B)? +(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/scripts/(?:qa_video|qa_imagem|reserva_slides|video_ou_reserva|fontes|anuncio|fotos|montar)\\.py(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
           "motivo": "python3: só os scripts do estúdio (com -I), sem '-c' nem script gravado em {trabalho} (nem por outro nome dela)"
         },
         {
@@ -74,7 +74,7 @@
       "permitir": [
         "Edit({trabalho}/**)"
       ],
-      "prompt": "/tune-up-studio:post Pasta de trabalho: {trabalho}. Formato: {formato}. Quadros: {quadros}. Briefing no arquivo {briefing}",
+      "prompt": "/tune-up-studio:post Pasta de trabalho: {trabalho}. Formato: {formato}. Quadros: {quadros}. Objetivo: {objetivo}. Briefing no arquivo {briefing}",
       "nome_sessao": "Post: {formato}",
       "params": [
         {
@@ -83,7 +83,7 @@
           "tipo": "texto_longo",
           "obrigatorio": true,
           "max": 4000,
-          "ajuda": "Assunto, oferta, público e a ação que você quer (ex.: reservar pelo WhatsApp)."
+          "ajuda": "Para quem é, o que você oferece, uma prova real (número, nota, tempo de casa, frase de cliente), contato e a ação que você quer. Preço, prazo ou número só entram se estiverem aqui."
         },
         {
           "nome": "formato",
@@ -115,6 +115,21 @@
             "10"
           ],
           "ajuda": "Só conta no carrossel (2 a 10). Post tem sempre 1."
+        },
+        {
+          "nome": "objetivo",
+          "rotulo": "Para que é esta peça?",
+          "tipo": "escolha",
+          "obrigatorio": false,
+          "opcoes": [
+            "a IA escolhe",
+            "vender",
+            "receber mensagens",
+            "encher a agenda",
+            "lançar novidade",
+            "ensinar e ganhar seguidores"
+          ],
+          "ajuda": "Muda o gancho e o pedido final. Na dúvida, deixe a IA escolher pelo briefing."
         }
       ]
     },
@@ -177,7 +192,7 @@
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "^python3(?= |\\Z)(?! +-I(?: +-B)? +(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/scripts/(?:qa_video|qa_imagem|reserva_slides|video_ou_reserva|fontes|anuncio|fotos)\\.py(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
+          "entrada": "^python3(?= |\\Z)(?! +-I(?: +-B)? +(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/scripts/(?:qa_video|qa_imagem|reserva_slides|video_ou_reserva|fontes|anuncio|fotos|montar)\\.py(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
           "motivo": "python3: só os scripts do estúdio (com -I), sem '-c' nem script gravado em {trabalho} (nem por outro nome dela)"
         },
         {
@@ -192,7 +207,7 @@
       "permitir": [
         "Edit({trabalho}/**)"
       ],
-      "prompt": "/tune-up-studio:video Pasta de trabalho: {trabalho}. Motor: reserva. Duracao: {duracao}. Briefing no arquivo {briefing}",
+      "prompt": "/tune-up-studio:video Pasta de trabalho: {trabalho}. Motor: reserva. Duracao: {duracao}. Objetivo: {objetivo}. Estilo: {estilo}. Briefing no arquivo {briefing}",
       "nome_sessao": "Vídeo: {duracao} s",
       "params": [
         {
@@ -201,7 +216,7 @@
           "tipo": "texto_longo",
           "obrigatorio": true,
           "max": 4000,
-          "ajuda": "Assunto, oferta, público e a ação que você quer (ex.: reservar pelo WhatsApp)."
+          "ajuda": "Para quem é, o que você oferece, uma prova real (número, nota, tempo de casa, frase de cliente), contato e a ação que você quer. Preço, prazo ou número só entram se estiverem aqui."
         },
         {
           "nome": "duracao",
@@ -213,6 +228,41 @@
             "15"
           ],
           "ajuda": "Segundos. Vídeo vertical 9:16, sem som."
+        },
+        {
+          "nome": "objetivo",
+          "rotulo": "Para que é esta peça?",
+          "tipo": "escolha",
+          "obrigatorio": false,
+          "opcoes": [
+            "a IA escolhe",
+            "vender",
+            "receber mensagens",
+            "encher a agenda",
+            "lançar novidade",
+            "ensinar e ganhar seguidores"
+          ],
+          "ajuda": "Muda o gancho e o pedido final. Na dúvida, deixe a IA escolher pelo briefing."
+        },
+        {
+          "nome": "estilo",
+          "rotulo": "Estilo do vídeo",
+          "tipo": "escolha",
+          "obrigatorio": false,
+          "opcoes": [
+            "a IA escolhe",
+            "produto em destaque",
+            "tipografia cinética",
+            "conversa de WhatsApp",
+            "lista que se marca sozinha",
+            "contador e gráfico",
+            "antes e depois",
+            "tela com cursor clicando",
+            "cartaz que se monta",
+            "passo a passo",
+            "mito ou verdade"
+          ],
+          "ajuda": "O jeito de contar no meio do vídeo: uma conversa, uma lista, um número que conta, uma tela com clique. Na dúvida, deixe a IA escolher pelo briefing."
         }
       ]
     },
@@ -278,7 +328,7 @@
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "^python3(?= |\\Z)(?! +-I(?: +-B)? +(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/scripts/(?:qa_video|qa_imagem|reserva_slides|video_ou_reserva|fontes|anuncio|fotos)\\.py(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
+          "entrada": "^python3(?= |\\Z)(?! +-I(?: +-B)? +(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/scripts/(?:qa_video|qa_imagem|reserva_slides|video_ou_reserva|fontes|anuncio|fotos|montar)\\.py(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
           "motivo": "python3: só os scripts do estúdio (com -I), sem '-c' nem script gravado em {trabalho} (nem por outro nome dela)"
         },
         {
@@ -293,7 +343,7 @@
       "permitir": [
         "Edit({trabalho}/**)"
       ],
-      "prompt": "/tune-up-studio:video Pasta de trabalho: {trabalho}. Motor: hyperframes. Duracao: {duracao}. Briefing no arquivo {briefing}",
+      "prompt": "/tune-up-studio:video Pasta de trabalho: {trabalho}. Motor: hyperframes. Duracao: {duracao}. Objetivo: {objetivo}. Estilo: {estilo}. Briefing no arquivo {briefing}",
       "nome_sessao": "Vídeo: {duracao} s",
       "params": [
         {
@@ -302,7 +352,7 @@
           "tipo": "texto_longo",
           "obrigatorio": true,
           "max": 4000,
-          "ajuda": "Assunto, oferta, público e a ação que você quer (ex.: reservar pelo WhatsApp)."
+          "ajuda": "Para quem é, o que você oferece, uma prova real (número, nota, tempo de casa, frase de cliente), contato e a ação que você quer. Preço, prazo ou número só entram se estiverem aqui."
         },
         {
           "nome": "duracao",
@@ -314,6 +364,41 @@
             "15"
           ],
           "ajuda": "Segundos. Vídeo vertical 9:16, sem som."
+        },
+        {
+          "nome": "objetivo",
+          "rotulo": "Para que é esta peça?",
+          "tipo": "escolha",
+          "obrigatorio": false,
+          "opcoes": [
+            "a IA escolhe",
+            "vender",
+            "receber mensagens",
+            "encher a agenda",
+            "lançar novidade",
+            "ensinar e ganhar seguidores"
+          ],
+          "ajuda": "Muda o gancho e o pedido final. Na dúvida, deixe a IA escolher pelo briefing."
+        },
+        {
+          "nome": "estilo",
+          "rotulo": "Estilo do vídeo",
+          "tipo": "escolha",
+          "obrigatorio": false,
+          "opcoes": [
+            "a IA escolhe",
+            "produto em destaque",
+            "tipografia cinética",
+            "conversa de WhatsApp",
+            "lista que se marca sozinha",
+            "contador e gráfico",
+            "antes e depois",
+            "tela com cursor clicando",
+            "cartaz que se monta",
+            "passo a passo",
+            "mito ou verdade"
+          ],
+          "ajuda": "O jeito de contar no meio do vídeo: uma conversa, uma lista, um número que conta, uma tela com clique. Na dúvida, deixe a IA escolher pelo briefing."
         }
       ]
     },
@@ -364,7 +449,7 @@
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "^python3(?= |\\Z)(?! +-I(?: +-B)? +(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/scripts/(?:qa_video|qa_imagem|reserva_slides|video_ou_reserva|fontes|anuncio|fotos)\\.py(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
+          "entrada": "^python3(?= |\\Z)(?! +-I(?: +-B)? +(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/scripts/(?:qa_video|qa_imagem|reserva_slides|video_ou_reserva|fontes|anuncio|fotos|montar)\\.py(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
           "motivo": "python3: só os scripts do estúdio (com -I), sem '-c' nem script gravado em {trabalho} (nem por outro nome dela)"
         },
         {
@@ -388,7 +473,7 @@
           "tipo": "texto_longo",
           "obrigatorio": true,
           "max": 4000,
-          "ajuda": "Oferta, público e a ação que você quer. Preço, prazo ou número só entram se estiverem aqui."
+          "ajuda": "Para quem é, o que você oferece, uma prova real (número, nota, tempo de casa, frase de cliente), contato e a ação que você quer. Preço, prazo ou número só entram se estiverem aqui."
         },
         {
           "nome": "plataforma",

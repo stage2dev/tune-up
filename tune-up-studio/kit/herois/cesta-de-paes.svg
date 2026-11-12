@@ -1,0 +1,33 @@
+<svg viewBox="0 0 1000 1000">
+  <!-- depois: os pães da primeira fornada caem na cesta (ficam atrás da borda) -->
+  <g transform="translate(330 470)"><g id="h_depois1">
+    <path class="a" d="M-150 60 Q-170 -70 0 -90 Q170 -70 150 60 Z"/>
+    <path class="ls" stroke-width="12" d="M-70 -44 L-40 6 M-10 -56 L20 -6 M50 -44 L80 6"/>
+  </g></g>
+  <g transform="translate(640 470)"><g id="h_depois2">
+    <path class="p" d="M-130 70 Q-150 -50 0 -70 Q150 -50 130 70 Z"/><path class="t" d="M-130 70 Q-136 20 -110 -10 Q-60 30 0 34 Q60 30 110 -10 Q136 20 130 70 Z"/>
+    <path class="ls" stroke-width="12" d="M-50 -30 L-20 10 M10 -38 L40 2"/>
+  </g></g>
+  <g transform="translate(500 380)"><g id="h_depois3">
+    <rect class="a" x="-60" y="-250" width="120" height="420" rx="60" transform="rotate(24)"/>
+    <path class="ls" stroke-width="12" d="M-70 -150 L-10 -170 M-36 -70 L24 -90 M0 10 L60 -10"/>
+  </g></g>
+  <g id="h_corpo">
+    <!-- alça, cesta de vime em dois tons, pano xadrez -->
+    <path class="lt" stroke-width="26" d="M250 520 Q500 150 750 520"/>
+    <path class="p" d="M150 540 L850 540 L770 880 Q764 900 744 900 L256 900 Q236 900 230 880 Z"/>
+    <path class="t" d="M196 760 L804 760 L776 880 Q770 900 750 900 L250 900 Q230 900 224 880 Z"/>
+    <path class="ls" stroke-width="10" d="M300 600 L330 860 M400 600 L416 860 M500 600 L500 860 M600 600 L584 860 M700 600 L670 860"/>
+    <path class="la" stroke-width="12" d="M184 660 L816 660 M204 760 L796 760"/>
+    <rect class="t" x="120" y="510" width="760" height="70" rx="35"/><rect class="p" x="120" y="510" width="760" height="34" rx="17"/>
+    <path class="b" d="M640 544 L860 544 L880 700 L800 660 L740 720 L680 650 Z"/>
+    <path class="la" stroke-width="10" d="M700 544 L716 668 M780 544 L790 652 M664 600 L868 600"/>
+  </g>
+  <!-- antes: só migalhas no pano -->
+  <g id="h_antes">
+    <circle class="a" cx="300" cy="496" r="12"/><circle class="a" cx="352" cy="488" r="8"/><circle class="a" cx="560" cy="492" r="10"/><circle class="a" cx="436" cy="498" r="7"/>
+  </g>
+  <!-- vapor do pão quente: traços que se desenham no payoff -->
+  <path id="h_traco1" class="lp" stroke-width="16" pathLength="1" d="M250 300 Q210 250 250 200 Q290 150 250 100"/>
+  <path id="h_traco2" class="lp" stroke-width="16" pathLength="1" d="M760 320 Q720 270 760 220 Q800 170 760 120"/>
+</svg>

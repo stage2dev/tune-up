@@ -29,6 +29,8 @@ class Base(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.pasta = os.path.join(self.tmp, TID)
         os.makedirs(self.pasta)
+        with open(os.path.join(self.pasta, "entrada.md"), "w", encoding="utf-8") as f:  # the facts the QA reads
+            f.write("Padaria de bairro, fornadas pequenas de manhã cedo. Reserva pelo WhatsApp.\n")
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -141,6 +143,29 @@ class Exportar(Base):
             f.write(ativo)
         self.assertTrue(anuncio.conferir_export(self.pasta, "google", GOOGLE))
 
+    def test_meta_piece_needs_a_visual_device(self):
+        fonte = os.path.join(self.pasta, "a1", "fonte")
+        os.makedirs(fonte)
+        so_texto = ('<div id="root" style="width:1440px;height:1800px;font-size:44px">'
+                    '<h1 style="font-size:160px">Reserve o de amanhã</h1>%s</div>')
+        with open(os.path.join(fonte, "index.html"), "w", encoding="utf-8") as f:
+            f.write(so_texto % "")
+        self.assertFalse(anuncio.recurso_peca(fonte)["ok"])
+        with open(os.path.join(fonte, "index.html"), "w", encoding="utf-8") as f:
+            f.write(so_texto % '<svg width="400" height="400" viewBox="0 0 1 1"><circle r="1"/></svg>')
+        self.assertTrue(anuncio.recurso_peca(fonte)["ok"])
+        self.textos(META)
+        rep = anuncio.final(self.pasta, "meta")
+        self.assertIn("recurso_visual", [c["name"] for c in rep["pecas"][0]["checks"]])
+        self.assertIn("recurso_visual", rep["pecas"][1]["failed"])  # a2 has no source at all
+
+    def test_texts_without_briefing_file_fail_out_loud(self):
+        os.remove(os.path.join(self.pasta, "entrada.md"))
+        self.textos(GOOGLE)
+        ok, problemas = anuncio.exportar(self.pasta, "google")
+        self.assertFalse(ok)
+        self.assertIn("entrada.md não encontrado", problemas[0])
+
     def test_final_without_pieces_needs_your_eye(self):
         self.textos(GOOGLE)
         anuncio.exportar(self.pasta, "google")
@@ -192,6 +217,20 @@ class Exportar(Base):
             self.assertEqual(anuncio.main(["--final", self.pasta, "--plataforma", "google", "--out", out]), 1)
         with open(out, encoding="utf-8") as f:
             self.assertFalse(json.load(f)["ok"])
+
+
+    def test_export_refuses_tics_and_numbers_not_in_the_briefing(self):
+        with open(os.path.join(self.pasta, "entrada.md"), "w", encoding="utf-8") as f:
+            f.write("Padaria de bairro. Pão sai às 6h10.\n")
+        for titulo, problema in (("Diga adeus à fila", "tique 'diga adeus'"), ("Pronto em 30 minutos", "número 30")):
+            self.textos(dict(GOOGLE, titulos=[titulo] + GOOGLE["titulos"][1:]))
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(anuncio.main(["--exportar", self.pasta, "--plataforma", "google"]), 1)
+            self.assertIn("titulos 1: %s" % problema, out.getvalue())
+            self.assertFalse(os.path.exists(os.path.join(self.pasta, "export", "google-ads-editor.csv")))
+        self.textos(dict(GOOGLE, titulos=["Pão sai às 6h10"] + GOOGLE["titulos"][1:]))
+        self.assertEqual(anuncio.exportar(self.pasta, "google"), (True, []))
 
 
 if __name__ == "__main__":

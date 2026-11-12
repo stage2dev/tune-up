@@ -45,6 +45,74 @@ How the check reports problems: text that leaves its box gives a layout
 `canvas_overflow` warning. `data-layout-allow-overflow` on the text silences
 both (check exits 0), so `layout_allow_count` is what catches it.
 
+## qa_atencao.py: attention checks (`--atencao`)
+
+Imported by `qa_imagem.py` and `qa_video.py`, never run on its own (standard
+library plus `cores.py`; the CSS parser is in `qa_css.py`, the reel checks in
+`qa_cenas.py`, the motion-script checks in `qa_script.py`). The checks run only
+with `--atencao`: without the flag both QA scripts return exactly what they
+returned before. Everything is judged from the HTML and the job's text files,
+with no browser. Thresholds are constants at the top of the file, to be tuned
+after measuring real pieces.
+
+```sh
+python3 -I scripts/qa_imagem.py --source <q1/fonte> --png <png> --atencao --out qa.json
+python3 -I scripts/qa_imagem.py --final <work folder> --atencao --out final.json
+python3 -I scripts/qa_video.py --source <fonte> --video <mp4> --duration 10 --atencao --out qa.json
+```
+
+The parser does not resolve the cascade, so pieces follow one contract: the
+post `<h1>` takes its `font-size` from its own `style=""` or from a rule whose
+last compound names `h1`; a reel clip takes `font-size` and `animation` from
+its own `style=""` or a rule whose selector is exactly `#<clip id>`; `#root`
+declares a `font-size` in px at or above the floor.
+
+| name | piece | fails when |
+| --- | --- | --- |
+| `titulo` | post frame | not exactly one `<h1>`, headline over 40 characters, or its `font-size` under 88 px or under 1.8x the largest other text |
+| `fonte_minima` | post, reel | a `font-size` not in px, a `font:` shorthand, `#root` without a px size, post text under 28 px, reel `_titulo`/`_destaque` under 96 px or other text under 44 px |
+| `palavras` | post frame | more than 20 visible words on the cover (`q1`), 30 on other frames |
+| `cores_marca` | post, reel | a CSS color (or `fill`/`stroke`/`stop-color`) outside the brand colors (missing ones fall back to the neutral palette), a color name, `rgba`/`hsla` or 8-digit hex with alpha, `color-mix(`, or no `marca.json` |
+| `tiques` | post, reel | a phrase of the closed AI-tic list (whole words, no case or accents) or `!` in the art |
+| `numeros` | post, reel | a 2+ digit number in visible text that is not a whole number of `entrada.md` or of the brand's text values (a number written in pieces, `R$ 12<small>,90</small>` or a phone with other separators, passes when its digits are a known number), or `entrada.md` missing or empty (said out loud, never a silent green) |
+| `recurso_visual` | post frame, Meta ad piece (`anuncio.py --final`), reel scenes 1, payoff and last | no visual device: a business photo, an inline `<svg>` or an empty shape with a background covering 2-85% of the frame (a band of 90% width or height only when rotated, round or cut by `clip-path`), a text of 200 px or more, or a highlighter `<span>` in the `<h1>`; the logo never counts |
+| `legibilidade` | post frame, reel | a text of 3+ words without `text-wrap: balance`/`pretty` (on `#root`, `html`, `body` or its own rule), a text with `clip-path`/`overflow: hidden` without room (line-height under 1.2 and padding under .1em top / .15em bottom), or a headline (post `<h1>`, reel `_titulo`/`_destaque`) with two sentences on one line (no `<br>`) or a 1-2 letter word before a breakable space (glue it with `&nbsp;`) |
+| `ocupacao` | post frame (on its PNG), reel (on the MP4 at 70% of each scene) | a rectangle of plain background (the frame's most common color, tolerance 8) bigger than 15% of the post's safe area (80 px margin) or 18% of the reel's safe box (`scripts/qa_vazio.py`, pure-Python PNG reading; a PNG it cannot read is reported `não medido`, never red) |
+| `marca` | post (`--final`, any frame), reel (last scene) | `campos.nome` of `marca.json` is not written on the art (the `marca` clip of the reel is not counted in `palavras_cena`) |
+| `layout_post` | post frame | `#root` without exactly one `l-*` arrangement |
+| `estrategia` | post (`--final`), reel | `estrategia.md` missing or without `objetivo`, `publico`, `promessa`, `arquetipo`, `gancho 1-3`, `escolhido`, `cta` |
+| `cta` | post (`--final`) | `#cta` with text missing on the last frame, present on another one, or with `border-radius`; or a deadline of `entrada.md` ("só esta semana", "até 15/12", "até sábado", "últimos dias") missing from the art |
+| `sequencia_layout` | post (`--final`), reel | the same `l-*` twice in a row; a reel with fewer than 2 (10 s) or 3 (15 s) arrangements |
+| `arraste` | post (`--final`) | a carousel whose cover does not say `arraste` |
+| `legenda` | post (`--final`) | `copy.md` without `## Legenda`, first line over 125 characters, caption over 1000, more than 5 hashtags, or a tic |
+| `cenas` | reel | not 4-5 scenes (10 s) or 5-6 (15 s), scene 1 over 2 s, last under 2.5 s, any under 1.5 s, gaps, a sum off `D` by more than 0.05 s, or a text clip outside `s<N>_<role>` |
+| `gancho` | reel | scene 1 title + accent word over 40 characters, a scene 1 text hidden at 0% (opacity, closed `clip-path`, `visibility`, `display`), or the logo or brand name on screen at 0 s |
+| `palavras_cena` | reel | a scene with more than max(6, 3 x its seconds) words, all text layers together |
+| `cta_final` | reel | the last scene without `_titulo` and `_contato` text, either of them with `border-radius` or `background`, a contact naming a word, handle or phone digits that are not in `entrada.md` or the brand kit (`link na bio` and connectors like `pelo`, `no` are free), a deadline of `entrada.md` missing from the video, or no `entrada.md` |
+| `transicoes` | reel, render engine only | fewer than 2 kinds among `tr<N>`, the same kind twice in a row, one not 0.4-0.8 s long and centred on a cut, or a frame-sized one that covers the whole frame for more than 0.15 s |
+
+In `--final`, the whole-post checks come as one `peca` item: it does not count
+in `k de n` but turns the line red (`PRECISA DO SEU OLHO: 3 de 3 verdes, peca:
+cta, legenda`). `anuncio.py --exportar` (and `--final`) also refuses AI tics
+and numbers that are in neither `entrada.md` nor the brand kit.
+
+### `--achados`: the check findings, short
+
+`python3 -I scripts/qa_imagem.py --achados <fonte>` prints only the `warning` and `error` findings of the newest
+report `hyperframes check` saved under `<fonte>/.hyperframes/` (at most 20 lines), or `nenhum achado acima de
+info`. Exit 0 when clean, 1 otherwise (also when no check ran or the source changed after it). The check's own
+JSON is long; sessions read this instead.
+
+### `--pares`: the contrast table
+
+`python3 -I scripts/qa_imagem.py --pares <work folder>` reads the approved
+`marca.json` of the project that holds the work folder and prints every
+text-on-background pair of brand colors at 3:1 or more, best first, one per line
+(`texto cores.text #3B2417 sobre cores.bg #FFF8EC: 13.71:1 normal`). `normal`
+(4.5:1 or more) works for any text; `so_titulo` (3 to 4.49:1) only for a headline
+of 88 px or more. Exit 0, or 2 when the brand kit is not found. Sessions pick
+pairs from this table and never work a ratio out themselves.
+
 ## Network: the lint is not the guarantee
 
 Measured with `tests/fixtures/defect-external-fetch` (URL built as
@@ -74,7 +142,7 @@ Measured with `tests/fixtures/defect-external-fetch` (URL built as
 npx --no-install hyperframes check <fonte> --json --strict
 
 # 2. render (about 10 s of wall time for the example on macOS)
-npx --no-install hyperframes render <fonte> -o <OUT>/video.mp4 --fps 30 --quality delivery
+npx --no-install hyperframes render <fonte> -o <OUT>/video.mp4 --fps 30 --quality delivery --experimental-fast-capture=false
 
 # 3. QA report (exit 0 green, 1 failed); needs ffmpeg and ffprobe on PATH
 python3 scripts/qa_video.py --source <fonte> --video <OUT>/video.mp4 \
@@ -84,8 +152,9 @@ python3 scripts/qa_video.py --source <fonte> --video <OUT>/video.mp4 \
 The check verdict comes from the newest report HyperFrames saved under
 `<fonte>/.hyperframes/artifacts/checks/` (or the one `--check-json` names in
 `saved.report`), never from a copy the session wrote. `--sheet` writes a contact
-sheet of the MP4 (one frame per second, 5 per row) and adds the `contact_sheet`
-check. The report ends with `linha`: `PRONTO: video verde (<engine>)` or
+sheet of the MP4 (frame 0, then one every 0.5 s from 0.25 s, 5 per row) and adds the `contact_sheet`
+check; with `--atencao` also `<sheet>_cortes.png`, 0.35 s before and after each cut (just outside the
+transition), where a half-gone line or a transition leftover shows. The report ends with `linha`: `PRONTO: video verde (<engine>)` or
 `PRECISA DO SEU OLHO: <failed checks>`.
 
 Checks in `qa.json` (plus `layout_allow_count`, `no_gsap`, `network_lint` and
@@ -101,7 +170,7 @@ Checks in `qa.json` (plus `layout_allow_count`, `no_gsap`, `network_lint` and
 | `faststart` | `moov` box is not before `mdat` |
 | `no_audio` | any audio stream |
 | `blackdetect` | a black span of 0.5 s or more (`blackdetect=d=0.5:pix_th=0.10`), or ffmpeg reports `partial file` / `Invalid data` |
-| `freezedetect` | a still span of 2 s or more (`freezedetect=n=-60dB:d=2`), or the same damage lines |
+| `freezedetect` | a still span of 1.2 s or more (`freezedetect=n=-70dB:d=1.2`; -70 dB so a small pulse counts as motion, measured on the example), or the same damage lines |
 
 Tool paths are not options: `qa_video.py` and `reserva_slides.py` take
 `ffmpeg`/`ffprobe` from `PATH`, `video_ou_reserva.py` takes HyperFrames from
@@ -127,6 +196,10 @@ it at `python3` and a file it wrote.
   2026-11-11: an entry of 1 s on clips starting at 0, 3 and 6 s was half done
   at 0.5, 3.5 and 6.6 s). The video skill gives every element its own clip
   and one animation as long as the clip, with no delay.
+- An inline `<svg>` clip renders still: its CSS animation is ignored in the
+  snapshot and in the MP4 (measured 2026-11-11: a translate, an opacity and a
+  scale on `<svg>` clips never moved). Motion goes to text clips and empty
+  `div` shapes cut by `clip-path`.
 - A clip with child elements gives the `nested_structure_needs_subcomposition`
   lint warning (fails `--strict`); `check` also warns `first_frame_empty` when
   frame 0 shows only the background and `line_unread` when the last line is
@@ -165,7 +238,20 @@ preceded by `-protocol_whitelist file,pipe`. The MP4 carries
 `ffmpeg -filters` here: `scale`, `crop`, `zoompan`, `setsar`, `format`,
 `xfade`, `trim`.
 
+`--tempos T1,T2,...` gives each slide the length of its scene, so a short hook
+and a long call to action reach the MP4 (without it every slide lasts the same).
+One length per slide, adding up to `--duration` within 0.05 s, or exit 2 with the
+reason. Each cut is centred on the scene boundary, as in the composition: the
+first slide lasts `T1 + xfade/2`, a middle one `Ti + xfade`, the last
+`Tn + xfade/2`; the xfade before slide k starts at the sum of the lengths before
+it minus `xfade/2` (`1.5,2.5,2.5,3.5` with the default 0.5 s gives cuts at 1.25,
+3.75 and 6.25 s). A middle scene of `xfade` or less, or a first/last one of
+`xfade/2` or less, is refused. Slide frames are rounded up, so no slide ends
+before its cut. `video_ou_reserva.py` does not pass `--tempos`.
+
 ```sh
+python3 scripts/reserva_slides.py --slides <png dir> --out <OUT>/video.mp4 \
+  --duration 10 --tempos 1.5,2.5,2.5,3.5
 # HyperFrames first; reserve if the binary is missing or the render fails
 STUDIO_HYPERFRAMES_BIN=/path/that/does/not/exist \
   python3 scripts/video_ou_reserva.py --source <fonte> --slides <png dir> --out <OUT>/video.mp4
@@ -181,6 +267,38 @@ older example slides are in
 headless Chrome (`--screenshot --window-size=1080,1920`,
 `--host-resolver-rules="MAP * ~NOTFOUND"`). Measured on macOS: 3 slides, 10 s,
 1.7 s wall time, QA all green.
+
+## montar.py: the composition kit (post and reel)
+
+```sh
+# from the working folder (inside <project>/.tune-up/)
+python3 -I scripts/montar.py --tipo post  --peca q1/peca.json --heroi heroi.svg --out q1/fonte --formato=4:5
+python3 -I scripts/montar.py --tipo video --peca peca.json --heroi heroi.svg --out fonte --duracao 10
+```
+
+Writes `<out>/index.html` from the texts (`peca.json`, slots in
+`referencias/kit-post.md` and `kit-video.md`) and one drawing (`heroi.svg`,
+method in `referencias/heroi.md`, examples in `kit/herois/`). It prints one note
+per line (the sizes it chose, the variant) and exits 1 with the reason when an
+input is missing, too long or not allowed. Modules: `kit_base.py` (brand, color
+pairs, text fitted to a box, the hero's checks, channel icons), `kit_medida.py`
+(advance widths read from the font file `local("Name")` resolves to: `name`,
+`cmap`, `hmtx`, `OS/2` with `struct`; unknown face: the average letter),
+`kit_post.py` (compositions `oferta`, `palco`, `numero`; frames `unico`, `capa`,
+`ponto`, `fecho`), `kit_palco.py` and `kit_video.py` (the reel: scenes `gancho`,
+`rampa`, `lista`, `oferta`, `final`; cuts at 1.875, 4.375, 6.875 s) and
+`kit_estilos.py` (the style scene, picked by `"estilo"` in `peca.json`: a chat,
+a list, a counter, before and after, a screen with a cursor, a poster, steps, a
+myth; with a style the cuts are 1.625, 4.375, 6.875 s). Render with
+`--workers=1`: several render workers gave MP4s that differ from run to run.
+
+The hero file is data, never code: only `g`, `path`, `rect`, `circle`, `ellipse`,
+`line`, `polyline`, `polygon`; a fixed attribute list; colors only by class
+(`p a t b s`, `lp la lt lb ls`); ids `h_*`; no `style`, `url(`, event, `use`,
+`image` or `text`. `--out` must stay inside the working folder. Measured
+2026-11-12 with HyperFrames 0.9.6 on macOS: a kit reel renders in about 5 s,
+`check --strict` clean, `qa_video.py --atencao` green with 43 checks, two renders
+byte for byte the same.
 
 ## fontes.py: brand fonts for a post frame
 
