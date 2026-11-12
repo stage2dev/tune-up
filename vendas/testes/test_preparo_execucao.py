@@ -102,6 +102,21 @@ class TesteEstadoELog(Base):
         self.assertEqual(len(s.soltos), 1)
         self.assertEqual(preparo.ler_estado(self.pasta_dados)["estado"], "feito")
 
+    def test_so_servico_roda_so_o_ultimo_passo(self):
+        s = self.sistema(tem=(), ligado=False)   # sem Docker: o preparo inteiro pararia no passo 1
+        args = preparo.argumentos(["rodar", "--projeto", self.projeto, "--base", self.base, "--so-servico"])
+        self.assertEqual(preparo.rodar(args, s, mudo), 0)
+        self.assertEqual(s.chamadas, [])                     # nenhum comando do Docker
+        self.assertEqual(len(s.soltos), 1)
+        self.assertIn(preparo_evolution.SERVICO, s.soltos[0])
+        estado = preparo.ler_estado(self.pasta_dados)
+        self.assertEqual([p["nome"] for p in estado["passos"]], ["servico_ligado"])
+        self.assertEqual(estado["estado"], "feito")
+        s2 = self.sistema()
+        preparo.iniciar(preparo.argumentos(["iniciar", "--projeto", self.projeto, "--base", self.base,
+                                            "--so-servico"]), s2)
+        self.assertEqual(s2.soltos[0][3:4] + s2.soltos[0][-1:], ["rodar", "--so-servico"])
+
     def test_cli_estado_e_porta_invalida(self):
         saida = io.StringIO()
         with redirect_stdout(saida):

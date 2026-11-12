@@ -119,7 +119,7 @@ class TesteCaixa(Conversas):
         abas = self.mod.montar(self.ctx, base=self.base)["abas"]
         self.assertEqual(len(abas), 7)
         self.assertEqual([len(a["blocos"]) for a in abas], [1] * 7)
-        self.assertIn(self.mod.cliente.PYTHON + " -B", abas[0]["blocos"][0]["texto"])
+        self.assertEqual(abas[0]["blocos"][0]["acao"], "preparar_tudo")
         self.assertTrue(all("alerta" not in a for a in abas))
 
     def test_vazio_e_sem_codigo_cru(self):

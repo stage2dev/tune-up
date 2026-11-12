@@ -3,6 +3,7 @@
     python3 -B <plugin>/servico/preparo.py rodar   --projeto <raiz> [--painel URL] [--porta N] [--porta-evolution N]
     python3 -B <plugin>/servico/preparo.py iniciar --projeto <raiz> [...]   (o mesmo, destacado; volta na hora)
     python3 -B <plugin>/servico/preparo.py estado  --projeto <raiz>         (estado em JSON)
+    --so-servico (em rodar/iniciar): só o último passo, ligar o serviço (depois de reiniciar o computador).
 
 Cada passo confere antes de agir e não faz nada quando já está pronto, então rodar de novo retoma do primeiro passo
 que falta. Estado (JSON, 0600) e log (0600) ficam na pasta de dados EXTERNA, nunca no projeto; a chave da Evolution
@@ -80,7 +81,7 @@ class Execucao:
     """Um preparo: estado, log e o contexto que os passos usam (sistema, pasta de dados, portas, dados)."""
 
     def __init__(self, raiz, base=None, painel=PAINEL, porta=None, porta_evolution=PORTA_EVOLUTION, sistema=None,
-                 avisar=print):
+                 avisar=print, so_servico=False):
         self.raiz = os.path.realpath(raiz)
         if not os.path.isdir(self.raiz):
             raise ValueError("a raiz do projeto %s não existe" % self.raiz)
@@ -96,10 +97,11 @@ class Execucao:
         self.portas = dict(anterior.get("portas") or {})
         self.dados = {}
         self.atual = None
+        self.passos = PASSOS[-1:] if so_servico else PASSOS
         self.estado = {"id": secrets.token_hex(6), "pid": os.getpid(), "estado": "rodando", "inicio": agora(),
                        "atualizado": agora(), "fim": None, "log": self.caminho_log, "portas": self.portas,
                        "passos": [{"nome": n, "titulo": t, "estado": "pendente", "mensagem": None, "comando": None,
-                                   "detalhe": None} for n, t, _ in PASSOS]}
+                                   "detalhe": None} for n, t, _ in self.passos]}
 
     def porta_servico(self):
         return self.porta_pedida or self.portas.get("servico") or PORTA_SERVICO
@@ -142,7 +144,7 @@ class Execucao:
         self.gravar()
         self.registrar("preparo %s começou (pid %d)" % (self.estado["id"], os.getpid()))
         final = "feito"
-        for (nome, titulo, passo), registro in zip(PASSOS, self.estado["passos"]):
+        for (nome, titulo, passo), registro in zip(self.passos, self.estado["passos"]):
             self.atual = registro
             registro["estado"] = "rodando"
             self.gravar()
@@ -169,7 +171,8 @@ class Execucao:
 def rodar(args, sistema=None, avisar=print):
     """Roda em primeiro plano. 0 = tudo pronto; 1 = parou num passo; 2 = argumento ou pasta recusada; 3 = já roda."""
     try:
-        ex = Execucao(args.projeto, args.base, args.painel, args.porta, args.porta_evolution, sistema, avisar)
+        ex = Execucao(args.projeto, args.base, args.painel, args.porta, args.porta_evolution, sistema, avisar,
+                      args.so_servico)
     except (ValueError, OSError, pasta.PastaRecusada) as e:
         avisar("vendas: não preparei: %s" % e, file=sys.stderr)
         return 2
@@ -202,6 +205,8 @@ def iniciar(args, sistema=None):
         argv += ["--porta", str(args.porta)]
     if args.base:
         argv += ["--base", args.base]
+    if args.so_servico:
+        argv.append("--so-servico")
     processo = sistema.soltar(argv, caminhos(pasta_dados)["log"])
     id_antes = (antes or {}).get("id")
     inicio = sistema.relogio()
@@ -236,6 +241,7 @@ def argumentos(argv):
                        % PORTA_SERVICO)
         s.add_argument("--porta-evolution", type=int, default=PORTA_EVOLUTION, help="porta da Evolution em 127.0.0.1")
         s.add_argument("--base", default=None, help="pasta base dos dados (só para testes)")
+        s.add_argument("--so-servico", action="store_true", help="só o último passo: ligar o serviço de Vendas")
     return p.parse_args(argv)
 
 

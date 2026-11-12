@@ -5,6 +5,20 @@ A WhatsApp sales module for the [tune-up](../README.md) panel. It has two parts:
 - a **panel screen** (`painel/modulos/vendas/modulo.py`, screen id `vendas`) that shows the connection, the conversations and the sending state;
 - a **local service** (`servico/`, Python 3.9 standard library only) that holds the WhatsApp connection and the data, listening on `127.0.0.1` only.
 
+## Começar em um clique
+
+For the business owner, after enabling the screen (next section): open the panel, screen **Vendas**, tab **Conexão**, and click **Preparar tudo**. One click runs the one-step setup below for this project, detached, and the tab follows it (refreshing every 3 s) as a checklist of five plain steps with the current one marked "fazendo...". The first time it downloads large files and takes a few minutes; on Windows a confirmation window may open.
+
+- When the setup needs the owner (for example a password-protected install), the card shows the plain message, the exact command in a field to copy into a terminal, and **Já fiz, continuar** (the run resumes where it stopped). A failed step shows the plain reason and **Tentar de novo**.
+- After a reboot, when the WhatsApp files are ready and the Evolution answers but the service is stopped, the card is **Ligar o serviço**: it runs only the last step (`preparo.py iniciar --so-servico`), so no terminal is needed.
+- When everything is ready the card disappears and the QR form shows.
+- The screen reads the setup state file straight from the data folder (the service may still be stopped) and shows only plain messages: never a folder path, the log, a key or raw command output. The start is an argument list with the panel's own Python, no shell, and always for the project of that page.
+- In Claude Code, `/tune-up-vendas:instalar` runs the same setup (`preparo.py rodar`) and relays each step; it shows any owner command and waits, and never runs `sudo` or pipes a download into a shell. A session-start hook prints one line when the screen is enabled but the WhatsApp is not prepared (silent otherwise; no network).
+
+### Fazer à mão
+
+The screen no longer shows terminal commands. To do it by hand: `servico/preparo.py rodar` ("One-step setup" below), or the three manual steps: `servico/evolution_local.py preparar` ("Local Evolution API"), `docker compose -f <data folder>/evolution/compose.yml up -d`, then `servico/servico.py` ("Starting the service").
+
 Status: 0.1.0 is a skeleton. The screen has one tab, "Conexão", that says whether the service is running (from its heartbeat in the database) and, when it is stopped, shows the exact commands to start it and to prepare the local Evolution API. The service runs and receives webhooks, but has no WhatsApp connection flow (QR) yet.
 
 ## Enable it in a project
@@ -24,7 +38,7 @@ Status: 0.1.0 is a skeleton. The screen has one tab, "Conexão", that says wheth
 
 ## Starting the service
 
-The service starts **only** by an owner command typed in a terminal (this one, or the one-step setup below, which starts it detached). It never starts from a Claude session, from a panel action or from a hook. The panel screen shows the command to copy. The deny rules below make a session unable to start it or to reach it.
+The service starts only by an owner action: this command typed in a terminal, the one-step setup below (which starts it detached), or the owner's click on **Preparar tudo** / **Ligar o serviço** in the panel (which runs that setup). It never starts from a hook, and sessions launched by the panel cannot start it or reach it (deny rules below). `/tune-up-vendas:instalar` runs the setup from a Claude session the owner opened, by the owner's request.
 
 ```
 python3 -B <plugin folder>/servico/servico.py --projeto <project root> [--porta 8791] [--painel http://127.0.0.1:8787]

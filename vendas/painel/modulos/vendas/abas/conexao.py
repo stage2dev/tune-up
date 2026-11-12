@@ -19,24 +19,6 @@ def evolution_preparada(raiz, cliente, base=None):
     return all(os.path.isfile(os.path.join(pasta, n)) for n in ("compose.yml", ".env"))
 
 
-def texto_evolution(ctx, cliente, comando_preparar, base=None):
-    """(título, texto) do passo da Evolution local: ligar se já preparada, preparar se não. Só para quem a Evolution
-    NÃO está respondendo; com ela no ar, esse passo não aparece."""
-    raiz = ctx.get("raiz") or ""
-    if raiz and evolution_preparada(raiz, cliente, base):
-        compose = os.path.join(cliente.pasta.caminho_da_pasta(raiz, base), "evolution", "compose.yml")
-        return ("Ligue o WhatsApp local (Evolution)",
-                "Os arquivos já estão prontos. Num terminal (não pelo Claude), rode: docker compose -f %s up -d"
-                % cliente.citar(compose))
-    return ("Prepare o WhatsApp local (Evolution)",
-            "Num terminal, rode: %s . No fim ele mostra o comando docker compose para ligar." % comando_preparar)
-
-
-def bloco_evolution(ctx, cliente, comando_preparar, base=None):
-    titulo, texto = texto_evolution(ctx, cliente, comando_preparar, base)
-    return {"tipo": "texto", "titulo": titulo, "texto": texto}
-
-
 def ler_instancia(ctx, cliente, base=None):
     """(dados do serviço, aviso). Serviço sem resposta ou recusa vira aviso, nunca exceção."""
     try:

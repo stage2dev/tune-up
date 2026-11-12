@@ -9,10 +9,6 @@ PORTA_EVOLUTION = 8080  # porta padrão da Evolution local (servico/evolution_lo
 MODOS = {"registra_e_conta": "Só contar (recomendado)", "recusa": "Recusar os avisos falsos"}
 VALIDOS_PARA_RECUSA = 20  # o mesmo de servico/rotas.py; quem decide é o serviço
 
-PLUGIN = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-SERVICO = os.path.join(PLUGIN, "servico", "servico.py")
-EVOLUTION_LOCAL = os.path.join(PLUGIN, "servico", "evolution_local.py")
-
 _spec = importlib.util.spec_from_file_location("tune_up_vendas_cliente", os.path.join(os.path.dirname(
     os.path.abspath(__file__)), "cliente.py"))
 cliente = importlib.util.module_from_spec(_spec)
@@ -21,6 +17,10 @@ _spec = importlib.util.spec_from_file_location("tune_up_vendas_conexao", os.path
     os.path.abspath(__file__)), "abas", "conexao.py"))
 conexao = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(conexao)
+_spec = importlib.util.spec_from_file_location("tune_up_vendas_preparar", os.path.join(os.path.dirname(
+    os.path.abspath(__file__)), "abas", "preparar.py"))
+preparar = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(preparar)
 _spec = importlib.util.spec_from_file_location("tune_up_vendas_conversas", os.path.join(os.path.dirname(
     os.path.abspath(__file__)), "abas", "conversas.py"))
 conversas = importlib.util.module_from_spec(_spec)
@@ -77,7 +77,8 @@ INFO = {
     "acoes": ["modo_webhook", "conectar_instancia", "abrir_conversa", "enviar_mensagem", "assumir_conversa",
               "devolver_ia", "liberar_saida", "reenviar_envio", "descartar_envio", "midia_baixar_de_novo"] + list(conversas.ACOES_RASCUNHO)
              + ["ia_automatico_conversa", "ia_rascunho_conversa"] + list(ia.ACOES) + list(leads.ACOES) + list(disparos.ACOES)
-             + list(candidatos.ACOES) + list(buscador.ACOES) + list(places.ACOES) + list(voz.ACOES),
+             + list(candidatos.ACOES) + list(buscador.ACOES) + list(places.ACOES) + list(voz.ACOES)
+             + list(preparar.ACOES),
     "negar": [
         "Bash(*127.0.0.1:%d*)" % PORTA,
         "Bash(*localhost:%d*)" % PORTA,
@@ -117,23 +118,14 @@ def arquivo(ctx, ref, base=None):
     return _arquivo.ler(ctx, cliente, ref, base)
 
 
-def comando(ctx):
-    raiz = (ctx or {}).get("raiz") or "<raiz do projeto>"
-    return "%s -B %s --projeto %s --painel http://127.0.0.1:%s" % (
-        cliente.PYTHON, cliente.citar(SERVICO), cliente.citar(raiz), porta_do_painel(ctx))
-
-
-def comando_evolution(ctx):
-    raiz = (ctx or {}).get("raiz") or "<raiz do projeto>"
-    return "%s -B %s preparar --projeto %s" % (cliente.PYTHON, cliente.citar(EVOLUTION_LOCAL), cliente.citar(raiz))
-
-
 def agir(ctx, acao, dados, base=None):
     """modo_webhook: pede ao serviço DESTE projeto a troca do modo do segredo do webhook (cliente.chamar confere
     porta, batimento e marca antes do token). Quem confere os 20 válidos seguidos é o serviço. Repetir o mesmo
     modo não muda nada. O token de envio nunca volta no resultado."""
     if acao == "conectar_instancia":
         return conexao.agir_conectar(ctx, cliente, dados, base)
+    if acao in preparar.ACOES:   # só a raiz da página; os dados da tela (ex. o comando copiado) são ignorados
+        return preparar.agir(ctx, cliente, acao, base)
     if acao in ("abrir_conversa", "enviar_mensagem", "assumir_conversa", "devolver_ia", "liberar_saida",
                 "reenviar_envio", "descartar_envio", "midia_baixar_de_novo", "ia_automatico_conversa", "ia_rascunho_conversa") \
             or acao in conversas.ACOES_RASCUNHO:
@@ -204,21 +196,20 @@ def montar(ctx, base=None):
         quando = webhook = None
         avisos.append("não consegui ler o banco do serviço (%s)" % type(e).__name__)
     rodando = quando is not None and abs((agora - quando).total_seconds()) <= VIVO_S
-    if not rodando:  # UM bloco amigável com o comando exato; as outras abas só apontam para ele
-        _, passo = conexao.texto_evolution(ctx, cliente, comando_evolution(ctx), base)
-        bloco = {"tipo": "texto", "titulo": "O serviço de Vendas está parado",
-                 "texto": ("Ele só liga por um comando seu, digitado num terminal (nunca por uma sessão do Claude). "
-                           "Rode: %s . Se for usar o WhatsApp local (Docker), antes: %s" % (comando(ctx), passo))}
+    if not rodando:  # UM bloco: preparar tudo, ligar o serviço ou os passos andando; as outras abas apontam para ele
+        topo, vivo = preparar.topo(ctx, cliente, conexao, base)
         nomes = (("conexao", "Conexão"), ("conversas", "Conversas"), ("ia", "IA"), ("leads", "Leads"),
                  ("disparos", "Disparos"), ("buscador", "Buscador"), ("voz", "Voz"))
-        return {"avisos": avisos, "atualizar_em": 15,
-                "abas": [{"id": i, "titulo": t, "blocos": [bloco] if i == "conexao" else PARADO_CURTO}
+        return {"avisos": avisos, "atualizar_em": 3 if vivo else 15,
+                "abas": [{"id": i, "titulo": t, "blocos": topo if i == "conexao" else PARADO_CURTO}
                          for i, t in nomes]}
     dados, aviso_instancia = conexao.ler_instancia(ctx, cliente, base)  # QR e estado lidos na hora, sem cache
     conectado = bool(dados) and not aviso_instancia and dados.get("estado") == "conectado"
     blocos = conexao.blocos_instancia(dados, aviso_instancia)
-    if aviso_instancia or (dados or {}).get("aviso"):  # a Evolution não responde: só agora o passo de ligá-la aparece
-        blocos.insert(1 if aviso_instancia else 2, conexao.bloco_evolution(ctx, cliente, comando_evolution(ctx), base))
+    # a Evolution não responde: "Preparar tudo" vem PRIMEIRO; com um preparo andando, a lista de passos
+    topo, vivo = preparar.topo(ctx, cliente, conexao, base, servico_rodando=True,
+                               precisa=bool(aviso_instancia or (dados or {}).get("aviso")))
+    blocos = topo + blocos
     if webhook:
         blocos += blocos_webhook(webhook)
     aba, nao_lidas = conversas.aba(ctx, cliente, base)
@@ -231,7 +222,7 @@ def montar(ctx, base=None):
     aba_conversas = {"id": "conversas", "titulo": "Conversas", "blocos": aba}
     if nao_lidas >= 1:
         aba_conversas["alerta"] = nao_lidas
-    return {"avisos": avisos, "atualizar_em": 3 if conectado else 15,
+    return {"avisos": avisos, "atualizar_em": 3 if conectado or vivo else 15,
             "abas": [{"id": "conexao", "titulo": "Conexão", "blocos": blocos}, aba_conversas,
                      {"id": "ia", "titulo": "IA", "blocos": aba_ia},
                      {"id": "leads", "titulo": "Leads", "blocos": aba_leads},
