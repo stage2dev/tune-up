@@ -84,6 +84,19 @@ Decision on documents (taken by the coordinator while the owner was away; the ow
 
 Decision on the key path: the generic panel form posts through the panel's action route on `127.0.0.1`, so the pasted key crosses the panel process in memory once on its way to the service. The panel does not log request bodies; the key is never written inside the project tree, never echoed in an action `resultado` or message, and never put in a transcript. A test sweeps route replies, screen blocks, action messages, stdout/stderr, every file under the project root and the database for the pasted key.
 
+## Áudios, imagens e documentos
+
+Audio, images and documents that a lead sends are downloaded and shown in the Conversas tab: an audio player (with the transcription under it when the AI heard it), the image, and a download link for documents. Nothing here sends media to the lead.
+
+- **What is stored:** the file itself, only for a message from a lead that passed the webhook secret check, and the row that describes it (type, size, name for documents, duration when `ffprobe` is installed, state). Types are decided by the file content: ogg, mp3, m4a/aac, wav; jpeg, png, webp; pdf and other documents (served as a download).
+- **Where:** `<data folder>/midia/<conversation>/<random name>` (the external data folder, never inside the project; folders 0700, files 0600). The screen reaches a file only through the panel, by media id (`m:<id>`); the panel serves the bytes and never shows a path.
+- **For how long:** 30 days (`midia_dias`); a daily sweep and the start of the service delete older files, and when the folder passes 2 GB (`midia_teto_bytes`) the oldest go first. The message and its transcription stay; the media shows "expirada" with a plain explanation.
+- **Limits:** audio 16 MB, image 10 MB, document 20 MB. Bigger files are not stored (the message stays). The panel serves at most 25 MB per file.
+- **Failures:** a download that failed shows the reason and a "Tentar de novo" button (`midia_baixar_de_novo`); nothing is retried on its own.
+- **The AI and documents:** the AI never reads documents. A lead document marks the conversation "precisa de você". Audio and images are read by the AI only when the switches on the IA tab say so; transcription (US$ per minute) and image reading count in the same daily cap as the answers.
+- **Turning AI understanding off:** IA tab, form "Áudios e imagens do lead": set "IA entende áudios" and "IA entende imagens" to "Não". The files are still downloaded and shown to you; the AI just does not hear or see them, and the conversation waits for you.
+- **Conversation list:** the preview line shows "Áudio (0:12)" (plus the first words of the transcription), "Foto" or "Documento: name.pdf".
+
 ## Voice notes (ElevenLabs + ffmpeg)
 
 `servico/voz.py` (+ `voz_cliente.py`, migration 15) turns a short text into a WhatsApp voice note with the user's own ElevenLabs account: `POST /v1/text-to-speech/{voice_id}?output_format=...` over urllib (key only in the `xi-api-key` header, text only in the JSON body, 30 s timeout, no retry), then `ffmpeg` (found with `shutil.which`, called with an argument list, 60 s limit) converts it to Ogg/Opus mono 48 kHz 32 kbps. Both temporary files are created 0600 in the external data folder and deleted after success and after failure. The key is stored like the OpenAI key (0600 file `elevenlabs_chave` in the data folder; routes return only "configurada" and the last 4 characters). Voice id, model (default `eleven_multilingual_v2`), output format (default `mp3_44100_128`) and the daily character cap live in config. `--elevenlabs-url` / `VENDAS_ELEVENLABS_URL` set the base URL for tests only.

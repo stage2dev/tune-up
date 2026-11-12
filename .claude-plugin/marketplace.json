@@ -21,7 +21,7 @@
       "name": "tune-up-vendas",
       "source": "./vendas",
       "description": "WhatsApp sales screen for the tune-up panel plus a local service (opt-in, owner-started, throwaway number only for first contact).",
-      "version": "0.1.0"
+      "version": "0.2.0"
     }
   ]
 }

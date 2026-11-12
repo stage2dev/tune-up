@@ -53,6 +53,10 @@ _spec = importlib.util.spec_from_file_location("tune_up_vendas_voz", os.path.joi
     os.path.abspath(__file__)), "abas", "voz.py"))
 voz = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(voz)
+_spec = importlib.util.spec_from_file_location("tune_up_vendas_arquivo", os.path.join(os.path.dirname(
+    os.path.abspath(__file__)), "arquivo.py"))
+_arquivo = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_arquivo)
 pasta = cliente.pasta
 VIVO_S = cliente.VIVO_S
 porta_do_painel = cliente.porta_do_painel
@@ -71,7 +75,7 @@ INFO = {
     "titulo": "Vendas",
     "icone": "pessoas",
     "acoes": ["modo_webhook", "conectar_instancia", "abrir_conversa", "enviar_mensagem", "assumir_conversa",
-              "devolver_ia", "liberar_saida", "reenviar_envio", "descartar_envio"] + list(conversas.ACOES_RASCUNHO)
+              "devolver_ia", "liberar_saida", "reenviar_envio", "descartar_envio", "midia_baixar_de_novo"] + list(conversas.ACOES_RASCUNHO)
              + ["ia_automatico_conversa", "ia_rascunho_conversa"] + list(ia.ACOES) + list(leads.ACOES) + list(disparos.ACOES)
              + list(candidatos.ACOES) + list(buscador.ACOES) + list(places.ACOES) + list(voz.ACOES),
     "negar": [
@@ -108,6 +112,11 @@ def ler_webhook(raiz, base=None):
             "invalidos": numero("webhook_invalidos"), "seguidos": numero("webhook_validos_seguidos")}
 
 
+def arquivo(ctx, ref, base=None):
+    """Bytes de uma mídia de mensagem para o painel (ref 'm:<id>'); a lógica está em arquivo.py."""
+    return _arquivo.ler(ctx, cliente, ref, base)
+
+
 def comando(ctx):
     raiz = (ctx or {}).get("raiz") or "<raiz do projeto>"
     return "%s -B %s --projeto %s --painel http://127.0.0.1:%s" % (
@@ -126,7 +135,7 @@ def agir(ctx, acao, dados, base=None):
     if acao == "conectar_instancia":
         return conexao.agir_conectar(ctx, cliente, dados, base)
     if acao in ("abrir_conversa", "enviar_mensagem", "assumir_conversa", "devolver_ia", "liberar_saida",
-                "reenviar_envio", "descartar_envio", "ia_automatico_conversa", "ia_rascunho_conversa") \
+                "reenviar_envio", "descartar_envio", "midia_baixar_de_novo", "ia_automatico_conversa", "ia_rascunho_conversa") \
             or acao in conversas.ACOES_RASCUNHO:
         return conversas.agir(ctx, cliente, acao, dados, base)
     if acao in ia.ACOES:

@@ -57,7 +57,7 @@ class TesteCaixa(Conversas):
 
     def test_audio_aparece_pelo_tipo_na_previa(self):
         banco.registrar_mensagem(self.con, self.joao, "entrada", None, id_externo="aud1", tipo="audio")
-        self.assertEqual(self.linha(self.joao)["detalhe"], "[áudio]")
+        self.assertEqual(self.linha(self.joao)["detalhe"], "Áudio")
         self.assertEqual(self.linha(self.joao)["nao_lidas"], 2)
 
     def test_nome_do_whatsapp_quando_nao_ha_nome(self):

@@ -42,9 +42,9 @@ def _form_entender(e):
     minuto = e.get("preco_minuto")
     atual = "Preço atual: US$ %s por minuto. " % minuto if minuto else "Sem preço: a IA não transcreve. "
     return {"tipo": "formulario", "id": "ia_entender", "titulo": "Áudios e imagens do lead",
-            "descricao": "Sim: a IA ouve o áudio (transcrição pela OpenAI) e vê a imagem antes de responder; o gasto "
-                         "entra no mesmo teto diário. Não: a conversa fica \"precisa de você\". Documento nunca vai "
-                         "para a IA.", "acao": "ia_entender", "botao": "Salvar", "campos": [
+            "descricao": "Sim: a IA ouve o áudio (transcrição pela OpenAI) e vê a imagem antes de responder. Não: a "
+                         "conversa fica \"precisa de você\". Documento nunca vai para a IA. Ouvir áudio e ler imagem "
+                         "contam no teto diário de gasto da IA (o mesmo das respostas).", "acao": "ia_entender", "botao": "Salvar", "campos": [
                 _sim_nao("audio", "IA entende áudios", e.get("audio")),
                 _sim_nao("imagem", "IA entende imagens", e.get("imagem")),
                 {"id": "modelo_transcricao", "rotulo": "Modelo de transcrição", "tipo": "texto", "obrigatorio": True,

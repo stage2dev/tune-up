@@ -9,6 +9,10 @@ _spec = importlib.util.spec_from_file_location("tune_up_vendas_motivos", os.path
 motivos = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(motivos)
 motivo_pt = motivos.motivo_pt
+_spec = importlib.util.spec_from_file_location("tune_up_vendas_midia_blocos", os.path.join(os.path.dirname(
+    os.path.abspath(__file__)), "midia_blocos.py"))
+midia_blocos = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(midia_blocos)
 
 MAX_INCERTOS = 10   # botões na tela; o resto aparece depois que estes forem decididos
 ESTADOS_NOTA = ("negado", "falhou", "incerto")
@@ -78,7 +82,7 @@ def _nome(c):
 
 
 def _linha(c, aberta_id):
-    item = {"id": str(c["id"]), "titulo": _nome(c), "detalhe": c.get("ultima") or "Sem mensagens",
+    item = {"id": str(c["id"]), "titulo": _nome(c), "detalhe": midia_blocos.previa(c) or c.get("ultima") or "Sem mensagens",
             "quando": relativo(c.get("quando")), "ativa": c["id"] == aberta_id}
     if c.get("nao_lidas"):
         item["nao_lidas"] = c["nao_lidas"]
@@ -93,6 +97,8 @@ def _mensagens(r):
         item = {"id": m["id"], "de": m["de"], "texto": m["texto"], "quando": _quando(m["quando"])}
         if m.get("tipo") and m["tipo"] != "texto":
             item["tipo"] = m["tipo"]
+        if midia_blocos.da_mensagem(m):
+            item["midia"] = midia_blocos.da_mensagem(m)
         if isinstance(m.get("transcricao"), str) and m["transcricao"]:   # o que a IA entendeu do áudio
             item["transcricao"] = m["transcricao"]
         if m["de"] != "contato" and m.get("estado"):

@@ -117,9 +117,9 @@ def endereco(ctx, base=None, agora=None):
     return url
 
 
-def chamar(ctx, metodo, caminho, corpo=None, base=None, tempo=None):
-    """Confere o serviço deste projeto, pega o token pela origem do painel e faz o pedido. Devolve (código, JSON).
-    Recusa com mensagem clara em qualquer falha antes do pedido. O token nunca sai daqui."""
+def _acesso(ctx, base=None):
+    """(url do serviço deste projeto, cabeçalho com o token). Confere projeto, batimento e marca antes de pedir o
+    token; o token nunca sai daqui."""
     url = endereco(ctx, base)
     try:
         codigo, r = pedir("GET", url + "/token-de-envio", {"Origin": "http://127.0.0.1:%d" % porta_do_painel(ctx)})
@@ -128,7 +128,13 @@ def chamar(ctx, metodo, caminho, corpo=None, base=None, tempo=None):
                          "painel." % codigo)
     except (OSError, ValueError):
         raise Recusa(SEM_RESPOSTA)
-    cab = {"X-Vendas-Token": r["token"]}
+    return url, {"X-Vendas-Token": r["token"]}
+
+
+def chamar(ctx, metodo, caminho, corpo=None, base=None, tempo=None):
+    """Confere o serviço deste projeto, pega o token pela origem do painel e faz o pedido. Devolve (código, JSON).
+    Recusa com mensagem clara em qualquer falha antes do pedido. O token nunca sai daqui."""
+    url, cab = _acesso(ctx, base)
     if corpo is not None:
         cab["Content-Type"] = "application/json"
     try:
@@ -137,4 +143,26 @@ def chamar(ctx, metodo, caminho, corpo=None, base=None, tempo=None):
         # tempo esgotado com o serviço vivo: o pedido pode estar no meio (envio esperando o conector), não parado
         if _tempo_esgotado(e) and _batimento_fresco(ctx["raiz"], base):
             raise Recusa(PROCESSANDO)
+        raise Recusa(SEM_RESPOSTA)
+
+
+def baixar(ctx, caminho, limite, base=None):
+    """GET de um arquivo do serviço, lido em blocos e parado em limite + 1 bytes (quem recebe vê que passou do
+    teto). Devolve (código, cabeçalhos em minúsculas, bytes); em erro os bytes vêm vazios."""
+    url, cab = _acesso(ctx, base)
+    abridor = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with abridor.open(urllib.request.Request(url + caminho, headers=cab), timeout=TEMPO_REDE_S) as r:
+            partes, lidos = [], 0
+            while lidos <= limite:
+                bloco = r.read(min(64 * 1024, limite + 1 - lidos))
+                if not bloco:
+                    break
+                partes.append(bloco)
+                lidos += len(bloco)
+            return r.status, {k.lower(): v for k, v in r.getheaders()}, b"".join(partes)
+    except urllib.error.HTTPError as e:
+        e.close()
+        return e.code, {}, b""
+    except (OSError, ValueError):
         raise Recusa(SEM_RESPOSTA)

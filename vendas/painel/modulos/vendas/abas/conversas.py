@@ -138,6 +138,15 @@ def agir(ctx, cliente, acao, dados, base=None):
         return _resposta_envio(codigo, r, "Mensagem reenviada (a mesma, sem duplicar).")
     if acao in ACOES_RASCUNHO:
         return _agir_rascunho(ctx, cliente, acao, dados, base)
+    if acao == "midia_baixar_de_novo":
+        midia = _inteiro(dados.get("midia_id"))
+        if midia is None:
+            return {"ok": False, "mensagem": "Arquivo inválido."}
+        codigo, r = _chamar(ctx, cliente, "POST", "/midia/%d/baixar-de-novo" % midia, {}, base)
+        if codigo is None:
+            return {"ok": False, "mensagem": r}
+        return {"ok": True, "mensagem": "Baixando de novo. Atualize a tela em alguns segundos."} if codigo == 202 \
+            else {"ok": False, "mensagem": str(r.get("erro") or "O serviço recusou (%d)." % codigo)}
     conversa = _inteiro(dados.get("conversa_id"))
     if conversa is None:
         return {"ok": False, "mensagem": "Escolha uma conversa."}

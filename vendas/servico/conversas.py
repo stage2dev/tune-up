@@ -61,6 +61,12 @@ def listar(con, query, agora=None):
         "(SELECT texto FROM mensagens m WHERE m.conversa_id = c.id ORDER BY m.id DESC LIMIT 1) AS ultima, "
         "(SELECT tipo FROM mensagens m WHERE m.conversa_id = c.id ORDER BY m.id DESC LIMIT 1) AS ultima_tipo, "
         "(SELECT criado_em FROM mensagens m WHERE m.conversa_id = c.id ORDER BY m.id DESC LIMIT 1) AS ultima_em, "
+        "(SELECT d.duracao_s FROM mensagens m LEFT JOIN midias d ON d.mensagem_id = m.id WHERE m.conversa_id = c.id "
+        "ORDER BY m.id DESC LIMIT 1) AS ultima_duracao_s, "
+        "(SELECT d.nome_arquivo FROM mensagens m LEFT JOIN midias d ON d.mensagem_id = m.id WHERE m.conversa_id = c.id "
+        "ORDER BY m.id DESC LIMIT 1) AS ultima_nome, "
+        "(SELECT m.transcricao FROM mensagens m LEFT JOIN midias d ON d.mensagem_id = m.id WHERE m.conversa_id = c.id "
+        "ORDER BY m.id DESC LIMIT 1) AS ultima_transcricao, "
         "(SELECT MAX(m.id) FROM mensagens m WHERE m.conversa_id = c.id) AS ultima_id "
         "FROM conversas c JOIN contatos k ON k.id = c.contato_id "
         "ORDER BY COALESCE(ultima_em, c.criado_em) DESC, ultima_id DESC, c.id DESC LIMIT ? OFFSET ?",
@@ -72,7 +78,8 @@ def listar(con, query, agora=None):
             "conversas": [
         {"id": r["id"], "nome": r["nome"], "nome_exibido": r["nome"] or r["nome_whatsapp"],
          "telefone_mascarado": mascarar(r["telefone"]), "telefone": r["telefone"], "modo": r["modo"], "ia_desligada": r["modo"] == "humano",
-         "nao_lidas": r["nao_lidas"], "ultima_tipo": r["ultima_tipo"], "precisa_de_voce": bool(r["precisa_de_voce"]),
+         "nao_lidas": r["nao_lidas"], "ultima_tipo": r["ultima_tipo"], "ultima_duracao_s": r["ultima_duracao_s"],
+         "ultima_nome": r["ultima_nome"], "ultima_transcricao": r["ultima_transcricao"], "precisa_de_voce": bool(r["precisa_de_voce"]),
          "motivo_humano": r["motivo_humano"], "saiu": r["optout_em"] is not None,
          "tem_rascunho": bool(r["tem_rascunho"]), "ia_pausada": portao._pausada(con, r["contato_id"], momento),
          "ultima": _previa(r["ultima"], r["ultima_tipo"]) if r["ultima_em"] else "", "quando": r["ultima_em"]}

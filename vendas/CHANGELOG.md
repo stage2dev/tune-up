@@ -1,5 +1,9 @@
 # CHANGELOG - tune-up-vendas
 
+## 0.2.0
+
+- Inbox with media: the Conversas tab shows lead audio (player, transcription under it), images and documents through the panel (`arquivo(ctx, ref)` in the module, refs `m:<id>` only, bytes read from this project's service with a size cap, the service token never leaves `cliente.py`). Each media message carries state (pronta, pendente, falhou, expirada), a plain pt-BR notice and, for a failed download, the closed action `midia_baixar_de_novo` (`POST /midia/<id>/baixar-de-novo`). The list preview reads "Áudio (0:12)" with the first words of the transcription, "Foto" or "Documento: name.pdf" (`GET /conversas` adds `ultima_duracao_s`, `ultima_nome`, `ultima_transcricao`). The IA tab states that transcription and image reading count in the daily cap. README section "Áudios, imagens e documentos".
+
 ## 0.1.0
 
 - Plugin skeleton: manifest, license, README, a panel module `vendas` with one tab ("Conexão") that says the service is not running, and tests. No WhatsApp code yet.
