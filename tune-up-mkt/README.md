@@ -39,7 +39,7 @@ Accepted values are `deny` and `ask` only: loosening goes down to "ask" at most,
 The guard is best effort, not a security boundary:
 
 - It runs through Python and fails open (the action goes through) when no Python 3.9+ is found or the hook times out, the same as the core plugin's guards.
-- Covered shapes include dedicated MCP servers by name (`meta-ads`, `fb-ads`, `facebook`, `instagram`, `google-ads`, ...), remote bash/workbench tools of any server, `composio.cmd`/`.exe`/quoted/path forms, and Graph API writes through PowerShell `-Method Post`/`-Body`, `requests.post`, `fetch`, `curl --json`, `wget --post-data` and httpie.
+- Covered shapes include dedicated MCP servers by name (`meta-ads`, `fb-ads`, `facebook`, `instagram`, `google-ads`, also with a suffix such as `meta-ads-mcp`, ...), remote bash/workbench tools of any server, `composio.cmd`/`.exe`/quoted/path forms, and Graph API writes through PowerShell `-Method Post`/`-Body`, `requests.post`, `fetch`, `curl --json`, `wget --post-data` and httpie.
 - Bash heredoc bodies are skipped (an unterminated marker means the whole command is read); PowerShell commands are read whole.
 - Not covered: `sh -c`/`eval` indirection, a heredoc fed to an interpreter, Python/Node files on disk, a globbed name like `mk?.json`. A server that hides tool slugs inside code is only caught by keywords. A write to an existing ad addressed only by its numeric id is treated as another Graph path (ask, not block).
 - The core `tune-up` plugin only asks (it does not deny) on writes under `~/.config/tune-up/`.

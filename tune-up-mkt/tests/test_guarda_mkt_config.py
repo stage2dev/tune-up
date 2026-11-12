@@ -74,7 +74,7 @@ class Config(Base):
 
     # M4: a config that cannot be parsed (RecursionError) never drops the deny
     def test_config_aninhada_demais_mantem_deny(self):
-        fundo = "[" * 100000 + "]" * 100000
+        fundo = "[" * 1000000 + "]" * 1000000  # past the guard's 64 MB thread stack on every version
         self.config("mkt.json", fundo)
         self.config("user.json", fundo)
         s = self.meta({"CLAUDE_PROJECT_DIR": self.raiz}, erro=True)

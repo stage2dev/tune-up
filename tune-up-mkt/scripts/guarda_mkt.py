@@ -11,6 +11,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 
 # Factory policy; mkt.json may only set "deny" or "ask" per key (never pass).
@@ -73,15 +74,20 @@ RE_CITA_META = re.compile(r"(?i)\bmeta\b|\bmetaads\b|facebook|instagram|graph\."
 # composio, composio.cmd/.exe/.ps1, 'composio', `composio, node_modules\.bin\composio, @composio/cli@x
 NOME_COMPOSIO = r"(?:^|[\s/\\;&|(])[\"'`]?(?:composio|@composio/cli)(?:\.(?:cmd|exe|ps1))?[\"'`]?(?:@\S*)?"
 RE_EXECUTE = re.compile(r"(?i)" + NOME_COMPOSIO + r"\s+execute\s+['\"]?([A-Za-z0-9_]+)")
-RE_EXECUTE_INICIO = re.compile(r"(?i)" + NOME_COMPOSIO + r"\s.*?\bexecute\b", re.S)
+# gap bounded to 300 chars of one logical line (\ or ` continuations allowed): unbounded is quadratic (hook timeout)
+RE_EXECUTE_INICIO = re.compile(r"(?i)" + NOME_COMPOSIO + r"\s(?:[\\`]\r?\n|[^\n]){0,300}?\bexecute\b")
 RE_RUN = re.compile(r"(?i)\bcomposio\s+run\b")
 RE_TOKEN_SLUG = re.compile(r"^[A-Za-z]+(_[A-Za-z0-9]+)+$")
 CHAVES_SLUG = {"tool_slug", "slug", "action", "tool", "tool_name", "toolSlug"}
 RE_BASH_ALVO = re.compile(r"(?i)composio|graph\.facebook\.com|graph\.instagram\.com")
 RE_HEREDOC = re.compile(r"(?<!<)<<(?!<)-?\s*['\"]?(\w+)['\"]?")
 # dedicated MCP servers: normalized server name -> synthetic slug prefix for the classifier
-RE_SERVIDOR_META = re.compile(r"^(meta|facebook|fb|instagram)(_?ads)?$")
-RE_SERVIDOR_GOOGLE = re.compile(r"^google_?ads$")
+# ads platform as a token anywhere (meta_ads_mcp, fb_ads_mcp_server); organic only as the whole name
+RE_SERVIDOR_ADS = re.compile(r"(?:^|_)(meta|facebook|fb|instagram)_?ads(?:_|$)")
+RE_SERVIDOR_SOCIAL = re.compile(r"^(meta|facebook|fb|instagram)$")
+RE_SERVIDOR_GOOGLE = re.compile(r"(?:^|_)google_?ads(?:_|$)")
+RE_SEGMENTO = re.compile(r"\n|;|&&|\|\|?")  # shell command segments (F4: a GET elsewhere never masks a write)
+LIMITE_JSON = 20000  # longer strings are not decoded as JSON (cost and nesting)
 
 
 def log_erro(texto):
@@ -209,8 +215,9 @@ def graph_escrita(texto):
     """Graph API with a write method: ad object = META, other path = ORGANICO."""
     if not re.search(r"(?i)graph\.(facebook|instagram)\.com", texto):
         return None
-    escrita = RE_METODO.search(texto) or RE_ESCRITA.search(texto) or (
-        (RE_DADOS.search(texto) or RE_CORPO.search(texto)) and not RE_GET.search(texto) and not RE_CURL_G.search(texto))
+    escrita = RE_METODO.search(texto) or RE_ESCRITA.search(texto) or any(
+        (RE_DADOS.search(s) or RE_CORPO.search(s)) and not RE_GET.search(s) and not RE_CURL_G.search(s)
+        for s in RE_SEGMENTO.split(texto))
     if not escrita:
         return None
     if any(RE_GRAPH_AD.search(u) for u in RE_GRAPH_URL.findall(texto)):
@@ -239,51 +246,45 @@ def classificar(texto, slugs):
     return achados
 
 
-def achatar(v, chave=None, out=None):
-    """Decoded values of tool_input, recursive; a scalar becomes `key=value`."""
-    out = [] if out is None else out
-    if isinstance(v, dict):
-        for k, x in v.items():
-            achatar(x, k, out)
-    elif isinstance(v, list):
-        for x in v:
-            achatar(x, chave, out)
-    else:
-        out.append("%s=%s" % (chave, v) if chave is not None else str(v))
+def folhas(v):
+    """(key, value) of every non-container value, depth first; iterative, so deep nesting cannot crash."""
+    pilha = [(None, v)]
+    while pilha:
+        k, x = pilha.pop()
+        if isinstance(x, dict):
+            pilha.extend(reversed(list(x.items())))
+        elif isinstance(x, list):
+            pilha.extend((k, i) for i in reversed(x))
+        else:
+            yield k, x
+
+
+def achatar(v):
+    """Decoded values of tool_input; a scalar becomes `key=value`."""
+    return ["%s=%s" % (k, x) if k is not None else str(x) for k, x in folhas(v)]
+
+
+def slugs_mcp(v):
+    """String values under the CHAVES_SLUG keys (also in lists); a JSON string is decoded (depth <= 5, short only)."""
+    out, fila = [], [(v, 0)]
+    while fila:
+        x, fundo = fila.pop()
+        for k, s in folhas(x):
+            if not isinstance(s, str):
+                continue
+            if k in CHAVES_SLUG:
+                out.append(s)
+            if fundo < 5 and len(s) <= LIMITE_JSON and s.lstrip()[:1] in ("[", "{"):
+                try:
+                    fila.append((json.loads(s), fundo + 1))
+                except Exception:  # invalid JSON, RecursionError on "[[[[..."
+                    pass
     return out
 
 
-def slugs_mcp(v, out=None, fundo=0):
-    """Values (str or list of str) of the CHAVES_SLUG keys, recursive; a JSON string is decoded (depth <= 5)."""
-    out = [] if out is None else out
-    if isinstance(v, dict):
-        for k, x in v.items():
-            if k in CHAVES_SLUG and isinstance(x, (str, list)):
-                out.extend(i for i in ([x] if isinstance(x, str) else x) if isinstance(i, str))
-            slugs_mcp(x, out, fundo)
-    elif isinstance(v, list):
-        for x in v:
-            slugs_mcp(x, out, fundo)
-    elif isinstance(v, str) and fundo < 5 and v.lstrip()[:1] in ("[", "{"):
-        try:
-            slugs_mcp(json.loads(v), out, fundo + 1)
-        except ValueError:
-            pass
-    return out
-
-
-def textos(v, out=None):
-    """Every string value of tool_input, recursive."""
-    out = [] if out is None else out
-    if isinstance(v, dict):
-        for x in v.values():
-            textos(x, out)
-    elif isinstance(v, list):
-        for x in v:
-            textos(x, out)
-    elif isinstance(v, str):
-        out.append(v)
-    return out
+def textos(v):
+    """Every string value of tool_input."""
+    return [x for _, x in folhas(v) if isinstance(x, str)]
 
 
 def slug_do_servidor(nome):
@@ -294,11 +295,12 @@ def slug_do_servidor(nome):
     srv = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", "__".join(partes[1:-1])).lower()
     srv = re.sub(r"^(claude_ai_|plugin_[^_]+_)", "", srv)
     srv = re.sub(r"[^a-z0-9]+", "_", srv).strip("_")
-    if RE_SERVIDOR_GOOGLE.match(srv):
+    if RE_SERVIDOR_GOOGLE.search(srv):
         prefixo = "GOOGLEADS"
-    elif RE_SERVIDOR_META.match(srv):
-        # "ads" in the name = ad object (write verbs deny); plain facebook/instagram/meta = organic
-        prefixo = "METAADS" if "ads" in srv else ("INSTAGRAM" if srv == "instagram" else "FACEBOOK")
+    elif RE_SERVIDOR_ADS.search(srv):  # ad objects: write verbs deny
+        prefixo = "METAADS"
+    elif RE_SERVIDOR_SOCIAL.match(srv):  # plain facebook/instagram/meta = organic
+        prefixo = "INSTAGRAM" if srv == "instagram" else "FACEBOOK"
     else:
         return None
     ferramenta = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", partes[-1])
@@ -307,6 +309,8 @@ def slug_do_servidor(nome):
 
 def execute_em(cmd):
     """(slugs after `composio ... execute`, True when the command has an execute without a readable slug)."""
+    if "execute" not in cmd.lower():
+        return [], False
     slugs = RE_EXECUTE.findall(cmd) + slugs_execute(cmd)
     return slugs, bool(RE_EXECUTE_INICIO.search(cmd)) and not slugs
 
@@ -317,6 +321,9 @@ def achados_da_chamada(nome, ti):
         cmd = ti.get("command") if isinstance(ti, dict) else None
         bruto = cmd if isinstance(cmd, str) else ""
         base = bruto if nome == "PowerShell" else sem_heredoc(bruto)  # PowerShell has no << heredoc
+        cedo = [g for g in [graph_escrita(bruto)] if g]
+        if bloqueia(cedo):  # certain deny first: the heavier scans below cannot time it out
+            return cedo
         texto = base if RE_BASH_ALVO.search(base) else ""
         lista, ilegivel = execute_em(base)
         slugs = "\n".join(lista)
@@ -330,19 +337,23 @@ def achados_da_chamada(nome, ti):
         return [MKT_JSON] if any(isinstance(c, str) and RE_MKT_JSON.search(c) for c in caminhos) else []
     elif nome.startswith("mcp__"):
         sintetico = slug_do_servidor(nome)
-        if not sintetico and not RE_FILTRO_MCP.search(nome) and not RE_FILTRO_MCP.search(
-                json.dumps(ti, ensure_ascii=False)):
+        if not sintetico and not RE_FILTRO_MCP.search(nome) and not filtro_mcp(ti):
             return []
         bruto = "\n".join(achatar(ti))
         ferramenta = nome.rsplit("__", 1)[-1]
         texto = ferramenta + "\n" + bruto
         remoto = bool(RE_REMOTO.search(nome))
+        chaves = [] if remoto else [ferramenta, sintetico or ""] + slugs_mcp(ti)
+        if not remoto:  # certain deny first: tool name, slug keys, Graph write
+            cedo = [g for g in [graph_escrita(bruto)] if g] + classificar(texto, "\n".join(chaves))
+            if bloqueia(cedo):
+                return cedo
         lista, ilegiveis = [], False
         for t in textos(ti):
             s, i = execute_em(t)
             lista += s
             ilegiveis = ilegiveis or i
-        slugs = "\n".join(([texto] if remoto else [ferramenta] + slugs_mcp(ti)) + lista + [sintetico or ""])
+        slugs = "\n".join(([texto] if remoto else chaves) + lista + [sintetico or ""])
         extra = [ORGANICO] if remoto and RE_CITA_META.search(bruto) else []
         if remoto and ilegiveis:
             extra.append(ILEGIVEL)
@@ -350,6 +361,19 @@ def achados_da_chamada(nome, ti):
         return []
     g = graph_escrita(bruto)
     return ([g] if g else []) + (classificar(texto, slugs) if texto else []) + extra
+
+
+def filtro_mcp(ti):
+    """True when tool_input mentions a marketing platform; an unserializable input is scanned anyway."""
+    try:
+        return bool(RE_FILTRO_MCP.search(json.dumps(ti, ensure_ascii=False)))
+    except Exception:  # RecursionError on very deep nesting: never skip the scan
+        return True
+
+
+def bloqueia(achados):
+    r = decidir(achados)
+    return bool(r) and r[0] == "bloquear"
 
 
 def decidir(achados):
@@ -381,8 +405,8 @@ def razao(msg, afrouxado):
 def main():
     try:
         d = json.loads(sys.stdin.read())
-    except ValueError:
-        log_erro("stdin is not JSON")
+    except Exception as e:  # ValueError, or RecursionError past the raised limit
+        log_erro("stdin is not JSON: %s" % type(e).__name__)
         return
     try:
         if not isinstance(d, dict):
@@ -403,9 +427,24 @@ def main():
         log_erro("%s: %s" % (type(e).__name__, e))
 
 
+def em_pilha_grande():
+    """main() on a thread with a 64 MB stack and a 10000 recursion limit: the stdin JSON of a deeply nested
+    tool_input (Python < 3.12 stops at 1000 levels) still parses, without overflowing the C stack."""
+    try:
+        sys.setrecursionlimit(max(sys.getrecursionlimit(), 10000))
+        threading.stack_size(64 * 1024 * 1024)
+        t = threading.Thread(target=main)
+        t.start()
+    except Exception:  # no thread available: run inline with the default limit
+        sys.setrecursionlimit(1000)
+        main()
+        return
+    t.join()
+
+
 if __name__ == "__main__":
     try:
-        main()
+        em_pilha_grande()
     except BaseException:
         pass
     sys.exit(0)
