@@ -28,7 +28,7 @@ class TesteEsqueleto(unittest.TestCase):
         with open(os.path.join(VENDAS, ".claude-plugin", "plugin.json"), encoding="utf-8") as f:
             p = json.load(f)
         self.assertEqual(p["name"], "tune-up-vendas")
-        self.assertEqual(p["version"], "0.2.0")
+        self.assertEqual(p["version"], "0.3.0")
         self.assertEqual(p["license"], "MIT")
         self.assertTrue(p["description"].isascii() and p["description"])
 

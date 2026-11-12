@@ -24,8 +24,8 @@ class TravaOcupada(RuntimeError):
 class TravaDoProcesso:
     """Trava exclusiva NÃO bloqueante, mantida enquanto o processo vive. Ocupada = TravaOcupada na hora."""
 
-    def __init__(self, pasta_dados):
-        self.caminho = os.path.join(pasta_dados, ARQUIVO_TRAVA)
+    def __init__(self, pasta_dados, arquivo=ARQUIVO_TRAVA):
+        self.caminho = os.path.join(pasta_dados, arquivo)
         self.fd = None
 
     def pegar(self):

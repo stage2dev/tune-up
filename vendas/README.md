@@ -24,7 +24,7 @@ Status: 0.1.0 is a skeleton. The screen has one tab, "Conexão", that says wheth
 
 ## Starting the service
 
-The service starts **only** by an owner command typed in a terminal. It never starts from a Claude session, from a panel action or from a hook. The panel screen shows the command to copy. The deny rules below make a session unable to start it or to reach it.
+The service starts **only** by an owner command typed in a terminal (this one, or the one-step setup below, which starts it detached). It never starts from a Claude session, from a panel action or from a hook. The panel screen shows the command to copy. The deny rules below make a session unable to start it or to reach it.
 
 ```
 python3 -B <plugin folder>/servico/servico.py --projeto <project root> [--porta 8791] [--painel http://127.0.0.1:8787]
@@ -114,6 +114,33 @@ Audio, images and documents that a lead sends are downloaded and shown in the Co
 The panel tab "Voz" (`painel/modulos/vendas/abas/voz.py`) shows the state (ffmpeg, key last 4, voice, consent, characters today / cap), pastes/replaces/deletes the key (delete needs confirmation), picks the voice from `GET /voz/vozes` (the account's `/v1/voices`, cached 10 min per key; when the list is slow or fails the tab keeps working with a free-text voice id), records the consent form, and has the button "send test audio to my number". The test route never takes a number: the owner number is set only by its own form (`POST /voz/dono`, needs confirmation, refuses a number that is already a contact, shows only the last 4 digits) and a number in the action body is ignored. A voice that the account list labels `cloned` or `professional` is saved and treated as cloned even if the form says it is not.
 
 Decision on cloned voices (plan question Q5, taken by the coordinator while the owner was away; the owner can change it): the default voice is a **catalog voice** of the user's ElevenLabs account (no clone, no disclosure). A voice marked as cloned (`clonada`) only turns on after a recorded consent of the voice's owner (name, date and text, stored in the database for that voice id; another voice id needs its own consent), and every audio made with it starts with the spoken sentence "Mensagem de voz gerada por IA.", because the ElevenLabs usage policy requires disclosure when its absence would mislead. There is no switch to remove the disclosure from a cloned voice.
+
+## One-step setup (Docker, Evolution and the service)
+
+Instead of the three manual steps (prepare the Evolution files, `docker compose up -d`, start the service), the owner can run one command:
+
+```
+python3 -B <plugin folder>/servico/preparo.py rodar   --projeto <project root> [--painel http://127.0.0.1:8787] [--porta 8791] [--porta-evolution 8080]
+python3 -B <plugin folder>/servico/preparo.py iniciar --projeto <project root> [same options]   # same run, detached; returns at once
+python3 -B <plugin folder>/servico/preparo.py estado  --projeto <project root>                  # last run's state as JSON
+```
+
+Nothing is installed when the plugin is installed: installing Docker downloads gigabytes and, on some systems, asks for a password, so running this command is the consent. It runs five steps in order. Each one checks first and does nothing when it is already satisfied, so running it again is safe and resumes at the first step that is not done:
+
+1. `docker_instalado`: finds `docker` and a compose (`docker compose`, else `docker-compose`) on `PATH` plus the usual locations (`/opt/homebrew/bin`, `/usr/local/bin`, Docker Desktop's `resources\bin` on Windows). When missing:
+   - **macOS**: `brew install colima docker docker-compose` (no `sudo`). Without Homebrew it stops with "needs the owner" and shows the official one-line Homebrew install command to paste in a terminal; it never pipes a download into a shell itself.
+   - **Windows**: `winget install -e --id Docker.DockerDesktop --accept-package-agreements --accept-source-agreements`; without `winget`, the official download page. Windows may ask for confirmation and a restart, and Docker Desktop needs a paid licence for larger companies (the state says so).
+   - **Linux**: never runs `sudo`. It shows the distribution's package command to paste (from `/etc/os-release`: Ubuntu `docker.io docker-compose-v2`, Debian `docker.io docker-compose`, Fedora `moby-engine docker-compose`, Arch `docker docker-compose`, each followed by `systemctl enable --now docker` and `usermod -aG docker $USER`), or the official install guide for other distributions.
+2. `docker_ligado`: `docker info` answers; otherwise `colima start` (macOS with colima), `open -a Docker` (macOS with Docker Desktop) or Docker Desktop (Windows), then waits up to 4 minutes. On Linux it shows `sudo systemctl start docker`.
+3. `evolution_preparada`: calls `evolution_local.preparar` (never `--refazer`; an existing `.env` is left untouched). A default port taken by another program is replaced by a free one, recorded in the state.
+4. `evolution_no_ar`: `compose -f <data folder>/evolution/compose.yml pull`, then `up -d`, then waits up to 5 minutes for the Evolution to answer on `127.0.0.1`. A failure keeps the last lines of the compose output.
+5. `servico_ligado`: done when the service lock shows a service running for this project; otherwise starts `servico.py` detached with the same Python and waits up to 60 s for `GET /saude` with this project's marker. Its output goes to `servico.log` in the data folder.
+
+State and log: `preparo.json` and `preparo.log` (both 0600) in the external data folder, never in the project. The state has the run id, pid, start/update/end times, the overall state and, per step, `estado` (`pendente`, `rodando`, `feito`, `falhou`, `precisa_do_dono`), a plain pt-BR message, the command to paste (only for `precisa_do_dono`) and a short detail. One run per project (non-blocking lock `preparo.trava`): `rodar` exits with code 3 while another run is alive, and `iniciar` returns the running one. A run whose process died is reported as `interrompido`, and the next run resumes. `rodar` exits 0 when every step is done and 1 when it stopped at a step.
+
+What it never does: run `sudo`, use a shell or interpolate user data into a command (every command is an argument list with an absolute path and a timeout), `docker compose down`, remove volumes or containers, log out or delete a WhatsApp instance, overwrite the Evolution `.env`, retry forever. The Evolution API key and the Postgres password are masked (`***`) in the state, the log and the terminal output.
+
+Not verified on real machines: the Homebrew, winget and colima installs and starts are covered by tests with fake commands only.
 
 ## Local Evolution API (Docker)
 

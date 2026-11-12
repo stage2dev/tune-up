@@ -1,5 +1,9 @@
 # CHANGELOG - tune-up-vendas
 
+## 0.3.0 (unreleased)
+
+- One-step setup `servico/preparo.py` (`rodar`, `iniciar` detached, `estado` as JSON; helpers `preparo_sistema.py`, `preparo_docker.py`, `preparo_evolution.py`): five resumable steps that check before acting - find or install Docker (macOS `brew install colima docker docker-compose`, Windows `winget` Docker Desktop, Linux and a missing Homebrew = a command for the owner to paste, never `sudo`), start Docker (`colima start`, Docker Desktop) with a bounded wait, prepare the Evolution files (never `--refazer`, existing `.env` untouched, a taken default port replaced by a free one), `compose pull` + `up -d` and wait for the Evolution on `127.0.0.1` (never `down` or volume removal), and start the sales service detached and wait for its `/saude`. State `preparo.json` and log `preparo.log` (0600) in the external data folder with per-step state, plain pt-BR message and command; one run per project (`preparo.trava`), a dead run is `interrompido` and the next run resumes; the Evolution key and Postgres password are masked everywhere. `travas.TravaDoProcesso` takes an optional lock file name.
+
 ## 0.2.0
 
 - Inbox with media: the Conversas tab shows lead audio (player, transcription under it), images and documents through the panel (`arquivo(ctx, ref)` in the module, refs `m:<id>` only, bytes read from this project's service with a size cap, the service token never leaves `cliente.py`). Each media message carries state (pronta, pendente, falhou, expirada), a plain pt-BR notice and, for a failed download, the closed action `midia_baixar_de_novo` (`POST /midia/<id>/baixar-de-novo`). The list preview reads "Áudio (0:12)" with the first words of the transcription, "Foto" or "Documento: name.pdf" (`GET /conversas` adds `ultima_duracao_s`, `ultima_nome`, `ultima_transcricao`). The IA tab states that transcription and image reading count in the daily cap. README section "Áudios, imagens e documentos".
