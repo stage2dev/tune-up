@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.join(STUDIO, "scripts"))
 sys.path.insert(0, HERE)
 
 import qa_video  # noqa: E402
+from test_qa_atencao import VIDEO, escrever, projeto, video_html  # noqa: E402
 from test_qa_imagem import bound, clean_check, record_snapshot  # noqa: E402
 
 FIXTURES = os.path.join(HERE, "fixtures")
@@ -75,7 +76,8 @@ class VideoChecks(unittest.TestCase):
             "-f", "lavfi", "-i", "color=black:size=%dx%d:rate=30:duration=1" % (W, H)] + self.moving(1),
             ["-filter_complex", "[0:v][1:v][2:v]concat=n=3:v=1:a=0"])
         rep = self.report(video)
-        self.assertEqual(self.failed(rep), ["blackdetect"])
+        # freezedetect looks for 1.0 s now (was 1.2 s): one second of black is also one second frozen
+        self.assertEqual(self.failed(rep), ["blackdetect", "freezedetect"])
 
     def test_still_frame_is_caught(self):
         video = self.make("still.mp4", ["-f", "lavfi", "-i", "color=0xF4E4C8:size=%dx%d:rate=30:duration=3" % (W, H)])
@@ -185,6 +187,38 @@ class VideoChecks(unittest.TestCase):
         os.remove(os.path.join(self.source, ".hyperframes", "video-state.json"))
         self.assertEqual(self.failed(self.report(video)), ["brand_font"])
 
+    def test_short_still_is_caught(self):
+        """1.5 s with nothing moving fails: something changes about every second (ritmo.md)."""
+        video = self.make("parado.mp4", ["-f", "lavfi", "-i", "color=0xF4E4C8:size=%dx%d:rate=30:duration=1.5" % (W, H)]
+                          + ["-f", "lavfi", "-i", "testsrc2=size=%dx%d:rate=30:duration=1.5" % (W, H)],
+                          ["-filter_complex", "[0:v][1:v]concat=n=2:v=1[v]", "-map", "[v]"])
+        self.assertEqual(self.failed(self.report(video)), ["freezedetect"])
+
+    def test_occupancy_of_each_scene(self):
+        cenas = [(0, 1.5), (1.5, 2.5), (4, 2.5), (6.5, 3.5)]
+        cheio = self.make("cheio.mp4", self.moving(10))
+        self.assertTrue(qa_video.check_occupancy(cheio, FFMPEG, cenas, W, H)["ok"])
+        vazio = self.make("vazio.mp4", ["-f", "lavfi", "-i", "color=0xF4E4C8:size=%dx%d:rate=30:duration=10" % (W, H)])
+        rep = qa_video.check_occupancy(vazio, FFMPEG, cenas, W, H)
+        self.assertFalse(rep["ok"])
+        self.assertEqual([d.split(":")[0] for d in rep["details"]], ["cena 1", "cena 2", "cena 3", "cena 4"])
+
+    def test_default_sheet_every_half_second_and_cut_sheet(self):
+        video = self.make("ok.mp4", self.moving())
+        sheet = os.path.join(self.tmp, "folha.png")
+        with open(os.devnull, "w") as devnull:
+            old, sys.stdout = sys.stdout, devnull
+            try:
+                qa_video.main(["--source", self.source, "--video", video, "--width", str(W), "--height", str(H),
+                               "--duration", "3", "--sheet", sheet, "--atencao"])
+            finally:
+                sys.stdout = old
+        with open(sheet, "rb") as f:
+            self.assertEqual(struct.unpack(">II", f.read(24)[16:24]), (5 * 216, 2 * 384))  # 0, 0.25 ... 2.75: 7
+        with open(os.path.join(self.tmp, "folha_cortes.png"), "rb") as f:  # the example's cut at 1.5 s
+            self.assertEqual(struct.unpack(">II", f.read(24)[16:24]), (2 * 216, 384))
+        self.assertEqual(qa_video.cut_times([(0, 1.5), (1.5, 2.5), (4, 2.5)], 10), [1.15, 1.85, 3.65, 4.35])
+
     def test_sheet_frames_at_given_times(self):
         video = self.make("ok.mp4", self.moving())
         sheet = os.path.join(self.tmp, "folha.png")
@@ -233,6 +267,33 @@ class Pure(unittest.TestCase):
         for rx in ([("gsap", qa_video.GSAP_RE)], qa_video.NETWORK_PATTERNS,
                    [("allow", qa_video.LAYOUT_ALLOW_RE)]):
             self.assertEqual(qa_video.scan(VIDEO_SOURCE, rx, strip_xmlns=True), [])
+
+
+    def test_atencao_is_opt_in_and_checks_the_scenes(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            work = projeto(tmp)
+
+            def checks(html, engine="hyperframes", atencao=True):
+                fonte = os.path.dirname(escrever(os.path.join(work, "fonte", "index.html"), html))
+                rep = qa_video.run(fonte, "/nonexistent.mp4", None, 1080, 1920, 10.0, 30.0, FFMPEG or "ffmpeg",
+                                   FFPROBE or "ffprobe", engine, atencao=atencao)
+                return {c["name"]: c["ok"] for c in rep["checks"]}
+            self.assertNotIn("gancho", checks(VIDEO, atencao=False))
+            verde = checks(VIDEO)
+            for nome in ("estrategia", "cenas", "gancho", "palavras_cena", "fonte_minima", "cores_marca",
+                         "cta_final", "sequencia_layout", "transicoes", "tiques", "numeros"):
+                self.assertTrue(verde[nome], nome)
+            some = video_html(a=("#s1_titulo { top: 400px; font-size: 120px; animation: assenta",
+                                 "#s1_titulo { top: 400px; font-size: 120px; animation: sobe"))  # opacity 0 at 0%
+            self.assertFalse(checks(some)["gancho"])
+            self.assertFalse(checks(video_html(a=('class="clip l-cheia"', 'class="clip l-base"')))["sequencia_layout"])
+            self.assertFalse(checks(video_html(a=(">link na bio<", ">(11) 99999-0000<")))["cta_final"])
+            mesma = video_html(a=("#tr2 { animation: iris", "#tr2 { animation: painel"))
+            self.assertFalse(checks(mesma)["transicoes"])
+            self.assertNotIn("transicoes", checks(mesma, engine="reserve"))
+        finally:
+            shutil.rmtree(tmp)
 
 
 if __name__ == "__main__":

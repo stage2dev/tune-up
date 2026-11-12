@@ -1,0 +1,38 @@
+<svg viewBox="0 0 1000 1000">
+  <g id="h_corpo">
+    <!-- bagagem no teto: o detalhe do briefing (férias) -->
+    <rect class="t" x="236" y="372" width="420" height="16" rx="8"/>
+    <rect class="t" x="292" y="384" width="16" height="26"/><rect class="t" x="580" y="384" width="16" height="26"/>
+    <rect class="a" x="262" y="262" width="214" height="112" rx="18"/>
+    <rect class="t" x="262" y="306" width="214" height="14"/>
+    <rect class="t" x="330" y="240" width="78" height="30" rx="12"/><rect class="a" x="344" y="252" width="50" height="18"/>
+    <rect class="s" x="492" y="298" width="150" height="76" rx="16"/>
+    <rect class="p" x="524" y="298" width="14" height="76"/><rect class="p" x="596" y="298" width="14" height="76"/>
+    <path class="lt" stroke-width="10" d="M300 262 L300 374 M438 262 L438 374"/>
+    <!-- carroceria em dois tons -->
+    <path class="p" d="M70 770 L70 612 Q70 574 104 560 L196 436 Q214 404 252 404 L628 404 Q664 404 686 430 L782 552 L886 576 Q934 588 934 636 L934 770 Z"/>
+    <path class="t" d="M70 716 L934 716 L934 756 Q934 786 904 786 L100 786 Q70 786 70 756 Z"/>
+    <path class="s" d="M238 446 L616 446 Q642 446 658 466 L722 548 L176 548 Z"/>
+    <path class="b" d="M560 446 L616 446 Q642 446 658 466 L722 548 L640 548 Z"/>
+    <rect class="p" x="438" y="446" width="24" height="102"/>
+    <path class="lt" stroke-width="6" d="M450 548 L450 716 M176 572 L880 572"/>
+    <rect class="t" x="486" y="600" width="64" height="16" rx="8"/><rect class="t" x="232" y="600" width="64" height="16" rx="8"/>
+    <path class="a" d="M934 612 L934 660 L892 660 Q878 660 878 646 L878 626 Q878 612 892 612 Z"/>
+    <rect class="a" x="70" y="606" width="26" height="58" rx="8"/>
+    <rect class="s" x="900" y="728" width="50" height="26" rx="10"/><rect class="s" x="54" y="728" width="50" height="26" rx="10"/>
+    <!-- caixas de roda -->
+    <path class="t" d="M152 786 A118 118 0 0 1 388 786 Z"/><path class="t" d="M612 786 A118 118 0 0 1 848 786 Z"/>
+  </g>
+  <g transform="translate(270 802)"><g id="h_gira1">
+    <circle class="t" r="98"/><circle class="s" r="60"/><circle class="p" r="20"/>
+    <path class="lp" stroke-width="12" d="M0 -56 L0 56 M-56 0 L56 0 M-40 -40 L40 40 M-40 40 L40 -40"/>
+  </g></g>
+  <g transform="translate(730 802)"><g id="h_gira2">
+    <circle class="t" r="98"/><circle class="s" r="60"/><circle class="p" r="20"/>
+    <path class="lp" stroke-width="12" d="M0 -56 L0 56 M-56 0 L56 0 M-40 -40 L40 40 M-40 40 L40 -40"/>
+  </g></g>
+  <!-- a prova: selos de conferido saltam no payoff -->
+  <g transform="translate(730 640)"><g id="h_depois1"><circle class="t" cx="6" cy="6" r="64"/><circle class="a" r="64"/><path class="lt" stroke-width="18" d="M-28 2 L-8 24 L30 -22"/></g></g>
+  <g transform="translate(270 640)"><g id="h_depois2"><circle class="t" cx="6" cy="6" r="64"/><circle class="a" r="64"/><path class="lt" stroke-width="18" d="M-28 2 L-8 24 L30 -22"/></g></g>
+  <g transform="translate(596 498)"><g id="h_depois3"><circle class="t" cx="6" cy="6" r="54"/><circle class="a" r="54"/><path class="lt" stroke-width="16" d="M-24 2 L-7 20 L26 -18"/></g></g>
+</svg>
