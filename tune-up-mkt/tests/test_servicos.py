@@ -46,15 +46,23 @@ class Servicos(unittest.TestCase):
         self.assertTrue(lista, onde)
         for c in lista:
             self.assertIn(c.get("tipo"), TIPOS, onde)
+            self.assertIn(c.get("papel", "decide"), ("decide", "informa"), onde)
             if c["tipo"] == "cli":
                 self.assertIsInstance(c["alvo"], list, onde)
                 self.assertTrue(all(isinstance(a, str) for a in c["alvo"]))
                 self.assertIn(c["alvo"][0], ("claude", "composio"), onde)
+            elif c["tipo"] == "plugin":  # exact ids name@marketplace
+                self.assertIsInstance(c["alvo"], list, onde)
+                self.assertTrue(all(isinstance(a, str) and a.count("@") == 1 and not a.endswith("@")
+                                    for a in c["alvo"]), onde)
             else:
                 self.assertIsInstance(c["alvo"], str, onde)
                 self.assertTrue(c["alvo"].strip(), onde)
             if "nota" in c:
                 self.assertIsInstance(c["nota"], str, onde)
+            if "host" in c:
+                self.assertEqual(c["tipo"], "mcp", onde)
+                self.assertRegex(c["host"], r"^[a-z0-9.-]+$", onde)
 
     def test_ids_e_ordem(self):
         self.assertEqual(self.dados["versao"], 1)
@@ -76,6 +84,11 @@ class Servicos(unittest.TestCase):
             for p in s["pre_requisitos"]:
                 self.bilingue(p, i + ".pre_requisitos")
             self.checar_conferir(s["conferir"], i)
+            self.assertIn(s.get("modo", "todas"), ("todas", "qualquer"), i)
+            decide = [c for c in s["conferir"] if c["tipo"] in ("plugin", "mcp", "cli")
+                      and c.get("papel", "decide") == "decide"]
+            if any(c["tipo"] in ("plugin", "mcp", "cli") for c in s["conferir"]):
+                self.assertTrue(decide, i)
             datetime.date.fromisoformat(s["conferido_em"])
             self.assertIsInstance(s["incerto"], list, i)
             self.assertTrue(all(isinstance(x, str) and x for x in s["incerto"]))
@@ -93,6 +106,22 @@ class Servicos(unittest.TestCase):
             self.assertEqual(c["conferir"][0]["alvo"][-2:],
                              ["--toolkit", c["id"]])
         self.assertNotIn("canais", self.por_id["openseo"])
+
+    def test_quem_decide(self):
+        def papel(sid):
+            return {c["tipo"]: c.get("papel", "decide") for c in self.por_id[sid]["conferir"]}
+        self.assertEqual(papel("openseo")["mcp"], "decide")
+        self.assertEqual(papel("openseo")["plugin"], "informa")
+        self.assertEqual(self.por_id["composio"]["modo"], "qualquer")
+        self.assertEqual((papel("composio")["cli"], papel("composio")["mcp"]), ("decide", "decide"))
+        self.assertEqual(papel("anthropic_marketing"), {"plugin": "decide", "mcp": "informa"})
+        self.assertEqual(papel("claude_ads"), {"plugin": "decide"})
+        for sid in ("higgsfield", "elevenlabs"):
+            self.assertEqual(papel(sid)["mcp"], "decide", sid)
+
+    def test_doc_url_e_pagina_de_documentacao(self):
+        self.assertNotIn("mcp.", self.por_id["higgsfield"]["doc_url"])
+        self.assertFalse(self.por_id["higgsfield"]["doc_url"].endswith("/mcp"))
 
     def test_fixtures_existem_e_json_valido(self):
         for n in FIXTURES_ESPERADAS:

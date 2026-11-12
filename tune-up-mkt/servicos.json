@@ -26,7 +26,8 @@
       "autenticar": {"en": "composio login opens the browser; each app (Meta, Google, ...) is linked by its own OAuth. The MCP key, if used, is pasted by you into the Claude config; this plugin never stores it.", "pt": "O composio login abre o navegador; cada app (Meta, Google, ...) é ligado pelo seu próprio OAuth. A chave do MCP, se usada, é colada por você na config do Claude; este plugin nunca a guarda."},
       "custo_aviso": {"en": "Hobby plan: US$0, no card, 100k tool calls per month (up to 20k on managed apps); Pro is US$29/month.", "pt": "Plano Hobby: US$0, sem cartão, 100 mil chamadas por mês (até 20 mil em apps gerenciados); o Pro custa US$29 por mês."},
       "pre_requisitos": [],
-      "conferir": [{"tipo": "plugin", "alvo": "composio@"}, {"tipo": "mcp", "alvo": "composio"}, {"tipo": "cli", "alvo": ["composio", "connections", "list"], "nota": "Output is JSON keyed by toolkit; format is not documented."}],
+      "modo": "qualquer",
+      "conferir": [{"tipo": "plugin", "alvo": ["composio@composio"], "papel": "informa"}, {"tipo": "mcp", "alvo": "composio"}, {"tipo": "cli", "alvo": ["composio", "connections", "list"], "nota": "Output is JSON keyed by toolkit; format is not documented."}],
       "doc_url": "https://docs.composio.dev/docs/cli",
       "conferido_em": "2026-11-12",
       "incerto": ["Dashboard URL: the docs read do not state it.", "Output format of composio connections list is seen locally but not documented.", "CLI license inferred MIT from the monorepo; composio-plugin-cc license not found.", "Read-only tool names to prove a channel (METAADS_GET_AD_ACCOUNTS, GOOGLEADS_LIST_ACCESSIBLE_CUSTOMERS) are inferred, not verified in the docs.", "composio whoami for a human account is not documented (only composio agent whoami)."],
@@ -42,7 +43,7 @@
       "autenticar": {"en": "OAuth in the browser (default), or a personal key starting with oseo_ created in Settings > API keys and shown once. Run /mcp or claude mcp login openseo before any headless use.", "pt": "OAuth no navegador (padrão), ou uma chave pessoal que começa com oseo_, criada em Settings > API keys e mostrada uma só vez. Rode /mcp ou claude mcp login openseo antes de qualquer uso sem tela."},
       "custo_aviso": {"en": "Free plan: one-time US$0.50 credit, no card, does not renew; then Base US$10/month, Pro US$30, Agency US$100. Cost is the data provider's price plus 28%; a keyword lookup is about US$0.05. Projects, saved keywords, exports, Search Console/GA and audits without Lighthouse are free.", "pt": "Plano Free: crédito único de US$0,50, sem cartão, não renova; depois Base US$10 por mês, Pro US$30, Agency US$100. O custo é o preço do fornecedor do dado mais 28%; uma busca de palavra-chave sai por cerca de US$0,05. Projetos, palavras salvas, exportações, Search Console/GA e auditoria sem Lighthouse são grátis."},
       "pre_requisitos": [{"en": "The Claude Code plugin needs a paid Claude plan; the connector works on the free Claude plan.", "pt": "O plugin do Claude Code exige plano pago do Claude; o conector funciona no plano grátis do Claude."}],
-      "conferir": [{"tipo": "plugin", "alvo": "openseo@"}, {"tipo": "mcp", "alvo": "openseo"}, {"tipo": "ferramenta", "alvo": "*whoami*", "nota": "Zero-cost read tool, seen locally only."}],
+      "conferir": [{"tipo": "plugin", "alvo": ["openseo@openseo"], "papel": "informa"}, {"tipo": "mcp", "alvo": "openseo", "host": "app.openseo.so"}, {"tipo": "ferramenta", "alvo": "*whoami*", "nota": "Zero-cost read tool, seen locally only."}],
       "doc_url": "https://openseo.so/docs/claude-code-plugin",
       "conferido_em": "2026-11-12",
       "incerto": ["The whoami tool appears in the local tool list but is not documented.", "Whether asking to list projects uses no credits comes from a summary of the setup doc.", "The server asks confirmation before batches over 2,000 credits (from the connector instructions and a summary).", "Citation or attribution restrictions: not found (code is MIT)."]
@@ -87,7 +88,7 @@
       "autenticar": {"en": "No credential of its own; it reads exports and uses read-only adapters.", "pt": "Sem credencial própria; lê exportações e usa adaptadores só de leitura."},
       "custo_aviso": {"en": "Free, MIT license (a paid early-access tier exists only on the author's mirror).", "pt": "Grátis, licença MIT (existe acesso antecipado pago só no espelho do autor)."},
       "pre_requisitos": [{"en": "Python 3.11 or 3.12.", "pt": "Python 3.11 ou 3.12."}],
-      "conferir": [{"tipo": "plugin", "alvo": "claude-ads@"}],
+      "conferir": [{"tipo": "plugin", "alvo": ["claude-ads@ai-marketing-hub-claude-ads"]}],
       "doc_url": "https://github.com/AgriciDaniel/claude-ads",
       "conferido_em": "2026-11-12",
       "incerto": ["The author states only Linux x86_64 is qualified; macOS and Windows 'need native CI qualification'.", "README calls it a 'development candidate'.", "Skill names: not found.", "Use of /ads without a screen: not found."]
@@ -102,10 +103,10 @@
       "autenticar": {"en": "OAuth per connector through /mcp; it does not run in claude -p.", "pt": "OAuth por conector pelo /mcp; não roda em claude -p."},
       "custo_aviso": {"en": "The plugin is free; each connector follows the plan of its own service.", "pt": "O plugin é grátis; cada conector segue o plano do próprio serviço."},
       "pre_requisitos": [],
-      "conferir": [{"tipo": "plugin", "alvo": "marketing@"}, {"tipo": "mcp", "alvo": "plugin:marketing:", "nota": "Connectors listed here may need authentication; that is normal until you use one."}],
+      "conferir": [{"tipo": "plugin", "alvo": ["marketing@knowledge-work-plugins", "marketing@synced"]}, {"tipo": "mcp", "alvo": "plugin:marketing", "papel": "informa", "nota": "Connectors listed here may need authentication; that is normal until you use one."}],
       "doc_url": "https://github.com/anthropics/knowledge-work-plugins/tree/main/marketing",
       "conferido_em": "2026-11-12",
-      "incerto": ["Install commands come from a summary, not a literal read.", "License of the marketing folder not read (root is Apache-2.0 via summary).", "Connector pricing: not found.", "Whether it is also in the official marketplace: not confirmed."]
+      "incerto": ["marketing@synced (a plugin synced from the claude.ai account) was seen locally with the plugin:marketing:* connectors; that it is this same plugin is inferred.", "Install commands come from a summary, not a literal read.", "License of the marketing folder not read (root is Apache-2.0 via summary).", "Connector pricing: not found.", "Whether it is also in the official marketplace: not confirmed."]
     },
     {
       "id": "higgsfield",
@@ -117,10 +118,10 @@
       "autenticar": {"en": "OAuth in the browser; no API key.", "pt": "OAuth no navegador; sem chave de API."},
       "custo_aviso": {"en": "Needs a paid subscription and every generation spends credits, with no hard cap; plan and price not found, check the provider's pricing page.", "pt": "Exige assinatura paga e cada geração gasta créditos, sem teto rígido; plano e preço não encontrados, confira a página de preços do provedor."},
       "pre_requisitos": [{"en": "A paid Higgsfield subscription.", "pt": "Uma assinatura paga do Higgsfield."}],
-      "conferir": [{"tipo": "mcp", "alvo": "higgsfield"}, {"tipo": "manual", "alvo": "Confirm in the Higgsfield app that you are logged in and have credits."}],
-      "doc_url": "https://mcp.higgsfield.ai/mcp",
+      "conferir": [{"tipo": "mcp", "alvo": "higgsfield", "host": "mcp.higgsfield.ai"}, {"tipo": "manual", "alvo": "Confirm in the Higgsfield app that you are logged in and have credits."}],
+      "doc_url": "https://higgsfield.ai",
       "conferido_em": "2026-11-12",
-      "incerto": ["Price and exact plan: not found.", "License of the connector and CLI: not found.", "Where the login is stored: not found.", "claude mcp add by URL appeared only in a secondary source.", "Auth status command of the CLI: not found.", "Use without a screen: not found; OAuth needs a browser."]
+      "incerto": ["Documentation page: not found in the research (the help center was cited without a URL); doc_url is the home page.", "Price and exact plan: not found.", "License of the connector and CLI: not found.", "Where the login is stored: not found.", "claude mcp add by URL appeared only in a secondary source.", "Auth status command of the CLI: not found.", "Use without a screen: not found; OAuth needs a browser."]
     },
     {
       "id": "elevenlabs",
@@ -132,7 +133,7 @@
       "autenticar": {"en": "OAuth in the browser; no key. It does not run in claude -p.", "pt": "OAuth no navegador; sem chave. Não roda em claude -p."},
       "custo_aviso": {"en": "Generating speech spends credits; check the provider's pricing page for plans and API access.", "pt": "Gerar fala gasta créditos; confira a página de preços do provedor para planos e acesso à API."},
       "pre_requisitos": [],
-      "conferir": [{"tipo": "mcp", "alvo": "elevenlabs"}, {"tipo": "ferramenta", "alvo": "*creative_list_voices", "nota": "Zero-cost read tool (inferred)."}],
+      "conferir": [{"tipo": "mcp", "alvo": "elevenlabs", "host": "api.elevenlabs.io"}, {"tipo": "ferramenta", "alvo": "*creative_list_voices", "nota": "Zero-cost read tool (inferred)."}],
       "doc_url": "https://elevenlabs.io/docs/eleven-agents/operate/hosted-mcp",
       "conferido_em": "2026-11-12",
       "incerto": ["Plan names and prices: not confirmed.", "API access on the free plan: not confirmed.", "Plugin license: not visible.", "Text of claude mcp list for this server comes from a secondary source in the research (it was seen locally as Connected).", "creative_list_voices being free is inferred."]

@@ -39,8 +39,8 @@ class NadaInstalado(Base):
     def test_status_tudo_nao_instalado_ou_nao_sei(self):
         rc, out, err = self.run_("status")
         self.assertEqual(rc, 0, err)
-        for linha in out.splitlines():
-            self.assertTrue(linha.rstrip().endswith(("nao_instalado", "nao_sei")) or "(cli:" in linha, linha)
+        for linha in out.splitlines()[1:]:
+            self.assertIn(linha.split()[2], ("nao_instalado", "nao_sei"), linha)
         dados = json.loads(self.ler("contas.json"))
         self.assertEqual(len(dados["servicos"]), 9)
         for sid, item in dados["servicos"].items():
@@ -56,9 +56,11 @@ class NadaInstalado(Base):
         self.assertEqual(json.loads(out)["servicos"]["composio"]["cli"], "nao_instalado")
 
     def test_falta_lista_tudo(self):
+        self.assertEqual(self.run_("falta", "--json")[0], 1)  # no status yet
+        self.run_("status")
         rc, out, _ = self.run_("falta", "--json")
         self.assertEqual(rc, 0)
-        ids = {i["id"] for i in json.loads(out)}
+        ids = {i["id"] for i in json.loads(out)["itens"]}
         self.assertEqual(len(ids), 13)  # 9 services + 4 Composio channels
         self.assertIn("composio:metaads", ids)
 

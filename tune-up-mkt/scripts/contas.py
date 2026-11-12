@@ -3,37 +3,49 @@
 Usage (from the plugin root): sh scripts/py scripts/contas.py <command> [...] [--raiz DIR]
   status [--json]   run the free local checks (claude plugin list --json, claude mcp list,
                     composio connections list), merge still-valid marks, write .tune-up/mkt/contas.json
-  marcar <id> <estado> --prova {whoami_ok,connections_ok,manual} [--via {cli,mcp,manual}]
-                    record a check only the session can do; valid for 7 days
-  falta [--json]    next step for each service or channel that is not `ligado`
+  marcar <id> <estado> --prova {whoami_ok,connections_ok,manual} [--via {mcp,cli,manual}]
+                    record a check only the session can do; valid for 7 days (via follows prova)
+  falta [--json]    next step for each service or channel that is not `ligado`, then accounts to verify;
+                    needs a `status` from the last 24 h
   config [...]      create/update .tune-up/mkt/config.json; no flags = print it
-Only the classified state is stored, never command output. Secret-looking values and e-mails are
-refused with exit code 2 (the value is not echoed). Exit 0 even when services are missing.
+Commands run in the project folder (--raiz). Only the classified state is stored, never command output.
+Secret-looking values and e-mails are refused with exit code 2 (the value is not echoed); so are state
+files reached through a symlink. Exit 0 even when services are missing; 1 when a file cannot be written.
 """
 import argparse
 import json
 import os
-import shutil
+import secrets
 import subprocess
 import sys
-import tempfile
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
-from urllib.parse import urlsplit
+from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import contas_arquivos as A  # noqa: E402
 import contas_regras as R  # noqa: E402
 
 PLUGIN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 COMANDOS = {"plugin": (("claude", "plugin", "list", "--json"), 20), "mcp": (("claude", "mcp", "list"), 60)}
 TEMPO_CLI = 20
 CREDITO_PADRAO = 2000
+IDADE_FALTA = timedelta(hours=24)
 TEXTOS = {
-    "en": {"nada": "Every service and channel is connected.", "rode": "Run: contas.py status",
+    "en": {"nada": "Every service and channel is connected.",
+           "rode": "No recent check (missing or older than 24 h): run `contas.py status` first.",
+           "idade": "Last check: {} min ago.", "link": "Refused: .tune-up, .tune-up/mkt or the state file is a "
+           "symlink or points outside the project. Nothing was read or written.",
+           "verificar": "Connected, but the account itself was not verified (or the check expired): run the "
+           "connect skill to verify it with a free read.",
            "ruim": "{} was unreadable or invalid and was replaced (marks lost).",
            "segredo": "Refused: a value looks like a secret or an e-mail address (not shown). Nothing was written.",
            "marcado": "Marked {} as {} (valid 7 days)."},
-    "pt": {"nada": "Todos os serviços e canais estão ligados.", "rode": "Rode: contas.py status",
+    "pt": {"nada": "Todos os serviços e canais estão ligados.",
+           "rode": "Sem conferência recente (ausente ou com mais de 24 h): rode `contas.py status` antes.",
+           "idade": "Última conferência: há {} min.", "link": "Recusado: .tune-up, .tune-up/mkt ou o arquivo "
+           "de estado é um link simbólico ou aponta para fora do projeto. Nada foi lido nem gravado.",
+           "verificar": "Ligado, mas a conta em si não foi conferida (ou a conferência venceu): rode a skill "
+           "connect para conferir com uma leitura grátis.",
            "ruim": "{} estava ilegível ou inválido e foi substituído (marcas perdidas).",
            "segredo": "Recusado: um valor parece segredo ou e-mail (não exibido). Nada foi gravado.",
            "marcado": "Marcado {} como {} (vale 7 dias)."},
@@ -72,42 +84,10 @@ def ler_catalogo():
         return json.load(f)
 
 
-def ler_json(caminho):
-    """(dict or None, invalid): invalid=True when the file exists but cannot be read as a JSON object."""
-    try:
-        with open(caminho, encoding="utf-8") as f:
-            d = json.load(f)
-    except FileNotFoundError:
-        return None, False
-    except (OSError, ValueError):
-        return None, True
-    return (d, False) if isinstance(d, dict) else (None, True)
-
-
-def gravar_json(caminho, dados):
-    """Atomic write: temp file in the same folder (0600 on POSIX) + os.replace."""
-    pasta = os.path.dirname(caminho)
-    os.makedirs(pasta, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=".tmp-", suffix=".json", dir=pasta)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(dados, f, ensure_ascii=False, indent=2)
-            f.write("\n")
-        if os.name != "nt":
-            os.chmod(tmp, 0o600)
-        os.replace(tmp, caminho)
-    except BaseException:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
-        raise
-
-
-def rodar_real(args, timeout):
-    """(exit code, stdout). Raises subprocess.TimeoutExpired on timeout."""
+def rodar_real(args, timeout, cwd=None):
+    """(exit code, stdout), run in cwd (the project). Raises subprocess.TimeoutExpired on timeout."""
     r = subprocess.run(list(args), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                       timeout=timeout)
+                       timeout=timeout, cwd=cwd)
     return r.returncode, r.stdout.decode("utf-8", errors="replace")
 
 
@@ -131,9 +111,11 @@ def automaticas(catalogo):
                 yield chave, c
 
 
-def conferir_tudo(catalogo, rodar=rodar_real, which=shutil.which, agora=None):
-    """key -> list of automatic check results. Each distinct command runs once, all in parallel."""
+def conferir_tudo(catalogo, rodar=rodar_real, which=None, agora=None, raiz=None):
+    """key -> list of automatic check results. Each distinct command runs once, all in parallel, in raiz."""
     agora = agora or datetime.now(timezone.utc)
+    raiz = raiz or os.getcwd()
+    which = which or (lambda nome: A.achar(nome, raiz))
     pares = list(automaticas(catalogo))
     tempos = {}
     for _, c in pares:
@@ -143,7 +125,7 @@ def conferir_tudo(catalogo, rodar=rodar_real, which=shutil.which, agora=None):
 
     def um(args):
         try:
-            rc, saida = rodar((caminhos[args],) + tuple(args[1:]), tempos[args])
+            rc, saida = rodar((caminhos[args],) + tuple(args[1:]), tempos[args], raiz)
         except subprocess.TimeoutExpired:
             return None, R.D_TEMPO
         except (OSError, ValueError, subprocess.SubprocessError):
@@ -163,7 +145,7 @@ def conferir_tudo(catalogo, rodar=rodar_real, which=shutil.which, agora=None):
         elif saidas[args][0] is None:
             estado, detalhe = "nao_sei", saidas[args][1]
         else:
-            estado, detalhe = R.classificar(c["tipo"], saidas[args][0], c["alvo"], toolkit)
+            estado, detalhe = R.classificar(c["tipo"], saidas[args][0], c["alvo"], toolkit, c.get("host"))
         auto.setdefault(chave, []).append({"tipo": c["tipo"], "via": c["tipo"], "estado": estado,
                                            "detalhe": detalhe, "conferido_em": R.iso(agora)})
     return auto
@@ -199,36 +181,37 @@ def guardados(dados, catalogo, agora):
     return auto, marcas
 
 
-def caminho(raiz, nome):
-    return os.path.join(raiz, ".tune-up", "mkt", nome)
-
-
 def tabela(dados):
-    linhas = []
+    linhas = ["  {:<28} {:<17} {}".format("service", "estado", "conta")]
     for sid, item in dados["servicos"].items():
         extra = "  (cli: {}, mcp: {})".format(item["cli"], item["mcp"]) if "cli" in item else ""
         marca = "✔" if item["estado"] == "ligado" else "-"
-        linhas.append("{} {:<28} {}{}".format(marca, sid, item["estado"], extra))
+        linhas.append("{} {:<28} {:<17} {}{}".format(marca, sid, item["estado"], item["conta"], extra))
         for cid, canal in item.get("canais", {}).items():
             marca = "✔" if canal["estado"] == "ligado" else "-"
             linhas.append("    {} {:<24} {}".format(marca, sid + ":" + cid, canal["estado"]))
     return "\n".join(linhas)
 
 
-def status(raiz, catalogo, agora, rodar, which, lang):
-    arquivo = caminho(raiz, "contas.json")
-    antigo, ruim = ler_json(arquivo)
-    if ruim:
-        escrever(TEXTOS[lang]["ruim"].format(arquivo), sys.stderr)
-    _, marcas = guardados(antigo, catalogo, agora)
-    dados = R.montar(catalogo, conferir_tudo(catalogo, rodar, which, agora), marcas, agora)
-    gravar_json(arquivo, dados)
-    return dados
+def avisar_ruim(ruim, raiz, lang):
+    texto = TEXTOS[lang]["ruim"].format(A.caminho(raiz, "contas.json")) if ruim else None
+    if texto:
+        escrever(texto, sys.stderr)
+    return texto
 
 
 def cmd_status(a, raiz, catalogo, agora, rodar, which, lang):
-    dados = status(raiz, catalogo, agora, rodar, which, lang)
-    escrever(json.dumps(dados, ensure_ascii=False, indent=2) if a.json else tabela(dados))
+    A.caminho(raiz, "contas.json")  # refuse a symlinked state file before running anything
+    _, marcas_antes = guardados(A.ler_json(A.caminho(raiz, "contas.json"))[0], catalogo, agora)
+    auto = conferir_tudo(catalogo, rodar, which, agora, raiz)
+
+    def fazer(antigo):  # marks recorded while the commands ran are merged, never lost
+        _, marcas = guardados(antigo, catalogo, agora)
+        return R.montar(catalogo, auto, R.juntar(marcas_antes, marcas), agora)
+    dados, ruim = A.atualizar(raiz, "contas.json", fazer)
+    aviso = avisar_ruim(ruim, raiz, lang)
+    saida = dict(dados, aviso=aviso) if aviso else dados
+    escrever(json.dumps(saida, ensure_ascii=False, indent=2) if a.json else tabela(dados))
     return 0
 
 
@@ -237,13 +220,17 @@ def cmd_marcar(a, raiz, catalogo, agora, lang):
     if a.id not in validas:
         escrever("Unknown id. Valid: " + ", ".join(validas), sys.stderr)
         return 2
-    arquivo = caminho(raiz, "contas.json")
-    antigo, ruim = ler_json(arquivo)
-    if ruim:
-        escrever(TEXTOS[lang]["ruim"].format(arquivo), sys.stderr)
-    auto, marcas = guardados(antigo, catalogo, agora)
-    marcas[a.id] = {"estado": a.estado, "prova": a.prova, "via": a.via, "conferido_em": R.iso(agora)}
-    gravar_json(arquivo, R.montar(catalogo, auto, marcas, agora))
+    via = a.via or R.VIA_DA_PROVA[a.prova]
+    if via != R.VIA_DA_PROVA[a.prova]:
+        escrever("--via must match --prova: whoami_ok -> mcp, connections_ok -> cli, manual -> manual.", sys.stderr)
+        return 2
+    nova = {"estado": a.estado, "prova": a.prova, "via": via, "conferido_em": R.iso(agora)}
+
+    def fazer(antigo):
+        auto, marcas = guardados(antigo, catalogo, agora)
+        return R.montar(catalogo, auto, R.juntar(marcas, {a.id: nova}), agora)
+    _, ruim = A.atualizar(raiz, "contas.json", fazer)
+    avisar_ruim(ruim, raiz, lang)
     escrever(TEXTOS[lang]["marcado"].format(a.id, a.estado))
     return 0
 
@@ -259,88 +246,101 @@ def passos(s, canal, estado, lang):
     return instalar + [s["autenticar"][lang]]
 
 
-def cmd_falta(a, raiz, catalogo, agora, rodar, which, lang):
-    dados, _ = ler_json(caminho(raiz, "contas.json"))
-    servicos = dados.get("servicos") if dados else None
-    if not isinstance(servicos, dict):
-        servicos = status(raiz, catalogo, agora, rodar, which, lang)["servicos"]
-    lista = []
+def cmd_falta(a, raiz, catalogo, agora, lang):
+    """Rebuilt from the sanitized stored checks (same cleaning as status); refuses a check older than 24 h."""
+    dados, _ = A.ler_json(A.caminho(raiz, "contas.json"))
+    quando = R.ler_iso(dados.get("conferido_em")) if dados else None
+    if quando is None or agora - quando > IDADE_FALTA or quando > agora + R.FOLGA_FUTURO:
+        escrever(TEXTOS[lang]["rode"], sys.stderr)
+        return 1
+    servicos = R.montar(catalogo, *guardados(dados, catalogo, agora), agora)["servicos"]
+    lista, verificar = [], []
     for s in catalogo["servicos"]:
-        item = servicos.get(s["id"]) if isinstance(servicos.get(s["id"]), dict) else {}
-        alvos = [(s["id"], None, item)]
-        canais = item.get("canais") if isinstance(item.get("canais"), dict) else {}
-        alvos += [(s["id"] + ":" + c["id"], c, canais.get(c["id"]) or {}) for c in s.get("canais", [])]
+        item = servicos[s["id"]]
+        alvos = [(s["id"], None, item)] + [(s["id"] + ":" + c["id"], c, item["canais"][c["id"]])
+                                           for c in s.get("canais", [])]
         for chave, canal, dado in alvos:
-            estado = dado.get("estado") if isinstance(dado, dict) else None
-            estado = estado if estado in R.PIOR_PRIMEIRO + ("conferir_de_novo",) else "nao_sei"
-            if estado != "ligado":
-                lista.append({"id": chave, "estado": estado, "passos": passos(s, canal, estado, lang)})
+            if dado["estado"] != "ligado":
+                lista.append({"id": chave, "estado": dado["estado"], "passos": passos(s, canal, dado["estado"], lang)})
+            elif dado["conta"] in ("nao_conferida", "conferir_de_novo"):
+                verificar.append({"id": chave, "estado": "ligado", "conta": dado["conta"],
+                                  "passos": [TEXTOS[lang]["verificar"]]})
+    lista += verificar
+    minutos = int(max(0, (agora - quando).total_seconds()) // 60)
     if a.json:
-        escrever(json.dumps(lista, ensure_ascii=False, indent=2))
-    elif not lista:
-        escrever(TEXTOS[lang]["nada"])
-    else:
-        escrever("\n".join("{} ({})\n".format(i["id"], i["estado"]) + "\n".join("  - " + p for p in i["passos"])
-                           for i in lista))
+        escrever(json.dumps({"conferido_em": R.iso(quando), "minutos": minutos, "itens": lista},
+                            ensure_ascii=False, indent=2))
+        return 0
+    linhas = [TEXTOS[lang]["idade"].format(minutos)]
+    if not lista:
+        linhas.append(TEXTOS[lang]["nada"])
+    for i in lista:
+        rotulo = i["estado"] + (", conta: " + i["conta"] if "conta" in i else "")
+        linhas.append("{} ({})\n".format(i["id"], rotulo) + "\n".join("  - " + p for p in i["passos"]))
+    escrever("\n".join(linhas))
     return 0
 
 
-def site_valido(url):
-    try:
-        u = urlsplit(url)
-        u.port  # noqa: B018  (raises ValueError on a bad port)
-    except ValueError:
-        return False
-    consulta = u.query.lower()
-    return (u.scheme in ("http", "https") and bool(u.hostname) and "@" not in u.netloc
-            and not any(k in consulta for k in ("key=", "token=", "secret=")))
-
-
 def cmd_config(a, raiz, lang):
-    arquivo = caminho(raiz, "config.json")
-    atual, ruim = ler_json(arquivo)
-    mudou = any(v is not None for v in (a.site, a.canais, a.indexnow_key, a.credit_ask_above))
+    """Only the known keys are read, printed and written (anything else in the file is dropped)."""
+    atual, _ = A.ler_json(A.caminho(raiz, "config.json"))
+    mudou = any(v is not None for v in (a.site, a.canais, a.indexnow_key, a.credit_ask_above)) or a.gerar_indexnow
     if not mudou:
-        escrever(json.dumps(atual or {}, ensure_ascii=False, indent=2))
+        escrever(json.dumps(R.limpar_config(atual), ensure_ascii=False, indent=2))
         return 0
-    if a.site is not None and not site_valido(a.site):
-        escrever("--site must be an http(s) URL without credentials or key/token/secret in the query.", sys.stderr)
+    canais = None if a.canais is None else [c.strip() for c in a.canais.split(",") if c.strip()]
+    erro = None
+    if a.site is not None and not R.site_valido(a.site):
+        erro = ("--site must be http(s)://host[:port][/path] with no user info, query (?) or fragment (#); "
+                "path parts of letters, digits, - _ . ~ % under 40 characters each.")
+    elif canais is not None and not R.canais_validos(canais):
+        erro = "--canais accepts only: " + ",".join(R.CANAIS) + " (value not shown)."
+    elif a.indexnow_key is not None and not R.indexnow_valida(a.indexnow_key):
+        erro = ("--indexnow-key must be 8 to 128 characters of a-z, A-Z, 0-9 and -, and never another "
+                "provider's key (value not shown). Prefer --gerar-indexnow.")
+    elif a.credit_ask_above is not None and a.credit_ask_above < 0:
+        erro = "--credit-ask-above must be 0 or more."
+    if erro:
+        escrever(erro, sys.stderr)
         return 2
-    if a.indexnow_key is not None and not R.indexnow_valida(a.indexnow_key):
-        escrever("--indexnow-key must be 8 to 128 characters of a-z, A-Z, 0-9 and -.", sys.stderr)
-        return 2
-    if a.credit_ask_above is not None and a.credit_ask_above < 0:
-        escrever("--credit-ask-above must be 0 or more.", sys.stderr)
-        return 2
+
+    def fazer(antigo):
+        novo = R.limpar_config(antigo)
+        novo.setdefault("credit_ask_above", CREDITO_PADRAO)
+        if a.site is not None:
+            novo["site"] = a.site
+        if canais is not None:
+            novo["canais"] = canais
+        if a.indexnow_key is not None:
+            novo["indexnow_key"] = a.indexnow_key
+        elif a.gerar_indexnow and "indexnow_key" not in novo:  # an existing key is kept (it may be published)
+            novo["indexnow_key"] = secrets.token_hex(16)
+        if a.credit_ask_above is not None:
+            novo["credit_ask_above"] = a.credit_ask_above
+        return novo
+    novo, ruim = A.atualizar(raiz, "config.json", fazer)
     if ruim:
-        escrever(TEXTOS[lang]["ruim"].format(arquivo), sys.stderr)
-    novo = dict(atual or {})
-    novo.setdefault("credit_ask_above", CREDITO_PADRAO)
-    if a.site is not None:
-        novo["site"] = a.site
-    if a.canais is not None:
-        novo["canais"] = [c.strip() for c in a.canais.split(",") if c.strip()]
-    if a.indexnow_key is not None:
-        novo["indexnow_key"] = a.indexnow_key
-    if a.credit_ask_above is not None:
-        novo["credit_ask_above"] = a.credit_ask_above
-    gravar_json(arquivo, novo)
+        escrever(TEXTOS[lang]["ruim"].format(A.caminho(raiz, "config.json")), sys.stderr)
     escrever(json.dumps(novo, ensure_ascii=False, indent=2))
     return 0
 
 
 def recusado(argv):
-    """True when any argument (except the IndexNow key, public by design) looks like a secret or e-mail."""
-    pular = False
+    """True when any argument looks like a secret or e-mail. Exempt: the value of --raiz (a local path, never
+    stored) and, for `config` only, the IndexNow key (public by design; still checked for e-mail)."""
+    config = bool(argv) and argv[0] == "config"
+    pular = None
     for v in argv:
         if pular:
-            pular = False
-            if not R.tem_email(v):
+            pular, livre = None, pular == "--raiz"
+            if livre or not R.tem_email(v):
                 continue
-        if v == "--indexnow-key":
-            pular = True
+        if v == "--raiz" or (config and v == "--indexnow-key"):
+            pular = v
             continue
-        if v.startswith("--indexnow-key="):
+        if v.startswith("--raiz="):
+            continue
+        if config and v.startswith("--indexnow-key="):
             v = v.split("=", 1)[1]
             if not R.tem_email(v):
                 continue
@@ -349,10 +349,16 @@ def recusado(argv):
     return False
 
 
+class Parser(argparse.ArgumentParser):
+    def error(self, message):  # argparse would echo the offending value
+        escrever("Invalid arguments (values not shown). Run with --help.", sys.stderr)
+        sys.exit(2)
+
+
 def parser():
-    p = argparse.ArgumentParser(prog="contas.py", allow_abbrev=False, description=__doc__.split("\n")[0])
+    p = Parser(prog="contas.py", allow_abbrev=False, description=__doc__.split("\n")[0])
     sub = p.add_subparsers(dest="comando", required=True)
-    raiz = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
+    raiz = Parser(add_help=False, allow_abbrev=False)
     raiz.add_argument("--raiz", help="project root (default: $CLAUDE_PROJECT_DIR if absolute, else cwd)")
     s = sub.add_parser("status", parents=[raiz], allow_abbrev=False, help="run the checks and write contas.json")
     s.add_argument("--json", action="store_true")
@@ -360,19 +366,23 @@ def parser():
     m.add_argument("id", help="service id or composio:<channel>")
     m.add_argument("estado", choices=R.ESTADOS_MARCA)
     m.add_argument("--prova", required=True, choices=R.PROVAS)
-    m.add_argument("--via", default="manual", choices=R.VIAS_MARCA)
+    m.add_argument("--via", choices=R.VIAS_MARCA, help="default and only accepted value follows --prova: "
+                                                         "whoami_ok -> mcp, connections_ok -> cli, manual -> manual")
     f = sub.add_parser("falta", parents=[raiz], allow_abbrev=False, help="next step for what is not connected")
     f.add_argument("--json", action="store_true")
     c = sub.add_parser("config", parents=[raiz], allow_abbrev=False, help="create/update config.json")
-    c.add_argument("--site", help="http(s) URL of the site, without credentials")
-    c.add_argument("--canais", help="comma-separated channel list")
-    c.add_argument("--indexnow-key", help="IndexNow key (8-128 chars of a-z A-Z 0-9 -). It is PUBLIC by design: "
-                                          "it is served as <key>.txt on the site, so storing it is safe.")
+    c.add_argument("--site", help="http(s)://host[:port][/path], no user info, query or fragment")
+    c.add_argument("--canais", help="comma-separated, only: " + ",".join(R.CANAIS))
+    k = c.add_mutually_exclusive_group()
+    k.add_argument("--gerar-indexnow", action="store_true", help="create the IndexNow key (kept if one exists)")
+    k.add_argument("--indexnow-key", help="an existing IndexNow key (8-128 chars of a-z A-Z 0-9 -). It is PUBLIC by "
+                                          "design: it is served as <key>.txt on the site, so storing it is safe. "
+                                          "Never put any other key here.")
     c.add_argument("--credit-ask-above", type=int, help="ask before spending more credits than this (default 2000)")
     return p
 
 
-def main(argv=None, agora=None, rodar=rodar_real, which=shutil.which):
+def main(argv=None, agora=None, rodar=rodar_real, which=None):
     argv = sys.argv[1:] if argv is None else list(argv)
     lang = idioma()
     if recusado(argv):
@@ -381,14 +391,21 @@ def main(argv=None, agora=None, rodar=rodar_real, which=shutil.which):
     a = parser().parse_args(argv)
     raiz = os.path.abspath(a.raiz) if a.raiz else raiz_padrao()
     agora = agora or datetime.now(timezone.utc)
-    if a.comando == "config":
-        return cmd_config(a, raiz, lang)
-    catalogo = ler_catalogo()
-    if a.comando == "status":
-        return cmd_status(a, raiz, catalogo, agora, rodar, which, lang)
-    if a.comando == "marcar":
-        return cmd_marcar(a, raiz, catalogo, agora, lang)
-    return cmd_falta(a, raiz, catalogo, agora, rodar, which, lang)
+    try:
+        if a.comando == "config":
+            return cmd_config(a, raiz, lang)
+        catalogo = ler_catalogo()
+        if a.comando == "status":
+            return cmd_status(a, raiz, catalogo, agora, rodar, which, lang)
+        if a.comando == "marcar":
+            return cmd_marcar(a, raiz, catalogo, agora, lang)
+        return cmd_falta(a, raiz, catalogo, agora, lang)
+    except A.Recusado:
+        escrever(TEXTOS[lang]["link"], sys.stderr)
+        return 2
+    except OSError as e:
+        escrever("Could not read or write the state in .tune-up/mkt: {}.".format(e.strerror or "error"), sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

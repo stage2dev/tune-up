@@ -41,7 +41,7 @@ def falso(plugin, mcp, composio):
     respostas = {PLUGIN: plugin, MCP: mcp, COMPOSIO: composio}
     chamadas = []
 
-    def rodar(args, timeout):
+    def rodar(args, timeout, cwd=None):
         chave = (os.path.basename(args[0]),) + tuple(args[1:])
         chamadas.append((chave, timeout))
         r = respostas[chave]
@@ -81,8 +81,8 @@ class Cenarios(unittest.TestCase):
             self.assertEqual(s[sid]["estado"], "ligado", sid)
         for canal in ("metaads", "googleads", "instagram", "facebook"):
             self.assertEqual(s["composio"]["canais"][canal]["estado"], "ligado", canal)
-        # connectors of the marketing plugin need authentication in the capture: never reported as ligado
-        self.assertEqual(s["anthropic_marketing"]["estado"], "falta_autenticar")
+        # the capture's marketing plugin comes from an anonymized marketplace: only the exact id counts
+        self.assertEqual(s["anthropic_marketing"]["estado"], "nao_instalado")
         for sid in ("chrome", "search_console_analytics", "indexnow"):  # manual only, no mark
             self.assertEqual(s[sid]["estado"], "nao_sei", sid)
 
@@ -112,9 +112,13 @@ class Cenarios(unittest.TestCase):
 
     def test_desligado(self):
         s = conferir(fx("plugin_list_desligado.json"), fx("mcp_list_ligado.txt"), fx("composio_connections_ligado.json"))
-        self.assertEqual(s["openseo"]["estado"], "desligado")
         plugin = [c for c in s["openseo"]["checagens"] if c["tipo"] == "plugin"][0]
-        self.assertEqual(plugin["detalhe"], R.D_DESABILITADO)
+        self.assertEqual((plugin["estado"], plugin["detalhe"], plugin["papel"]),
+                         ("desligado", R.D_DESABILITADO, "informa"))
+        self.assertEqual(s["openseo"]["estado"], "ligado")  # the MCP server decides for openseo
+        s = conferir(fx("plugin_list_desligado.json").replace('"enabled": true', '"enabled": false'),
+                     fx("mcp_list_ligado.txt"), "{}")
+        self.assertEqual(s["claude_ads"]["estado"], "desligado")
 
     def test_seis_estados_mcp(self):
         texto = fx("mcp_list_estados.txt")
@@ -166,7 +170,7 @@ class Cenarios(unittest.TestCase):
         s = conferir(fx("plugin_list_ligado.json"), fx("mcp_list_falta_autenticar.txt"),
                      fx("composio_connections_ligado.json"))
         self.assertEqual((s["composio"]["cli"], s["composio"]["mcp"]), ("ligado", "falta_autenticar"))
-        self.assertEqual(s["composio"]["estado"], "falta_autenticar")
+        self.assertEqual(s["composio"]["estado"], "ligado")  # modo qualquer: either path is enough
 
     def test_detalhe_so_vocabulario_fixo(self):
         for args in ((fx("plugin_list_ligado.json"), fx("mcp_list_ligado.txt"), fx("composio_connections_ligado.json")),
@@ -212,13 +216,13 @@ class Marcas(unittest.TestCase):
     def test_marca_de_canal_e_via_mcp(self):
         self.rodar("status")
         self.assertEqual(self.rodar("marcar", "composio:metaads", "falta_autenticar", "--prova", "connections_ok",
-                                    "--via", "mcp")[0], 0)
+                                    "--via", "cli")[0], 0)
         meta = self.contas()["servicos"]["composio"]["canais"]["metaads"]
-        self.assertEqual(meta["marca"]["via"], "mcp")
+        self.assertEqual(meta["marca"]["via"], "cli")
         self.assertEqual(meta["estado"], "falta_autenticar")  # a mark may lower, never raise
 
     def test_marca_nao_promove_checagem_automatica(self):
-        self.rodar("status", plugin="plugin_list_ausente.json")
+        self.rodar("status", plugin="plugin_list_ausente.json", mcp="mcp_list_ausente.txt")
         self.rodar("marcar", "openseo", "ligado", "--prova", "whoami_ok", "--via", "mcp")
         item = self.contas()["servicos"]["openseo"]
         self.assertEqual(item["estado"], "nao_instalado")
@@ -263,7 +267,7 @@ class Marcas(unittest.TestCase):
         self.rodar("status", mcp="mcp_list_falta_autenticar.txt")
         rc, out, _ = self.rodar("falta", "--json")
         self.assertEqual(rc, 0)
-        lista = {i["id"]: i for i in json.loads(out)}
+        lista = {i["id"]: i for i in json.loads(out)["itens"]}
         cat = {s["id"]: s for s in C.ler_catalogo()["servicos"]}
         self.assertEqual(lista["openseo"]["passos"], [cat["openseo"]["autenticar"]["pt"]])
         self.assertIn(cat["chrome"]["cadastro_url"], lista["chrome"]["passos"])

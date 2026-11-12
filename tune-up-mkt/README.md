@@ -29,7 +29,15 @@ The `connect` skill (say "connect my marketing accounts") walks you through the 
 | Higgsfield | optional | Images and video for ad creative |
 | ElevenLabs | optional | Voice-over and transcription for ad creative |
 
-State lives in your project: `.tune-up/mkt/contas.json` (connection state per service; manual marks expire after 7 days) and `.tune-up/mkt/config.json` (site, channels, settings). No secrets are stored. The IndexNow key is public by design: it is published at your site root.
+You run the install commands yourself in your terminal (or the assistant runs one only after your explicit yes for that exact command); a piped remote script such as `curl ... | sh` is shown with its documentation link, never run by the assistant. Several install commands change your user-level Claude configuration (`--scope user`, plugin installs).
+
+State lives in your project: `.tune-up/mkt/contas.json` and `.tune-up/mkt/config.json`. No secrets are stored.
+
+- `estado` is the connection, from the checks the catalog marks as deciding (for example the OpenSEO MCP server; for Composio either the CLI or the MCP server is enough; the Anthropic plugin's own connectors only inform). `conta` says whether the account itself was checked: `conferida` (a free read by the session), `confirmada_pelo_dono`, `conferir_de_novo` (older than 7 days), `nao_conferida`, `nao_se_aplica`. `falta` lists what is not connected first, then connected services whose account still needs a check; it asks for a `status` when the last one is missing or older than 24 hours.
+- `config --canais` accepts only `metaads`, `googleads`, `instagram`, `facebook`, `seo`, `video`, `voz`; `--site` only `http(s)://host[/path]` without `?` or `#`.
+- IndexNow: `config --gerar-indexnow` creates the key (public by design: it is published at your site root). Never put any other key in this field.
+- Checks run in the project folder, so project-scoped servers count. State files reached through a symbolic link are refused.
+- Limit: when a check command times out, only that command is stopped; programs it started may keep running.
 
 ## Guard
 
