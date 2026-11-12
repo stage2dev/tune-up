@@ -2,6 +2,7 @@
 projeto (somente leitura), o batimento tem de estar fresco e o /saude tem de devolver a marca deste projeto (hash da
 pasta de dados) ANTES de pedir o token. Assim a tela nunca age no serviço de outro projeto. Só biblioteca padrão."""
 import datetime
+import http.client
 import importlib.util
 import json
 import os
@@ -31,6 +32,19 @@ class Recusa(Exception):
     """A tela não fala com o serviço; a mensagem (pt-BR) vai direto para o dono."""
 
 
+class Cortado(Exception):
+    """O arquivo veio menor que o Content-Length (ou sem ele): nada pela metade chega à tela."""
+
+
+class _SemRedirecionar(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *_):
+        return None   # 3xx vira erro: o X-Vendas-Token nunca segue para outro destino
+
+
+def _abridor():
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}), _SemRedirecionar())
+
+
 def ler(raiz, base, sql):
     """Linhas de uma consulta no banco do serviço, ou None sem banco aberto. Não cria nada: modo somente leitura."""
     arquivo = os.path.join(pasta.caminho_da_pasta(raiz, base), "vendas.db")
@@ -47,9 +61,8 @@ def pedir(metodo, url, cab, corpo=None, tempo=None):
     """Pedido ao serviço local com tempo limite e sem proxy. Devolve (código, objeto JSON)."""
     dados = None if corpo is None else json.dumps(corpo).encode("utf-8")
     pedido = urllib.request.Request(url, data=dados, method=metodo, headers=cab)
-    abridor = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
-        with abridor.open(pedido, timeout=tempo or TEMPO_REDE_S) as r:
+        with _abridor().open(pedido, timeout=tempo or TEMPO_REDE_S) as r:
             return r.status, json.loads(r.read().decode("utf-8") or "{}")
     except urllib.error.HTTPError as e:
         try:
@@ -148,11 +161,11 @@ def chamar(ctx, metodo, caminho, corpo=None, base=None, tempo=None):
 
 def baixar(ctx, caminho, limite, base=None):
     """GET de um arquivo do serviço, lido em blocos e parado em limite + 1 bytes (quem recebe vê que passou do
-    teto). Devolve (código, cabeçalhos em minúsculas, bytes); em erro os bytes vêm vazios."""
+    teto). Devolve (código, cabeçalhos em minúsculas, bytes); em erro os bytes vêm vazios. 200 com corpo diferente do
+    Content-Length (ou sem ele) = Cortado. Redirecionamento não é seguido (volta o código 3xx)."""
     url, cab = _acesso(ctx, base)
-    abridor = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
-        with abridor.open(urllib.request.Request(url + caminho, headers=cab), timeout=TEMPO_REDE_S) as r:
+        with _abridor().open(urllib.request.Request(url + caminho, headers=cab), timeout=TEMPO_REDE_S) as r:
             partes, lidos = [], 0
             while lidos <= limite:
                 bloco = r.read(min(64 * 1024, limite + 1 - lidos))
@@ -160,9 +173,15 @@ def baixar(ctx, caminho, limite, base=None):
                     break
                 partes.append(bloco)
                 lidos += len(bloco)
-            return r.status, {k.lower(): v for k, v in r.getheaders()}, b"".join(partes)
+            cabecalhos = {k.lower(): v for k, v in r.getheaders()}
+            tamanho = cabecalhos.get("content-length") or ""
+            if r.status == 200 and lidos <= limite and (not tamanho.isdigit() or int(tamanho) != lidos):
+                raise Cortado("arquivo cortado")
+            return r.status, cabecalhos, b"".join(partes)
     except urllib.error.HTTPError as e:
         e.close()
         return e.code, {}, b""
+    except http.client.IncompleteRead:
+        raise Cortado("arquivo cortado")
     except (OSError, ValueError):
         raise Recusa(SEM_RESPOSTA)

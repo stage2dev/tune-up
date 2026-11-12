@@ -170,7 +170,7 @@ class TesteAudio(Base):
         mid, _ = self.chegar("a1", "audio", OGG)
         self.rodar(mid)
         self.assertEqual(self.falsa.pedidos, [])
-        self.assertEqual(self.motivos(), ["preco_desconhecido"])
+        self.assertEqual(self.motivos(), ["preco_transcricao"])   # o preço que falta é o da transcrição
         precos.gravar_preco(self.pasta, "transcritor-sem-preco", 0.01, None, por_minuto=True)   # o dono informa
         self.falsa.fila += [resposta_transcricao("oi"), resposta_texto("Olá!")]
         self.rodar(mid)

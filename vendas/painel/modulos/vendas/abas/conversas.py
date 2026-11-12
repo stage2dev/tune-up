@@ -145,6 +145,8 @@ def agir(ctx, cliente, acao, dados, base=None):
         codigo, r = _chamar(ctx, cliente, "POST", "/midia/%d/baixar-de-novo" % midia, {}, base)
         if codigo is None:
             return {"ok": False, "mensagem": r}
+        if codigo == 202 and r.get("estado") == "pronta":
+            return {"ok": True, "mensagem": "A IA vai tentar de novo com este arquivo. Atualize a tela em alguns segundos."}
         return {"ok": True, "mensagem": "Baixando de novo. Atualize a tela em alguns segundos."} if codigo == 202 \
             else {"ok": False, "mensagem": str(r.get("erro") or "O serviço recusou (%d)." % codigo)}
     conversa = _inteiro(dados.get("conversa_id"))

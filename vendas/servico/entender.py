@@ -8,6 +8,9 @@ Na rodada do atendente, para cada áudio/imagem confiável do lead desde a últi
 - imagem: só jpeg/png/webp (bytes mágicos conferidos no download), no máximo IMAGENS_MAX por rodada e
   IMAGENS_BYTES_MAX no total (as mais novas primeiro), como data URL com detail "low"; a que passar do limite não
   vai (imagens_demais; sozinha acima de 8 MB = imagem_grande); se for a do gatilho, falha.
+- transcrição que falhou (GUARDA) e imagem que a API recusou ficam em midias.falha_ia: nenhuma rodada tenta de novo
+  sozinha (nada pago duas vezes); numa mídia que não é o gatilho viram o aviso midia_nao_entendida e a IA responde.
+- serviço parando durante a espera = parado (não é midia_indisponivel).
 Resultado tipado: falha = {ok: False, motivo}; quem chama não chama o modelo, nada sai e a conversa fica "precisa de
 você" com o motivo. Nenhuma transação fica aberta durante a espera ou a rede."""
 import base64
@@ -28,7 +31,8 @@ def ligado(con, pasta_dados, tipo):
 
 
 def _falha(motivo):
-    return {"ok": False, "motivo": motivo, "imagens": {}, "avisos": []}
+    return {"ok": False, "motivo": motivo, "sair": False, "parado": False, "tinha_midia": True, "imagens": {},
+            "avisos": []}
 
 
 def esperar(con, mensagem_id, parar, espera=ESPERA_MIDIA_S):
@@ -73,41 +77,76 @@ def _saida_ou_sinal(texto, r):
     return False
 
 
-def preparar(cerebro_ia, con, conversa_id, gatilho_id, parar, entende, espera=ESPERA_MIDIA_S):
-    """{ok, motivo, sair, imagens: {mensagem_id: data URL}, avisos: [motivos que não impedem a resposta]}. A
-    transcrição fica gravada na mensagem (o contexto a lê de lá). sair=True: a transcrição ou a legenda é um SAIR
-    (quem chama grava o opt-out e manda a confirmação; o modelo não é chamado). entende(con, tipo): a MESMA decisão
-    que o recebimento usou (recebimento.registrar_entende); None = a IA não entende mídia (nada aqui).
+def guardar_falha(con, mensagem_ids, motivo):
+    """A IA falhou com estas mídias (transcrição, imagem recusada): não tenta sozinha de novo (só a ação do dono limpa)."""
+    for mid in mensagem_ids:
+        con.execute("UPDATE midias SET falha_ia = ? WHERE mensagem_id = ? AND estado = 'pronta'", (motivo, mid))
+
+
+def preparar(cerebro_ia, con, conversa_id, gatilho_id, parar, entende, espera=ESPERA_MIDIA_S, so_triagem=False):
+    """{ok, motivo, sair, parado, tinha_midia, imagens: {mensagem_id: data URL}, avisos: [motivos que não impedem a
+    resposta]}. A transcrição fica gravada na mensagem (o contexto a lê de lá). sair=True: uma transcrição ou legenda
+    do lote é um SAIR (quem chama grava o opt-out e manda a confirmação; o modelo não é chamado); a triagem roda em
+    TODA transcrição/legenda disponível, mesmo depois de uma mídia do lote falhar. parado=True: o serviço está parando
+    (nada a marcar). entende(con, tipo): a MESMA decisão que o recebimento usou; None = a IA não entende mídia.
+    Falha guardada (midias.falha_ia, de uma rodada anterior ou desta) não é tentada de novo: na mídia do gatilho é
+    falha, nas outras é aviso (a IA responde ao texto e a conversa fica "precisa de você").
+    so_triagem=True (conversa pausada): só a triagem de SAIR, sem ler imagens.
     Imagens: as MAIS NOVAS primeiro (a do gatilho sempre entra); gatilho que não cabe, ou nenhuma que caiba = falha."""
-    r = {"ok": True, "motivo": None, "sair": False, "imagens": {}, "avisos": []}
+    r = {"ok": True, "motivo": None, "sair": False, "parado": False, "tinha_midia": False, "imagens": {}, "avisos": []}
     if entende is None:
         return r
     pasta_dados = cerebro_ia.pasta_dados
     ultima = con.execute("SELECT COALESCE(MAX(id), 0) FROM mensagens WHERE conversa_id = ? AND direcao = 'saida' "
                          "AND id <= ?", (conversa_id, gatilho_id)).fetchone()[0]
-    linhas = con.execute("SELECT id, tipo, texto FROM mensagens WHERE conversa_id = ? AND id > ? AND id <= ? "
-                         "AND confiavel = 1 AND direcao = 'entrada' AND tipo IN ('audio', 'imagem') ORDER BY id",
+    linhas = con.execute("SELECT m.id, m.tipo, m.texto, d.falha_ia FROM mensagens m LEFT JOIN midias d ON "
+                         "d.mensagem_id = m.id WHERE m.conversa_id = ? AND m.id > ? AND m.id <= ? AND m.confiavel = 1 "
+                         "AND m.direcao = 'entrada' AND m.tipo IN ('audio', 'imagem') ORDER BY m.id",
                          (conversa_id, ultima, gatilho_id)).fetchall()
-    imagens = []
+    r["tinha_midia"] = bool(linhas)
+    imagens, falha = [], None
+
+    def falhou(mid, motivo):   # a 1ª falha que impede a resposta fica; a triagem segue nas outras mídias
+        nonlocal falha
+        if mid == gatilho_id or motivo == "midia_indisponivel":
+            falha = falha or motivo
+        else:
+            r["avisos"].append("midia_nao_entendida")
+
     for m in linhas:
         if not entende(con, m["tipo"]):   # desligado: no contexto fica [audio]/[imagem] e o dono confere
             if m["id"] == gatilho_id:
-                return _falha("midia_desligada")
-            r["avisos"].append("midia_desligada")
+                falha = falha or "midia_desligada"
+            else:
+                r["avisos"].append("midia_desligada")
             continue
         if m["tipo"] == "imagem" and _saida_ou_sinal(m["texto"], r):   # legenda: opt-out antes de tudo
             return dict(_falha(None), sair=True)
+        if m["falha_ia"]:   # já falhou antes: nada de pagar de novo nem calar a conversa
+            falhou(m["id"], m["falha_ia"])
+            continue
         if esperar(con, m["id"], parar, espera) != "pronta":
-            return _falha("midia_indisponivel")
+            if parar.is_set():   # serviço parando: não é falha da mídia
+                return dict(_falha(None), parado=True)
+            falhou(m["id"], "midia_indisponivel")
+            continue
         if m["tipo"] == "audio":
             t = transcricao.transcrever(con, pasta_dados, cerebro_ia.base, m["id"],
                                           getattr(cerebro_ia, "tempo_transcricao", transcricao.TEMPO_S))
             if not t["ok"]:
-                return _falha(t["motivo"])
+                if t["motivo"] in transcricao.GUARDA:
+                    guardar_falha(con, [m["id"]], t["motivo"])
+                falhou(m["id"], t["motivo"])
+                continue
             if _saida_ou_sinal(t["texto"], r):
                 return dict(_falha(None), sair=True)
             continue
         imagens.append(m["id"])
+    if falha is not None:
+        return _falha(falha)
+    if so_triagem:
+        r["avisos"] = sorted(set(r["avisos"]))
+        return r
     total = 0
     for mid in reversed(imagens):
         if len(r["imagens"]) >= IMAGENS_MAX:

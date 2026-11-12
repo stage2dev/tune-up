@@ -11,8 +11,11 @@ FALHAS = {
     "expirada": "O WhatsApp não tem mais este arquivo para baixar.",
     "interrompida": "O download foi interrompido (o serviço foi desligado). Tente de novo.",
     "sem_segredo": "A mensagem veio sem a senha certa do webhook, então o arquivo não foi baixado.",
+    "sem_baixador": "O baixador de arquivos do serviço estava parado, então o arquivo não foi baixado. Tente de novo.",
 }
+NAO_REPETE = ("sem_segredo", "grande_demais", "tipo_recusado", "expirada")   # tentar de novo daria a mesma falha
 PADRAO_FALHA = "Não consegui baixar o arquivo. Tente de novo."
+FALHA_IA = "A IA não conseguiu entender este arquivo e não vai tentar sozinha de novo. Tente de novo ou responda você."
 EXPIRADAS = {"retencao": "O arquivo foi apagado do computador pelo prazo de guarda (30 dias, por padrão).",
              "espaco": "O arquivo foi apagado do computador para liberar espaço."}
 PADRAO_EXPIRADA = "O arquivo já foi apagado do computador."
@@ -45,6 +48,10 @@ def da_mensagem(m):
         saida["aviso"] = "Baixando o arquivo..."
     elif estado == "falhou":
         saida["aviso"] = FALHAS.get(d.get("motivo"), PADRAO_FALHA)
+        if d.get("motivo") not in NAO_REPETE:
+            saida["acao"] = {"acao": ACAO_DE_NOVO, "dados": {"midia_id": ident}}
+    elif estado == "pronta" and d.get("falha_ia"):
+        saida["aviso"] = FALHA_IA
         saida["acao"] = {"acao": ACAO_DE_NOVO, "dados": {"midia_id": ident}}
     elif estado == "expirada":
         saida["aviso"] = EXPIRADAS.get(d.get("motivo"), PADRAO_EXPIRADA)
@@ -52,14 +59,17 @@ def da_mensagem(m):
 
 
 def previa(c):
-    """Uma linha da lista para a última mensagem de mídia; None = usa o texto que o serviço mandou."""
+    """Uma linha da lista para a última mensagem de mídia; None = usa o texto que o serviço mandou. A legenda da foto
+    ou do documento e o texto do áudio (transcrição do lead ou fala da própria IA) ficam na linha."""
     tipo = c.get("ultima_tipo")
     if tipo not in ROTULOS:
         return None
+    legenda = c.get("ultima_legenda") if isinstance(c.get("ultima_legenda"), str) else ""
     if tipo == "imagem":
-        return "Foto"
+        return "Foto: %s" % legenda if legenda else "Foto"
     if tipo == "documento":
-        return "Documento: %s" % c["ultima_nome"] if c.get("ultima_nome") else "Documento"
+        rotulo = "Documento: %s" % c["ultima_nome"] if c.get("ultima_nome") else "Documento"
+        return "%s - %s" % (rotulo, legenda) if legenda else rotulo
     tempo = duracao(c.get("ultima_duracao_s"))
     rotulo = "Áudio (%s)" % tempo if tempo else "Áudio"
     palavras = str(c.get("ultima_transcricao") or "").split()

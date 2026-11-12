@@ -120,6 +120,7 @@ def rodar(args, avisar=print):
                        "válidos seguidos zerou (a Evolution ainda pode mandar o segredo antigo)", file=sys.stderr)
             banco.registrar_servico(con, app.porta, app.marca)  # a tela confere porta e projeto antes de agir
             midia.interrompidas(con)   # pendente de um processo anterior: o dono pede de novo, nada em laço
+            midia.orfaos(con, pasta_dados)   # .tmp de uma queda e arquivo sem linha saem antes do trabalhador
             importar_candidatos(con, raiz, avisar)
         finally:
             con.close()

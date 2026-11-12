@@ -1,6 +1,8 @@
 """arquivo(ctx, ref) do módulo Vendas: entrega ao painel os bytes de uma mídia de mensagem. A ref é só 'm:<id>'
 (o id da mídia no serviço); o serviço é o DESTE projeto (cliente.baixar confere porta, batimento e marca) e o token
-nunca aparece. Serviço parado, mídia que não está pronta ou recusa = não encontrado (o painel responde 404). Python 3.9."""
+nunca aparece. Serviço parado ou mídia que não está pronta (404 do serviço) = não encontrado (o painel responde 404);
+outra resposta do serviço (403, 500, 3xx) ou arquivo cortado = erro (o painel responde 500, nunca um 404 calado).
+Python 3.9."""
 import re
 import urllib.parse
 
@@ -27,8 +29,10 @@ def ler(ctx, cliente, ref, base=None):
         codigo, cab, dados = cliente.baixar(ctx, "/midia/%d" % int(achou.group(1)), LIMITE, base)
     except cliente.Recusa:
         raise FileNotFoundError("servico")
-    if codigo != 200:
+    if codigo == 404:
         raise FileNotFoundError("midia")
+    if codigo != 200:
+        raise RuntimeError("serviço respondeu %d" % codigo)
     mime = (cab.get("content-type") or "application/octet-stream").split(";")[0].strip().lower()
     disposicao = cab.get("content-disposition") or ""
     saida = {"mime": mime, "dados": dados}

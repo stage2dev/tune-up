@@ -85,7 +85,11 @@ def _falar(app, con, numero, fala, mandar, chave):
     (pendente, enviado ou incerto) o áudio pode ter saído = 'incerto' (sem texto de reserva); sem linha = 'erro' (o
     texto sai)."""
     try:
-        return voz._gerar_e_enviar(app, con, "audio_ia", numero, fala, mandar)
+        r = voz._gerar_e_enviar(app, con, "audio_ia", numero, fala, mandar)
+        if r.get("envio_id") and r.get("estado") in SAIU:   # o texto falado fica para a prévia da lista
+            con.execute("UPDATE envios SET fala = ? WHERE id = ? AND origem = 'audio_ia' AND fala IS NULL",
+                        (fala, r["envio_id"]))
+        return r
     except Exception as e:
         if con.in_transaction:
             con.execute("ROLLBACK")

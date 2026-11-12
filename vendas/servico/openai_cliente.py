@@ -4,6 +4,7 @@ cortada. GET tenta de novo também em rede e tempo. O erro vem do corpo (`error.
 da chave). A URL base vem SÓ do argumento/ambiente de subida do serviço (testes), nunca de um pedido."""
 import http.client
 import json
+import re
 import socket
 import urllib.error
 import urllib.request
@@ -14,17 +15,23 @@ VAR_URL = "VENDAS_OPENAI_URL"
 TEMPO_S = 30
 TEMPO_MODELOS_S = 6  # o painel espera 12 s pela rota /ia/modelos
 SEM_NOVA_TENTATIVA = ("insufficient_quota", "invalid_api_key")
+# o erro real de modelo sem visão ("Invalid content type. image_url is only supported by certain models."); só a
+# classificação sai daqui, o texto do erro nunca é guardado
+SEM_VISAO = re.compile(r"image_url is only supported|(does not|doesn't) support (image|vision)|"
+                       r"image inputs? (is|are) not supported", re.I)
 
 
 class ErroOpenAI(RuntimeError):
     """codigo: `error.code` do corpo, 'tempo_esgotado', 'rede' ou 'http_<n>'. Nunca leva a chave.
-    recusada=True: a conexão nem abriu (o pedido não chegou à OpenAI)."""
+    recusada=True: a conexão nem abriu (o pedido não chegou à OpenAI). sem_visao=True: o corpo do erro diz que o
+    modelo não aceita imagem (SEM_VISAO)."""
 
-    def __init__(self, codigo, status=None, recusada=False):
+    def __init__(self, codigo, status=None, recusada=False, sem_visao=False):
         super().__init__(codigo)
         self.codigo = codigo
         self.status = status
         self.recusada = recusada
+        self.sem_visao = sem_visao
 
 
 class _SemRedirecionar(urllib.request.HTTPRedirectHandler):
@@ -48,6 +55,15 @@ def _codigo_do_corpo(bruto, status):
     return str(codigo) if isinstance(codigo, str) and codigo else "http_%d" % status
 
 
+def _sem_visao(bruto):
+    try:
+        erro = json.loads(bruto.decode("utf-8")).get("error") or {}
+        mensagem = erro.get("message")
+    except (ValueError, AttributeError, UnicodeDecodeError):
+        return False
+    return isinstance(mensagem, str) and bool(SEM_VISAO.search(mensagem))
+
+
 def _uma(url, chave, metodo, corpo, tempo):
     cab = {"Authorization": "Bearer " + chave}
     dados = None
@@ -65,7 +81,7 @@ def _uma(url, chave, metodo, corpo, tempo):
             bruto = b""
         finally:
             e.close()
-        raise ErroOpenAI(_codigo_do_corpo(bruto, e.code), e.code)
+        raise ErroOpenAI(_codigo_do_corpo(bruto, e.code), e.code, sem_visao=_sem_visao(bruto))
     except (socket.timeout, TimeoutError):
         raise ErroOpenAI("tempo_esgotado")
     except http.client.HTTPException:  # corpo cortado, linha de status ruim: não é OSError

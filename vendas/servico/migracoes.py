@@ -224,4 +224,7 @@ MIGRACOES = [
     ],
     # 19: transcrição de um áudio do lead (servico/transcricao.py); NULL = não transcrito (ou falhou)
     ["ALTER TABLE mensagens ADD COLUMN transcricao TEXT"],
+    # 20: `midias.falha_ia` = a IA já falhou com esta mídia (transcrição, imagem recusada): não tenta sozinha de novo,
+    # só pela ação do dono; `envios.fala` = o texto falado de um áudio da IA (prévia da lista)
+    ["ALTER TABLE midias ADD COLUMN falha_ia TEXT", "ALTER TABLE envios ADD COLUMN fala TEXT"],
 ]

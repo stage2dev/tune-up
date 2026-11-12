@@ -65,8 +65,8 @@ def listar(con, query, agora=None):
         "ORDER BY m.id DESC LIMIT 1) AS ultima_duracao_s, "
         "(SELECT d.nome_arquivo FROM mensagens m LEFT JOIN midias d ON d.mensagem_id = m.id WHERE m.conversa_id = c.id "
         "ORDER BY m.id DESC LIMIT 1) AS ultima_nome, "
-        "(SELECT m.transcricao FROM mensagens m LEFT JOIN midias d ON d.mensagem_id = m.id WHERE m.conversa_id = c.id "
-        "ORDER BY m.id DESC LIMIT 1) AS ultima_transcricao, "
+        "(SELECT COALESCE(m.transcricao, e.fala) FROM mensagens m LEFT JOIN envios e ON e.id = m.envio_id "
+        "WHERE m.conversa_id = c.id ORDER BY m.id DESC LIMIT 1) AS ultima_transcricao, "
         "(SELECT MAX(m.id) FROM mensagens m WHERE m.conversa_id = c.id) AS ultima_id "
         "FROM conversas c JOIN contatos k ON k.id = c.contato_id "
         "ORDER BY COALESCE(ultima_em, c.criado_em) DESC, ultima_id DESC, c.id DESC LIMIT ? OFFSET ?",
@@ -80,6 +80,8 @@ def listar(con, query, agora=None):
          "telefone_mascarado": mascarar(r["telefone"]), "telefone": r["telefone"], "modo": r["modo"], "ia_desligada": r["modo"] == "humano",
          "nao_lidas": r["nao_lidas"], "ultima_tipo": r["ultima_tipo"], "ultima_duracao_s": r["ultima_duracao_s"],
          "ultima_nome": r["ultima_nome"], "ultima_transcricao": r["ultima_transcricao"], "precisa_de_voce": bool(r["precisa_de_voce"]),
+         "ultima_legenda": _previa(r["ultima"], "texto") if r["ultima"] and r["ultima_tipo"] in ("imagem", "documento")
+         else None,
          "motivo_humano": r["motivo_humano"], "saiu": r["optout_em"] is not None,
          "tem_rascunho": bool(r["tem_rascunho"]), "ia_pausada": portao._pausada(con, r["contato_id"], momento),
          "ultima": _previa(r["ultima"], r["ultima_tipo"]) if r["ultima_em"] else "", "quando": r["ultima_em"]}
@@ -126,7 +128,7 @@ def abrir(con, conversa_id, query, agora=None):
     itens = []
     for m in con.execute("SELECT m.id, m.direcao, m.tipo, m.texto, m.transcricao, m.criado_em, e.origem, e.estado, e.motivo, "
                          "d.id AS d_id, d.estado AS d_estado, d.motivo AS d_motivo, d.mimetype, d.bytes, d.duracao_s, "
-                         "d.nome_arquivo FROM mensagens m LEFT JOIN envios e ON e.id = m.envio_id "
+                         "d.nome_arquivo, d.falha_ia FROM mensagens m LEFT JOIN envios e ON e.id = m.envio_id "
                          "LEFT JOIN midias d ON d.mensagem_id = m.id WHERE m.conversa_id = ? "
                          "ORDER BY m.id DESC LIMIT ?", (conversa_id, limite)):
         de = "contato" if m["direcao"] == "entrada" else ("ia" if m["origem"] in ("ia", "audio_ia") else "eu")
@@ -135,7 +137,7 @@ def abrir(con, conversa_id, query, agora=None):
                       "transcricao": m["transcricao"], "midia": None if m["d_id"] is None else {
                           "id": m["d_id"], "tipo": m["tipo"], "estado": m["d_estado"], "motivo": m["d_motivo"],
                           "mimetype": m["mimetype"], "bytes": m["bytes"], "duracao_s": m["duracao_s"],
-                          "nome_arquivo": m["nome_arquivo"]}})
+                          "nome_arquivo": m["nome_arquivo"], "falha_ia": m["falha_ia"]}})
     for e in con.execute("SELECT e.id, e.origem, e.estado, e.motivo, e.conteudo, e.tipo, e.tentado_em FROM envios e "
                          "WHERE e.contato_id = ? AND NOT EXISTS (SELECT 1 FROM mensagens m WHERE m.envio_id = e.id) "
                          "ORDER BY e.id DESC LIMIT ?", (c["contato_id"], limite)):

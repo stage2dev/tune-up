@@ -34,6 +34,8 @@ MOTIVOS = {
     "sem_modelo": "A IA está sem modelo escolhido; configure na aba IA.",
     "sem_oferta": "A IA está sem oferta cadastrada; configure na aba IA.",
     "preco_desconhecido": "O preço do modelo da IA não está cadastrado; informe na aba IA.",
+    "preco_transcricao": "O preço do modelo de transcrição não está cadastrado; informe na aba IA. A IA não ouviu o "
+                         "áudio; responda você.",
     "resposta_invalida": "A IA devolveu uma resposta inválida; responda você.",
     "resposta_cortada": "A resposta da IA veio cortada no meio e não foi enviada; responda você.",
     "sem_texto": "A IA não escreveu nada; responda você.",
@@ -58,6 +60,9 @@ MOTIVOS = {
     "imagem_grande": "A imagem do lead passa de 8 MB; a IA não viu. Responda você.",
     "sinal_de_saida": "O lead falou em sair ou parar num áudio ou legenda; confira a conversa.",
     "modelo_sem_visao": "O modelo da IA não aceita imagens; nada saiu. Troque o modelo ou responda você.",
+    "imagem_recusada": "A OpenAI recusou a imagem do lead; nada saiu e a IA não manda essa imagem de novo. Responda você.",
+    "midia_nao_entendida": "A IA não entendeu um áudio ou imagem anterior do lead e respondeu só ao resto. Confira o "
+                           "arquivo na conversa.",
     "documento_recebido": "O lead mandou um documento; a IA não lê documentos. Responda você.",
 }
 

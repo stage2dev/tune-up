@@ -4,7 +4,8 @@ Antes de cada chamada reserva o pior caso no teto diário (BEGIN IMMEDIATE); nã
 = não chama. Erro, tempo esgotado, teto, sem preço, sem chave, sem modelo ou exceção inesperada = texto None (nada a
 enviar) e a conversa fica "precisa de você". Aqui nada envia: quem chama decide.
 Imagem do lead (servico/entender.py) vai como parte image_url; o pior caso conta precos.IMAGEM_TOKENS por imagem.
-Modelo que recusa imagem (HTTP 400 num pedido com imagem) = modelo_sem_visao: a imagem não vai de novo sem aviso."""
+Modelo que recusa imagem (o erro real da API, openai_cliente.SEM_VISAO) = modelo_sem_visao; outro 400 num pedido com
+imagem = imagem_recusada. Nos dois, quem chama marca a imagem (midias.falha_ia) e ela não vai de novo sozinha."""
 import json
 import os
 import re
@@ -175,7 +176,7 @@ class Cerebro:
             else:
                 r["custo_usd"] += pior
             if e.status == 400 and _com_imagem(corpo):
-                return None, "modelo_sem_visao"
+                return None, "modelo_sem_visao" if e.sem_visao else "imagem_recusada"
             return None, e.codigo
         custo = precos.custo_usd(par, resposta.get("usage") if isinstance(resposta, dict) else None)
         precos.acertar(con, reserva, pior if custo is None else custo)

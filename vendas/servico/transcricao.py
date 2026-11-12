@@ -2,7 +2,7 @@
 file, model, language=pt, response_format=json; resposta {"text": ...}). O arquivo vai como foi guardado (ogg/opus,
 mp3, m4a, wav) com a extensão certa no nome. Tempo limite e UMA tentativa (nunca de novo depois de tempo esgotado).
 Antes de chamar: duração <= 5 min (quando o ffprobe soube) e tamanho <= 16 MB, senão audio_longo; preço por minuto
-do modelo (precos.preco_minuto) desconhecido = preco_desconhecido. O custo reserva no MESMO teto diário do chat
+do modelo (precos.preco_minuto) desconhecido = preco_transcricao. O custo reserva no MESMO teto diário do chat
 (precos.reservar, BEGIN IMMEDIATE) antes da chamada e acerta depois: erro com resposta HTTP ou conexão recusada
 libera; tempo esgotado fica. Sem duração conhecida, o pior caso sai do tamanho (8 kbps, piso de nota de voz).
 Resultado tipado {ok, texto, motivo}: falha nunca vira texto; transcrição com menos de 2 letras = falhou.
@@ -24,6 +24,7 @@ DURACAO_MAX_S = 300
 BYTES_MAX = 16 * 1024 * 1024
 BYTES_POR_S = 1000   # 8 kbps: pior caso de duração quando o ffprobe não soube
 MINIMO = 2
+GUARDA = ("transcricao_falhou", "audio_longo", "audio_formato")   # falhas que entender.py guarda (não repete sozinha)
 EXTENSAO = {"audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a", "audio/wav": "wav"}
 
 
@@ -110,7 +111,7 @@ def transcrever(con, pasta_dados, base, mensagem_id, tempo=TEMPO_S):
         return _falha("sem_chave")
     por_minuto = precos.preco_minuto(pasta_dados, nome_modelo)
     if por_minuto is None:
-        return _falha("preco_desconhecido")
+        return _falha("preco_transcricao")
     caminho = midia.caminho_do_arquivo(pasta_dados, linha["arquivo"])
     try:
         with open(caminho or "", "rb") as f:

@@ -25,7 +25,9 @@
   delimitador e mesmo filtro de injeção do texto, rotulada como transcrição de áudio) e a imagem como parte
   image_url (detail low). Transcrição ou legenda que é um SAIR = opt-out e confirmação, sem modelo. Falha em
   qualquer passo = o modelo não é chamado, nada sai, "precisa de você" com o motivo. Documento nunca chega
-  aqui (o recebimento marca documento_recebido)."""
+  aqui (o recebimento marca documento_recebido). Imagem que a API recusou fica marcada (midias.falha_ia).
+- Conversa pausada (dono ou modo humano) com mídia no lote: o modelo não é chamado, mas a triagem de SAIR roda nas
+  transcrições e legendas (com 'IA entende' ligado) e a conversa fica "precisa de você" (pausa_humana)."""
 import datetime
 import json
 import re
@@ -187,11 +189,14 @@ class Atendente:
     def _responder(self, con, conversa_id, gatilho_id, agora):
         conversa = con.execute("SELECT c.modo, c.pausada_ate, k.telefone, k.optout_em FROM conversas c JOIN contatos k "
                                "ON k.id = c.contato_id WHERE c.id = ?", (conversa_id,)).fetchone()
-        if conversa is None or conversa["optout_em"] or _pausada(conversa, agora):
+        if conversa is None or conversa["optout_em"]:
             return None   # economiza a chamada; o portão reconfere na hora de enviar
+        pausada = _pausada(conversa, agora)
         mensagens, gatilho, suspeitas = contexto(con, conversa_id, gatilho_id)
         if gatilho is None:
             return None
+        if pausada:
+            return self._na_pausa(con, conversa_id, gatilho["id"], conversa, agora)
         conector, instancia = self.obter_conector(), banco.ler_config(con, "instancia")
         if conector is None or not instancia:
             cerebro.marcar_precisa_de_voce(con, conversa_id, "sem_conector")
@@ -205,8 +210,8 @@ class Atendente:
             cerebro.marcar_precisa_de_voce(con, conversa_id, "erro_interno", True, type(e).__name__)
             return None
         if ent.get("sair"):   # SAIR falado ou na legenda: opt-out e confirmação pelo portão, como no texto
-            banco.marcar_optout(con, conversa["telefone"], agora.astimezone(UTC).isoformat(timespec="seconds"))
-            recebimento.executar_depois(con, conector, [("sair", conversa["telefone"])])
+            return self._sair(con, conector, conversa, agora)
+        if ent.get("parado"):
             return None
         for motivo in [ent["motivo"]] if not ent["ok"] else ent["avisos"]:
             cerebro.marcar_precisa_de_voce(con, conversa_id, motivo)
@@ -225,6 +230,8 @@ class Atendente:
                 {"conversa_id": conversa_id, "mensagens": suspeitas}))
         audio = audio_ia.oferecer(self.app, con, conversa_id, gatilho["id"])
         r = self.cerebro.responder(con, conversa_id, mensagens, audio=audio)   # rede, fora de transação
+        if r.get("motivo") in ("modelo_sem_visao", "imagem_recusada") and ent["imagens"]:
+            entender.guardar_falha(con, list(ent["imagens"]), r["motivo"])   # a mesma imagem não vai de novo
         if not r["texto"]:
             return None
         texto = "\n".join([r["texto"]] + [u for u in r["links"] if u not in r["texto"]])
@@ -238,3 +245,23 @@ class Atendente:
                                      gatilho["id_externo"], texto, permitidos, segredos, reescrever)
         return saida.entregar(con, conector, instancia, conversa["telefone"], conversa_id, gatilho["id_externo"],
                               texto, permitidos=permitidos, segredos=segredos, reescrever=reescrever)
+
+    def _sair(self, con, conector, conversa, agora):
+        banco.marcar_optout(con, conversa["telefone"], agora.astimezone(UTC).isoformat(timespec="seconds"))
+        recebimento.executar_depois(con, conector, [("sair", conversa["telefone"])])
+
+    def _na_pausa(self, con, conversa_id, gatilho_id, conversa, agora):
+        """Pausada: nada vai ao modelo. SAIR falado ou na legenda ainda vale; mídia no lote = "precisa de você"."""
+        try:   # espera e rede, fora de transação
+            ent = entender.preparar(self.cerebro, con, conversa_id, gatilho_id, self._parar, self.entende,
+                                    so_triagem=True)
+        except Exception as e:
+            if con.in_transaction:
+                con.execute("ROLLBACK")
+            _avisar("mídia na pausa", e)
+            ent = {"sair": False, "parado": False, "tinha_midia": True}
+        if ent.get("sair"):
+            return self._sair(con, self.obter_conector(), conversa, agora)
+        if ent.get("tinha_midia") and not ent.get("parado"):
+            cerebro.marcar_precisa_de_voce(con, conversa_id, "pausa_humana")
+        return None

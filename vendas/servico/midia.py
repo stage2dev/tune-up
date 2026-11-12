@@ -10,6 +10,9 @@ conector, sem transação aberta e sem segurar a resposta do webhook.
 - Retenção: arquivo com mais de `midia_dias` (30) dias sai na subida e uma vez por dia; teto total `midia_teto_bytes`
   (2 GB): o mais antigo sai primeiro. A linha fica, com estado expirada.
 - Falha não volta sozinha: só o dono pede de novo (POST /midia/<id>/baixar-de-novo). Pendente na subida = interrompida.
+  Webhook sem segredo: nenhuma chave guardada e nada a pedir de novo. A mesma ação limpa `falha_ia` de uma pronta (a IA
+  tenta de novo). Na subida, `.tmp` e arquivo sem linha em `midias` saem da pasta.
+- O trabalhador sobrevive a erro (banco ocupado inclusive) e só avisa o tipo; morto, enfileirar o sobe de novo.
 Nenhum nome de arquivo, telefone ou conteúdo vai para log."""
 import datetime
 import hashlib
@@ -86,10 +89,10 @@ def registrar(con, mensagem_id, tipo, chave, confiavel=True):
     """Dentro da transação do recebimento. Devolve o id; só a pendente vai para a fila (depois do commit)."""
     estado, motivo = "pendente", None
     if not confiavel:
-        estado, motivo = "falhou", "sem_segredo"   # webhook forjado não dispara chamada para fora
+        estado, motivo = "falhou", "sem_segredo"   # webhook forjado: nem a chave fica (nada a pedir de novo)
+    guardada = json.dumps(chave) if confiavel and isinstance(chave, dict) else None
     cur = con.execute("INSERT INTO midias (mensagem_id, tipo, chave, estado, motivo, criado_em) VALUES (?, ?, ?, ?, ?, ?)",
-                      (mensagem_id, tipo, json.dumps(chave) if isinstance(chave, dict) else None, estado, motivo,
-                       banco.agora()))
+                      (mensagem_id, tipo, guardada, estado, motivo, banco.agora()))
     banco._exigir(cur)
     return cur.lastrowid
 
@@ -100,9 +103,12 @@ def registrar_baixador(baixador):
 
 
 def enfileirar(con, midia_id):
-    """Depois do commit. Sem trabalhador, a linha fica pendente (a próxima subida marca interrompida). Fila cheia =
-    falhou (fila_cheia), sem esperar."""
+    """Depois do commit. Sem trabalhador, a linha fica pendente (a próxima subida marca interrompida). Trabalhador
+    morto que não sobe de novo (serviço parando) = falhou (sem_baixador). Fila cheia = falhou (fila_cheia)."""
     if _baixador is None:
+        return False
+    if not _baixador.garantir():
+        _falhar(con, midia_id, "sem_baixador")
         return False
     try:
         _baixador.fila.put_nowait(midia_id)
@@ -168,13 +174,18 @@ def caminho_do_arquivo(pasta_dados, relativo):
     return alvo if alvo.startswith(base_real + os.sep) else None
 
 
-def duracao(caminho):
-    """Segundos (uma casa) pelo ffprobe quando instalado; senão (ou erro) None."""
+FORMATO_FFPROBE = {"audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "mp4", "audio/wav": "wav", "audio/aac": "aac"}
+
+
+def duracao(caminho, mimetype=None):
+    """Segundos (uma casa) pelo ffprobe quando instalado; senão (ou erro) None. O formato detectado vai em -f: o
+    ffprobe não sonda o conteúdo do lead livremente; formato fora da lista = None, sem rodar."""
     exe = shutil.which("ffprobe")
-    if not exe:
+    formato = FORMATO_FFPROBE.get(mimetype)
+    if not exe or not formato:
         return None
     try:
-        r = subprocess.run([exe, "-v", "error", "-show_entries", "format=duration", "-of",
+        r = subprocess.run([exe, "-v", "error", "-f", formato, "-show_entries", "format=duration", "-of",
                             "default=noprint_wrappers=1:nokey=1", caminho], stdout=subprocess.PIPE,
                            stderr=subprocess.DEVNULL, timeout=15, check=False)
         valor = float(r.stdout.decode("ascii", "replace").strip())
@@ -217,12 +228,16 @@ def baixar(abrir, conector, pasta_dados, midia_id):
             _avisar("gravação", e)
             return _falhar(con, midia_id, "disco")
         caminho = caminho_do_arquivo(pasta_dados, relativo)
-        cur = con.execute(
-            "UPDATE midias SET estado = 'pronta', motivo = NULL, mimetype = ?, bytes = ?, sha256 = ?, nome_arquivo = ?, "
-            "arquivo = ?, duracao_s = ?, baixada_em = ? WHERE id = ? AND estado = 'pendente'",
-            (mimetype, len(dados), hashlib.sha256(dados).hexdigest(),
-             nome_seguro(nome) if tipo == "documento" else None, relativo,
-             duracao(caminho) if tipo == "audio" else None, banco.agora(), midia_id))
+        try:
+            cur = con.execute(
+                "UPDATE midias SET estado = 'pronta', motivo = NULL, mimetype = ?, bytes = ?, sha256 = ?, "
+                "nome_arquivo = ?, arquivo = ?, duracao_s = ?, baixada_em = ? WHERE id = ? AND estado = 'pendente'",
+                (mimetype, len(dados), hashlib.sha256(dados).hexdigest(),
+                 nome_seguro(nome) if tipo == "documento" else None, relativo,
+                 duracao(caminho, mimetype) if tipo == "audio" else None, banco.agora(), midia_id))
+        except BaseException:   # banco ocupado, disco: o arquivo não fica sem linha
+            _remover(caminho)
+            raise
         if cur.rowcount != 1:   # mudou de estado enquanto baixava: o arquivo não fica órfão
             _remover(caminho)
             return None
@@ -232,10 +247,23 @@ def baixar(abrir, conector, pasta_dados, midia_id):
         con.close()
 
 
-def pedir_de_novo(con, midia_id):
-    """Ação do dono: falhou -> pendente e fila. False se não estava em falhou (inclui o clique repetido)."""
-    cur = con.execute("UPDATE midias SET estado = 'pendente', motivo = NULL WHERE id = ? AND estado = 'falhou'",
+def entender_de_novo(con, midia_id):
+    """Ação do dono numa pronta em que a IA falhou: limpa falha_ia. Devolve a conversa e a última entrada confiável
+    dela (quem chama dá a vez à IA) ou None se não havia falha da IA."""
+    cur = con.execute("UPDATE midias SET falha_ia = NULL WHERE id = ? AND estado = 'pronta' AND falha_ia IS NOT NULL",
                       (midia_id,))
+    if cur.rowcount != 1:
+        return None
+    return con.execute("SELECT m.conversa_id, (SELECT MAX(id) FROM mensagens WHERE conversa_id = m.conversa_id "
+                       "AND direcao = 'entrada' AND confiavel = 1) FROM midias d JOIN mensagens m ON m.id = "
+                       "d.mensagem_id WHERE d.id = ?", (midia_id,)).fetchone()
+
+
+def pedir_de_novo(con, midia_id):
+    """Ação do dono: falhou -> pendente e fila. False se não estava em falhou (inclui o clique repetido) ou se veio
+    de webhook sem segredo (sem chave guardada: nada de chamar a Evolution com o que um forjador mandou)."""
+    cur = con.execute("UPDATE midias SET estado = 'pendente', motivo = NULL WHERE id = ? AND estado = 'falhou' AND "
+                      "chave IS NOT NULL AND COALESCE(motivo, '') <> 'sem_segredo'", (midia_id,))
     if cur.rowcount != 1:
         return False
     if _baixador is None:
@@ -247,6 +275,29 @@ def pedir_de_novo(con, midia_id):
 def interrompidas(con):
     """Subida, antes de servir: pendente que sobrou de um processo anterior vira falhou (interrompida)."""
     return con.execute("UPDATE midias SET estado = 'falhou', motivo = 'interrompida' WHERE estado = 'pendente'").rowcount
+
+
+def orfaos(con, pasta_dados):
+    """Subida, antes do trabalhador: apaga `.tmp` de uma queda e arquivo que nenhuma linha de `midias` aponta.
+    Devolve quantos saíram. Nada fora de <pasta de dados>/midia/<conversa>/ é tocado."""
+    base_real = os.path.realpath(raiz(pasta_dados))
+    if not os.path.isdir(base_real):
+        return 0
+    usados = {r[0] for r in con.execute("SELECT arquivo FROM midias WHERE arquivo IS NOT NULL")}
+    n = 0
+    try:
+        for conversa in os.listdir(base_real):
+            pasta = os.path.join(base_real, conversa)
+            if not conversa.isdigit() or os.path.islink(pasta) or not os.path.isdir(pasta):
+                continue
+            for nome in os.listdir(pasta):
+                caminho = os.path.join(pasta, nome)
+                if os.path.islink(caminho) or not os.path.isfile(caminho) or "%s/%s" % (conversa, nome) in usados:
+                    continue
+                n += _remover(caminho)
+    except OSError as e:   # a subida não cai por causa da limpeza
+        _avisar("limpeza de órfãos", e)
+    return n
 
 
 def _remover(caminho):
@@ -308,14 +359,35 @@ class Baixador:
         self.obter_conector = obter_conector
         self.pasta_dados = pasta_dados
         self.fila = queue.Queue(fila_max)
+        self._fio = self._parar = None
+        self._trava = threading.Lock()
 
     def iniciar(self, parar):
-        fio = threading.Thread(target=self._rodar, args=(parar,), daemon=True)
-        fio.start()
-        return fio
+        with self._trava:
+            self._parar = parar
+            self._fio = threading.Thread(target=self._rodar, args=(parar,), daemon=True)
+            self._fio.start()
+            return self._fio
+
+    def garantir(self):
+        """O trabalhador está vivo (ou nem foi ligado: quem usa a fila sem thread)? Morto = sobe outro, salvo se o
+        serviço está parando (False)."""
+        with self._trava:
+            if self._fio is None or self._fio.is_alive():
+                return True
+            if self._parar.is_set():
+                return False
+            _avisar("trabalhador", RuntimeError("thread morta, subindo outra"))
+            self._fio = threading.Thread(target=self._rodar, args=(self._parar,), daemon=True)
+            self._fio.start()
+            return True
 
     def _limpar(self):
-        con = self.abrir()
+        try:
+            con = self.abrir()   # banco ocupado aqui não derruba o trabalhador
+        except Exception as e:
+            _avisar("retenção", e)
+            return
         try:
             purgar(con, self.pasta_dados)
         except Exception as e:
@@ -326,22 +398,29 @@ class Baixador:
     def _rodar(self, parar):
         ultima = None
         while not parar.is_set():
-            if ultima is None or time.monotonic() - ultima >= DIA_S:
-                self._limpar()
-                ultima = time.monotonic()
             try:
-                midia_id = self.fila.get(timeout=0.5)
-            except queue.Empty:
-                continue
-            try:
-                baixar(self.abrir, self.obter_conector(), self.pasta_dados, midia_id)
-            except Exception as e:   # a linha não pode ficar pendente para sempre
+                if ultima is None or time.monotonic() - ultima >= DIA_S:
+                    ultima = time.monotonic()
+                    self._limpar()
+                self._um(parar)
+            except Exception as e:   # nada derruba o laço: o tipo vai para o log
                 _avisar("trabalhador", e)
+                parar.wait(0.5)
+
+    def _um(self, parar):
+        try:
+            midia_id = self.fila.get(timeout=0.5)
+        except queue.Empty:
+            return
+        try:
+            baixar(self.abrir, self.obter_conector(), self.pasta_dados, midia_id)
+        except Exception as e:   # a linha não pode ficar pendente para sempre
+            _avisar("trabalhador", e)
+            try:
+                con = self.abrir()
                 try:
-                    con = self.abrir()
-                    try:
-                        _falhar(con, midia_id, "erro")
-                    finally:
-                        con.close()
-                except Exception as e2:
-                    _avisar("trabalhador", e2)
+                    _falhar(con, midia_id, "erro")
+                finally:
+                    con.close()
+            except Exception as e2:
+                _avisar("trabalhador", e2)

@@ -1,5 +1,6 @@
 """Rotas da mídia, sempre com token: GET /midia/<id> entrega o arquivo (mimetype guardado, Content-Length, Range de
-uma faixa, documento como anexo, áudio/imagem inline, nosniff) e POST /midia/<id>/baixar-de-novo pede outra tentativa.
+uma faixa, documento como anexo, áudio/imagem inline, nosniff) e POST /midia/<id>/baixar-de-novo pede outra tentativa
+(do download que falhou ou, numa pronta, da IA que falhou com ela).
 O id é um inteiro procurado no banco; o caminho do arquivo vem só da linha, nunca do pedido."""
 import os
 import re
@@ -48,7 +49,14 @@ def atender(handler, app, token_ok):
             handler.close_connection = True
             if midia.pedir_de_novo(con, midia_id):
                 return handler._json(202, {"id": midia_id, "estado": "pendente"})
-            return handler._erro(409, "Esta mídia não está em falha (ou já está sendo baixada).")
+            alvo = midia.entender_de_novo(con, midia_id)   # pronta em que a IA falhou: a IA tenta de novo agora
+            if alvo is not None:
+                if alvo[1] is not None:
+                    from servico import recebimento   # aqui dentro: no topo fecharia um ciclo de import (rotas)
+                    recebimento.ao_receber_mensagem_de_lead(alvo[0], alvo[1])
+                return handler._json(202, {"id": midia_id, "estado": "pronta"})
+            return handler._erro(409, "Esta mídia não pode ser tentada de novo (não falhou, já está sendo baixada ou "
+                                      "a falha se repetiria).")
         linha = con.execute("SELECT tipo, mimetype, nome_arquivo, arquivo FROM midias WHERE id = ? AND estado = "
                             "'pronta'", (midia_id,)).fetchone()
     finally:

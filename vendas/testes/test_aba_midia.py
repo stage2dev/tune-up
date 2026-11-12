@@ -119,6 +119,7 @@ class TesteBlocos(Midias):
         expirada, _ = self.chegou("audio", OGG)
         self.estado(expirada, "expirada", "retencao")
         self.assertEqual(self.con.execute("SELECT estado FROM midias WHERE id = ?", (falhou,)).fetchone()[0], "falhou")
+        self.estado(falhou, "falhou", "indisponivel")   # falha que outra tentativa pode resolver
         self.abrir_conversa()
         _, msgs = self.mensagens()
         por_ref = {m["midia"]["ref"]: m["midia"] for m in msgs if "midia" in m}
@@ -197,7 +198,7 @@ class TesteTentarDeNovo(Midias):
     def test_chega_ao_servico_e_volta_a_pendente(self):
         falhou, _ = self.chegou("audio", None)
         fila = queue.Queue()
-        midia.registrar_baixador(type("B", (), {"fila": fila})())
+        midia.registrar_baixador(type("B", (), {"fila": fila, "garantir": lambda self: True})())
         r = self.mod.agir(self.ctx, "midia_baixar_de_novo", {"midia_id": falhou}, base=self.base)
         self.assertTrue(r["ok"], r)
         self.assertEqual(self.con.execute("SELECT estado FROM midias WHERE id = ?", (falhou,)).fetchone()[0],

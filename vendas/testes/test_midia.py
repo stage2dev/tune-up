@@ -110,7 +110,7 @@ class TesteDownload(Base):
         m = self.conversa()[0]
         self.assertEqual(m["midia"], {"id": mid, "tipo": "audio", "estado": "pronta", "motivo": None,
                                       "mimetype": "audio/ogg", "bytes": len(OGG), "duracao_s": m["midia"]["duracao_s"],
-                                      "nome_arquivo": None})
+                                      "nome_arquivo": None, "falha_ia": None})
         self.assertEqual(self.um("SELECT precisa_de_voce FROM conversas"), 1)   # regra antiga continua
 
     def um(self, sql):

@@ -31,7 +31,11 @@ TEMPO_MIDIA_S = 30
 ESPERA_NOVA_TENTATIVA_S = 1.0
 MIDIA_MAX = 20 * 1024 * 1024   # o maior teto por tipo (documento); o base64 + JSON cabe em RESPOSTA_MIDIA_MAX
 RESPOSTA_MIDIA_MAX = MIDIA_MAX * 4 // 3 + 1024 * 1024
-MIDIA_EXPIRADA = (400, 404, 410)   # a Evolution responde 400 a "Message not found" e a mídia que o WhatsApp não tem
+MIDIA_EXPIRADA = (404, 410)
+# A Evolution devolve TODA falha do getBase64FromMediaMessage como 400 (BadRequestException(error.toString())): só o
+# corpo diz se é a mensagem que ela não tem ou a mídia que o CDN do WhatsApp já não serve. O resto do 400 é passageiro.
+SINAIS_EXPIRADA = ("message not found", "status code 404", "status code 410", "failed to fetch stored media",
+                   "reupload", "re-upload")
 
 
 class PaginasDemais(base.ErroConector):
@@ -163,7 +167,8 @@ class Evolution(base.Conector):
     def baixar_midia(self, instancia, mensagem):
         """POST /chat/getBase64FromMediaMessage/<instancia> com {"message": {"key": ...}}: a Evolution acha a
         mensagem no banco dela pelo id da chave (DATABASE_SAVE_DATA_NEW_MESSAGE=true) e baixa do WhatsApp. Uma nova
-        tentativa curta em rede/5xx; 400/404/410 = expirada; resposta acima de RESPOSTA_MIDIA_MAX = grande_demais."""
+        tentativa curta em rede/5xx e em 400 sem sinal de expirada; 404/410 ou 400 com SINAIS_EXPIRADA no corpo =
+        expirada; resposta acima de RESPOSTA_MIDIA_MAX = grande_demais."""
         base.validar_instancia(instancia)
         chave = {k: mensagem.get(k) for k in ("id", "remoteJid", "fromMe")} if isinstance(mensagem, dict) else {}
         if not isinstance(chave.get("id"), str) or not chave["id"]:
@@ -178,10 +183,11 @@ class Evolution(base.Conector):
                     bruto = resposta.read(RESPOSTA_MIDIA_MAX + 1)
                 break
             except urllib.error.HTTPError as erro:
+                expirada = erro.code in MIDIA_EXPIRADA or (erro.code == 400 and _sinal_de_expirada(erro))
                 erro.close()
-                if erro.code in MIDIA_EXPIRADA:
+                if expirada:
                     raise MidiaExpirada("Evolution respondeu HTTP %d" % erro.code, erro.code)
-                if erro.code < 500 or tentativa == 2:
+                if (erro.code < 500 and erro.code != 400) or tentativa == 2:
                     raise MidiaIndisponivel("Evolution respondeu HTTP %d" % erro.code, erro.code)
             except (urllib.error.URLError, socket.timeout, TimeoutError, http.client.HTTPException, OSError) as erro:
                 if tentativa == 2:
@@ -238,6 +244,15 @@ def _numero_inexistente(erro):
     resposta = dados.get("response") if isinstance(dados, dict) else None
     itens = resposta.get("message") if isinstance(resposta, dict) else None
     return isinstance(itens, list) and any(isinstance(i, dict) and i.get("exists") is False for i in itens)
+
+
+def _sinal_de_expirada(erro):
+    """Corpo do 400 com um dos SINAIS_EXPIRADA (minúsculas). O corpo não vai para log nem para o motivo."""
+    try:
+        corpo = erro.read(65536).decode("utf-8", "replace").lower()
+    except (OSError, http.client.HTTPException):
+        return False
+    return any(s in corpo for s in SINAIS_EXPIRADA)
 
 
 def _id_externo(dados):
