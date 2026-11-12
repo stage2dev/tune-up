@@ -2,6 +2,17 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## 2.11.0
+
+Native Windows, Part 1: the panel starts, launches and opens sessions on Windows 11 (Git Bash, Python 3.9+ as `python`/`py -3`, cp1252 code page). Nothing changes on macOS and Linux unless stated.
+
+- Child output is read as UTF-8 (`encoding="utf-8", errors="replace"` instead of `text=True`) in `lancador.rodar_padrao`, `leitor.rodar` and `agentes._rodar_padrao`. On cp1252 the `backgrounded · <id>` line never matched, so a launch raised and deleted its work folder while `claude --bg` had already started (orphan session); a session name with an accent broke `/api/estado`. `leitor.rodar` also gives the child `PYTHONUTF8=1` (all systems), and `json.loads` never sees `None`.
+- `claude_bin`, Windows only: resolved with `shutil.which`; a `.cmd`/`.bat` (the npm shim) is refused because `cmd.exe` would parse the prompt text (injection, and an 8191-char limit). The panel looks for `claude.exe` on PATH and in `~/.local/bin` (native installer); without one it keeps a bare `claude` (never a `.cmd`) and shows a plain warning in `avisos`.
+- The HTTP server moved to `painel/servidor_http.py`: on Windows `allow_reuse_address` is off and `SO_EXCLUSIVEADDRUSE` is set, so a second panel on the same port fails with WinError 10048 instead of sharing it in silence. Known: right after closing the panel, Windows may refuse the same port for a couple of minutes (connections in TIME_WAIT); use 8788/8789 as the skill says.
+- "Abrir no Terminal" on Windows (`painel/abrir_win.py`): a Windows Terminal tab (`wt.exe -w 0 new-tab cmd /k <claude> attach <id>`) or, without `wt.exe`, a new console running `cmd /k <claude> attach <id>`. Argument list, no shell, no pipes and no inherited handles (with captured pipes the request would hang until the window closed). A `claude_bin` with a cmd/wt metacharacter (`&|<>^%!"();`) is not run; the command is shown to paste. `comando_attach` quotes with `list2cmdline` on Windows.
+- `skills/panel` and the READMEs: no more "macOS and Linux only"; the panel starts with `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" -B "${CLAUDE_PLUGIN_ROOT}/painel/painel.py"` (allowed-tools too). The "accept extension" message shows absolute Python and `painel.py` paths (Windows: forward slashes in double quotes, which Git Bash and cmd both read).
+- Not proven here (no Windows machine; Windows CI runs the suites): a real `wt.exe` tab or `cmd /k` window, `claude.exe` resolution on a real install, and the 10048 on a second panel (that test runs only on Windows).
+
 ## 2.10.0
 
 Module screens get an inbox block and refresh faster; a module action that says it failed now shows as an error, and another plugin joins the marketplace.

@@ -12,13 +12,13 @@ Sem `painel.json` e sem pacote o painel sobe do mesmo jeito, com as telas Chat, 
 ## Rodar
 
 ```sh
-python3 <painel>/painel.py                       # http://127.0.0.1:8787/
-python3 <painel>/painel.py --projeto /meu/projeto --port 8790 --plans-dir /meu/projeto/.planning
+sh <plugin>/scripts/py -B <painel>/painel.py      # http://127.0.0.1:8787/
+sh <plugin>/scripts/py -B <painel>/painel.py --projeto /meu/projeto --port 8790 --plans-dir /meu/projeto/.planning
 ```
 
 Raiz do projeto, nesta ordem: `--projeto`, a variável `TUNEUP_PAINEL_PROJETO`, a primeira pasta com `.tune-up/` subindo a partir do cwd, ou dois níveis acima da pasta do painel (quando ele mora em `<raiz>/.tune-up/painel`).
 
-Testes: `python3 -B -m unittest` (nesta pasta). Python 3.9, só biblioteca padrão.
+Testes: `python3 -B -m unittest` (nesta pasta; no Windows, `python` ou `py -3`). Python 3.9, só biblioteca padrão.
 
 A tela em React mora em `web/` (`npm run build` gera `web/dist`). Sem `web/dist`, a raiz mostra só um aviso pedindo a build.
 Em modo dev (Vite em 5173 com proxy para 8787), ponha `"origens_extras": ["http://127.0.0.1:5173"]` no `painel.json`, senão os POST dão 403.
@@ -135,7 +135,7 @@ O pacote do projeto pode acrescentar níveis (ações com `grupo: "chat"`) ou tr
 O catálogo é `acoes/dev.json` do núcleo (grupo `dev`: Rodar Parte, Planejar fase, Investigar, Status) mais `<pacote>/acoes/*.json`. Id repetido é ignorado com aviso. Cada ação tem `grupo` (`^[a-z0-9_-]{1,40}$`; `area` ainda vale como nome antigo), `risco` (`leitura`, `rascunho`, `codigo`, `credito`) e um modelo de prompt com `{param}`.
 
 - Ações de plugin (opt-in): `"acoes_de_plugins": ["plugin@marketplace"]` soma `<installPath>/painel/acoes/*.json` do plugin instalado (nome e marketplace exatos em `installed_plugins.json`) depois do núcleo e do pacote. Ação de plugin nunca substitui a do núcleo (`substitui` só vale no pacote); id repetido é ignorado com aviso.
-- Trava de extensões (`extensoes.py`, vale para `acoes_de_plugins` e `modulos_de_plugins`): na primeira vez que um plugin é usado, a versão do registro e o sha256 da pasta instalada (sem `node_modules`, `.git` e `__pycache__`) ficam em `<pacote>/dados/extensoes.json`. Se a versão ou o conteúdo mudar, nada desse plugin carrega e a tela mostra um aviso até a pessoa confirmar no terminal: `python3 painel.py --aceitar-extensao plugin@marketplace`. Arquivo ilegível recusa todas as extensões até ser apagado.
+- Trava de extensões (`extensoes.py`, vale para `acoes_de_plugins` e `modulos_de_plugins`): na primeira vez que um plugin é usado, a versão do registro e o sha256 da pasta instalada (sem `node_modules`, `.git` e `__pycache__`) ficam em `<pacote>/dados/extensoes.json`. Se a versão ou o conteúdo mudar, nada desse plugin carrega e a tela mostra um aviso até a pessoa confirmar no terminal: `sh <plugin>/scripts/py painel/painel.py --aceitar-extensao plugin@marketplace` (a mensagem do painel já traz o comando com o Python certo). Arquivo ilegível recusa todas as extensões até ser apagado.
 - O navegador só manda `{acao, params}`. **O prompt é montado no servidor**; o cliente nunca manda comando.
 - Validação: a ação existe; fase e Parte existem no estado atual e a Parte não está fechada; texto sem caractere de controle (quebra de linha só em parâmetro com `"linhas": true`), até o limite, e nunca começando com `-`; escolha só entre as opções; campo desconhecido é recusado.
 - Disparo: `claude --bg -n "NOME" [--model M] [--effort E] --settings <travas> "PROMPT"` com lista de argumentos, sem shell, `cwd` = raiz e **sem modo que pula permissão** (a não ser com `pular_permissoes`). Rodar Parte usa o nome `Fase N Parte X`, que o leitor liga à Parte.

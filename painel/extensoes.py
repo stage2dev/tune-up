@@ -6,7 +6,7 @@ do plugin instalado (installed_plugins.json, nome@marketplace exato). Os módulo
 
 Trava: na primeira vez que um plugin é usado, a versão do registro e um sha256 da pasta instalada
 (sem node_modules, .git e __pycache__) ficam em <dados>/extensoes.json. Se um dos dois mudar, nada
-desse plugin carrega até a pessoa confirmar: python3 painel.py --aceitar-extensao plugin@marketplace.
+desse plugin carrega até a pessoa confirmar: <python> painel/painel.py --aceitar-extensao plugin@marketplace.
 Plugin com __pycache__, .pyc/.pyo ou .py atalho dentro de painel/ é recusado (a soma não cobre isso).
 Python 3.9, só biblioteca padrão.
 """
@@ -15,6 +15,8 @@ import hashlib
 import json
 import os
 import re
+import shlex
+import sys
 import threading
 
 import config
@@ -25,6 +27,22 @@ PULAR = ("node_modules", ".git", "__pycache__")
 MAX_ARQUIVOS, MAX_BYTES = 5000, 200 * 1024 * 1024
 _lock = threading.Lock()
 _somas = {}  # pasta -> (assinatura de nomes, tamanhos e mtimes, sha256)
+
+
+def _citar(caminho, nome):
+    """Caminho citado para o terminal. Windows: `/` e aspas duplas sempre (o Bash do Claude lá é o
+    Git Bash, que come `\\` fora de aspas; o cmd.exe aceita o mesmo texto)."""
+    if nome == "nt":
+        return '"%s"' % caminho.replace("\\", "/")
+    return shlex.quote(caminho)
+
+
+def _python(nome=None):
+    """`<python> <painel.py>` com caminhos absolutos: o python que roda o painel (no Windows
+    'python3' é a ficha da Store) e este painel, de qualquer pasta."""
+    nome = os.name if nome is None else nome
+    painel = os.path.join(os.path.dirname(os.path.abspath(__file__)), "painel.py")
+    return "%s %s" % (_citar(sys.executable, nome), _citar(painel, nome))
 
 
 def chave_ok(chave):
@@ -153,7 +171,7 @@ def conferir(cfg, chave):
             o_que = ("versão %s -> %s" % (velha, atual["versao"] or "?") if velha != (atual["versao"] or "?")
                      else "mesma versão %s, conteúdo diferente" % velha)
             return None, ("plugin %s mudou desde que foi aceito (%s); não carreguei. Confira e "
-                          "confirme com: python3 painel.py --aceitar-extensao %s" % (chave, o_que, chave))
+                          "confirme com: %s --aceitar-extensao %s" % (chave, o_que, _python(), chave))
         aceitas[chave] = dict(atual, aceito_em=_agora())
         try:
             _gravar(cfg, aceitas)

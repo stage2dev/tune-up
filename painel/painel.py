@@ -21,7 +21,7 @@ import secrets  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
 import urllib.parse  # noqa: E402
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer  # noqa: E402
+from http.server import BaseHTTPRequestHandler  # noqa: E402
 
 import config  # noqa: E402
 import envio  # noqa: E402
@@ -33,6 +33,7 @@ import leitor  # noqa: E402
 import mascara  # noqa: E402
 import midia  # noqa: E402
 import modulos  # noqa: E402
+import servidor_http  # noqa: E402
 import teto  # noqa: E402
 import transcricao  # noqa: E402
 
@@ -405,8 +406,7 @@ def fazer_handler(app):
 
 def criar_servidor(app, porta):
     """Bind só em 127.0.0.1. Porta 0 = uma livre (testes)."""
-    servidor = ThreadingHTTPServer(("127.0.0.1", porta), fazer_handler(app))
-    servidor.daemon_threads = True
+    servidor = servidor_http.ServidorPainel(("127.0.0.1", porta), fazer_handler(app))
     app.porta = servidor.server_address[1]
     return servidor
 

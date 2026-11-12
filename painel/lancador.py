@@ -17,6 +17,8 @@ import time
 
 from catalogo import (ErroAcao, RE_ID_ACAO, carregar_catalogo, catalogo_do_projeto, montar, nome_da_sessao,  # noqa: F401
                       publica, texto_livre, validar_params)
+import abrir_win
+from abrir_win import METACHAR_WIN  # noqa: F401
 from habilidades import anexar as anexar_habilidades, pedido as pedido_com_habilidades
 import mascara
 import modulos
@@ -43,8 +45,8 @@ SCRIPT_TERMINAL = ["on run argv", 'tell application "Terminal"', "activate",
 def rodar_padrao(cmd, cwd, timeout):
     """subprocess com lista, sem shell. Devolve (codigo, stdout, stderr)."""
     try:
-        r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout,
-                           stdin=subprocess.DEVNULL, shell=False)
+        r = subprocess.run(cmd, cwd=cwd, capture_output=True, encoding="utf-8", errors="replace",
+                           timeout=timeout, stdin=subprocess.DEVNULL, shell=False)
     except FileNotFoundError:
         return 127, "", "comando não encontrado"
     except subprocess.TimeoutExpired:
@@ -59,6 +61,7 @@ class Lancador:
         self.cfg, self.obter_estado, self.rodar, self.relogio = cfg, obter_estado, rodar, relogio
         self.plataforma = plataforma or sys.platform
         self.dormir = time.sleep  # trocado nos testes
+        self.abrir_janela = abrir_win.abrir_janela_padrao  # idem (Windows)
         self.registro = Registro(cfg["dados_dir"])
         self._trava = threading.Lock()
         self._trava_agentes = threading.Lock()
@@ -100,6 +103,8 @@ class Lancador:
             self._agentes = (0.0, None)
 
     def comando_attach(self, exec_id):
+        if self.plataforma == "win32":
+            return subprocess.list2cmdline([self.cfg["claude_bin"], "attach", exec_id])
         return "%s attach %s" % (shlex.quote(self.cfg["claude_bin"]), exec_id)
 
     def _estado(self, reg, agente, agora):
@@ -403,6 +408,8 @@ class Lancador:
         if self.achar(exec_id) is None:
             raise ErroAcao("Não achei essa execução.", 404)
         comando = self.comando_attach(exec_id)
+        if self.plataforma == "win32":
+            return self._abrir_windows(exec_id, comando)
         if self.plataforma != "darwin":
             return {"ok": False, "comando": comando}
         args = ["osascript"]
@@ -410,3 +417,8 @@ class Lancador:
             args += ["-e", linha]
         cod, _out, _err = self.rodar(args + [comando], self.cfg["workspace"], 15)
         return {"ok": cod == 0, "comando": comando}
+
+    def _abrir_windows(self, exec_id, comando):
+        """Aba do Windows Terminal (ou janela do cmd) em `claude attach <id>`; argv, sem pipes."""
+        ok = abrir_win.abrir(self.cfg["claude_bin"], exec_id, self.cfg["workspace"], self.abrir_janela)
+        return {"ok": bool(ok), "comando": comando}

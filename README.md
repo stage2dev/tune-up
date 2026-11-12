@@ -154,7 +154,7 @@ You can override models and effort per role in the `models` key of `user.json`.
 - **Follow-up**: open work lists.
 - **Project modules**: a project can add its own screens (declarative blocks) and actions in `.tune-up/painel-projeto/`, without touching the panel code.
 
-Buttons only launch actions from a closed list; each action carries its own tool rules. Details, configuration (`.tune-up/painel.json`) and the module contract: [`painel/README.md`](painel/README.md) (Portuguese). macOS and Linux; Python 3.9+; no install step.
+Buttons only launch actions from a closed list; each action carries its own tool rules. Details, configuration (`.tune-up/painel.json`) and the module contract: [`painel/README.md`](painel/README.md) (Portuguese). Works on macOS, Linux and Windows (Git Bash); Python 3.9+; no install step.
 
 ## Guards (hooks)
 

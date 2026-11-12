@@ -78,8 +78,9 @@ class Cache:
 def rodar(cmd, cwd, timeout):
     """Roda `cmd` (lista, sem shell). Devolve (ok, stdout, motivo)."""
     try:
-        r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout,
-                           stdin=subprocess.DEVNULL, shell=False)
+        env = dict(os.environ, PYTHONUTF8="1")  # o guarda.py filho escreve UTF-8 mesmo em cp1252
+        r = subprocess.run(cmd, cwd=cwd, capture_output=True, encoding="utf-8", errors="replace",
+                           timeout=timeout, stdin=subprocess.DEVNULL, shell=False, env=env)
     except FileNotFoundError:
         return False, "", "comando não encontrado: %s" % cmd[0]
     except subprocess.TimeoutExpired:
@@ -130,7 +131,7 @@ def ler_info(cwd=None, timeout=8, guarda=None):
     if not ok:
         return None, "guarda.py info falhou (%s)" % motivo
     try:
-        dado = json.loads(out)
+        dado = json.loads(out or "")
     except ValueError:
         return None, "guarda.py info não devolveu JSON"
     return (dado, None) if isinstance(dado, dict) else (None, "guarda.py info devolveu formato inesperado")
@@ -187,7 +188,7 @@ def ler_prs(repo):
     if not ok:
         return [], "PRs não lidas: gh pr list %s" % motivo
     try:
-        lista = json.loads(out)
+        lista = json.loads(out or "")
     except ValueError:
         return [], "PRs não lidas: gh devolveu algo que não é JSON"
     prs = []
@@ -207,7 +208,7 @@ def ler_sessoes(cwd=None, claude_bin=None):
     if not ok:
         return [], "sessões não lidas: claude agents %s" % motivo
     try:
-        lista = json.loads(out)
+        lista = json.loads(out or "")
     except ValueError:
         return [], "sessões não lidas: claude agents não devolveu JSON"
     out_l = []

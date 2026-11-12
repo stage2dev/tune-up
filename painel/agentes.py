@@ -81,8 +81,8 @@ def _opcoes(cfg):
 
 def _rodar_padrao(cmd, cwd, timeout):
     try:
-        r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout,
-                           stdin=subprocess.DEVNULL, shell=False)
+        r = subprocess.run(cmd, cwd=cwd, capture_output=True, encoding="utf-8", errors="replace",
+                           timeout=timeout, stdin=subprocess.DEVNULL, shell=False)
     except (OSError, subprocess.SubprocessError):
         return 1, "", ""
     return r.returncode, r.stdout or "", r.stderr or ""
@@ -92,7 +92,7 @@ def _listar_cli(op, rodar):
     cwd = op["raiz"] if os.path.isdir(op["raiz"]) else None
     cod, out, _err = (rodar or _rodar_padrao)([op["claude_bin"], "agents", "--json", "--all"], cwd, 8)
     try:
-        lista = json.loads(out) if cod == 0 else None
+        lista = json.loads(out or "") if cod == 0 else None
     except ValueError:
         lista = None
     if not isinstance(lista, list):
