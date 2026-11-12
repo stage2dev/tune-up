@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__.*|Bash|PowerShell|Monitor|Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/py\" scripts/guarda_mkt.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
