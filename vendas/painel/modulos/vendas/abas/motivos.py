@@ -54,7 +54,9 @@ MOTIVOS = {
     "transcricao_falhou": "A transcrição do áudio do lead falhou; a IA não respondeu. Ouça e responda você.",
     "midia_indisponivel": "O áudio ou a imagem do lead não baixou a tempo; a IA não respondeu. Responda você.",
     "midia_desligada": "A IA não entende áudios ou imagens (desligado na aba IA); responda você.",
-    "imagens_demais": "O lead mandou imagens demais de uma vez; a IA viu só as primeiras. Confira as outras.",
+    "imagens_demais": "O lead mandou imagens demais de uma vez; a IA viu só as últimas. Confira as outras.",
+    "imagem_grande": "A imagem do lead passa de 8 MB; a IA não viu. Responda você.",
+    "sinal_de_saida": "O lead falou em sair ou parar num áudio ou legenda; confira a conversa.",
     "modelo_sem_visao": "O modelo da IA não aceita imagens; nada saiu. Troque o modelo ou responda você.",
     "documento_recebido": "O lead mandou um documento; a IA não lê documentos. Responda você.",
 }

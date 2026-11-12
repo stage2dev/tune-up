@@ -23,8 +23,9 @@
 - Áudio e imagem do lead (servico/entender.py, chaves da aba IA): o gatilho pode ser um áudio ou uma imagem. Antes
   do modelo a rodada espera o download, transcreve o áudio e lê a imagem; a transcrição vai como DADO (mesmo
   delimitador e mesmo filtro de injeção do texto, rotulada como transcrição de áudio) e a imagem como parte
-  image_url (detail low). Falha em qualquer passo = o modelo não é chamado, nada sai, "precisa de você" com o
-  motivo. Documento nunca chega aqui (o recebimento marca documento_recebido)."""
+  image_url (detail low). Transcrição ou legenda que é um SAIR = opt-out e confirmação, sem modelo. Falha em
+  qualquer passo = o modelo não é chamado, nada sai, "precisa de você" com o motivo. Documento nunca chega
+  aqui (o recebimento marca documento_recebido)."""
 import datetime
 import json
 import re
@@ -32,7 +33,7 @@ import sys
 import threading
 import time
 
-from servico import audio_ia, banco, cerebro, chave, entender, rascunhos, saida
+from servico import audio_ia, banco, cerebro, chave, entender, rascunhos, recebimento, saida
 
 UTC = datetime.timezone.utc
 ESPERA_S = 12
@@ -202,6 +203,10 @@ class Atendente:
                 con.execute("ROLLBACK")
             _avisar("mídia", e)
             cerebro.marcar_precisa_de_voce(con, conversa_id, "erro_interno", True, type(e).__name__)
+            return None
+        if ent.get("sair"):   # SAIR falado ou na legenda: opt-out e confirmação pelo portão, como no texto
+            banco.marcar_optout(con, conversa["telefone"], agora.astimezone(UTC).isoformat(timespec="seconds"))
+            recebimento.executar_depois(con, conector, [("sair", conversa["telefone"])])
             return None
         for motivo in [ent["motivo"]] if not ent["ok"] else ent["avisos"]:
             cerebro.marcar_precisa_de_voce(con, conversa_id, motivo)

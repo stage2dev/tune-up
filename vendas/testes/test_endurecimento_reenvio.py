@@ -134,7 +134,8 @@ class TesteMotivosEmPtBr(unittest.TestCase):
         cerebro |= _codigos("transcricao.py", [r'_falha\("([a-z_]+)"\)', r'else "([a-z_]+)"\)'])
         for codigo in ("campanha_parada", "resposta_cortada", "reescrita_falhou", "contato_fora_da_campanha",
                        "teto_audio_contato_dia", "audio_incerto", "audio_longo", "transcricao_falhou",
-                       "midia_indisponivel", "modelo_sem_visao", "documento_recebido", "imagens_demais"):
+                       "midia_indisponivel", "modelo_sem_visao", "documento_recebido", "imagens_demais",
+                       "imagem_grande", "sinal_de_saida"):
             self.assertIn(codigo, gate | cerebro, "a varredura do código perdeu %s" % codigo)
         sem_texto = sorted(c for c in gate | cerebro if c not in abas["conversas"].MOTIVOS)
         self.assertEqual(sem_texto, [], "Conversas sem texto pt-BR")
