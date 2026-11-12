@@ -11,7 +11,9 @@ jobs:
   test:
     name: ${{ matrix.os }} / py${{ matrix.python }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    # Windows + Python 3.12 runs the sales tab tests about 3x slower than
+    # Windows + 3.9 (14 min against 5); 20 min cancelled the job at 830 tests.
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:

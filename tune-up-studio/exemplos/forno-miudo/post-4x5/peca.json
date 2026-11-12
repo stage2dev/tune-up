@@ -1,0 +1,9 @@
+{
+  "composicao": "palco",
+  "variante": {"campo": "text", "lado": "direita", "textura": "pontos"},
+  "titulo": "O pão acabou antes de você?",
+  "realce": "antes de você?",
+  "oferta": {"nome": "Primeira fornada", "valor": "6h", "prova": "massa de 24 horas"},
+  "cta": {"chamada": "Reserve o pão de amanhã", "condicao": "pelo WhatsApp, link na bio", "canal": "whatsapp"},
+  "heroi_topo": 90
+}

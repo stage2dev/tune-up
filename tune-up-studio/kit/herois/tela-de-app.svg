@@ -1,0 +1,24 @@
+<svg viewBox="0 0 1000 1000">
+  <!-- Um produto digital: a tela, grande, com o que o briefing promete dentro dela (aqui: o lucro do mês em 1 tela).
+       antes = a planilha confusa por trás; depois = as barras sobem e o selo de conferido salta. -->
+  <g id="h_antes">
+    <rect class="t" x="96" y="236" width="520" height="400" rx="18" transform="rotate(-8 356 436)"/>
+    <rect class="s" x="80" y="220" width="520" height="400" rx="18" transform="rotate(-8 340 420)"/>
+    <path class="lt" stroke-width="8" d="M110 330 L560 268 M124 420 L574 358 M138 510 L588 448 M250 250 L296 590 M400 230 L446 570"/>
+  </g>
+  <g id="h_corpo">
+    <rect class="t" x="186" y="266" width="700" height="560" rx="36"/>
+    <rect class="p" x="160" y="240" width="700" height="560" rx="36"/>
+    <rect class="b" x="188" y="330" width="644" height="442" rx="14"/>
+    <circle class="a" cx="212" cy="286" r="14"/><circle class="s" cx="256" cy="286" r="14"/><circle class="s" cx="300" cy="286" r="14"/>
+    <rect class="s" x="228" y="372" width="260" height="34" rx="17"/><rect class="s" x="228" y="424" width="170" height="24" rx="12"/>
+    <path class="ls" stroke-width="8" d="M228 716 L792 716"/>
+    <rect class="s" x="250" y="620" width="84" height="96" rx="10"/>
+    <rect class="t" x="420" y="820" width="180" height="50"/><rect class="t" x="330" y="862" width="360" height="38" rx="19"/>
+  </g>
+  <g transform="translate(424 716)"><g id="h_depois1"><rect class="p" x="-42" y="-170" width="84" height="170" rx="10"/></g></g>
+  <g transform="translate(556 716)"><g id="h_depois2"><rect class="p" x="-42" y="-236" width="84" height="236" rx="10"/></g></g>
+  <g transform="translate(688 716)"><g id="h_depois3"><rect class="a" x="-42" y="-300" width="84" height="300" rx="10"/></g></g>
+  <path id="h_traco1" class="la" stroke-width="16" pathLength="1" d="M292 600 L424 520 L556 452 L712 372"/>
+  <g transform="translate(840 250)"><g id="h_depois4"><circle class="t" cx="8" cy="8" r="80"/><circle class="a" r="80"/><path class="lt" stroke-width="22" d="M-34 2 L-10 30 L38 -26"/></g></g>
+</svg>

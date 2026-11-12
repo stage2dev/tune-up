@@ -69,6 +69,57 @@ class Graph(unittest.TestCase):
         self.assertNotIn(";", " ".join(cmd))
         self.assertIn("comment=" + reserva_slides.MARK, cmd)
 
+    def test_tempos_set_each_slide_and_center_the_cuts(self):
+        # A short hook and a long call to action reach the MP4: the cut sits on the scene boundary.
+        g = reserva_slides.build_graph(4, 1080, 1920, 30, 10.0, 0.5, 0.06, [1.5, 2.5, 2.5, 3.5])
+        offsets = [line.split("offset=")[1].split("[")[0] for line in g.splitlines() if "xfade" in line]
+        self.assertEqual(offsets, ["1.25", "3.75", "6.25"])
+        frames = [int(line.split(":d=")[1].split(":")[0]) for line in g.splitlines() if "zoompan" in line]
+        self.assertEqual(frames, [53, 90, 90, 113])  # 1.75 s, 3 s, 3 s, 3.75 s at 30 fps, never a frame short
+        self.assertIn("[x3]trim=duration=10,", g)
+        lengths, offs = reserva_slides.timeline(4, 10.0, 0.5, [1.5, 2.5, 2.5, 3.5])
+        self.assertAlmostEqual(offs[-1] + lengths[-1], 10.0)
+
+    def test_tempos_refused_with_a_reason(self):
+        bad = {"count": [1.5, 2.5, 6.0], "sum": [1.5, 2.5, 2.5, 3.0], "short middle": [2.0, 0.5, 4.0, 3.5],
+               "short first": [0.25, 3.0, 3.25, 3.5], "short last": [3.0, 3.5, 3.3, 0.2]}
+        for why, tempos in bad.items():
+            with self.subTest(why), self.assertRaises(ValueError):
+                reserva_slides.build_graph(4, 1080, 1920, 30, 10.0, 0.5, 0.06, tempos)
+        for text in ("1.5,,2", "1.5,abc", "1.5,-2", "nan,1", ""):
+            with self.subTest(text), self.assertRaises(ValueError):
+                reserva_slides.parse_tempos(text)
+        self.assertEqual(reserva_slides.parse_tempos("1.5,2.5,2.5,3.5"), [1.5, 2.5, 2.5, 3.5])
+        # a sum off by up to 0.05 s is accepted and the last slide fills the gap
+        lengths, offs = reserva_slides.timeline(4, 10.0, 0.5, [1.5, 2.5, 2.5, 3.46])
+        self.assertAlmostEqual(offs[-1] + lengths[-1], 10.0)
+
+    def test_without_tempos_the_graph_is_the_old_one(self):
+        # Equal slides, offsets i * (seg - xfade): the graph from before --tempos existed.
+        g = reserva_slides.build_graph(3, 1080, 1920, 30, 10.0, 0.5, 0.06)
+        seg = reserva_slides.segment_seconds(3, 10.0, 0.5)
+        frames = int(round(seg * 30))
+        self.assertEqual(g.count(":d=%d:" % frames), 3)
+        offsets = [line.split("offset=")[1].split("[")[0] for line in g.splitlines() if "xfade" in line]
+        self.assertEqual(offsets, ["%g" % round(i * (seg - 0.5), 4) for i in (1, 2)])
+        self.assertEqual(g, reserva_slides.build_graph(3, 1080, 1920, 30, 10.0, 0.5, 0.06, None))
+
+    def test_main_refuses_bad_tempos_with_exit_2(self):
+        with tempfile.TemporaryDirectory() as d:
+            for i in range(2):
+                with open(os.path.join(d, "s%d.png" % i), "wb") as f:
+                    f.write(reserva_slides.PNG_SIGNATURE)
+            out = os.path.join(d, "v.mp4")
+            with open(os.devnull, "w") as devnull:
+                err, sys.stderr = sys.stderr, devnull
+                try:
+                    codes = [reserva_slides.main(["--slides", d, "--out", out, "--tempos", t])
+                             for t in ("5,4", "5,5,0", "x,10")]
+                finally:
+                    sys.stderr = err
+            self.assertEqual(codes, [2, 2, 2])
+            self.assertFalse(os.path.exists(out + ".graph.txt"))  # refused before any file or ffmpeg
+
     def test_slide_folder_checks(self):
         with tempfile.TemporaryDirectory() as d:
             with self.assertRaises(ValueError):
@@ -150,6 +201,20 @@ class Fallback(unittest.TestCase):
             for report in saved:
                 os.rename(report + ".off", report)
         self.assertEqual(failed, ["hyperframes_check"])
+
+    def test_tempos_video_passes_duration_and_frames(self):
+        slides = os.path.join(self.tmp, "slides4")
+        os.mkdir(slides)
+        for i in range(4):
+            subprocess.run([FFMPEG, "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+                            "testsrc2=s=540x960:r=1", "-vf", "hue=h=%d" % (i * 90), "-frames:v", "1",
+                            os.path.join(slides, "s%d.png" % i)], check=True)
+        out = os.path.join(self.tmp, "tempos.mp4")
+        ok, msg = reserva_slides.render(slides, out, duration=10.0, ffmpeg=FFMPEG, tempos=[1.5, 2.5, 2.5, 3.5])
+        self.assertTrue(ok, msg)
+        checks = {c["name"]: c for c in self.qa(out)["checks"]}
+        for name in ("duration", "frames", "engine_reserve"):
+            self.assertTrue(checks[name]["ok"], checks[name])
 
     def test_both_engines_failing_reports_none(self):
         with tempfile.TemporaryDirectory() as empty:

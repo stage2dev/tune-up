@@ -9,9 +9,15 @@ with -filter_complex_script, so the command line never carries ';'. Every
 input carries -protocol_whitelist file,pipe. The MP4 is tagged with
 comment=MARK so qa_video.py --engine reserve can tell it apart.
 
+--tempos T1,T2,... gives each slide the length of its scene (a short hook, a long
+call to action). Each cut is centred on the scene boundary, as in the composition:
+the first slide lasts T1 + xfade/2, a middle one Ti + xfade, the last Tn + xfade/2.
+Without it every slide gets the same length.
+
 Exit code: 0 rendered, 1 ffmpeg failed, 2 bad usage.
 """
 import argparse
+import math
 import os
 import shutil
 import subprocess
@@ -41,6 +47,51 @@ def segment_seconds(count, duration, xfade):
     return (duration + (count - 1) * xfade) / count
 
 
+def parse_tempos(text):
+    """'1.5,2.5,3.5' -> [1.5, 2.5, 3.5]; ValueError on anything that is not a positive number."""
+    out = []
+    for part in (text or "").split(","):
+        try:
+            value = float(part)
+        except ValueError:
+            raise ValueError("--tempos: %r is not a number of seconds" % part)
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError("--tempos: %r is not a positive number of seconds" % part)
+        out.append(value)
+    return out
+
+
+def check_tempos(tempos, count, duration, xfade):
+    """ValueError with the reason when the scene lengths cannot cut `count` slides into `duration`."""
+    if len(tempos) != count:
+        raise ValueError("--tempos has %d lengths for %d slides" % (len(tempos), count))
+    if abs(sum(tempos) - duration) > 0.05:
+        raise ValueError("--tempos adds up to %g s, not --duration %g s" % (sum(tempos), duration))
+    if count == 1:
+        return
+    for i, t in enumerate(tempos):
+        edge = i in (0, count - 1)
+        floor = xfade / 2 if edge else xfade
+        if t <= floor:
+            raise ValueError("slide %d lasts %g s, not more than the %g s its cut%s takes"
+                             % (i + 1, t, floor, "" if edge else "s"))
+
+
+def timeline(count, duration, xfade, tempos=None):
+    """(seconds of each slide, offset of each xfade). Equal slides without tempos, as before."""
+    if not tempos:
+        seg = segment_seconds(count, duration, xfade)
+        return [seg] * count, [round(i * (seg - xfade), 4) for i in range(1, count)]
+    check_tempos(tempos, count, duration, xfade)
+    if count == 1:
+        return [max(tempos[0], duration)], []
+    cuts = [sum(tempos[:k]) for k in range(1, count)]
+    offsets = [round(c - xfade / 2, 4) for c in cuts]
+    lengths = [tempos[0] + xfade / 2] + [tempos[i] + xfade for i in range(1, count - 1)]
+    lengths.append(max(tempos[-1] + xfade / 2, duration - offsets[-1]))  # sum short by <= 0.05 s: last slide fills it
+    return lengths, offsets
+
+
 def move(i, zoom, frames):
     """zoompan z/x/y for slide i: zoom in, zoom out, pan left to right, in turn."""
     centre = "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
@@ -52,24 +103,32 @@ def move(i, zoom, frames):
     return "z='1+%g':x='(iw-iw/zoom)*on/%d':y='ih/2-(ih/zoom/2)'" % (zoom, frames)
 
 
-def build_graph(count, width, height, fps, duration, xfade, zoom):
-    """Filter graph text: one zoompan chain per input, a varied xfade between them, trimmed to duration."""
-    seg = segment_seconds(count, duration, xfade)
-    if count > 1 and seg <= xfade:
-        raise ValueError("crossfade %.2f s is too long for %d slides in %.1f s" % (xfade, count, duration))
-    frames = int(round(seg * fps))
+def build_graph(count, width, height, fps, duration, xfade, zoom, tempos=None):
+    """Filter graph text: one zoompan chain per input, a varied xfade between them, trimmed to duration.
+
+    tempos: one scene length per slide (seconds); None gives every slide the same length.
+    """
+    if not tempos:
+        seg = segment_seconds(count, duration, xfade)
+        if count > 1 and seg <= xfade:
+            raise ValueError("crossfade %.2f s is too long for %d slides in %.1f s" % (xfade, count, duration))
+    lengths, offsets = timeline(count, duration, xfade, tempos)
+    if tempos:  # never a frame short: a slide that ends before its cut does would shorten the video
+        frames = [int(math.ceil(n * fps - 1e-6)) for n in lengths]
+    else:
+        frames = [int(round(n * fps)) for n in lengths]
     lines = []
     for i in range(count):
         lines.append(
             "[%d:v]scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,"
             "zoompan=%s:d=%d:s=%dx%d:fps=%d,"
             "setsar=1,format=yuv420p[s%d]" % (i, width * 2, height * 2, width * 2, height * 2,
-                                              move(i, zoom, frames), frames, width, height, fps, i))
+                                              move(i, zoom, frames[i]), frames[i], width, height, fps, i))
     last = "s0"
     for i in range(1, count):
         out = "x%d" % i
         lines.append("[%s][s%d]xfade=transition=%s:duration=%g:offset=%g[%s]"
-                     % (last, i, TRANSITIONS[(i - 1) % len(TRANSITIONS)], xfade, round(i * (seg - xfade), 4), out))
+                     % (last, i, TRANSITIONS[(i - 1) % len(TRANSITIONS)], xfade, offsets[i - 1], out))
         last = out
     lines.append("[%s]trim=duration=%g,setpts=PTS-STARTPTS[out]" % (last, duration))
     return ";\n".join(lines) + "\n"
@@ -87,12 +146,16 @@ def ffmpeg_command(ffmpeg, slides, graph_file, out, fps, duration):
 
 
 def render(slides_dir, out, width=1080, height=1920, duration=10.0, fps=30, xfade=0.5, zoom=0.06,
-           ffmpeg="ffmpeg", graph_file=None, timeout=600):
-    """Render the slides to `out`. Return (ok, message). The graph is kept next to the MP4."""
+           ffmpeg="ffmpeg", graph_file=None, timeout=600, tempos=None):
+    """Render the slides to `out`. Return (ok, message). The graph is kept next to the MP4.
+
+    tempos: one scene length per slide; ValueError before ffmpeg runs if they do not fit.
+    """
     slides = list_slides(slides_dir)
+    graph = build_graph(len(slides), width, height, fps, duration, xfade, zoom, tempos)
     graph_file = graph_file or out + ".graph.txt"
     with open(graph_file, "w", encoding="utf-8") as f:
-        f.write(build_graph(len(slides), width, height, fps, duration, xfade, zoom))
+        f.write(graph)
     cmd = ffmpeg_command(ffmpeg, slides, graph_file, out, fps, duration)
     try:
         p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
@@ -115,10 +178,13 @@ def main(argv=None):
     p.add_argument("--fps", type=int, default=30)
     p.add_argument("--xfade", type=float, default=0.5, help="transition seconds")
     p.add_argument("--zoom", type=float, default=0.06, help="zoom or pan per slide (0.06 = 6%%)")
+    p.add_argument("--tempos", help="seconds of each slide's scene, comma separated (1.5,2.5,2.5,3.5); "
+                                    "one per slide, adding up to --duration")
     args = p.parse_args(argv)  # no tool-path option: a session could point it at its own file
     try:
+        tempos = parse_tempos(args.tempos) if args.tempos is not None else None
         ok, msg = render(args.slides, args.out, args.width, args.height, args.duration, args.fps,
-                         args.xfade, args.zoom, shutil.which("ffmpeg") or "ffmpeg")
+                         args.xfade, args.zoom, shutil.which("ffmpeg") or "ffmpeg", tempos=tempos)
     except (OSError, ValueError) as exc:
         print("reserva_slides: %s" % exc, file=sys.stderr)
         return 2

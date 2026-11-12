@@ -7,6 +7,9 @@ composition source folder and what HyperFrames itself saved under
 record, whose warnings list a brand font that failed to load), and prints one
 JSON report. `--formato 4:5|1:1` takes the size from formatos.json.
 `--final <working folder>` re-checks every `q<N>/` frame and gives the final line.
+`--atencao` adds the attention checks of qa_atencao.py; `--pares DIR` prints the brand color pairs;
+`--achados FONTE` prints only the warning and error findings of the newest check HyperFrames saved for FONTE
+(the check's own output is long: a session reads this instead).
 
 Exit code: 0 all green, 1 at least one check failed, 2 bad usage.
 """
@@ -17,6 +20,11 @@ import re
 import struct
 import sys
 import zlib
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import qa_atencao  # noqa: E402
+import qa_quadros  # noqa: E402
+import qa_vazio  # noqa: E402
 
 STUDIO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SIZE_IDS = {"4:5": "instagram-feed-organico-tamanho", "1:1": "instagram-feed-quadrado-tamanho"}
@@ -343,7 +351,7 @@ def check_snapshot(png, source):
     return result("snapshot", not problems, problems or ["ok"])
 
 
-def run(source, png, check_json, width, height, snapshot=False):
+def run(source, png, check_json, width, height, snapshot=False, atencao=False):
     checks = [check_png(png, width, height)]
     if not os.path.isdir(source):
         checks.append(result("source", False, ["not a folder: %s" % source]))
@@ -361,10 +369,15 @@ def run(source, png, check_json, width, height, snapshot=False):
         if snapshot:
             checks.append(check_snapshot(png, source))
     checks.append(check_strict_json(check_json, source))
+    if atencao and os.path.isdir(source):
+        checks += qa_atencao.checar_quadro(source)
+        if checks[0]["ok"]:  # the PNG is whole and of the format size: measure its empty area
+            checks.append(qa_vazio.check_png(png, width, height))
+            checks.append(qa_quadros.check_forma_na_margem(png, width))
     return {"ok": all(c["ok"] for c in checks), "checks": checks}
 
 
-def run_final(folder, width, height):
+def run_final(folder, width, height, atencao=False):
     """Re-check every `q<N>/` frame (fonte/ + snap/) at the format size; PRONTO only if all are green."""
     try:
         names = os.listdir(folder)
@@ -374,11 +387,13 @@ def run_final(folder, width, height):
     out = []
     for _, name in frames:
         base = os.path.join(folder, name)
-        rep = run(os.path.join(base, "fonte"), os.path.join(base, "snap", STILL), None, width, height, snapshot=True)
+        rep = run(os.path.join(base, "fonte"), os.path.join(base, "snap", STILL), None, width, height, True, atencao)
         out.append({"frame": name, "ok": rep["ok"], "failed": [c["name"] for c in rep["checks"] if not c["ok"]],
                     "checks": rep["checks"]})
     n, green = len(out), sum(1 for f in out if f["ok"])
-    ok = n > 0 and green == n
+    if atencao and out:  # the whole piece: an item that is not a frame, so it never enters "k de n"
+        out.append(qa_atencao.item_peca(folder, [f["frame"] for f in out]))
+    ok = n > 0 and all(f["ok"] for f in out)
     if ok:
         line = "PRONTO: %d de %d quadros verdes" % (n, n)
     else:
@@ -398,7 +413,17 @@ def main(argv=None):
     p.add_argument("--width", type=int, default=1080)
     p.add_argument("--height", type=int, default=1350)
     p.add_argument("--out", help="also write the report to this file")
+    p.add_argument("--atencao", action="store_true", help="also the attention checks (qa_atencao.py)")
+    p.add_argument("--pares", metavar="DIR", help="print the brand color pairs for the working folder DIR and exit")
+    p.add_argument("--achados", metavar="FONTE", help="print the warning/error findings of the newest check "
+                                                     "HyperFrames saved for FONTE, one per line, and exit")
     args = p.parse_args(argv)
+    if args.pares:
+        return qa_atencao.imprimir_pares(args.pares)
+    if args.achados:
+        rep = check_strict_json(None, args.achados)
+        print("\n".join(rep["details"]) if not rep["ok"] else "nenhum achado acima de info")
+        return 0 if rep["ok"] else 1
     if args.formato:
         try:
             args.width, args.height = format_size(args.formato)
@@ -407,11 +432,11 @@ def main(argv=None):
     if args.final:
         if not args.formato:
             p.error("--final needs --formato")
-        report = run_final(args.final, args.width, args.height)
+        report = run_final(args.final, args.width, args.height, args.atencao)
     elif not (args.source and args.png):
         p.error("--source and --png are required")
     else:
-        report = run(args.source, args.png, args.check_json, args.width, args.height, snapshot=True)
+        report = run(args.source, args.png, args.check_json, args.width, args.height, True, args.atencao)
     text = json.dumps(report, ensure_ascii=False, indent=2)
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:

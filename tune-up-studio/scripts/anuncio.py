@@ -8,8 +8,9 @@
   anuncio.py --final FOLDER --plataforma google|meta --out final.json
       re-checks every a<N>/ piece at its own size (qa_imagem), the texts and the sheet; PRONTO only if all pass
 
-The script checks only sizes, counts and required fields. Promises of results and prices that are not in the
-briefing are the skill's job: no script can tell them apart. Every campaign, ad group/ad set and ad in a sheet
+The script checks sizes, counts and required fields; --exportar and --final also refuse AI tics and numbers that
+are not in the briefing (entrada.md) or the brand kit (qa_atencao.problemas_textos). Promises of results are the
+skill's job: no script can tell them apart. Every campaign, ad group/ad set and ad in a sheet
 is Paused. Nothing is published and no ad API is called. Python 3.9, standard library only.
 """
 import argparse
@@ -23,6 +24,7 @@ import sys
 import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import qa_atencao  # noqa: E402
 import qa_imagem  # noqa: E402
 
 STUDIO = qa_imagem.STUDIO
@@ -259,6 +261,14 @@ def checar_peca(fonte, plataforma, largura, altura):
     return problemas[:MAX_PROBLEMAS]
 
 
+def recurso_peca(fonte):
+    """qa_atencao's recurso_visual for one ad piece (a photo, an svg, a shape or a giant number)."""
+    doc = qa_atencao.qa_css.ler_fonte(fonte)
+    if doc is None:
+        return qa_imagem.result("recurso_visual", False, ["missing index.html"])
+    return qa_atencao.check_recurso_quadro(doc)
+
+
 def ler_textos(pasta):
     """(object, problem) of <pasta>/textos.json: a small plain file, never a link."""
     caminho = os.path.join(pasta, "textos.json")
@@ -279,7 +289,7 @@ def exportar(pasta, plataforma):
     if os.path.lexists(destino):
         os.remove(destino)
     textos, erro = ler_textos(pasta)
-    problemas = [erro] if erro else conferir(textos, plataforma)
+    problemas = [erro] if erro else conferir(textos, plataforma) + qa_atencao.problemas_textos(textos, pasta)
     if problemas:
         return False, problemas
     texto = planilha(textos, plataforma, os.path.basename(os.path.realpath(pasta)))
@@ -313,11 +323,13 @@ def final(pasta, plataforma):
         layout = checar_peca(os.path.join(base, "fonte"), plataforma, p["largura"], p["altura"])
         rep["checks"].append(qa_imagem.result("sem_texto" if plataforma == "google" else "zona_segura",
                                               not layout, layout or ["ok"]))
+        if plataforma == "meta":  # a Meta image is never a text-only poster (referencias/recursos-visuais.md)
+            rep["checks"].append(recurso_peca(os.path.join(base, "fonte")))
         rep["ok"] = all(c["ok"] for c in rep["checks"])
         pecas.append({"peca": p["id"], "tamanho": "%dx%d" % (p["largura"], p["altura"]), "ok": rep["ok"],
                       "failed": [c["name"] for c in rep["checks"] if not c["ok"]], "checks": rep["checks"]})
     textos, erro = ler_textos(pasta)
-    problemas = [erro] if erro else conferir(textos, plataforma)
+    problemas = [erro] if erro else conferir(textos, plataforma) + qa_atencao.problemas_textos(textos, pasta)
     export = [] if problemas else conferir_export(pasta, plataforma, textos)
     verdes = sum(1 for p in pecas if p["ok"])
     ok = verdes == len(pecas) and not problemas and not export
