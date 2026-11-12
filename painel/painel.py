@@ -11,6 +11,7 @@ import sys
 sys.dont_write_bytecode = True  # nem __pycache__ em disco
 
 import argparse  # noqa: E402
+import arquivo_ref  # noqa: E402
 import hmac  # noqa: E402
 import importlib  # noqa: E402
 import json  # noqa: E402
@@ -284,6 +285,8 @@ def fazer_handler(app):
                 return self._json(*modulos.montar(app.cfg, urllib.parse.unquote(m.group(1)), usar_cache=not fresco,
                                                   pulso=pulso))
             m = RE_ROTA_MODULO_ARQ.match(caminho)
+            if m and "ref" in query:  # arquivo(ctx, ref) do módulo (arquivo_ref.py); ?c= é a pasta de mídia
+                return self._enviar(**arquivo_ref.servir(app.cfg, m.group(1), query["ref"], self.headers))
             if m:
                 return self._arquivo(urllib.parse.unquote(m.group(1)), (query.get("c") or [None])[0])
             m = RE_ROTA_EXEC.match(caminho)
@@ -395,7 +398,7 @@ def fazer_handler(app):
 
         def log_message(self, fmt, *args):
             if app.log:
-                sys.stderr.write("painel: %s\n" % (fmt % args))
+                sys.stderr.write("painel: %s\n" % arquivo_ref.sem_ref(fmt % args))
 
     return Handler
 

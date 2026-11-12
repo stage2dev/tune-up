@@ -50,7 +50,7 @@ export function Conversa({ b, moduloId, cheia = false, topo }: { b: BlocoCru; mo
           onScroll={(e) => { const el = e.currentTarget; noFim.current = estaNoFim(el.scrollHeight, el.scrollTop, el.clientHeight); }}
           className={`flex flex-col gap-2 overflow-y-auto pr-1 ${cheia ? 'flex-1 min-h-0' : 'max-h-96'}`}
         >
-          <Mensagens mensagens={mensagens} />
+          <Mensagens mensagens={mensagens} moduloId={moduloId} />
         </div>
       )}
       {enviar && (

@@ -3,6 +3,7 @@
 import { FileText, Image, Mic, Paperclip } from 'lucide-react';
 import { fioComDias, horaDaMensagem, legendaDe, rotuloDoTipo } from './entrada';
 import { textoOuNada } from './interativos';
+import { lerMidia, MidiaDaMensagem } from './MidiaMensagem';
 
 const QUEM = { contato: 'Contato', eu: 'Você', ia: 'IA' } as const;
 const ESTADO: Record<string, string> = { pendente: 'Enviando…', enviado: 'Enviado', falhou: 'Falhou', incerto: 'Não sei se chegou', negado: 'Não permitido' };
@@ -19,12 +20,13 @@ function Etiqueta({ tipo, rotulo }: { tipo: string; rotulo: string }) {
   );
 }
 
-function Balao({ m }: { m: Record<string, unknown> }) {
+function Balao({ m, moduloId }: { m: Record<string, unknown>; moduloId?: string }) {
   const de = String(m.de) in QUEM ? (String(m.de) as keyof typeof QUEM) : 'contato';
   const estado = typeof m.estado === 'string' ? m.estado : '';
   const tipo = rotuloDoTipo(m.tipo);
   const texto = tipo ? legendaDe(m.texto) : typeof m.texto === 'string' ? m.texto : '';
   const hora = horaDaMensagem(m.quando);
+  const midia = moduloId ? lerMidia(m.midia) : null; // sem midia valida fica a etiqueta do tipo
   const cor =
     de === 'contato'
       ? 'rounded-bl-sm bg-[var(--color-bg-tertiary)] text-[var(--color-text)]'
@@ -36,7 +38,11 @@ function Balao({ m }: { m: Record<string, unknown> }) {
     <div className={`flex ${de === 'contato' ? 'justify-start' : 'justify-end'}`}>
       <div className={`max-w-[85%] min-w-0 rounded-2xl px-3 py-2 text-sm grid gap-1 ${cor}`}>
         {de !== 'contato' && <span className={`text-[11px] ${suave}`}>{QUEM[de]}</span>}
-        {tipo && <Etiqueta tipo={String(m.tipo)} rotulo={tipo} />}
+        {midia && moduloId ? (
+          <MidiaDaMensagem m={midia} moduloId={moduloId} transcricao={textoOuNada(m.transcricao)} />
+        ) : (
+          tipo && <Etiqueta tipo={String(m.tipo)} rotulo={tipo} />
+        )}
         {texto && <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{texto}</p>}
         {textoOuNada(m.nota) && <span className={`text-xs break-words ${suave}`}>{textoOuNada(m.nota)}</span>}
         <span className={`flex justify-end gap-1.5 text-[11px] ${suave}`}>
@@ -48,7 +54,7 @@ function Balao({ m }: { m: Record<string, unknown> }) {
   );
 }
 
-export function Mensagens({ mensagens }: { mensagens: Record<string, unknown>[] }) {
+export function Mensagens({ mensagens, moduloId }: { mensagens: Record<string, unknown>[]; moduloId?: string }) {
   return (
     <>
       {fioComDias(mensagens).map((it) =>
@@ -57,7 +63,7 @@ export function Mensagens({ mensagens }: { mensagens: Record<string, unknown>[] 
             <span className="rounded-full bg-[var(--color-bg-secondary)] px-2.5 py-0.5 text-[11px] text-[var(--color-text-secondary)]">{it.dia}</span>
           </div>
         ) : (
-          <Balao key={it.chave} m={it.mensagem} />
+          <Balao key={it.chave} m={it.mensagem} moduloId={moduloId} />
         ),
       )}
     </>

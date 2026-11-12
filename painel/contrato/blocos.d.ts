@@ -63,6 +63,26 @@ export interface MensagemConversa {
   tipo?: 'texto' | 'audio' | 'imagem' | 'documento' | 'outro';
   estado?: 'pendente' | 'enviado' | 'falhou' | 'incerto' | 'negado';
   nota?: string;
+  /** Arquivo da mensagem, servido por GET /api/modulos/<id>/arquivo?ref=<ref> (arquivo(ctx, ref) do módulo).
+   *  A tela monta a URL só com o id do módulo e a ref; o servidor descarta (com aviso) a midia fora da forma. */
+  midia?: MidiaMensagem;
+  /** Texto do áudio, mostrado em letra menor embaixo do player ("Transcrição"). */
+  transcricao?: string;
+}
+/** ref: até 200 letras de [A-Za-z0-9._:-], sem '..' nem ponto no começo. Sem estado = 'pronta'. */
+export interface MidiaMensagem {
+  ref: string;
+  tipo: 'audio' | 'imagem' | 'documento';
+  nome?: string;
+  /** Bytes. */
+  tamanho?: number;
+  /** Segundos. */
+  duracao?: number;
+  estado?: 'pronta' | 'pendente' | 'falhou' | 'expirada';
+  /** Texto mostrado quando falhou ou expirou. */
+  aviso?: string;
+  /** Botão "Tentar de novo" (falhou/expirada): posta { acao, dados } na rota de ação do módulo. */
+  acao?: { acao: string; dados?: Record<string, unknown> };
 }
 /** Enviar posta { acao, dados: { ...dados_fixos, texto, id_cliente } }; um id_cliente por mensagem, o mesmo nas tentativas de reenvio. */
 export interface BlocoConversa {

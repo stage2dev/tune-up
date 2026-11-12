@@ -1,14 +1,19 @@
 """Forma mínima da resposta de montar() de um módulo (ver modulos.py): peça ruim sai com aviso, o resto passa.
-Bloco caixa, selo `alerta` da aba e `atualizar_em` (2..60 s) são conferidos aqui.
+Bloco caixa, selo `alerta` da aba, `atualizar_em` (2..60 s) e `midia`/`transcricao` das mensagens de conversa
+são conferidos aqui.
 Python 3.9, só biblioteca padrão.
 """
 import datetime
 import json
+import re
 
 NIVEIS = ("info", "atencao", "critico")
 MAX_ABAS = 30
 MAX_BLOCOS = 100
 MAX_ALERTAS = 50
+RE_REF = re.compile(r"^[A-Za-z0-9._:-]{1,200}$")
+TIPOS_MIDIA = ("audio", "imagem", "documento")
+ESTADOS_MIDIA = ("pronta", "pendente", "falhou", "expirada")
 
 
 class ErroModulo(Exception):
@@ -28,6 +33,57 @@ def _texto(v, n=500):
     return v[:n] if isinstance(v, str) else ""
 
 
+def ref_ok(ref):
+    """Referência opaca de arquivo de módulo (arquivo_ref.py): sem '..' nem ponto no começo."""
+    return isinstance(ref, str) and bool(RE_REF.match(ref)) and ".." not in ref and not ref.startswith(".")
+
+
+def _midia(m):
+    """`midia` de uma mensagem conferida (só as chaves do contrato) ou None se alguma está fora da forma."""
+    if not isinstance(m, dict) or not ref_ok(m.get("ref")) or m.get("tipo") not in TIPOS_MIDIA:
+        return None
+    saida = {"ref": m["ref"], "tipo": m["tipo"]}
+    for k in ("nome", "aviso"):
+        if k in m:
+            if not isinstance(m[k], str):
+                return None
+            saida[k] = m[k][:200]
+    for k in ("tamanho", "duracao"):
+        if k in m:
+            if not (_numero(m[k]) and m[k] >= 0):
+                return None
+            saida[k] = m[k]
+    if "estado" in m:
+        if m["estado"] not in ESTADOS_MIDIA:
+            return None
+        saida["estado"] = m["estado"]
+    if "acao" in m:
+        a = m["acao"]
+        if not isinstance(a, dict) or not _texto(a.get("acao")) or not isinstance(a.get("dados", {}), dict):
+            return None
+        saida["acao"] = {"acao": a["acao"], "dados": a.get("dados", {})}
+    return saida
+
+
+def _mensagens(conv, avisos, aba):
+    """Mensagens de um bloco conversa (ou da conversa aberta da caixa): midia ou transcricao ruins saem com aviso."""
+    msgs = conv.get("mensagens")
+    if not isinstance(msgs, list):
+        return conv
+    saida = []
+    for m in msgs:
+        if isinstance(m, dict) and "midia" in m:
+            ok = _midia(m["midia"])
+            m = dict(m, midia=ok) if ok else {k: v for k, v in m.items() if k != "midia"}
+            if not ok:
+                avisos.append("aba %s: mídia de mensagem fora do formato ignorada" % aba)
+        if isinstance(m, dict) and "transcricao" in m and not isinstance(m["transcricao"], str):
+            m = {k: v for k, v in m.items() if k != "transcricao"}
+            avisos.append("aba %s: transcrição de mensagem fora do formato ignorada" % aba)
+        saida.append(m)
+    return dict(conv, mensagens=saida)
+
+
 def _caixa(b, avisos, aba):
     """Bloco caixa: sem lista ou sem abrir.acao sai inteiro; linha sem id/titulo sai; o resto passa."""
     abrir, conv = b.get("abrir"), b.get("conversas")
@@ -40,7 +96,15 @@ def _caixa(b, avisos, aba):
     saida = dict(b, conversas=linhas)
     if "conversa" in saida and not isinstance(saida["conversa"], dict):
         del saida["conversa"]
+    elif "conversa" in saida:
+        saida["conversa"] = _mensagens(saida["conversa"], avisos, aba)
     return saida
+
+
+def _bloco(b, avisos, aba):
+    if b["tipo"] == "caixa":
+        return _caixa(b, avisos, aba)
+    return _mensagens(b, avisos, aba) if b["tipo"] == "conversa" else b
 
 
 def _numero(v):
@@ -67,7 +131,7 @@ def conferir(dado, inf):
         if len(blocos) != len(aba["blocos"][:MAX_BLOCOS]):
             avisos.append("aba %s: bloco sem 'tipo' ignorado" % _texto(aba["id"], 40))
         nome = _texto(aba["id"], 40)
-        blocos = [x for x in (_caixa(b, avisos, nome) if b["tipo"] == "caixa" else b for b in blocos) if x is not None]
+        blocos = [x for x in (_bloco(b, avisos, nome) for b in blocos) if x is not None]
         aba = dict(aba, id=nome, titulo=_texto(aba.get("titulo") or aba["id"], 80), blocos=blocos)
         if not (_numero(aba.get("alerta")) and aba["alerta"] >= 1):
             aba.pop("alerta", None)
