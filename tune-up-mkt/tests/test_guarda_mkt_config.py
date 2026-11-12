@@ -1,6 +1,7 @@
 """guarda_mkt.py: per-project loosening (mkt.json), its protection, messages by language, any MCP server."""
 import json
 import os
+import shutil
 
 from .apoio_mkt import Base
 
@@ -16,15 +17,15 @@ class Config(Base):
         os.makedirs(self.outra)
 
     def mkt(self, conteudo):
-        """Writes mkt.json, returns env with CLAUDE_PROJECT_DIR = real root."""
-        arq = self.gravar("mkt.json", conteudo)
-        return {"TUNEUP_MKT_JSON": arq, "CLAUDE_PROJECT_DIR": self.raiz}
+        """Writes ~/.config/tune-up/mkt.json, returns env with CLAUDE_PROJECT_DIR = real root."""
+        self.arq = self.config("mkt.json", conteudo)
+        return {"CLAUDE_PROJECT_DIR": self.raiz}
 
-    def meta(self, env, cwd=None):
+    def meta(self, env, cwd=None, erro=False):
         e = {"tool_name": "Bash", "tool_input": {"command": ESCRITA_META}}
         if cwd:
             e["cwd"] = cwd
-        return self.saida(e, env=env)
+        return self.saida(e, env=env, erro=erro)
 
     # C5 (1)
     def test_meta_ask_afrouxa_e_explica(self):
@@ -33,7 +34,7 @@ class Config(Base):
         self.assertEqual(self.multi("METAADS_UPDATE_AD", env=env), "perguntar")
         s = self.meta(env)
         self.assertIn("The default is to block", s["permissionDecisionReason"])
-        self.assertIn(env["TUNEUP_MKT_JSON"], s["permissionDecisionReason"])
+        self.assertIn(self.arq, s["permissionDecisionReason"])
 
     def test_caminho_normalizado(self):
         chave = os.path.join(self.raiz, "sub", "..") + os.sep
@@ -61,13 +62,38 @@ class Config(Base):
                 self.assertEqual(self.meta(env)["permissionDecision"], "deny")
 
     def test_arquivo_ilegivel_ou_invalido(self):
-        pasta = os.path.join(self.tmp, "e-pasta.json")
-        os.makedirs(pasta)
-        for arq in (pasta, self.gravar("ruim.json", "{nao e json"), self.gravar("lista.json", "[1]"),
-                    self.gravar("sem-projetos.json", {"meta_ads_write": "ask"})):
-            with self.subTest(arq=os.path.basename(arq)):
-                env = {"TUNEUP_MKT_JSON": arq, "CLAUDE_PROJECT_DIR": self.raiz}
-                self.assertEqual(self.meta(env)["permissionDecision"], "deny")
+        env = {"CLAUDE_PROJECT_DIR": self.raiz}
+        alvo = os.path.join(self.tmp, ".config", "tune-up", "mkt.json")
+        os.makedirs(alvo)  # a folder where the file should be
+        self.assertEqual(self.meta(env)["permissionDecision"], "deny")
+        shutil.rmtree(alvo)
+        for conteudo, erro in (("{nao e json", True), ("[1]", False), ({"meta_ads_write": "ask"}, False)):
+            with self.subTest(conteudo=str(conteudo)):
+                self.config("mkt.json", conteudo)
+                self.assertEqual(self.meta(env, erro=erro)["permissionDecision"], "deny")
+
+    # M4: a config that cannot be parsed (RecursionError) never drops the deny
+    def test_config_aninhada_demais_mantem_deny(self):
+        fundo = "[" * 100000 + "]" * 100000
+        self.config("mkt.json", fundo)
+        self.config("user.json", fundo)
+        s = self.meta({"CLAUDE_PROJECT_DIR": self.raiz}, erro=True)
+        self.assertEqual(s["permissionDecision"], "deny")
+        self.assertIn("the owner", s["permissionDecisionReason"])
+
+    # M2: a relative key or project dir never loosens
+    def test_chave_relativa_nao_afrouxa(self):
+        self.mkt({"projetos": {".": {"meta_ads_write": "ask"}, "": {"meta_ads_write": "ask"}}})
+        for raiz in (self.raiz, self.outra):
+            with self.subTest(raiz=raiz):  # hook process running inside the project
+                s = self.saida({"tool_name": "Bash", "tool_input": {"command": ESCRITA_META}},
+                               env={"CLAUDE_PROJECT_DIR": raiz}, cwd=raiz)
+                self.assertEqual(s["permissionDecision"], "deny")
+
+    def test_project_dir_relativo_nao_afrouxa(self):
+        self.mkt({"projetos": {".": {"meta_ads_write": "ask"}, "projeto": {"meta_ads_write": "ask"}}})
+        self.assertEqual(self.meta({"CLAUDE_PROJECT_DIR": "."})["permissionDecision"], "deny")
+        self.assertEqual(self.meta({"CLAUDE_PROJECT_DIR": "projeto"})["permissionDecision"], "deny")
 
     def test_chave_com_byte_nulo_nao_desliga_a_guarda(self):
         env = self.mkt({"projetos": {"x\u0000y": {"meta_ads_write": "ask"}, self.raiz: {"google_ads_write": "deny"}}})
@@ -127,11 +153,12 @@ class Config(Base):
 
 class Mensagens(Base):
     def user(self, conteudo):
-        return {"TUNEUP_USER_JSON": self.gravar("user.json", conteudo)}
+        self.config("user.json", conteudo)
+        return {}
 
-    def razao(self, env, slug="METAADS_UPDATE_AD"):
+    def razao(self, env, slug="METAADS_UPDATE_AD", erro=False):
         s = self.saida({"tool_name": "mcp__composio__COMPOSIO_MULTI_EXECUTE_TOOL",
-                        "tool_input": {"tools": [{"tool_slug": slug}]}}, env=env)
+                        "tool_input": {"tools": [{"tool_slug": slug}]}}, env=env, erro=erro)
         return s["permissionDecisionReason"]
 
     # C6
@@ -158,18 +185,18 @@ class Mensagens(Base):
 
     def test_outro_idioma_ou_arquivo_ruim_ingles(self):
         self.assertIn("Ana's explicit", self.razao(self.user({"language": "fr", "owner": "Ana"})))
-        self.assertIn("the owner's", self.razao(self.user("{quebrado")))
+        self.assertIn("the owner's", self.razao(self.user("{quebrado"), erro=True))
         self.assertIn("the owner's", self.razao(self.user({"owner": 7})))
 
     def test_afrouxado_em_pt_br(self):
         raiz = os.path.join(self.tmp, "p")
         os.makedirs(raiz)
         env = self.user({"language": "pt-BR"})
-        env.update({"TUNEUP_MKT_JSON": self.gravar("mkt.json", {"projetos": {raiz: {"meta_ads_write": "ask"}}}),
-                    "CLAUDE_PROJECT_DIR": raiz})
+        arq = self.config("mkt.json", {"projetos": {raiz: {"meta_ads_write": "ask"}}})
+        env["CLAUDE_PROJECT_DIR"] = raiz
         r = self.razao(env)
         self.assertIn("O padrão é bloquear", r)
-        self.assertIn(env["TUNEUP_MKT_JSON"], r)
+        self.assertIn(arq, r)
 
 
 class QualquerMcp(Base):

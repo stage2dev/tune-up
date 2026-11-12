@@ -4,16 +4,14 @@
 Usage: sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda_mkt.py   (see hooks/hooks.json)
 Reads the hook JSON on stdin; writes JSON only when there is a decision. Always exit 0.
 Internal exception = no decision; one line in <data>/erros.log.
-Per-project loosening: ~/.config/tune-up/mkt.json (TUNEUP_MKT_JSON), keyed by CLAUDE_PROJECT_DIR.
-Messages: `language` and `owner` from ~/.config/tune-up/user.json (TUNEUP_USER_JSON).
+Per-project loosening: ~/.config/tune-up/mkt.json, keyed by CLAUDE_PROJECT_DIR (absolute paths only).
+Messages: `language` and `owner` from ~/.config/tune-up/user.json.
 """
 import json
 import os
 import re
 import sys
 import time
-
-TESTE = os.environ.get("TUNEUP_TESTE") == "1"
 
 # Factory policy; mkt.json may only set "deny" or "ask" per key (never pass).
 PADRAO = {"meta_ads_write": "deny", "google_ads_write": "ask", "organic_publish": "ask"}
@@ -22,6 +20,7 @@ ORGANICO = ("organic_publish", "organico")
 GOOGLE = ("google_ads_write", "google")
 RUN = (None, "run")            # None = fixed "ask", not configurable
 MKT_JSON = (None, "mkt_json")
+ILEGIVEL = (None, "ilegivel")
 
 MENSAGENS = {
     "en": {
@@ -31,6 +30,7 @@ MENSAGENS = {
         "google": "Google Ads change: confirm first (without {dono}'s order, read only).",
         "run": "`composio run` executes a file this guard cannot read: confirm first.",
         "mkt_json": "mkt.json loosens the marketing guard: confirm this change.",
+        "ilegivel": "`composio execute` with a tool slug this guard cannot read: confirm first.",
         "afrouxado": " The default is to block; loosened to ask by {arq}.",
     },
     "pt-BR": {
@@ -40,6 +40,7 @@ MENSAGENS = {
         "google": "mudança no Google Ads: confirme antes (sem ordem {dono}, só leitura).",
         "run": "`composio run` executa um arquivo que esta guarda não lê: confirme antes.",
         "mkt_json": "o mkt.json afrouxa a guarda de marketing: confirme esta mudança.",
+        "ilegivel": "`composio execute` com um slug que esta guarda não consegue ler: confirme antes.",
         "afrouxado": " O padrão é bloquear; afrouxado para perguntar por {arq}.",
     },
 }
@@ -47,7 +48,7 @@ MENSAGENS = {
 SHELLS = {"Bash", "PowerShell", "Monitor"}
 ESCRITAS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
 CHAVES_CAMINHO = ("file_path", "notebook_path", "path")
-RE_FILTRO_MCP = re.compile(r"(?i)composio|meta|facebook|instagram|google_?ads|graph\.(?:facebook|instagram)")
+RE_FILTRO_MCP = re.compile(r"(?i)composio|meta|facebook|instagram|google_?ads|graph\.(?:facebook|instagram)|\bfb[_-]")
 RE_MKT_JSON = re.compile(r"(?i)(?<![\w.-])mkt\.json(?!\w)")
 
 RE_SLUG = re.compile(r"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+|[A-Z]{6,}")
@@ -57,21 +58,30 @@ VERBO_ESCRITA = re.compile(r"^(CREATE|UPDATE|DELETE|PAUSE|ACTIVATE|EDIT|SET|DUPL
 VERBO_LEITURA = {"GET", "LIST", "FETCH", "SEARCH", "INSIGHTS", "REPORT", "READ", "FIND", "RETRIEVE"}
 VERBO_ORGANICO = {"CREATE", "PUBLISH", "POST", "UPLOAD", "SEND", "COMMENT", "REPLY", "DELETE", "UPDATE", "SCHEDULE"}
 RE_GOOGLE = re.compile(r"GOOGLE_?ADS[A-Z_]*(MUTATE|CREATE|UPDATE|REMOVE|PAUSE|ENABLE|SET)")
-RE_METODO = re.compile(r"(?i)(\"?method\"?\s*[:=]\s*\"?|-X\s*|--method[ =]|--request[ =])(POST|DELETE|PUT|PATCH)\b")
+RE_METODO = re.compile(r"(?i)([\"']?method[\"']?\s*[:=]\s*[\"']?|-X\s*|--method[ =]|--request[ =])(POST|DELETE|PUT|PATCH)\b")
 RE_GRAPH_URL = re.compile(r"(?i)graph\.(?:facebook|instagram)\.com/[^\s\"'\\]*")
 RE_GRAPH_AD = re.compile(r"(?i)/(act_[^/?\s]*|campaigns|adsets|ads|adcreatives)(?=[/?#]|$)")
 RE_DADOS = re.compile(r"(?:^|[\s\"'])(?:-d|-F|--data[\w-]*|--form)(?=[\s=\"']|\S)")
-RE_GET = re.compile(r"(?i)(-X\s*|--request[ =]|--method[ =])GET\b")
+RE_GET = re.compile(r"(?i)(-X\s*|--request[ =]|--method[ =]|-Method[\s:]+['\"]?)GET\b")
+# PowerShell -Method, requests/fetch .post(, httpie `POST url`, curl --json, wget --post-data
+RE_ESCRITA = re.compile(r"(?i)-Method[\s:]+['\"]?(?:Post|Put|Patch|Delete)\b|\.(?:post|put|patch|delete)\(|"
+                        r"\b(?:POST|PUT|PATCH|DELETE)\s+['\"]?https?://|(?:^|[\s\"'])--(?:json|post-data|post-file)\b")
+RE_CORPO = re.compile(r"(?i)(?:^|[\s\"'])-(?:Body|InFile)\b")  # PowerShell body (a write unless -Method Get)
 RE_CURL_G = re.compile(r"(?:^|[\s\"'])(?:-G|--get)(?=[\s\"']|$)")  # -d becomes a GET query; no (?i): -g is --globoff
-RE_REMOTO = re.compile(r"(?i)COMPOSIO_REMOTE_(WORKBENCH|BASH_TOOL)$")
+RE_REMOTO = re.compile(r"(?i)(?:^|_)REMOTE_(WORKBENCH|BASH_TOOL)$")
 RE_CITA_META = re.compile(r"(?i)\bmeta\b|\bmetaads\b|facebook|instagram|graph\.")
-RE_EXECUTE = re.compile(r"(?i)(?:^|[\s/;&|(])(?:composio|@composio/cli)(?:@\S*)?\s+execute\s+['\"]?([A-Za-z0-9_]+)")
-RE_EXECUTE_INICIO = re.compile(r"(?i)(?:^|[\s/;&|(])(?:composio|@composio/cli)(?:@\S*)?\s.*?\bexecute\b", re.S)
+# composio, composio.cmd/.exe/.ps1, 'composio', `composio, node_modules\.bin\composio, @composio/cli@x
+NOME_COMPOSIO = r"(?:^|[\s/\\;&|(])[\"'`]?(?:composio|@composio/cli)(?:\.(?:cmd|exe|ps1))?[\"'`]?(?:@\S*)?"
+RE_EXECUTE = re.compile(r"(?i)" + NOME_COMPOSIO + r"\s+execute\s+['\"]?([A-Za-z0-9_]+)")
+RE_EXECUTE_INICIO = re.compile(r"(?i)" + NOME_COMPOSIO + r"\s.*?\bexecute\b", re.S)
 RE_RUN = re.compile(r"(?i)\bcomposio\s+run\b")
 RE_TOKEN_SLUG = re.compile(r"^[A-Za-z]+(_[A-Za-z0-9]+)+$")
-CHAVES_SLUG = {"tool_slug", "slug", "action", "tool"}
+CHAVES_SLUG = {"tool_slug", "slug", "action", "tool", "tool_name", "toolSlug"}
 RE_BASH_ALVO = re.compile(r"(?i)composio|graph\.facebook\.com|graph\.instagram\.com")
-RE_HEREDOC = re.compile(r"<<(?!<)-?\s*['\"]?(\w+)['\"]?")
+RE_HEREDOC = re.compile(r"(?<!<)<<(?!<)-?\s*['\"]?(\w+)['\"]?")
+# dedicated MCP servers: normalized server name -> synthetic slug prefix for the classifier
+RE_SERVIDOR_META = re.compile(r"^(meta|facebook|fb|instagram)(_?ads)?$")
+RE_SERVIDOR_GOOGLE = re.compile(r"^google_?ads$")
 
 
 def log_erro(texto):
@@ -91,20 +101,22 @@ def ler_json(caminho):
             return json.load(f)
     except OSError:
         return None
-    except ValueError:
-        log_erro("invalid JSON in %s" % caminho)
+    except Exception as e:  # invalid JSON, RecursionError on deep nesting, ...
+        log_erro("unreadable JSON in %s: %s" % (caminho, type(e).__name__))
         return None
 
 
 def caminho_mkt_json():
-    return os.environ.get("TUNEUP_MKT_JSON") or os.path.join(
-        os.path.expanduser("~"), ".config", "tune-up", "mkt.json")
+    return os.path.join(os.path.expanduser("~"), ".config", "tune-up", "mkt.json")
 
 
 def normalizar(p):
-    """Comparable form of a path; None when the path is unusable (a bad key never disables the guard)."""
+    """Comparable form of an absolute path; None when relative or unusable (a bad key never disables the guard)."""
     try:
-        p = os.path.normcase(os.path.realpath(os.path.expanduser(p.strip())))
+        p = os.path.expanduser(p.strip())
+        if not os.path.isabs(p):
+            return None
+        p = os.path.normcase(os.path.realpath(p))
     except (OSError, ValueError):
         return None
     return p.rstrip("/\\") or p
@@ -140,8 +152,7 @@ def nome_simples(v):
 
 def perfil():
     """(language, owner phrase) from user.json; any other language or bad file -> English, 'the owner'."""
-    d = ler_json(os.environ.get("TUNEUP_USER_JSON") or os.path.join(
-        os.path.expanduser("~"), ".config", "tune-up", "user.json"))
+    d = ler_json(os.path.join(os.path.expanduser("~"), ".config", "tune-up", "user.json"))
     d = d if isinstance(d, dict) else {}
     lang = d.get("language")
     idioma = "pt-BR" if isinstance(lang, str) and lang.strip().lower() == "pt-br" else "en"
@@ -152,6 +163,7 @@ def perfil():
 
 
 def sem_heredoc(cmd):
+    """Bash heredoc bodies removed; a marker never terminated (e.g. `$((1<<2))`) = original command."""
     saida, pendentes = [], []
     for linha in cmd.split("\n"):
         if pendentes:
@@ -160,7 +172,7 @@ def sem_heredoc(cmd):
             continue
         saida.append(linha)
         pendentes.extend(RE_HEREDOC.findall(linha))
-    return "\n".join(saida)
+    return cmd if pendentes else "\n".join(saida)
 
 
 def slugs_execute(cmd):
@@ -197,8 +209,8 @@ def graph_escrita(texto):
     """Graph API with a write method: ad object = META, other path = ORGANICO."""
     if not re.search(r"(?i)graph\.(facebook|instagram)\.com", texto):
         return None
-    escrita = RE_METODO.search(texto) or (RE_DADOS.search(texto) and not RE_GET.search(texto)
-                                          and not RE_CURL_G.search(texto))
+    escrita = RE_METODO.search(texto) or RE_ESCRITA.search(texto) or (
+        (RE_DADOS.search(texto) or RE_CORPO.search(texto)) and not RE_GET.search(texto) and not RE_CURL_G.search(texto))
     if not escrita:
         return None
     if any(RE_GRAPH_AD.search(u) for u in RE_GRAPH_URL.findall(texto)):
@@ -241,18 +253,62 @@ def achatar(v, chave=None, out=None):
     return out
 
 
-def slugs_mcp(v, out=None):
-    """Values (str or list of str) of the tool_slug/slug/action/tool keys, recursive."""
+def slugs_mcp(v, out=None, fundo=0):
+    """Values (str or list of str) of the CHAVES_SLUG keys, recursive; a JSON string is decoded (depth <= 5)."""
     out = [] if out is None else out
     if isinstance(v, dict):
         for k, x in v.items():
             if k in CHAVES_SLUG and isinstance(x, (str, list)):
                 out.extend(i for i in ([x] if isinstance(x, str) else x) if isinstance(i, str))
-            slugs_mcp(x, out)
+            slugs_mcp(x, out, fundo)
     elif isinstance(v, list):
         for x in v:
-            slugs_mcp(x, out)
+            slugs_mcp(x, out, fundo)
+    elif isinstance(v, str) and fundo < 5 and v.lstrip()[:1] in ("[", "{"):
+        try:
+            slugs_mcp(json.loads(v), out, fundo + 1)
+        except ValueError:
+            pass
     return out
+
+
+def textos(v, out=None):
+    """Every string value of tool_input, recursive."""
+    out = [] if out is None else out
+    if isinstance(v, dict):
+        for x in v.values():
+            textos(x, out)
+    elif isinstance(v, list):
+        for x in v:
+            textos(x, out)
+    elif isinstance(v, str):
+        out.append(v)
+    return out
+
+
+def slug_do_servidor(nome):
+    """`mcp__<server>__<tool>` of a dedicated ads/social server -> synthetic slug (e.g. METAADS_UPDATE_CAMPAIGN)."""
+    partes = nome.split("__")
+    if len(partes) < 3:
+        return None
+    srv = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", "__".join(partes[1:-1])).lower()
+    srv = re.sub(r"^(claude_ai_|plugin_[^_]+_)", "", srv)
+    srv = re.sub(r"[^a-z0-9]+", "_", srv).strip("_")
+    if RE_SERVIDOR_GOOGLE.match(srv):
+        prefixo = "GOOGLEADS"
+    elif RE_SERVIDOR_META.match(srv):
+        # "ads" in the name = ad object (write verbs deny); plain facebook/instagram/meta = organic
+        prefixo = "METAADS" if "ads" in srv else ("INSTAGRAM" if srv == "instagram" else "FACEBOOK")
+    else:
+        return None
+    ferramenta = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", partes[-1])
+    return prefixo + "_" + re.sub(r"[^A-Za-z0-9]+", "_", ferramenta).upper().strip("_")
+
+
+def execute_em(cmd):
+    """(slugs after `composio ... execute`, True when the command has an execute without a readable slug)."""
+    slugs = RE_EXECUTE.findall(cmd) + slugs_execute(cmd)
+    return slugs, bool(RE_EXECUTE_INICIO.search(cmd)) and not slugs
 
 
 def achados_da_chamada(nome, ti):
@@ -260,24 +316,36 @@ def achados_da_chamada(nome, ti):
     if nome in SHELLS:
         cmd = ti.get("command") if isinstance(ti, dict) else None
         bruto = cmd if isinstance(cmd, str) else ""
-        base = sem_heredoc(bruto)
+        base = bruto if nome == "PowerShell" else sem_heredoc(bruto)  # PowerShell has no << heredoc
         texto = base if RE_BASH_ALVO.search(base) else ""
-        slugs = "\n".join(RE_EXECUTE.findall(base) + slugs_execute(base))
+        lista, ilegivel = execute_em(base)
+        slugs = "\n".join(lista)
         extra = [RUN] if RE_RUN.search(base) else []  # file content is unknown: always ask
+        if ilegivel:
+            extra.append(ILEGIVEL)
         if RE_MKT_JSON.search(bruto):
             extra.append(MKT_JSON)
     elif nome in ESCRITAS:
         caminhos = [ti.get(k) for k in CHAVES_CAMINHO] if isinstance(ti, dict) else []
         return [MKT_JSON] if any(isinstance(c, str) and RE_MKT_JSON.search(c) for c in caminhos) else []
     elif nome.startswith("mcp__"):
-        if not RE_FILTRO_MCP.search(nome) and not RE_FILTRO_MCP.search(json.dumps(ti, ensure_ascii=False)):
+        sintetico = slug_do_servidor(nome)
+        if not sintetico and not RE_FILTRO_MCP.search(nome) and not RE_FILTRO_MCP.search(
+                json.dumps(ti, ensure_ascii=False)):
             return []
         bruto = "\n".join(achatar(ti))
         ferramenta = nome.rsplit("__", 1)[-1]
         texto = ferramenta + "\n" + bruto
         remoto = bool(RE_REMOTO.search(nome))
-        slugs = texto if remoto else "\n".join([ferramenta] + slugs_mcp(ti))  # remote: slug may sit inside code
+        lista, ilegiveis = [], False
+        for t in textos(ti):
+            s, i = execute_em(t)
+            lista += s
+            ilegiveis = ilegiveis or i
+        slugs = "\n".join(([texto] if remoto else [ferramenta] + slugs_mcp(ti)) + lista + [sintetico or ""])
         extra = [ORGANICO] if remoto and RE_CITA_META.search(bruto) else []
+        if remoto and ilegiveis:
+            extra.append(ILEGIVEL)
     else:
         return []
     g = graph_escrita(bruto)
@@ -288,7 +356,11 @@ def decidir(achados):
     """(action, message id, loosened-by file or None) or None. Deny wins over ask."""
     if not achados:
         return None
-    pol, arq = politica() if any(c for c, _ in achados) else (PADRAO, None)
+    try:
+        pol, arq = politica() if any(c for c, _ in achados) else (PADRAO, None)
+    except Exception as e:  # a config failure never drops a decision: defaults apply
+        log_erro("policy: %s: %s" % (type(e).__name__, e))
+        pol, arq = PADRAO, None
     rs = []
     for chave, msg in achados:
         acao = pol[chave] if chave else "ask"
@@ -315,15 +387,18 @@ def main():
     try:
         if not isinstance(d, dict):
             return
-        if TESTE and os.environ.get("TUNEUP_FAKE_EXCECAO") == "1":
-            raise RuntimeError("simulated exception")
         r = decidir(achados_da_chamada(str(d.get("tool_name") or ""), d.get("tool_input") or {}))
         if r:
             acao, msg, afrouxado = r
+            try:
+                texto = razao(msg, afrouxado)
+            except Exception as e:  # never lose the decision over its wording
+                log_erro("reason: %s: %s" % (type(e).__name__, e))
+                texto = MENSAGENS["en"][msg].format(dono="the owner")
             sys.stdout.write(json.dumps({"hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
                 "permissionDecision": "deny" if acao == "bloquear" else "ask",
-                "permissionDecisionReason": "tune-up: " + razao(msg, afrouxado)}}) + "\n")
+                "permissionDecisionReason": "tune-up: " + texto}}) + "\n")
     except Exception as e:
         log_erro("%s: %s" % (type(e).__name__, e))
 

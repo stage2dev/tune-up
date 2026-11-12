@@ -50,8 +50,12 @@ class TestMkt(Base):
         self.shell("composio execute METAADS_UPDATE_AD_SET_STATUS --status PAUSED", "bloquear")
 
     def test_bash_texto_nao_composio(self):
-        self.shell("echo METAADS_UPDATE_AD_SET_STATUS && cat <<'EOF'\ncomposio execute FACEBOOK_CREATE_CAMPAIGN\nEOF",
-                   None)
+        cmd = "echo METAADS_UPDATE_AD_SET_STATUS && cat <<'EOF'\ncomposio execute FACEBOOK_CREATE_CAMPAIGN\nEOF"
+        for nome in ("Bash", "Monitor"):
+            with self.subTest(ferramenta=nome):
+                self.assertIsNone(self.rodar({"tool_name": nome, "tool_input": {"command": cmd}}))
+        # Conscious change (M6): PowerShell has no << heredoc, so its text is analysed whole.
+        self.assertEqual(self.rodar({"tool_name": "PowerShell", "tool_input": {"command": cmd}}), "bloquear")
 
     # B1: organic, by slug parts
     def test_facebook_create_photo_post(self):
@@ -160,13 +164,7 @@ class TestMkt(Base):
         self.assertIsNone(self.remoto("COMPOSIO_REMOTE_WORKBENCH", code="metadata = {}"))
 
     def test_json_invalido(self):
-        self.assertIsNone(self.rodar(bruto="nao e json"))
-
-    def test_excecao_interna(self):
-        self.assertIsNone(self.rodar({"tool_name": "Bash", "tool_input": {"command": "ls"}},
-                                     env={"TUNEUP_FAKE_EXCECAO": "1"}))
-        with open(os.path.join(self.tmp, "erros.log"), encoding="utf-8") as f:
-            self.assertIn("simulated exception", f.read())
+        self.assertIsNone(self.rodar(bruto="nao e json", erro=True))
 
     # flag before the slug in composio execute
     def test_composio_execute_flag_p_antes(self):
