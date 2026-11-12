@@ -32,9 +32,11 @@ class TesteEsqueleto(unittest.TestCase):
         self.assertEqual(p["license"], "MIT")
         self.assertTrue(p["description"].isascii() and p["description"])
 
-    def test_marketplace_lista_os_dois(self):
+    def test_marketplace_lista_os_tres(self):
         with open(os.path.join(RAIZ, ".claude-plugin", "marketplace.json"), encoding="utf-8") as f:
             m = json.load(f)
+        nomes = [p["name"] for p in m["plugins"]]
+        self.assertEqual(sorted(nomes), ["tune-up", "tune-up-studio", "tune-up-vendas"])   # exatos, sem repetir
         fontes = {p["name"]: p["source"] for p in m["plugins"]}
         self.assertEqual({k: fontes.get(k) for k in ("tune-up", "tune-up-vendas")},
                          {"tune-up": "./", "tune-up-vendas": "./vendas"})

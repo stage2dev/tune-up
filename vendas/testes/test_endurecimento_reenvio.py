@@ -38,9 +38,11 @@ class TesteReenvioDoDono(test_campanha.Base):
         envio = self.con.execute("SELECT id FROM envios WHERE estado = 'incerto'").fetchone()[0]
         return cid, envio
 
-    def _reenviar(self, envio):
+    def _reenviar(self, envio, agora=None):
+        """O caminho do dono usa o relógio do portão: fixa em 12:00 -03:00 (dentro da janela) salvo pedido."""
         app = types.SimpleNamespace(conector=self.c)
-        return conversas._decidir(app, self.con, envio, "reenviar", {})
+        with mock.patch.object(portao, "_agora", return_value=agora or test_campanha.AGORA):
+            return conversas._decidir(app, self.con, envio, "reenviar", {})
 
     def test_dono_reenvia_incerto_de_campanha_ativa_e_o_contato_vira_enviado(self):
         cid, envio = self._incerto_com_campanha_ativa()
@@ -48,6 +50,13 @@ class TesteReenvioDoDono(test_campanha.Base):
         self.assertEqual((codigo, r["estado"], r["motivo"]), (200, "enviado", None))
         self.assertEqual(len(self.c.entregues), 1)
         self.assertEqual(self.estados(cid), ["enviado", "pendente"])   # o progresso não conta mais como incerto
+
+    def test_dono_nao_reenvia_incerto_fora_da_janela(self):
+        cid, envio = self._incerto_com_campanha_ativa()
+        codigo, r = self._reenviar(envio, agora=test_campanha.FORA)   # 20:00 -03:00
+        self.assertEqual((codigo, r["estado"], r["motivo"]), (200, "negado", "fora_da_janela"))
+        self.assertEqual(self.c.entregues, [])
+        self.assertEqual(self.estados(cid), ["incerto", "pendente"])
 
     def test_dono_nao_reenvia_incerto_de_campanha_pausada(self):
         cid, envio = self._incerto_com_campanha_ativa()
