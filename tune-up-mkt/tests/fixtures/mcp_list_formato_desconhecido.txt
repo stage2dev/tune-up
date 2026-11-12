@@ -1,0 +1,4 @@
+NAME                      TRANSPORT  STATUS
+plugin:openseo:openseo    http       connected
+composio                  http       needs-auth
+claude.ai Docs            http       connected

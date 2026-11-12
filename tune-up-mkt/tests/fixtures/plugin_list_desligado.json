@@ -1,0 +1,47 @@
+[
+  {
+    "id": "claude-ads@ai-marketing-hub-claude-ads",
+    "version": "2.0.1",
+    "scope": "user",
+    "enabled": true,
+    "installPath": "/home/user/.claude/plugins/cache/ai-marketing-hub-claude-ads/claude-ads/2.0.1",
+    "installedAt": "2026-09-01T00:00:00.000Z",
+    "lastUpdated": "2026-09-01T00:00:00.000Z",
+    "projectEnabled": false
+  },
+  {
+    "id": "openseo@openseo",
+    "version": "1.0.10",
+    "scope": "user",
+    "enabled": false,
+    "installPath": "/home/user/.claude/plugins/cache/openseo/openseo/1.0.10",
+    "installedAt": "2026-09-01T00:00:00.000Z",
+    "lastUpdated": "2026-09-01T00:00:00.000Z",
+    "mcpServers": {
+      "openseo": {
+        "type": "http",
+        "url": "https://app.openseo.so/mcp"
+      }
+    },
+    "projectEnabled": false
+  },
+  {
+    "id": "notes@example-market",
+    "version": "3.0.0",
+    "scope": "user",
+    "enabled": true,
+    "installPath": "/home/user/.claude/plugins/cache/example-market/notes/3.0.0",
+    "installedAt": "2026-09-01T00:00:00.000Z",
+    "lastUpdated": "2026-09-01T00:00:00.000Z",
+    "mcpServers": {
+      "search": {
+        "type": "http",
+        "url": "https://example.test/mcp",
+        "headers": {
+          "X-Plugin-Version": "3.0.0"
+        }
+      }
+    },
+    "projectEnabled": false
+  }
+]

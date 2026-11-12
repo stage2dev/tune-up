@@ -1,0 +1,44 @@
+[
+  {
+    "id": "notes@example-market",
+    "version": "3.0.0",
+    "scope": "user",
+    "enabled": true,
+    "installPath": "/home/user/.claude/plugins/cache/example-market/notes/3.0.0",
+    "installedAt": "2026-09-01T00:00:00.000Z",
+    "lastUpdated": "2026-09-01T00:00:00.000Z",
+    "mcpServers": {
+      "search": {
+        "type": "http",
+        "url": "https://example.test/mcp",
+        "headers": {
+          "X-Plugin-Version": "3.0.0"
+        }
+      }
+    },
+    "projectEnabled": false
+  },
+  {
+    "id": "notes-config@example-market",
+    "version": "0.5.1",
+    "scope": "user",
+    "enabled": true,
+    "installPath": "/home/user/.claude/plugins/cache/example-market/notes-config/0.5.1",
+    "installedAt": "2026-09-01T00:00:00.000Z",
+    "lastUpdated": "2026-09-01T00:00:00.000Z",
+    "hasUserConfig": true,
+    "projectEnabled": false
+  },
+  {
+    "id": "tune-up@example-market",
+    "version": "2.10.0",
+    "scope": "user",
+    "enabled": true,
+    "installPath": "/home/user/.claude/plugins/cache/example-market/tune-up/2.10.0",
+    "installedAt": "2026-09-01T00:00:00.000Z",
+    "lastUpdated": "2026-09-01T00:00:00.000Z",
+    "readFromFolder": "/home/user/plugins/tune-up",
+    "folderVersion": "2.10.0",
+    "projectEnabled": false
+  }
+]
