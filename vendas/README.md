@@ -5,6 +5,22 @@ A WhatsApp sales module for the [tune-up](../README.md) panel. It has two parts:
 - a **panel screen** (`painel/modulos/vendas/modulo.py`, screen id `vendas`) that shows the connection, the conversations and the sending state;
 - a **local service** (`servico/`, Python 3.9 standard library only) that holds the WhatsApp connection and the data, listening on `127.0.0.1` only.
 
+## Começar em um clique
+
+For the business owner, after enabling the screen (next section): open the panel, screen **Vendas**, tab **Conexão**, and click **Preparar tudo**. One click runs the one-step setup below for this project, detached, and the tab follows it (refreshing every 3 s) as a checklist of five plain steps with the current one marked "fazendo...". The first time it downloads large files and takes a few minutes; on Windows a confirmation window may open.
+
+- When the setup needs the owner (for example a password-protected install), the card shows the plain message, the exact command in a field to copy into a terminal, and **Já fiz, continuar** (the run resumes where it stopped). A failed step shows the plain reason and **Tentar de novo**.
+- After a reboot, when the WhatsApp files are ready and the Evolution answers but the service is stopped, the card is **Ligar o serviço**: it runs only the last step (`preparo.py iniciar --so-servico`), so no terminal is needed. That step first checks, read-only, that the Evolution answers with its key, waiting up to 90 s (after a reboot the port opens before the Evolution answers); if it never does, the service is not started. After any failed run the card is the full **Preparar tudo** with **Tentar de novo** (an open port alone does not prove the Evolution answers), and the plain messages say only "clique de novo", never the name of a button that is not on the screen.
+- With `VENDAS_EVOLUTION_URL` set in the panel's environment (an Evolution at another address), the Evolution counts as ready: the card is only **Ligar o serviço** (nothing while the service runs), the setup skips the Docker and Evolution steps, and the session-start hook stays silent.
+- If the setup cannot even start (the process cannot be opened, or it exits before the first step), the state is `falhou` with a plain reason and the card shows it with **Tentar de novo**.
+- When everything is ready the card disappears and the QR form shows.
+- The screen reads the setup state file straight from the data folder (the service may still be stopped) and shows only plain messages: never a folder path, the log, a key or raw command output. The start is an argument list with the panel's own Python, no shell, and always for the project of that page.
+- In Claude Code, `/tune-up-vendas:instalar` runs the same setup (`preparo.py rodar`) and relays each step; it shows any owner command and waits, and never runs `sudo` or pipes a download into a shell. A session-start hook prints one line when the screen is enabled but the WhatsApp is not prepared (silent otherwise; no network).
+
+### Fazer à mão
+
+The screen no longer shows terminal commands. To do it by hand: `servico/preparo.py rodar` ("One-step setup" below), or the three manual steps: `servico/evolution_local.py preparar` ("Local Evolution API"), `docker compose -f <data folder>/evolution/compose.yml up -d`, then `servico/servico.py` ("Starting the service").
+
 Status: 0.1.0 is a skeleton. The screen has one tab, "Conexão", that says whether the service is running (from its heartbeat in the database) and, when it is stopped, shows the exact commands to start it and to prepare the local Evolution API. The service runs and receives webhooks, but has no WhatsApp connection flow (QR) yet.
 
 ## Enable it in a project
@@ -24,7 +40,7 @@ Status: 0.1.0 is a skeleton. The screen has one tab, "Conexão", that says wheth
 
 ## Starting the service
 
-The service starts **only** by an owner command typed in a terminal. It never starts from a Claude session, from a panel action or from a hook. The panel screen shows the command to copy. The deny rules below make a session unable to start it or to reach it.
+The service starts only by an owner action: this command typed in a terminal, the one-step setup below (which starts it detached), or the owner's click on **Preparar tudo** / **Ligar o serviço** in the panel (which runs that setup). It never starts from a hook, and sessions launched by the panel cannot start it or reach it (deny rules below). `/tune-up-vendas:instalar` runs the setup from a Claude session the owner opened, by the owner's request.
 
 ```
 python3 -B <plugin folder>/servico/servico.py --projeto <project root> [--porta 8791] [--painel http://127.0.0.1:8787]
@@ -115,6 +131,35 @@ The panel tab "Voz" (`painel/modulos/vendas/abas/voz.py`) shows the state (ffmpe
 
 Decision on cloned voices (plan question Q5, taken by the coordinator while the owner was away; the owner can change it): the default voice is a **catalog voice** of the user's ElevenLabs account (no clone, no disclosure). A voice marked as cloned (`clonada`) only turns on after a recorded consent of the voice's owner (name, date and text, stored in the database for that voice id; another voice id needs its own consent), and every audio made with it starts with the spoken sentence "Mensagem de voz gerada por IA.", because the ElevenLabs usage policy requires disclosure when its absence would mislead. There is no switch to remove the disclosure from a cloned voice.
 
+## One-step setup (Docker, Evolution and the service)
+
+Instead of the three manual steps (prepare the Evolution files, `docker compose up -d`, start the service), the owner can run one command:
+
+```
+python3 -B <plugin folder>/servico/preparo.py rodar   --projeto <project root> [--painel http://127.0.0.1:8787] [--porta 8791] [--porta-evolution 8080]
+python3 -B <plugin folder>/servico/preparo.py iniciar --projeto <project root> [same options]   # same run, detached; returns at once
+python3 -B <plugin folder>/servico/preparo.py estado  --projeto <project root>                  # last run's state as JSON
+```
+
+Nothing is installed when the plugin is installed: installing Docker downloads gigabytes and, on some systems, asks for a password, so running this command is the consent. It runs five steps in order. Each one checks first and does nothing when it is already satisfied, so running it again is safe and resumes at the first step that is not done:
+
+1. `docker_instalado`: finds `docker` and a compose (`docker compose`, else `docker-compose`) on `PATH` plus the usual locations (`/opt/homebrew/bin`, `/usr/local/bin`, Docker Desktop's `resources\bin` on Windows). When missing:
+   - **macOS**: `brew install colima docker docker-compose` (no `sudo`). Without Homebrew it stops with "needs the owner" and shows the official one-line Homebrew install command to paste in a terminal; it never pipes a download into a shell itself.
+   - **Windows**: `winget install -e --id Docker.DockerDesktop --accept-package-agreements --accept-source-agreements`; without `winget`, the official download page. Windows may ask for confirmation and a restart, and Docker Desktop needs a paid licence for larger companies (the state says so).
+   - **Linux**: never runs `sudo`. It shows the distribution's package command to paste (from `/etc/os-release`: Ubuntu `docker.io docker-compose-v2`, Debian `docker.io docker-compose`, Fedora `moby-engine docker-compose`, Arch `docker docker-compose`, each followed by `systemctl enable --now docker` and `usermod -aG docker $USER`), or the official install guide for other distributions.
+2. `docker_ligado`: `docker info` answers; otherwise `colima start` (macOS with colima), `open -a Docker` (macOS with Docker Desktop) or Docker Desktop (Windows), then waits up to 4 minutes. On Linux it shows `sudo systemctl start docker`.
+3. `evolution_preparada`: calls `evolution_local.preparar` (the key is never rotated; an existing `.env` is left untouched, and an incomplete one is `precisa_do_dono` with no command). Ports are never random: the service uses the first free port of `8791` to `8795` and the Evolution the first free port of `8080` to `8084` (the requested one first), recorded in the state; none free is `precisa_do_dono`.
+4. `evolution_no_ar`: the Evolution counts as running only when `GET /instance/fetchInstances` with the `.env` key (header `apikey`) answers 200. When another program answers HTTP on that port without accepting the key, the step is `precisa_do_dono` with a command to see which program holds the port (`lsof`, or `netstat` on Windows) and nothing is started. Otherwise `compose -f <data folder>/evolution/compose.yml pull`, then `up -d`, then waits up to 5 minutes for that same authenticated call on `127.0.0.1`. A failure keeps the last lines of the compose output; when the wait runs out, the last lines of `compose ps` (read-only, masked) go to the log.
+5. `servico_ligado`: done when the service lock shows a service running for this project, unless that service started before the Evolution `.env` existed (the lock file's time is when the service took it): then it is `precisa_do_dono`, asking the owner to restart the service. Otherwise starts `servico.py` detached with the same Python and waits up to 60 s for `GET /saude` with this project's marker. Its output goes to `servico.log` in the data folder.
+
+State and log: `preparo.json` and `preparo.log` (both 0600) in the external data folder, never in the project. The state has the run id, pid, start/update/end times, the overall state and, per step, `estado` (`pendente`, `rodando`, `feito`, `falhou`, `precisa_do_dono`), a plain pt-BR message, the command to paste (only for `precisa_do_dono`) and a short detail. One run per project (non-blocking lock `preparo.trava`): `rodar` exits with code 3 while another run is alive, and `iniciar` returns the running one. A run is alive only while `preparo.trava` is held (a live pid does not count: it may have been reused); a `rodando` state with the lock free is reported as `interrompido`, and the next run resumes. Every command shown to the owner has the home folder written as `~`. `rodar` exits 0 when every step is done and 1 when it stopped at a step.
+
+Child processes: programs are looked up only in absolute folders of the extended `PATH`, never the current folder (on Windows the children also get `NoDefaultCurrentDirectoryInExePath=1`); detached children run in the data folder. A child sees only the allowlisted environment variables (`AMBIENTE_PERMITIDO` and the `LC_`/`HOMEBREW_` prefixes in `servico/preparo_sistema.py`, the only copy of that list), so API keys and tokens of the terminal or the panel never reach Docker, Homebrew, winget or the service; the `VENDAS_*` variables the service reads do.
+
+What it never does: run `sudo`, use a shell or interpolate user data into a command (every command is an argument list with an absolute path and a timeout), `docker compose down`, remove volumes or containers, log out or delete a WhatsApp instance, overwrite the Evolution `.env`, retry forever. The Evolution API key and the Postgres password are masked (`***`) in the state, the log and the terminal output.
+
+Not verified on real machines: the Homebrew, winget and colima installs and starts are covered by tests with fake commands only.
+
 ## Local Evolution API (Docker)
 
 The WhatsApp connection runs in a local Evolution API v2 (Docker). Prepare its files once per project:
@@ -124,7 +169,7 @@ python3 -B <plugin folder>/servico/evolution_local.py preparar --projeto <projec
 ```
 
 - Writes `compose.yml` and `.env` into `<data folder>/evolution/` (the external data folder below, never the project root; a target inside the project or under a synced folder is refused with exit code 2).
-- `.env` is mode 0600 and holds an API key and a Postgres password generated on the spot. The public default key of the Evolution examples is never used. An existing `.env` is never overwritten unless you pass `--refazer`, which rotates only the API key and keeps the existing `POSTGRES_PASSWORD` (Postgres keeps the password of its first start). A new database password needs `--refazer --senha-nova`, and then the old Postgres volume must be removed.
+- `.env` is mode 0600 and holds an API key and a Postgres password generated on the spot. The public default key of the Evolution examples is never used. An existing `.env` is never overwritten: the Postgres volume keeps the password of its first start, so a new `.env` would lock the Evolution out of its own database.
 - `compose.yml` runs Evolution API v2.3.7, Postgres 15 and Redis 7. Only the Evolution port is published, bound to `127.0.0.1` (default 8080); Postgres and Redis publish nothing. Telemetry and the global webhook are off.
 - It prints the command to start the containers, `docker compose -f <data folder>/evolution/compose.yml up -d`, and never runs Docker itself.
 - The service reads the Evolution URL (`SERVER_URL`) and key from that `.env` when `VENDAS_EVOLUTION_URL` / `VENDAS_EVOLUTION_CHAVE` are not set in its environment. It registers each instance's webhook as `http://host.docker.internal:<service port>/webhook/<instance>` with the secret in the `X-Vendas-Segredo` header, so start the service with the same `--porta` you gave `preparar`.
@@ -197,8 +242,8 @@ cp <plugin folder>/exemplos/acoes/vendas.json .tune-up/<package>/acoes/vendas.js
 
 The module declares these in `INFO["negar"]` and the panel joins them into the deny rules of every session it starts:
 
-- `Bash(*127.0.0.1:8791*)` and `Bash(*localhost:8791*)` (default service port)
-- `Bash(*127.0.0.1:8080*)` and `Bash(*localhost:8080*)` (default local Evolution port)
+- `Bash(*127.0.0.1:8791*)` and `Bash(*localhost:8791*)` (default service port), and the same pair for every port from `8791` to `8795` (the only ports the setup may give the service)
+- `Bash(*127.0.0.1:8080*)` and `Bash(*localhost:8080*)` (default local Evolution port), and the same pair for every port from `8080` to `8084` (the only ports the setup may give the Evolution)
 - `Bash(*/api/modulos/*/acao*)` (the panel's action route)
 - `Bash(*tune-up-vendas*)` (data folder, service and `docker compose -f <data folder>/...`)
 - `Bash(*docker exec*)`, `Bash(*docker inspect*)`, `Bash(*docker compose config*)` (they print the container environment, including the Evolution key and the Postgres password)

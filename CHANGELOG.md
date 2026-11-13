@@ -70,6 +70,10 @@ Pieces that stop the scroll and lead to a message or a sale, for any business. T
   - Determinism, measured again: with the default render workers two renders of the same reel differed from the end card on (a second browser process draws the last chunk; mse 0.07, not visible); with `--workers=1` two renders of each prototype are the same MP4 byte for byte and three frames have the same hash. The video skill now renders with `--workers=1` (about 14 s instead of 5 s for 10 s).
   - Prototypes, assembled by the kit and looked at frame by frame before the references were written (HyperFrames 0.9.6, 2026-11-12): a software product (the SaaS briefing of round 4; style `tela-com-cursor-clicando`) and a meal-kit kitchen (a niche not used before; style `conversa-de-whatsapp`), post + 10 s reel each: posts `PRONTO: 1 de 1 quadros verdes`, reels `PRONTO: video verde (hyperframes)` with 44 checks, `check --strict` clean. The other eight styles were assembled with the second brand, rendered and passed the video QA; one 15 s reel with a style and one reserve reel (slides) too. `exemplos/forno-miudo/` was assembled again by the kit (style `produto-em-destaque`).
 - Not proven (round 7): the styles in a real unattended session (whether the session picks a fitting style and fills its slots within the word limits at the first try); the styles other than the two prototypes were looked at on the contact sheet only, with one brand; the chat and the screen styles leave a quiet stretch in the last second of scene 2; the hero drawn by a session is still the open risk of round 6; nothing was scored by an outside judge yet.
+## 2.10.1
+
+- A module screen's cached result now lasts `min(30 s, its own atualizar_em)`. Before, it always lasted 30 s, so a screen that asked to be reloaded every 3 s (a setup running, a QR code waiting) kept getting the same answer for up to 30 s.
+
 ## 2.10.0
 
 Module screens get an inbox block and refresh faster; a module action that says it failed now shows as an error, and another plugin joins the marketplace.

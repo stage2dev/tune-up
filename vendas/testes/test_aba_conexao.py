@@ -46,16 +46,12 @@ class Aba(Base):
 
 
 class TesteMontar(Aba):
-    def test_servico_parado_mostra_comandos_sem_formulario_de_instancia(self):
+    def test_servico_parado_mostra_so_preparar_tudo(self):
         self.parar_batimento()
         self.con.execute("UPDATE batimento SET em = '2000-01-01T00:00:00+00:00' WHERE id = 1")
         blocos = self.blocos()
-        self.assertEqual([b.get("titulo") for b in blocos], ["O serviço de Vendas está parado"])   # UM bloco só
-        texto = json.dumps(blocos)
-        self.assertIn(self.mod.cliente.PYTHON + " -B", texto)
-        self.assertIn("preparar --projeto", texto)
+        self.assertEqual([b.get("acao") for b in blocos], ["preparar_tudo"])   # UM bloco só, sem o QR
         self.assertEqual(self.tipos(blocos, "imagem"), [])
-        self.assertEqual(self.tipos(blocos, "formulario"), [])
         self.assertEqual(self.falso.chamadas, [])
 
     def test_aguardando_qr_mostra_imagem_e_aviso(self):
@@ -126,7 +122,7 @@ class TesteMontar(Aba):
             raise base.NaoEnviado("fora", 500)
         self.falso.estado = quebra
         blocos = self.blocos()
-        self.assertIn("Prepare o WhatsApp local (Evolution)", [b.get("titulo") for b in blocos])
+        self.assertEqual(blocos[0].get("acao"), "preparar_tudo")   # o cartão de preparar vem primeiro
         self.assertEqual(self.tipos(blocos, "imagem"), [])
 
     def test_nenhum_segredo_nos_blocos(self):
@@ -167,7 +163,7 @@ class TesteAgir(Aba):
             "disparos_ativar", "disparos_pausar", "disparos_retomar",
             "importar_candidatos", "candidato_filtrar", "candidato_aprovar", "candidato_descartar",
             "places_chave", "places_apagar_chave", "places_teto", "places_buscar", "places_guardar", "voz_chave", "voz_apagar_chave",
-            "voz_config", "voz_consentimento", "voz_dono", "voz_teste"]))
+            "voz_config", "voz_consentimento", "voz_dono", "voz_teste", "preparar_tudo", "ligar_servico"]))
         self.assertEqual(self.falso.chamadas, [])
 
     def test_servico_de_outro_projeto_recusado(self):

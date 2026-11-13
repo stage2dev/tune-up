@@ -28,7 +28,7 @@ class TesteEsqueleto(unittest.TestCase):
         with open(os.path.join(VENDAS, ".claude-plugin", "plugin.json"), encoding="utf-8") as f:
             p = json.load(f)
         self.assertEqual(p["name"], "tune-up-vendas")
-        self.assertEqual(p["version"], "0.2.0")
+        self.assertEqual(p["version"], "0.3.0")
         self.assertEqual(p["license"], "MIT")
         self.assertTrue(p["description"].isascii() and p["description"])
 
@@ -62,8 +62,8 @@ class TesteEsqueleto(unittest.TestCase):
         self.assertEqual([a["titulo"] for a in dado["abas"]], ["Conexão", "Conversas", "IA", "Leads", "Disparos", "Buscador", "Voz"])
         for b in aba["blocos"]:
             self.assertIn(b["tipo"], TIPOS)
-        self.assertIn("está parado", aba["blocos"][0]["titulo"])
-        self.assertEqual(len(aba["blocos"]), 1)   # parado: UM bloco com o comando, não sete abas de erro
+        self.assertEqual(aba["blocos"][0]["acao"], "preparar_tudo")
+        self.assertEqual(len(aba["blocos"]), 1)   # parado: UM cartão "Preparar tudo", não sete abas de erro
         regras = modulos.regras_de_negar(cfg)
         self.assertIn("Bash(*security find-generic-password*)", regras)
         self.assertIn("Bash(*/api/modulos/*/acao*)", regras)

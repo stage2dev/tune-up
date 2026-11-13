@@ -37,7 +37,7 @@ def carregar_modulo():
     return mod
 
 
-PARADO = "O serviço de Vendas está parado"
+PARADO = "Preparar o WhatsApp neste computador"   # parado e nada preparado: o cartão "Preparar tudo"
 
 
 class Base(unittest.TestCase):
@@ -288,11 +288,11 @@ class TesteProcesso(Base):
         fim = time.monotonic() + 20  # máquina lenta: a leitura logo depois da subida pode ainda não ver o batimento
         while True:
             dado = modulo.montar({"raiz": self.projeto}, base=self.base)
-            bloco = dado["abas"][0]["blocos"][0]
-            if bloco["titulo"] != PARADO or time.monotonic() > fim:
+            acoes = [b.get("acao") for b in dado["abas"][0]["blocos"]]
+            if "conectar_instancia" in acoes or time.monotonic() > fim:
                 break
             time.sleep(0.2)
-        self.assertNotEqual(bloco["titulo"], PARADO, dado["avisos"])   # rodando: o cartão da conexão, sem aviso de parado
+        self.assertIn("conectar_instancia", acoes, dado["avisos"])   # rodando: o formulário da conexão aparece
         self.assertEqual(dado["avisos"], [])
         self.assertNotIn(token, json.dumps(dado))
         proc.send_signal(signal.SIGTERM)
@@ -305,8 +305,7 @@ class TesteProcesso(Base):
         con.close()
         bloco = modulo.montar({"raiz": self.projeto, "config": {"porta": 8790}}, base=self.base)["abas"][0]["blocos"][0]
         self.assertEqual(bloco["titulo"], PARADO)
-        self.assertIn("servico.py --projeto", bloco["texto"])
-        self.assertIn("--painel http://127.0.0.1:8790", bloco["texto"])
+        self.assertEqual(bloco["acao"], "preparar_tudo")
 
     def test_batimento_velho_e_parado(self):
         modulo = carregar_modulo()
