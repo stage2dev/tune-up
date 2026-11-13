@@ -89,16 +89,36 @@ class TestRotaUnidade(Base):
         self.assertEqual(r["executor"], OPUS)
         self.assertTrue(any("unknown --failed" in w for w in r["why"]))
 
-    def test_diff_palavra_so_em_linha_adicionada(self):
+    def test_diff_palavra_em_linha_mudada(self):
         for k in ("auth", "TOKEN", "Secret", "password", "hmac", "signature", "permission",
                   "subprocess", "eval", "../", "..\\"):
             r = self.rota(["a.md"], diff=self.diff("--- a/a.md\n+++ b/a.md\n@@\n+x %s y\n" % k))
             self.assertIn("security", r["reviewers"], k)
             self.assertNotIn("x %s" % k, " ".join(r["why"]))  # keyword name only, never the line
-        nada = ("--- a/auth.py\n+++ b/auth.py\n@@ -1,3 +1,3 @@\n-token = secret\n password = 1\n"
+        nada = ("--- a/auth.py\n+++ b/auth.py\n@@ -1,3 +1,3 @@\n-y = 1\n password = token\n"
                 "+x = range(1..3)\n+print('...')\n+y = 2\n")
         r = self.rota(["a.md"], diff=self.diff(nada))
-        self.assertEqual(r["reviewers"], ["failures"], r["why"])
+        self.assertEqual(r["reviewers"], ["failures"], r["why"])  # header and context: no
+        r = self.rota(["a.md"], diff=self.diff(nada.replace("-y = 1", "-token = secret")))
+        self.assertIn("security", r["reviewers"])
+        self.assertIn("diff keyword in removed line: token", r["why"])
+
+    def test_diff_que_remove_ou_troca_verificacao_sobe_seguranca(self):
+        h = "--- a/src/api.py\n+++ b/src/api.py\n"
+        casos = {"signature": h + "@@ -1,2 +1,2 @@\n def h(req):\n-    if not verify_signature(req):\n"
+                              "+    if False:\n",
+                 "auth": h + "@@ -1,2 +1,1 @@\n def h(user):\n-    if not check_auth(user):\n",
+                 "token": "-    check(token)\n",  # no headers, no hunk
+                 "secret": h + "@@ -1,2 +1,2 @@\n---- secret\n+++ secret\n",  # `-- `/`++ ` content
+                 "hmac": "@@\n--- hmac()\n+++ x\n"}  # bare `@@`: a pair not followed by `@@` is content
+        for k, texto in casos.items():
+            r = self.rota(["src/api.py"], diff=self.diff(texto))
+            self.assertEqual(r["reviewers"], ["failures", "security"], k)
+            self.assertTrue(any(w.endswith(": " + k) for w in r["why"]), (k, r["why"]))
+        sem = h + "@@ -1,2 +1,1 @@\n def h(x):\n-    y = 1\n"
+        self.assertEqual(self.rota(["src/api.py"], diff=self.diff(sem))["reviewers"], ["failures"])
+        ctx = h + "@@ -1,2 +1,2 @@\n token = 1\n-y = 1\n+y = 2\n"
+        self.assertEqual(self.rota(["src/api.py"], diff=self.diff(ctx))["reviewers"], ["failures"])
 
     def test_diff_ausente_ou_ilegivel_sobe_seguranca(self):
         self.assertIn("security", R.rota(["a.md"], None, None, PADRAO, "/repo")["reviewers"])
@@ -131,8 +151,29 @@ class TestRotaUnidade(Base):
         self.assertEqual((r["executor"], r["reviewers"]), (SONNET, ["failures"]))
         self.assertEqual(self.rota(["db/my schema.sql"])["executor"], OPUS)
 
+    def test_caminho_com_linhas_aspas_ou_virgula_sobe(self):
+        for f in ("db/schema.sql:10-40", "supabase/schema.sql:12", "schema.sql,", '"schema.sql"',
+                  "schema.sql,src/a.py", "`migrations/001.sql`", "db/x.sql#L10-L20",
+                  "schema.sql\u200b", "\ufeffschema.sql", "(schema.sql)", "[db/x.sql:3:9]",
+                  "- schema.sql:1-2;", "schema.sql:12.", "'db/x.sql'#L4", "db/x.sql:L10",
+                  "schema.sql:10\u201340", "schema.sql;src/a.py", "schema.sql|a.py", "**schema.sql**",
+                  "db/x.sql#10", "schema.sql\u2060", "[schema.sql](db/schema.sql)", "<db/x.sql>"):
+            r = self.rota([f])
+            self.assertEqual((r["executor"], r["reviewers"]), (OPUS, ["failures", "database"]), f)
+            if not f.startswith("\ufeff"):  # a leading BOM already matches `*.sql` whole
+                self.assertIn("(as ", r["why"][0], f)
+        r = self.rota(["C:\\repo\\Schema.SQL:12"], raiz="C:/repo")
+        self.assertEqual((r["executor"], r["reviewers"]), (OPUS, ["failures", "database"]))
+        self.assertIn("(as schema.sql)", r["why"][0])
+        for f in ("- src/auth/login.ts:1-20", "src/auth.py#L10-L20", "`src/Auth.ts`:3"):
+            r = self.rota([f])
+            self.assertEqual((r["executor"], r["reviewers"]), (OPUS, ["failures", "security"]), f)
+        for f in ("src/Button.tsx:10-40", '"my folder/Button.tsx"', "src/a.py#L10-L20", "C:\\x\\a.py"):
+            r = self.rota([f])
+            self.assertEqual((r["executor"], r["reviewers"]), (SONNET, ["failures"]), f)
+
     def test_diff_sem_conteudo_de_diff_sobe_seguranca(self):
-        for texto in ("", "   \n\n", "just some text\n", "--- a/x\n"):
+        for texto in ("", "   \n\n", "just some text\n", "--- a/x\n", "--- a/x\n+++ b/x\n"):
             r = self.rota(["src/a.py"], diff=self.diff(texto, "x.patch"))
             self.assertIn("security", r["reviewers"], repr(texto))
             self.assertTrue(any("no diff content" in w for w in r["why"]), repr(texto))

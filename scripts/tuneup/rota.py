@@ -16,6 +16,11 @@ ORDEM = ("failures", "security", "database")
 PALAVRAS = ("auth", "token", "secret", "password", "hmac", "signature", "permission",
             "subprocess", "eval", "../", "..\\")
 RE_ABS = re.compile(r"(/|[a-z]:/)")  # after `\` -> `/` and lowercase: POSIX, UNC or `C:/`
+# A trailing line reference: `:12`, `:10-40`, `:L10`, `:10:5`, `#10`, `#L10-L20` (`C:` has no digits).
+RE_LINHA = re.compile("(?:[:#]l?\\d+(?:[-\u2013\u2014:]l?\\d+)?)$", re.IGNORECASE)
+RE_HUNK = re.compile(r"@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@")
+ZERO = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff\u00ad"))
+BORDA = "\"'`()[]{}<>*"
 # Defaults live here too (padrao.json may be stale or broken); config can only ADD to them.
 # tests/test_rota.py checks they equal the padrao.json lists.
 RISCO_PADRAO = ("**/migrations/**", "**/*.sql", "**/auth/**", "**/*auth*", "**/*webhook*",
@@ -76,34 +81,95 @@ def limpar(files):
     return [p.strip() for f in files for p in str(f).splitlines() if p.strip()]
 
 
+def _normal(peca):
+    """`peca` without quotes/backticks/brackets around it, a leading list dash, trailing
+    `,;:.` and a trailing line reference, repeated until nothing changes."""
+    anterior = None
+    while peca != anterior:
+        anterior = peca
+        peca = peca.strip().strip(BORDA)
+        if peca.startswith("- "):
+            peca = peca[2:]
+        peca = RE_LINHA.sub("", peca.rstrip(",;:."))
+    return peca
+
+
+def candidatos(caminho):
+    """The whole path plus normalised pieces (split on whitespace, `,`, `;` and `|`, zero-width
+    characters dropped). Used only to ADD matches: the whole path is always first."""
+    limpo = caminho.translate(ZERO)
+    saida = [caminho]
+    for peca in [limpo] + re.split(r"[\s,;|]+", limpo):
+        for c in (peca, _normal(peca)):
+            if c and c not in saida:
+                saida.append(c)
+    return saida
+
+
 def _primeiro(rels, globs):
-    """(original path, glob) of the first match, or None. Each entry holds the whole path
-    and its whitespace-separated pieces: a piece can only add a match."""
+    """(path as matched, glob) of the first match, or None. Each entry holds the whole path
+    and its candidates: a candidate can only add a match."""
     for orig, cands in rels:
         for g in globs:
-            if any(casa(rel, g) for rel in cands):
-                return orig, g
+            for rel in cands:
+                if casa(rel, g):
+                    return (orig if rel == cands[0] else "%s (as %s)" % (orig, rel)), g
     return None
 
 
 def tem_diff(texto):
-    """A diff has a `+++ `/`@@` header or an added line; anything else counts as missing."""
-    return any(linha.startswith(("+", "@@")) for linha in texto.splitlines())
+    """A diff has an `@@` line or a changed line (`+`/`-`) that is not a `+++ `/`--- ` header;
+    anything else counts as missing."""
+    return any(linha.startswith("@@") or (linha.startswith(("+", "-"))
+                                          and not linha.startswith(("+++ ", "--- ")))
+               for linha in texto.splitlines())
+
+
+def _cabecalho(linhas, i):
+    """Line i is part of a `--- `/`+++ ` pair followed by an `@@` line (a header-only patch
+    is scanned whole and already forces security through `tem_diff`)."""
+    def em(j, prefixo):
+        return 0 <= j < len(linhas) and linhas[j].startswith(prefixo)
+    if linhas[i].startswith("--- "):
+        return em(i + 1, "+++ ") and em(i + 2, "@@")
+    return linhas[i].startswith("+++ ") and i > 0 and em(i - 1, "--- ") and em(i + 1, "@@")
+
+
+def linhas_mudadas(texto):
+    """(`+` or `-`, text) of each changed line. Inside a hunk counted from its
+    `@@ -a,b +c,d @@` header every `+`/`-` line is content; outside one only a `--- `/`+++ `
+    pair followed by `@@` is a file header. Context lines never count."""
+    linhas = texto.splitlines()
+    velho = novo = 0
+    for i, linha in enumerate(linhas):
+        m = RE_HUNK.match(linha)
+        if m:
+            velho, novo = int(m.group(1) or 1), int(m.group(2) or 1)
+            continue
+        dentro = velho > 0 or novo > 0
+        if linha.startswith("-"):
+            velho -= 1
+        elif linha.startswith("+"):
+            novo -= 1
+        elif not linha.startswith("\\"):
+            velho, novo = velho - 1, novo - 1
+        if not linha.startswith(("+", "-")):
+            continue
+        if not dentro and _cabecalho(linhas, i):
+            continue
+        yield linha[0], linha[1:]
 
 
 def palavras_no_diff(texto):
-    """Keywords found in ADDED lines (`+`, not the `+++` file header right after `---`)."""
+    """(`added`/`removed`, keyword) found in CHANGED lines: removing a check is as much a
+    security change as adding one."""
     achadas = []
-    anterior = ""
-    for linha in texto.splitlines():
-        cabecalho = linha.startswith("+++ ") and anterior.startswith("--- ")
-        anterior = linha
-        if not linha.startswith("+") or cabecalho:
-            continue
-        baixa = linha[1:].lower()
+    for sinal, resto in linhas_mudadas(texto):
+        baixa = resto.lower()
+        tipo = "added" if sinal == "+" else "removed"
         for k in PALAVRAS:
-            if k in baixa and k not in achadas:
-                achadas.append(k)
+            if k in baixa and (tipo, k) not in achadas:
+                achadas.append((tipo, k))
     return achadas
 
 
@@ -134,7 +200,7 @@ def rota(files, diff_file, failed, cfg, raiz):
     risco, seg, banco = gl["risk_globs"], gl["security_globs"], gl["database_globs"]
     files = limpar(files)
     raizes = {_barra(raiz).lower().rstrip("/"), _barra(os.path.realpath(raiz)).lower().rstrip("/")}
-    rels = [(f, [relativo(x, raizes) for x in [f] + f.split()]) for f in files]
+    rels = [(f, [relativo(x, raizes) for x in candidatos(f)]) for f in files]
     why, executor, rev = [], SONNET, {"failures"}
     if not files:
         executor = OPUS
@@ -175,9 +241,9 @@ def rota(files, diff_file, failed, cfg, raiz):
             if not tem_diff(texto):
                 rev.add("security")
                 why.append("diff file has no diff content: security runs")
-            for k in palavras_no_diff(texto):
+            for tipo, k in palavras_no_diff(texto):
                 rev.add("security")
-                why.append("diff keyword in added line: %s" % k)
+                why.append("diff keyword in %s line: %s" % (tipo, k))
     if not why:
         why.append("no rule fired: sonnet, failures only")
     return {"executor": executor, "reviewers": [r for r in ORDEM if r in rev], "why": why}
