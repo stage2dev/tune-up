@@ -36,6 +36,15 @@ class SkillsNucleo(unittest.TestCase):
             if os.path.isfile(f):
                 self.assertIsNone(BARE.search(open(f, encoding="utf-8").read()), f)
 
+    def test_allowed_tools_bash_has_fixed_prefix(self):
+        # fora do painel não há trava nem sandbox: "*" no começo aprova qualquer comando
+        for f in glob.glob(os.path.join(STUDIO, "skills", "*", "SKILL.md")):
+            front = open(f, encoding="utf-8").read().split("---")[1]
+            linha = [l for l in front.splitlines() if l.startswith("allowed-tools:")]
+            for pat in re.findall(r"Bash\(([^)]*)\)", "".join(linha)):
+                self.assertFalse(pat.startswith(("*", "?", "$(")), f"{f}: Bash({pat})")
+                self.assertNotIn("estudio-node", pat, f"{f}: Bash({pat})")
+
     def test_sandbox_accepts_core_install_path(self):
         import test_regras_bash as t
         cmd = "python3 -I /opt/plug/tune-up/tune-up/2.11.0/tune-up-studio/scripts/qa_imagem.py x"

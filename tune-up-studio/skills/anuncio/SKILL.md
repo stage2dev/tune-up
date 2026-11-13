@@ -2,7 +2,7 @@
 name: anuncio
 disable-model-invocation: true
 description: "Makes a hook-first, business-oriented ad from a briefing, using only the owner-approved brand: one master image plus the aspect-ratio adaptations the platform needs, text variations inside the platform limits, and an import sheet with everything Paused (Google Ads Editor CSV, or an experimental Meta sheet). Publishes nothing and calls no ad API. Runs unattended from the panel action estudio.anuncio. Use on: anúncio, anuncio, ad, Google Ads, Meta Ads."
-allowed-tools: Read, Bash(*/estudio-node/*/node/node_modules/.bin/hyperframes *), Bash(${CLAUDE_PLUGIN_ROOT}/tune-up-studio/node/node_modules/.bin/hyperframes *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/qa_imagem.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/fontes.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/fotos.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/anuncio.py *)
+allowed-tools: Read, Bash(${CLAUDE_PLUGIN_ROOT}/tune-up-studio/node/node_modules/.bin/hyperframes *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/qa_imagem.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/fontes.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/fotos.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/anuncio.py *)
 ---
 
 # Ad (images, texts and a paused import sheet)
@@ -92,7 +92,7 @@ For each piece of the plan write `a<N>/fonte/index.html`, sized `largura` x `alt
 
 Before the QA of each Meta piece, Read its snapshot and score `checklist-atencao.md` (one image: 9 items, items 3, 6 and 12 skipped): any item at 0, fix the worst (it counts as a fix round). The per-piece QA runs without `--atencao`.
 
-Per piece (`HF` = the path after `HyperFrames:` in the request, exactly as given (the panel computes it; it comes quoted when it has a space); with none (skill typed by hand in a checkout), `${CLAUDE_PLUGIN_ROOT}/tune-up-studio/node/node_modules/.bin/hyperframes`, absolute path; one command each, no `cd`, `;`, `>` or `|`):
+Per piece (`HF` = the path after `HyperFrames:` in the request, exactly as given (the panel computes it; it comes quoted when it has a space); with none (skill typed by hand in a checkout), `${CLAUDE_PLUGIN_ROOT}/tune-up-studio/node/node_modules/.bin/hyperframes`, absolute path; use the given path only if it ends in `/node/node_modules/.bin/hyperframes` and sits under an `estudio-node` folder inside the project's `.tune-up` data folder or under `${CLAUDE_PLUGIN_ROOT}/tune-up-studio/node/`, otherwise the checkout path, and say so; one command each, no `cd`, `;`, `>` or `|`):
 
 1. `HF snapshot a<N>/fonte --at 0 --no-end -o a<N>/snap` -> `a<N>/snap/frame-00-at-0s.png`.
 2. `HF check a<N>/fonte --json --strict`. Do not copy its output anywhere.
