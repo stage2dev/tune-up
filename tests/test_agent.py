@@ -417,18 +417,33 @@ class TestWorkflowGenerico(AgentBase):
                 self.assertIsNone(self.decisao(self.wf(sc)))
         self.assertEqual(self.decisao(self.wf("agent('x', {['agentType']: 'general-purpose'})")), "avisar")
 
-    def test_f4_contagem_ignora_comentario_e_string(self):
-        self.config("off", confiar=True)
-        fable = "claude-fable-5"
-        # a comment mentioning agent() no longer makes the count exceed the model keys
-        self.assertIsNone(self.decisao(self.wf("// Every agent() carries a model\nagent('x', {model: 'opus'})", fable)))
-        self.assertIsNone(self.decisao(self.wf("function agent(p) { return p }\nagent('x', {model: 'opus'})", fable)))
-        # a model: only in a comment or only inside a string does not cover a call
-        for sc in ["// model: 'opus'\nagent('x')", "/* model = 'opus' */ agent('x')",
-                   "agent('x', {prompt: 'model: opus'})", "agent(`${agent('y')}`, {model: 'opus'})"]:
-            with self.subTest(sc=sc):
-                self.assertEqual(self.decisao(self.wf(sc, fable)), "bloquear")
-        self.assertIsNone(self.decisao(self.wf("agent('x', {\"model\": 'opus'})", fable)))
+    H1 = "const a = entrada.replace(/`/g, '')\nconst r = await agent({prompt: a})\nreturn r.replace(/`/g, '')"
+    M2 = "const r = await agent({prompt:'x'})\n{\n  log(r)\n}"
+    M3 = "const r = `${await agent({prompt:'p', model:'sonnet'})}`"  # old rule: raw text, as in 9187006
+
+    def test_regra_antiga_nao_regride(self, fable="claude-fable-5"):
+        for sc, esperado in [(self.H1, "bloquear"), ("const r = /'/g; agent({prompt:'x'})", "bloquear"),
+                             (self.M2, "bloquear"), (self.M3, None)]:
+            self.assertEqual(self.decisao(self.wf(sc, fable)), esperado, sc)
+
+    def test_regra_antiga_equivale_a_9187006(self):
+        import random, re, sys, unittest.mock  # noqa: E401
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+        from tuneup.agent import ev_agent
+        frag = ["agent(", "agent ({prompt:'x'})", "model:", "'model': ", "model = ", "'", '"', "`", "/*", "*/", "//",
+                "${", "}", "{", ")", "/`/g", "\n", "\n{\n", " x ", "obj.agent(", "'opus'"]
+        rnd, tr, e = random.Random(1234), self.transcript("claude-fable-5"), self.env
+        with unittest.mock.patch.dict(os.environ, {k: e[k] for k in ("HOME", "CLAUDE_PLUGIN_DATA", "TUNEUP_USER_JSON")}):
+            for _ in range(5000):
+                sc = "".join(rnd.choice(frag) for _ in range(rnd.randint(1, 14)))
+                antes = len(re.findall(r"\bagent\s*\(", sc)) > len(re.findall(r"\bmodel[\"']?\s*[:=]", sc))
+                s = ev_agent({"tool_name": "Workflow", "tool_input": {"script": sc}, "transcript_path": tr}, {})
+                self.assertEqual(antes, bool(s) and s["hookSpecificOutput"].get("permissionDecision") == "deny", sc)
+
+    def test_m2_bloco_em_outra_linha_e_chamada(self):
+        for sc in [self.M2, "const r = await agent({prompt:'x'})\n\n  {\n}"]:
+            self.assertEqual(self.decisao(self.wf(sc)), "avisar", sc)
+        self.assertIsNone(self.decisao(self.wf("class A { agent(p)  { return p } }")))
 
 
 if __name__ == "__main__":

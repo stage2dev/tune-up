@@ -9,13 +9,12 @@ RE_WF_CORPO = {"'": re.compile(r"'(?:\\.|[^'\\\n])*", re.S), '"': re.compile(r"\
                "`": re.compile(r"`(?:\\.|[^`\\])*", re.S)}
 RE_WF_SINAL = re.compile(r"[()\[\]{},]")
 RE_WF_ESPACO = re.compile(r"\s*")
+RE_WF_ESPACO_LINHA = re.compile(r"[ \t]*")
 RE_WF_CHAMADA = re.compile(r"(?<![\w$.])agent\s*\(")
-RE_WF_CHAMADA_ANTIGA = re.compile(r"\bagent\s*\(")  # the forbidden-session rule also counts obj.agent(
 RE_WF_FUNCAO = re.compile(r"\bfunction\s*\*?\s*$")
 RE_WF_LOCAL = re.compile(r"(?<![\w$.])agent\s*=>|[(,]\s*agent\s*[,)=]|\b(?:const|let|var)\s+agent\b|"
                          r"\bfunction\s*\*?\s*agent\b")
 RE_WF_TIPO = re.compile(r"agentType\b")
-RE_WF_MODELO = re.compile(r"\bmodel\s*[:=]")
 RE_WF_PERDAO = re.compile(r"tune-up:\s*allow-generic[ \t]+([^\n]*)")
 GENERICOS = ("general-purpose", "claude", "workflow-subagent")
 PARES = {"(": ")", "[": "]", "{": "}"}
@@ -87,29 +86,17 @@ def _inicio(an, i):
         i = an["comentarios"][i]
 
 
-def _chamadas(an, regex):
-    """(start, paren) of each agent( call; `function agent(` and a method `agent() {` are definitions."""
+def _chamadas(an):
+    """(start, paren) of each agent( call; `function agent(` and a method `agent() {` are definitions.
+    Only a `{` on the same line as the `)` makes a method; after a line break it is a block."""
     masc, fecha = an["masc"], an["fecha"]
-    for m in regex.finditer(masc):
+    for m in RE_WF_CHAMADA.finditer(masc):
         p = m.end() - 1
         if RE_WF_FUNCAO.search(masc, max(0, m.start() - 20), m.start()):
             continue
-        if p in fecha and masc.startswith("{", _pula(masc, fecha[p] + 1)):
+        if p in fecha and masc.startswith("{", RE_WF_ESPACO_LINHA.match(masc, fecha[p] + 1).end()):
             continue
         yield m.start(), p
-
-
-def contagem(an):
-    """(agent( calls, `model` keys) outside comments and strings, for the forbidden-session rule.
-    A call inside a template `${...}` still counts; a `model:` inside a comment or string does not."""
-    chamadas = sum(1 for _ in _chamadas(an, RE_WF_CHAMADA_ANTIGA))
-    chamadas += sum(len(RE_WF_CHAMADA_ANTIGA.findall(t)) for a, (b, t) in an["strings"].items()
-                    if t.startswith("`") and "${" in t)
-    modelos = len(RE_WF_MODELO.findall(an["masc"]))
-    modelos += sum(1 for a, (b, t) in an["strings"].items()  # quoted key: "model": ...
-                   if t[0] in "'\"" and t[1:-1] == "model" and _pula(an["masc"], b) < len(an["masc"])
-                   and an["masc"][_pula(an["masc"], b)] in ":=")
-    return chamadas, modelos
 
 
 def _valor(an, v, b):
@@ -168,7 +155,7 @@ def workflow_generico(script, an=None):
         if p and p.group(1).replace("*/", "").strip():
             perdoadas.add(bisect.bisect_right(nl, a + p.start()) + 1)
     linhas = []
-    for ini, o in _chamadas(an, RE_WF_CHAMADA):
+    for ini, o in _chamadas(an):
         if o not in fecha:
             continue  # never closed: no finding for it
         lim = [o] + an["virgulas"].get(o, []) + [fecha[o]]

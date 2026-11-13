@@ -5,7 +5,7 @@ import re
 from .mensagens import msg
 from .sessao import decisao_pre, log_erro
 from .usuario import ler_usuario, modelo_proibido, sem_modelo
-from .workflow import analisar, contagem, tokens, workflow_generico
+from .workflow import analisar, tokens, workflow_generico
 
 # ---------------------------------------------------------------- agent
 
@@ -176,10 +176,10 @@ def ev_agent(d, cfg):
         f = workflow_proibido(script, lista, an and an["toks"])
         if f:
             return decisao_pre("bloquear", msg("modelo_proibido", f))
-        # agent(...) without model inherits the session model, as in Agent; too big: counted raw, as before
-        chamadas, modelos = contagem(an) if an else (len(re.findall(r"\bagent\s*\(", script)),
-                                                     len(re.findall(r"\bmodel[\"']?\s*[:=]", script)))
-        if chamadas > modelos:
+        # agent(...) without model inherits the session model, as in Agent
+        # raw text on purpose: masking comments/strings needs a real JS tokenizer (regex literals);
+        # a comment that spells an agent call counts as one
+        if len(re.findall(r"\bagent\s*\(", script)) > len(re.findall(r"\bmodel[\"']?\s*[:=]", script)):
             sm = modelo_da_sessao(d.get("transcript_path"))
             f = modelo_proibido(sm, lista) if sm else None
             if f:
