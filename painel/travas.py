@@ -61,7 +61,8 @@ SEP_BASH = re.compile(r"&&|\|\||\$\(|[;&|\n(){}`]")
 META_BASH = re.compile(r";|&&|\|\||\||\$\(|`|<<|[<>]\(|\n|(?<![<>])&(?!>)")
 CURINGA = re.compile(r"[*?\[{$`]")
 NOMES_CONFIG = (".claude", ".tune-up", "claude.md", "claude.local.md", ".mcp.json")
-DONO = ("estudio-dono.json", "aprovados", "extensoes.json")  # em <dados>: só o servidor grava (sandbox.DONO)
+DONO = ("estudio-dono.json", "aprovados", "extensoes.json",  # em <dados>: só o servidor grava (sandbox.DONO)
+        "embutidos-ligados.json", "embutidos-ligados.json.gravando")  # o temporário também: nada plantado
 # escrita que cita esses nomes em qualquer caminho: `cd <dados> && echo > estudio-dono.json` não passa
 RE_DONO = re.compile(r"(?i)(^|[/\s'\"=<>;|&()])(%s)($|[/\s'\";|&)<>])" % "|".join(re.escape(n) for n in DONO))
 PONTO_PONTO = re.compile(r"(^|[/\s'\"=])\.\.($|[/\s'\";|&)<>])")

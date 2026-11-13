@@ -195,6 +195,10 @@ def pastas_de_acoes(cfg):
         if chave in vistos:
             continue
         vistos.add(chave)
+        if chave.partition("@")[0] == "tune-up-studio":  # as ações do Estúdio vêm do núcleo (embutidos.py)
+            avisos.append("ações de %s ignoradas: o Estúdio agora faz parte do tune-up; pode tirar essa linha do "
+                          "painel.json" % chave)
+            continue
         base, aviso = conferir(cfg, chave)
         if not base:
             avisos.append("ações de %s recusadas: %s" % (chave, aviso))

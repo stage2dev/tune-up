@@ -76,7 +76,8 @@ class TesteSettings(unittest.TestCase):
             "filesystem": {"denyRead": [WS + "/.env*", WS + "/*.pem", WS + "/*.key",
                                         WS + "/**/.env*", WS + "/**/*.pem", WS + "/**/*.key"],
                            "denyWrite": [DADOS + "/estudio-dono.json", DADOS + "/aprovados",
-                                         DADOS + "/extensoes.json"]}})
+                                         DADOS + "/extensoes.json", DADOS + "/embutidos-ligados.json",
+                                         DADOS + "/embutidos-ligados.json.gravando"]}})
         self.assertEqual(conf["worktree"], {"bgIsolation": "none"})
         self.assertEqual(conf["env"], {"HYPERFRAMES_NO_TELEMETRY": "1", "DO_NOT_TRACK": "1",
                                        "HYPERFRAMES_NO_UPDATE_CHECK": "1", "HYPERFRAMES_NO_AUTO_INSTALL": "1",

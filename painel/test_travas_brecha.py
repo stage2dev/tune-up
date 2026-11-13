@@ -188,9 +188,10 @@ class TesteNomesDoDono(unittest.TestCase):
             self.assertIsNone(travas.decidir(c, "Bash", {"command": "echo x > saida/ok.txt"}, "/tmp/w"))
             self.assertIsNone(decisao(c, "Write", {"file_path": "/tmp/w/nao-aprovados.txt"}))
 
-    def test_sandbox_dono_tem_os_tres_nomes(self):
+    def test_sandbox_dono_tem_os_nomes_do_servidor(self):
         import sandbox
-        self.assertEqual(set(sandbox.DONO), {"estudio-dono.json", "aprovados", "extensoes.json"})
+        self.assertEqual(set(sandbox.DONO), {"estudio-dono.json", "aprovados", "extensoes.json",
+                                             "embutidos-ligados.json", "embutidos-ligados.json.gravando"})
 
 
 @unittest.skipIf(os.name == "nt", "o comando do gancho é texto de shell POSIX (shlex.quote)")

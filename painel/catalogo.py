@@ -244,9 +244,12 @@ def catalogo_do_projeto(cfg):
     Ação com `so_com` (ex.: a do vídeo com render local, que precisa de `rede_local`) só entra
     quando o painel.json do projeto liga essa chave: fora dela não aparece nem dispara.
     """
+    import embutidos
     import extensoes
     pastas, avisos = extensoes.pastas_de_acoes(cfg)
-    acoes, av = carregar_catalogo([cfg["acoes_dir"], cfg.get("acoes_pacote_dir")] + pastas)
+    # embutidos ligados entram depois do pacote, com as regras de plugin: o pacote não tira as travas deles
+    acoes, av = carregar_catalogo([cfg["acoes_dir"], cfg.get("acoes_pacote_dir")] + embutidos.pastas_de_acoes(cfg)
+                                  + pastas)
     acoes = [a for a in acoes if not a.get("_so_com") or chave_ligada(cfg.get("bruto"), a["_so_com"])]
     return acoes, avisos + av
 
