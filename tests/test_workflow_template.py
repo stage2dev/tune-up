@@ -67,6 +67,11 @@ class WorkflowTemplate(unittest.TestCase):
         self.assertTrue(m)
         self.assertRegex(m.group(0), r"required: \[[^\]]*'commit'")
 
+    def test_no_agent_paren_in_comments(self):
+        text = read()
+        self.assertLessEqual(len(re.findall(r"\bagent\s*\(", text)),
+                             len(re.findall(r"\bmodel[\"']?\s*[:=]", text)))
+
     def test_size(self):
         self.assertLessEqual(len(read().splitlines()), 200)
 

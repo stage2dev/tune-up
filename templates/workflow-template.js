@@ -10,7 +10,7 @@ export const meta = {
 }
 
 // RULES (copy this file, change only the marked spots):
-// 1. Every agent() carries agentType + model + effort as string literals. Never inherit the session model.
+// 1. Every agent call carries agentType + model + effort as string literals. Never inherit the session model.
 // 2. Generic agents only with `// tune-up: allow-generic <reason>` on the line above (MCP, browser, images).
 // 3. Executors COMMIT on the work branch (never push) and return the hash; reviewers get base + commit and run the diff themselves.
 //    Fixes: max MAX_FIXES, re-review only who rejected.
@@ -53,7 +53,10 @@ function interrupted(result) {
 // Executor/fix reply without a usable commit hash: nothing to review.
 const noCommit = r => interrupted(r) || typeof r.commit !== 'string' || !HASH.test(r.commit.trim())
 
-const blocks = f => f.introduced && (f.sev === 'CRITICAL' || f.sev === 'HIGH')
+// Case-insensitive severity; a missing `introduced` counts as introduced (only an explicit false exempts).
+const blocks = f => f.introduced !== false && ['CRITICAL', 'HIGH'].includes(String(f.sev).toUpperCase())
+// Verdict text that means "rejected": starts with reject, or mentions changes / rework.
+const rejects = v => /^\s*reject|changes|rework/i.test(String(v))
 
 function ctx(item) {
   return `Base: ${args.base}\nWorktree: ${args.worktree}\nItem: ${item.id}\n`
@@ -93,32 +96,43 @@ function lensesFor(item) {
 
 async function runItem(item) {
   const lenses = lensesFor(item)
-  const out = (status, fixes, open, byLens) => ({ id: item.id, status, fixes, open, later: Object.values(byLens || {}).flatMap(r => r.later) })
+  const byLens = {}            // lens -> { open, rejected } from its latest answer
+  const laterBy = {}           // lens -> { key: finding } accumulated over all rounds
+  const out = (status, fixes, open) => ({ id: item.id, status, fixes, open, later: Object.values(laterBy).flatMap(m => Object.values(m)) })
+  const record = (l, r) => {
+    byLens[l] = { open: r.findings.filter(blocks), rejected: rejects(r.verdict) }
+    laterBy[l] = laterBy[l] || {}
+    r.findings.filter(f => !blocks(f)).forEach(f => { laterBy[l][`${f.file}:${f.line}:${f.title}`] = f })
+  }
+  const known = () => lenses.flatMap(l => (byLens[l] ? byLens[l].open : []))
   phase('Execute')
   const ex = await execute(item)
-  if (noCommit(ex)) { log(`INTERRUPTED ${item.id}: executor did not finish or returned no commit`); return out('interrupted', 0, [], {}) }
+  if (noCommit(ex)) { log(`INTERRUPTED ${item.id}: executor did not finish or returned no commit`); return out('interrupted', 0, []) }
   let commit = ex.commit.trim()
 
-  const byLens = {}
   let toReview = lenses, previous = [], fixes = 0
   for (;;) {
     phase('Review')
     const res = await parallel(toReview.map(l => () => review(l, item, commit, previous)))
-    if (res.some(r => interrupted(r) || !Array.isArray(r.findings))) {
+    const ran = toReview.map((l, i) => [l, res[i]]).filter(([, r]) => !interrupted(r) && Array.isArray(r.findings))
+    ran.forEach(([l, r]) => record(l, r))
+    if (ran.length < toReview.length) {
       log(`INTERRUPTED ${item.id}: a reviewer did not run (not treated as approved)`)
-      return out('interrupted', fixes, [], byLens)
+      return out('interrupted', fixes, known())   // lens that did not answer keeps its previous blockers
     }
-    toReview.forEach((l, i) => {
-      byLens[l] = { open: res[i].findings.filter(blocks), later: res[i].findings.filter(f => !blocks(f)) }
-    })
-    const open = lenses.flatMap(l => byLens[l].open)
-    if (!open.length) return out('done', fixes, [], byLens)
-    if (fixes >= MAX_FIXES) { log(`NEED_YOU ${item.id}: ${open.length} open after ${fixes} fixes`); return out('need_you', fixes, open, byLens) }
+    const open = known()
+    const silent = lenses.filter(l => byLens[l].rejected && !byLens[l].open.length)
+    if (silent.length) {
+      log(`NEED_YOU ${item.id}: reviewer rejected without a CRITICAL/HIGH finding (${silent.join(', ')})`)
+      return out('need_you', fixes, open.concat(silent.map(l => ({ lens: l, title: 'reviewer rejected without a CRITICAL/HIGH finding' }))))
+    }
+    if (!open.length) return out('done', fixes, [])
+    if (fixes >= MAX_FIXES) { log(`NEED_YOU ${item.id}: ${open.length} open after ${fixes} fixes`); return out('need_you', fixes, open) }
     fixes++
     log(`fix round ${fixes} for ${item.id}: ${open.length} CRITICAL/HIGH`)
     phase('Fix')
     const fx = await fix(item, open, fixes, commit)
-    if (noCommit(fx)) { log(`INTERRUPTED ${item.id}: fix did not finish or returned no commit`); return out('interrupted', fixes, open, byLens) }
+    if (noCommit(fx)) { log(`INTERRUPTED ${item.id}: fix did not finish or returned no commit`); return out('interrupted', fixes, open) }
     commit = fx.commit.trim()
     toReview = lenses.filter(l => byLens[l].open.length)
     log(`lenses skipped for ${item.id}: ${lenses.filter(l => !toReview.includes(l)).join(', ') || 'none'}`)
@@ -129,17 +143,27 @@ async function runItem(item) {
 const results = await pipeline(args.items, runItem)
 
 phase('Check')
-const done = results.filter(r => r && r.status === 'done')
+const CHECK = {
+  type: 'object',
+  properties: { passed: { type: 'boolean' }, failed: { type: 'array', items: { type: 'string' } }, summary: { type: 'string' } },
+  required: ['passed'],
+}
+let items = results.map(r => r || { id: '?', status: 'interrupted', fixes: 0, open: [], later: [] })
 let check = null
-if (done.length) {
+if (items.some(r => r.status === 'done')) {
   // Coordinator: replace with the project's "Definition of done" commands if they differ.
-  check = await agent(`Base: ${args.base}\nWorktree: ${args.worktree}\nRun the project's Definition of done commands once and report pass/fail per command. Items: ${done.map(r => r.id).join(', ')}`,
-    { label: 'check', phase: 'Check', model: 'haiku', effort: 'medium', agentType: 'tune-up:checker' })
-  if (interrupted(check)) { log('check interrupted'); check = null }
+  check = await agent(`Base: ${args.base}\nWorktree: ${args.worktree}\nRun the project's Definition of done commands once. passed=true only if every command passed; list the failed ones in failed. Items: ${items.filter(r => r.status === 'done').map(r => r.id).join(', ')}`,
+    { label: 'check', phase: 'Check', model: 'haiku', effort: 'medium', agentType: 'tune-up:checker', schema: CHECK })
+  if (interrupted(check) || typeof check.passed !== 'boolean') { log('check interrupted'); check = null }
+  if (!check || check.passed === false) {
+    log('check did not pass: done items become unverified')
+    items = items.map(r => (r.status === 'done' ? { ...r, status: 'unverified' } : r))
+  }
 }
 
 // Examples (not executed): read-only mapping and docs.
 // agent(prompt, { label: 'map', model: 'haiku', effort: 'medium', agentType: 'tune-up:mapper' })
 // agent(prompt, { label: 'doc', model: 'sonnet', effort: 'medium', agentType: 'tune-up:writer' })
 
-return { items: results.map(r => r || { id: '?', status: 'interrupted', fixes: 0, open: [], later: [] }), check }
+// status: done | unverified (final check failed or did not run) | need_you | interrupted. check: {passed, failed, summary} or null.
+return { items, check }
