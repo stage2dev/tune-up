@@ -1,0 +1,38 @@
+---
+name: preflight
+description: "Runs a pass/fail checklist before any paid media goes live and returns GO or NO-GO. Use on: preflight, ready to launch, check my ad before publishing, is the campaign safe to turn on; checar antes de publicar, pré-voo, posso ligar o anúncio."
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py falta), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py falta *), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py status), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py status *)
+---
+
+# Preflight
+
+Reply in the `language` of `~/.config/tune-up/user.json` (English if missing) and call the user `owner`. Commands are `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py <command>`. State lives in `.tune-up/mkt/contas.json` and `.tune-up/mkt/config.json` (`site`, `canais`, `indexnow_key`, `credit_ask_above`, default 2000). Service ids are in `${CLAUDE_PLUGIN_ROOT}/servicos.json`.
+
+## Step 0 - Check what is connected
+
+Run `falta --json`. Needed: `chrome` `ligado` (to look at the ad manager and the landing page) or the Composio channel of the ad (`composio:metaads`, `composio:googleads`) `ligado` for read calls. If none is, say which and send the owner to the `connect` skill; items you cannot read are marked "not checked", never "pass".
+
+## Hard rules
+
+- A failed preflight means nothing goes live. One fail makes the verdict NO-GO; "not checked" on a blocking item is also NO-GO until the owner decides.
+- Read only. This skill never changes an ad. Writes happen only on the owner's explicit request in the current turn (see `campaign`).
+- Never mark pass on a guess. Separate [signal] (what you read) from [guess].
+- Price and offer are checked against the current product, not against the old ad.
+- Save the raw reads and the result under `.tune-up/mkt/` before summarizing.
+- The owner decides what was not approved; never reopen a refused decision.
+
+## Checklist (each item: pass / fail / not checked, with the evidence)
+
+1. Tracking: the pixel or conversion event is installed and fires on the real action (a test event seen, not just the tag present).
+2. Landing page: loads, on a phone width of 390 px too; the headline, price and offer match the ad and the current product; the call to action works.
+3. Budget: an explicit daily or total cap is set and is the one the owner approved.
+4. State: the campaign, ad set and ads are PAUSED.
+5. Audience and geo: location, age range and language match the plan; no personal-attribute targeting in the copy.
+6. Copy: states, does not ask; no invented social proof, scarcity, urgency, authority or price; testimonials are real or a placeholder.
+7. Media: legible at 390 px, captions present (people watch without sound), music under a recorded licence, nothing copied from a competitor.
+8. Legal: required disclosures, privacy link and consent text for forms are present; special-category rules of the platform respected.
+9. Undo: a backup of the current state and the way to undo it are written down.
+
+## Output
+
+A table of the items, the verdict GO or NO-GO, one line "what I did NOT check", and the next step. On NO-GO list only the fixes needed. Turning anything on is a separate request from the owner.
