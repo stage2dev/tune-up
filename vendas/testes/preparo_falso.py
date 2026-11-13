@@ -114,9 +114,6 @@ class SistemaFalso(Sistema):
     def porta_livre(self, porta):
         return porta not in self.ocupadas
 
-    def porta_qualquer(self):
-        return 18080 + len(self.ocupadas)
-
     def existe(self, caminho):
         return caminho in self.arquivos
 

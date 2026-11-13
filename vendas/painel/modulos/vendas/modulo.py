@@ -5,7 +5,7 @@ import importlib.util
 import os
 import sqlite3
 
-PORTA_EVOLUTION = 8080  # porta padrão da Evolution local (servico/evolution_local.py)
+PORTAS_EVOLUTION = tuple(range(8080, 8085))  # as portas que o preparo pode dar à Evolution (servico/evolution_local.py)
 MODOS = {"registra_e_conta": "Só contar (recomendado)", "recusa": "Recusar os avisos falsos"}
 VALIDOS_PARA_RECUSA = 20  # o mesmo de servico/rotas.py; quem decide é o serviço
 
@@ -61,7 +61,7 @@ pasta = cliente.pasta
 VIVO_S = cliente.VIVO_S
 porta_do_painel = cliente.porta_do_painel
 
-PORTA = 8791  # porta padrão do serviço (servico/servico.py); só para as regras de negar
+PORTAS = tuple(range(8791, 8796))  # as portas que o preparo pode dar ao serviço; só para as regras de negar
 # pasta de dados externa (servico/pasta.py) em macOS, Linux e Windows, no formato das regras do Claude Code
 PASTAS_DE_DADOS = ("~/Library/Application Support/tune-up-vendas", "~/.local/share/tune-up-vendas",
                    "~/AppData/Local/tune-up-vendas")
@@ -79,11 +79,8 @@ INFO = {
              + ["ia_automatico_conversa", "ia_rascunho_conversa"] + list(ia.ACOES) + list(leads.ACOES) + list(disparos.ACOES)
              + list(candidatos.ACOES) + list(buscador.ACOES) + list(places.ACOES) + list(voz.ACOES)
              + list(preparar.ACOES),
-    "negar": [
-        "Bash(*127.0.0.1:%d*)" % PORTA,
-        "Bash(*localhost:%d*)" % PORTA,
-        "Bash(*127.0.0.1:%d*)" % PORTA_EVOLUTION,
-        "Bash(*localhost:%d*)" % PORTA_EVOLUTION,
+    "negar": ["Bash(*%s:%d*)" % (host, porta) for porta in PORTAS + PORTAS_EVOLUTION for host in ("127.0.0.1", "localhost")]
+    + [
         "Bash(*/api/modulos/*/acao*)",
         "Bash(*tune-up-vendas*)",
         "Bash(*docker exec*)",

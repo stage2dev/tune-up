@@ -71,7 +71,7 @@ class _SemRedirecionar(urllib.request.HTTPRedirectHandler):
 
 
 class Sistema:
-    """O sistema de verdade. Os testes herdam e trocam achar/rodar/soltar/relogio/dormir/http/portas."""
+    """O sistema de verdade. Os testes herdam e trocam achar/rodar/soltar/relogio/dormir/http/porta_livre."""
 
     def __init__(self, plataforma=None, caminho=None, ambiente=None):
         self.plataforma = plataforma or sys.platform
@@ -147,14 +147,6 @@ class Sistema:
             return True
         except OSError:
             return False
-        finally:
-            s.close()
-
-    def porta_qualquer(self):
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            s.bind(("127.0.0.1", 0))
-            return s.getsockname()[1]
         finally:
             s.close()
 

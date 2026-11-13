@@ -20,16 +20,27 @@ ESPERA_EVOLUTION = 300
 ESPERA_SERVICO = 60
 
 
+LISTAS = {"servico": evolution_local.PORTAS_SERVICO, "evolution": evolution_local.PORTAS_EVOLUTION}
+
+
 def _porta(ex, desejada, nome):
-    """A porta pedida, ou uma livre quando outro programa já ocupa a pedida (a escolhida fica no estado)."""
-    s = ex.sistema
-    if s.porta_livre(desejada):
-        porta = desejada
-    else:
-        porta = s.porta_qualquer()
-        ex.registrar("porta %d (%s) ocupada por outro programa; uso %d" % (desejada, nome, porta))
-    ex.portas[nome] = porta
-    return porta
+    """A porta pedida, ou a primeira livre da lista fixa do `nome` (nunca uma aleatória); a escolhida fica no estado.
+    None = nenhuma livre."""
+    for porta in [desejada] + [p for p in LISTAS[nome] if p != desejada]:
+        if ex.sistema.porta_livre(porta):
+            if porta != desejada:
+                ex.registrar("porta %d (%s) ocupada por outro programa; uso %d" % (desejada, nome, porta))
+            ex.portas[nome] = porta
+            return porta
+    return None
+
+
+def _sem_porta(ex, nome):
+    lista = LISTAS[nome]
+    o_que = "o WhatsApp" if nome == "evolution" else "o serviço de Vendas"
+    return dono("As portas %d a %d, que %s usa, estão todas ocupadas por outros programas. Não liguei nada. Rode este "
+                "comando num terminal para ver qual programa usa a primeira, feche esse programa e clique de novo."
+                % (lista[0], lista[-1], o_que), _quem_usa(ex, lista[0]))
 
 
 def evolution_preparada(ex):
@@ -41,7 +52,11 @@ def evolution_preparada(ex):
                         "%s -B %s preparar --projeto %s --refazer" % (PYTHON, _citar(EVOLUTION_LOCAL), _citar(ex.raiz)))
         return feito("Os arquivos da Evolution já estavam prontos (não mexi neles).")
     porta_evolution = _porta(ex, ex.porta_evolution, "evolution")
+    if porta_evolution is None:
+        return _sem_porta(ex, "evolution")
     porta_servico = _porta(ex, ex.porta_servico(), "servico")
+    if porta_servico is None:
+        return _sem_porta(ex, "servico")
     try:
         evolution_local.preparar(ex.raiz, ex.base, porta_servico, porta_evolution)
     except evolution_local.JaPreparado:
@@ -135,6 +150,8 @@ def servico_ligado(ex):
         return feito("O serviço de Vendas já está ligado.")
     s = ex.sistema
     porta = _porta(ex, ex.porta_servico(), "servico")
+    if porta is None:
+        return _sem_porta(ex, "servico")
     args = [sys.executable, "-B", SERVICO, "--projeto", ex.raiz, "--porta", str(porta), "--painel", ex.painel]
     if ex.base:
         args += ["--base", ex.base]

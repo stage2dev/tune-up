@@ -238,8 +238,8 @@ cp <plugin folder>/exemplos/acoes/vendas.json .tune-up/<package>/acoes/vendas.js
 
 The module declares these in `INFO["negar"]` and the panel joins them into the deny rules of every session it starts:
 
-- `Bash(*127.0.0.1:8791*)` and `Bash(*localhost:8791*)` (default service port)
-- `Bash(*127.0.0.1:8080*)` and `Bash(*localhost:8080*)` (default local Evolution port)
+- `Bash(*127.0.0.1:8791*)` and `Bash(*localhost:8791*)` (default service port), and the same pair for every port from `8791` to `8795` (the only ports the setup may give the service)
+- `Bash(*127.0.0.1:8080*)` and `Bash(*localhost:8080*)` (default local Evolution port), and the same pair for every port from `8080` to `8084` (the only ports the setup may give the Evolution)
 - `Bash(*/api/modulos/*/acao*)` (the panel's action route)
 - `Bash(*tune-up-vendas*)` (data folder, service and `docker compose -f <data folder>/...`)
 - `Bash(*docker exec*)`, `Bash(*docker inspect*)`, `Bash(*docker compose config*)` (they print the container environment, including the Evolution key and the Postgres password)

@@ -27,6 +27,8 @@ ARQUIVO_COMPOSE = "compose.yml"
 ARQUIVO_ENV = ".env"
 PORTA_SERVICO = 8791
 PORTA_EVOLUTION = 8080
+PORTAS_SERVICO = tuple(range(8791, 8796))     # o preparo nunca usa porta aleatória: só estas (as regras de negar da
+PORTAS_EVOLUTION = tuple(range(8080, 8085))   # tela, painel/modulos/vendas/modulo.py, cobrem as duas listas)
 
 
 class JaPreparado(RuntimeError):

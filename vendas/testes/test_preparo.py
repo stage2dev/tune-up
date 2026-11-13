@@ -283,8 +283,8 @@ class TesteEvolutionEServico(Base):
         e = self.rodar(s)
         self.assertEqual(e["estado"], "feito", e)
         url = evolution_local.ler_ambiente(self.pasta_dados)["VENDAS_EVOLUTION_URL"]
-        self.assertEqual(url, "http://127.0.0.1:18081")
-        self.assertEqual(e["portas"]["evolution"], 18081)
+        self.assertEqual(url, "http://127.0.0.1:8081")   # a próxima da lista fixa, nunca uma aleatória
+        self.assertEqual(e["portas"]["evolution"], 8081)
 
     def test_servico_ja_rodando_nao_sobe_outro(self):
         from servico import travas

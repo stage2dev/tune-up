@@ -9,6 +9,7 @@ import io  # noqa: E402
 import json  # noqa: E402
 import os  # noqa: E402
 import shutil  # noqa: E402
+import socket  # noqa: E402
 import stat  # noqa: E402
 import subprocess  # noqa: E402
 import tempfile  # noqa: E402
@@ -326,7 +327,10 @@ class TesteSistemaDeVerdade(Base):
         self.assertEqual(s.chamadas, [])
 
     def test_porta_fechada_nao_responde_e_falha_com_espera_limitada(self):
-        livre = preparo_sistema.Sistema().porta_qualquer()
+        sonda = socket.socket()
+        sonda.bind(("127.0.0.1", 0))
+        livre = sonda.getsockname()[1]
+        sonda.close()
         self.assertEqual(preparo_sistema.Sistema().http("http://127.0.0.1:%d/" % livre, 2), (None, b""))
         evolution_local.preparar(self.projeto, self.base, porta_evolution=livre)
 
