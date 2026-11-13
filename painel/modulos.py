@@ -33,7 +33,7 @@ TTL = 30.0
 _lock = threading.Lock()
 _lock_import = threading.Lock()  # um import de módulo por vez (mexe em sys.path/sys.modules)
 _carregados = {}   # caminho -> (mtime, módulo)
-_cache = {}        # id -> (quando, código, dado, pulso)
+_cache = {}        # id -> (quando, código, dado, pulso, validade em s)
 _rodando = {}      # id -> thread
 _lock_agir = threading.Lock()  # trava das ações, separada da de montar
 _agindo = {}       # id -> thread de agir()
@@ -190,7 +190,7 @@ def montar(cfg, mid, usar_cache=True, tempo=TEMPO_LIMITE, pulso=None):
     if usar_cache:
         with _lock:
             item = _cache.get(mid)
-        if item and agora - item[0] < TTL and item[3] == pulso:
+        if item and agora - item[0] < item[4] and item[3] == pulso:
             return item[1], item[2]
     try:
         mod = carregar(cfg, mid)
@@ -199,9 +199,11 @@ def montar(cfg, mid, usar_cache=True, tempo=TEMPO_LIMITE, pulso=None):
     except ErroModulo as e:
         codigo, corpo = e.codigo, e.corpo()
     if codigo in (200, 500):
+        ritmo = corpo.get("atualizar_em") if codigo == 200 else None  # já preso em 2..60 por conferir
+        validade = min(TTL, ritmo) if isinstance(ritmo, (int, float)) and not isinstance(ritmo, bool) else TTL
         with _lock:
             if _geracao.get(mid, 0) == geracao:  # uma ação no meio deixou este resultado velho
-                _cache[mid] = (time.monotonic(), codigo, corpo, pulso)
+                _cache[mid] = (time.monotonic(), codigo, corpo, pulso, validade)
     return codigo, corpo
 
 
