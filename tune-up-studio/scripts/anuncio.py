@@ -24,6 +24,7 @@ import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import qa_imagem  # noqa: E402
+import saida_utf8  # noqa: E402
 
 STUDIO = qa_imagem.STUDIO
 # id in formatos.json, ratio inside the entry (None = the entry has one size). The first one is the master.
@@ -333,6 +334,7 @@ def final(pasta, plataforma):
 
 
 def main(argv=None):
+    saida_utf8.utf8()
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--plano", choices=sorted(PLANOS))
     p.add_argument("--exportar", metavar="FOLDER")

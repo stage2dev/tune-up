@@ -50,12 +50,18 @@ INFO = {"id": "estudio", "titulo": "Estúdio", "icone": "clapperboard",
                      "marca.tom": dict(CAMPO, ligado="booleano"),
                      "marca.remover_foto": {"destino": "texto", "arquivo": "texto"},
                      "peca.aprovar": PECA, "peca.recusar": PECA}}
+# o estúdio pede o sandbox do Claude Code, que não existe no Windows nativo (o catálogo já esconde as ações)
+SO_WSL2 = "O estúdio não roda no Windows. Use o WSL2 (o Linux dentro do Windows)."
 REL_MARCA = marca_acoes.REL_MARCA
 SCRIPT = os.path.join(marca_acoes.SCRIPTS, "preparar_estudio.py")
 COMANDOS = {"envio.recebido": marca_acoes.recebido, "marca.editar": marca_acoes.editar,
             "marca.sem_logo": marca_acoes.sem_logo, "marca.cores_da_logo": marca_acoes.cores_da_logo,
             "marca.letras": marca_acoes.letras, "marca.tom": marca_acoes.tom,
             "marca.remover_foto": marca_acoes.remover_foto}
+
+
+def _windows():
+    return os.name == "nt"
 
 
 def _ambiente(dados):
@@ -101,6 +107,10 @@ def montar(ctx):
                  {"id": "fila", "titulo": "Fila", "blocos": pecas.aba_fila(lista)},
                  {"id": "galeria", "titulo": "Galeria", "blocos": pecas.aba_galeria(lista)},
                  {"id": "aprovacao", "titulo": "Aprovação", "blocos": pecas.aba_aprovacao(lista, ctx)}]
+    if _windows():  # nada de Preparar nem de pedir peça: uma linha só
+        r["alertas"] = [{"nivel": "atencao", "texto": SO_WSL2}]
+        for aba in (r["abas"][0], r["abas"][2]):
+            aba["blocos"] = [{"tipo": "texto", "titulo": "Estúdio", "texto": SO_WSL2}]
     return r
 
 
@@ -187,6 +197,8 @@ def agir(ctx, acao, dados):
         return COMANDOS[acao](ctx, dados)
     if acao != "preparar":
         return {"feito": False, "mensagem": "Ação desconhecida."}
+    if _windows():  # Popen(pass_fds=...) quebra no Windows; nada é gravado em disco
+        return {"feito": False, "mensagem": SO_WSL2}
     if dados.get("confirmar") is not True:
         return {"feito": False, "mensagem": "Confirme: isto baixa o HyperFrames pela internet (cerca de 100 MB)."}
     pasta = ctx.get("dados")

@@ -74,7 +74,7 @@ class Lancador:
         return self.modelos.resumo(self.catalogo()[0])
 
     def catalogo(self):
-        return catalogo_do_projeto(self.cfg)
+        return catalogo_do_projeto(self.cfg, self.plataforma)
 
     def acoes(self):
         acoes, avisos = self.catalogo()

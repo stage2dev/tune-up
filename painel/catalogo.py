@@ -8,6 +8,7 @@ import glob
 import json
 import os
 import re
+import sys
 
 import dono
 import sandbox
@@ -238,16 +239,23 @@ def chave_ligada(bruto, chave):
     return no is True
 
 
-def catalogo_do_projeto(cfg):
+def catalogo_do_projeto(cfg, plataforma=None):
     """Núcleo, pacote do projeto e, por último, as ações de plugins aceitos (extensoes.py).
 
     Ação com `so_com` (ex.: a do vídeo com render local, que precisa de `rede_local`) só entra
     quando o painel.json do projeto liga essa chave: fora dela não aparece nem dispara.
+    No Windows (win32) a ação com `sandbox` também sai (o sandbox do Claude Code não existe lá), com um aviso.
     """
+    plataforma = sys.platform if plataforma is None else plataforma
     import extensoes
     pastas, avisos = extensoes.pastas_de_acoes(cfg)
     acoes, av = carregar_catalogo([cfg["acoes_dir"], cfg.get("acoes_pacote_dir")] + pastas)
     acoes = [a for a in acoes if not a.get("_so_com") or chave_ligada(cfg.get("bruto"), a["_so_com"])]
+    if plataforma == "win32":
+        sem = [a for a in acoes if not a.get("sandbox")]
+        if len(sem) != len(acoes):
+            acoes = sem
+            av = av + ["No Windows, as ações que pedem sandbox (como as do estúdio) ficam escondidas. Use o WSL2."]
     return acoes, avisos + av
 
 

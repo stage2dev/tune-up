@@ -17,6 +17,9 @@ import shutil
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import saida_utf8  # noqa: E402
+
 MARK = "tune-up-studio reserve"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 MAX_SLIDES = 12
@@ -106,6 +109,7 @@ def render(slides_dir, out, width=1080, height=1920, duration=10.0, fps=30, xfad
 
 
 def main(argv=None):
+    saida_utf8.utf8()
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--slides", required=True, help="folder with the slide PNGs (sorted by name)")
     p.add_argument("--out", required=True, help="MP4 to write")

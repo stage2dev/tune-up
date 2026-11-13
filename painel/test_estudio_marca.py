@@ -23,6 +23,7 @@ import importlib.util
 _s = importlib.util.spec_from_file_location("estudio_real", %r)
 _m = importlib.util.module_from_spec(_s)
 _s.loader.exec_module(_m)
+_m._windows = lambda: False  # estes testes valem para macOS/Linux; o Windows está em test_modulo_windows.py
 INFO = _m.INFO
 montar = _m.montar
 agir = _m.agir

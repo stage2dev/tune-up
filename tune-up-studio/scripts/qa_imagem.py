@@ -18,6 +18,9 @@ import struct
 import sys
 import zlib
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import saida_utf8  # noqa: E402
+
 STUDIO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SIZE_IDS = {"4:5": "instagram-feed-organico-tamanho", "1:1": "instagram-feed-quadrado-tamanho"}
 STILL = "frame-00-at-0s.png"
@@ -388,6 +391,7 @@ def run_final(folder, width, height):
 
 
 def main(argv=None):
+    saida_utf8.utf8()
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--source", help="composition folder (fonte/)")
     p.add_argument("--png", help="rendered still")

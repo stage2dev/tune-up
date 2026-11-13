@@ -26,12 +26,17 @@ import time
 
 try:
     import fcntl
-except ImportError:  # Windows: the studio refuses native Windows anyway
+except ImportError:  # Windows: msvcrt.locking below
     fcntl = None
+try:
+    import msvcrt
+except ImportError:
+    msvcrt = None
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import verificar_ambiente as va  # noqa: E402
+import saida_utf8  # noqa: E402
 
 STUDIO = va.STUDIO
 ARQUIVO, TRAVA = "ambiente.json", "ambiente.lock"
@@ -142,12 +147,14 @@ def preparar(dados, projeto, studio=STUDIO, rodar=_rodar, which=shutil.which, ve
 
 
 def _travar(dados):
-    """Open lock file (held) or None when another preparar runs. No lock where fcntl is missing."""
+    """Open lock file (held) or None when another preparar runs: flock, or msvcrt.locking on Windows."""
     f = open(os.path.join(dados, TRAVA), "a")
-    if fcntl is None:
-        return f
     try:
-        fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if fcntl is not None:
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        elif msvcrt is not None:
+            f.seek(0)  # mode "a" starts at the end: the locked byte must always be byte 0
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
     except OSError:
         f.close()
         return None
@@ -155,6 +162,7 @@ def _travar(dados):
 
 
 def main(argv=None, entrada=input):
+    saida_utf8.utf8()
     p = argparse.ArgumentParser(description="Prepara o estúdio (instala o HyperFrames fixado).")
     p.add_argument("--dados", required=True, help="pasta de dados do painel (<pacote>/dados)")
     p.add_argument("--projeto", default=os.getcwd(), help="pasta do projeto (lê .claude/settings*.json)")

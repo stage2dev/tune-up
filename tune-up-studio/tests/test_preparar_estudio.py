@@ -23,6 +23,7 @@ def carregar_modulo():
     spec = importlib.util.spec_from_file_location("estudio_modulo_teste", caminho)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    mod._windows = lambda: False  # these tests cover the macOS/Linux path; Windows is in test_modulo_windows.py
     return mod
 
 
@@ -173,6 +174,49 @@ class TestMain(Base):
         with mock.patch.object(pe, "preparar") as p:
             self.assertEqual(pe.main(["--dados", self.dados, "--sim"]), 2)
         p.assert_not_called()
+
+
+class FakeMsvcrt:
+    LK_NBLCK = 2
+
+    def __init__(self, erro=None):
+        self.erro, self.chamadas = erro, []
+
+    def locking(self, fd, modo, n):
+        self.chamadas.append((fd, os.lseek(fd, 0, os.SEEK_CUR), modo, n))
+        if self.erro:
+            raise self.erro
+
+
+class TestTravaWindows(Base):
+    def setUp(self):
+        super().setUp()
+        with open(os.path.join(self.dados, pe.TRAVA), "w") as f:
+            f.write("bytes de uma rodada antiga\n")
+
+    def test_trava_o_byte_zero_mesmo_no_modo_a(self):
+        falso = FakeMsvcrt()
+        with mock.patch.object(pe, "fcntl", None), mock.patch.object(pe, "msvcrt", falso, create=True):
+            trava = pe._travar(self.dados)
+        self.addCleanup(trava.close)
+        self.assertEqual(falso.chamadas, [(trava.fileno(), 0, FakeMsvcrt.LK_NBLCK, 1)])
+
+    def test_trava_tomada_devolve_none_e_fecha_o_arquivo(self):
+        falso = FakeMsvcrt(OSError(13, "Permission denied"))
+        with mock.patch.object(pe, "fcntl", None), mock.patch.object(pe, "msvcrt", falso, create=True):
+            self.assertIsNone(pe._travar(self.dados))
+            with self.assertRaises(OSError):  # closed (checked before main reuses the fd number)
+                os.fstat(falso.chamadas[0][0])
+            with mock.patch.object(pe, "preparar") as p:
+                self.assertEqual(pe.main(["--dados", self.dados, "--sim"]), 2)
+        p.assert_not_called()
+
+    @unittest.skipUnless(os.name == "nt", "real msvcrt.locking, Windows only")
+    def test_no_windows_de_verdade_o_segundo_nao_trava(self):
+        primeiro = pe._travar(self.dados)
+        self.addCleanup(primeiro.close)
+        self.assertIsNotNone(primeiro)
+        self.assertIsNone(pe._travar(self.dados))
 
 
 class TestModulo(Base):

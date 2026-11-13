@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(os.path.dirname(HERE), "scripts", "fontes.py")
@@ -78,6 +79,15 @@ class TesteComando(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             r = subprocess.run([sys.executable, "-I", SCRIPT, "--trabalho", d], capture_output=True, text=True)
         self.assertEqual(r.returncode, 2)
+
+    def test_barra_invertida_do_windows_acha_a_marca(self):
+        with tempfile.TemporaryDirectory() as raiz:
+            os.makedirs(os.path.join(raiz, ".tune-up", "estudio", "marca"))
+            with open(os.path.join(raiz, ".tune-up", "estudio", "marca", "marca.json"), "w", encoding="utf-8") as f:
+                json.dump({"versao": 1, "campos": {"fontes.heading": {"valor": "Georgia"}}}, f)
+            trabalho = raiz + "\\.tune-up\\painel\\dados\\trabalhos\\abc"
+            with mock.patch.object(fontes.os, "sep", "\\"):
+                self.assertEqual(fontes.marca_de(trabalho), ("Georgia", None))
 
     def test_argumento_desconhecido_sai_2(self):
         self.assertEqual(self.rodar({}, "system-ui").returncode, 2)

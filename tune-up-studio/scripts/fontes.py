@@ -16,6 +16,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import saida_utf8  # noqa: E402
+
 SANS = ["Helvetica Neue", "Arial", "Liberation Sans", "DejaVu Sans"]
 SERIF = ["Georgia", "Times New Roman", "Liberation Serif", "DejaVu Serif"]
 MONO = ["Menlo", "Courier New", "Liberation Mono", "DejaVu Sans Mono"]
@@ -61,7 +64,7 @@ def linhas(heading, body):
 
 
 def marca_de(trabalho):
-    corte = trabalho.find("/.tune-up/")
+    corte = trabalho.replace(os.sep, "/").find("/.tune-up/")
     if corte < 0:
         raise ValueError("pasta de trabalho fora de um /.tune-up/: " + trabalho)
     with open(os.path.join(trabalho[:corte], ".tune-up", "estudio", "marca", "marca.json"), encoding="utf-8") as f:
@@ -74,6 +77,7 @@ def marca_de(trabalho):
 
 
 def main(argv=None):
+    saida_utf8.utf8()
     args = list(sys.argv[1:] if argv is None else argv)
     trabalho = os.getcwd()
     if args[:1] == ["--trabalho"] and len(args) == 2:
