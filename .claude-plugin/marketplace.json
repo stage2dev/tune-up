@@ -27,7 +27,7 @@
       "name": "tune-up-mkt",
       "source": "./tune-up-mkt",
       "description": "Marketing module for tune-up: guided connection of your own marketing accounts, campaign/content/SEO/preflight skills, and a guard that blocks or asks before writes to ad accounts and public posts.",
-      "version": "0.1.0"
+      "version": "0.2.0"
     }
   ]
 }

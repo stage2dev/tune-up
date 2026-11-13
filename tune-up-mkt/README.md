@@ -2,7 +2,7 @@
 
 Marketing module for [tune-up](../README.md): guided connection of your own marketing accounts, campaign, content, SEO and preflight skills, and a guard that blocks or asks before writes to ad accounts and public posts.
 
-Status: 0.1.0: skeleton + guard; account connection, skills and panel tab arrive in the next releases.
+Status: 0.2.0: guard + guided account connection (`connect`); campaign, content, SEO and preflight skills and the panel tab arrive in the next releases.
 
 ## Install
 
@@ -12,6 +12,32 @@ Status: 0.1.0: skeleton + guard; account connection, skills and panel tab arrive
 ```
 
 Requires the core `tune-up` plugin.
+
+## Connect your accounts
+
+The `connect` skill (say "connect my marketing accounts") walks you through the services below one at a time: what each is for, what it costs, the sign-up link, the install commands and how to authorize. You create the accounts and authorize in the browser; the assistant never types credentials or asks you to paste a key, token or password in the chat. It checks each connection with free read-only calls and records the result through `scripts/contas.py`. Anything that costs money or credits waits for your explicit yes.
+
+| Service | Level | What for |
+| --- | --- | --- |
+| Claude in Chrome | base | Drive your logged-in browser to read and change ad managers and dashboards |
+| Composio | base | Meta Ads, Google Ads, Instagram and Facebook through one login (per-channel connections) |
+| OpenSEO | base | Keyword research, rank tracking and site audits |
+| Search Console analytics | per channel | Real search queries and traffic for your site inside OpenSEO |
+| IndexNow | per channel | Tell search engines right away when a page changes |
+| claude-ads | optional | Ad audit and planning skills driven by exported data |
+| Anthropic marketing | optional | Content, campaign planning, brand review, SEO audit, email sequences |
+| Higgsfield | optional | Images and video for ad creative |
+| ElevenLabs | optional | Voice-over and transcription for ad creative |
+
+You run the install commands yourself in your terminal (or the assistant runs one only after your explicit yes for that exact command); a piped remote script such as `curl ... | sh` is shown with its documentation link, never run by the assistant. Several install commands change your user-level Claude configuration (`--scope user`, plugin installs).
+
+State lives in your project: `.tune-up/mkt/contas.json` and `.tune-up/mkt/config.json`. No secrets are stored.
+
+- `estado` is the connection, from the checks the catalog marks as deciding (for example the OpenSEO MCP server; for Composio either the CLI or the MCP server is enough; the Anthropic plugin's own connectors only inform). `conta` says whether the account itself was checked: `conferida` (a free read by the session), `confirmada_pelo_dono`, `conferir_de_novo` (older than 7 days), `nao_conferida`, `nao_se_aplica`. `falta` lists what is not connected first, then connected services whose account still needs a check; it asks for a `status` when the last one is missing or older than 24 hours.
+- `config --canais` accepts only `metaads`, `googleads`, `instagram`, `facebook`, `seo`, `video`, `voz`; `--site` only `http(s)://host[/path]` without `?` or `#`.
+- IndexNow: `config --gerar-indexnow` creates the key (public by design: it is published at your site root). Never put any other key in this field.
+- Checks run in the project folder, so project-scoped servers count. State files reached through a symbolic link are refused.
+- Limit: when a check command times out, only that command is stopped; programs it started may keep running.
 
 ## Guard
 

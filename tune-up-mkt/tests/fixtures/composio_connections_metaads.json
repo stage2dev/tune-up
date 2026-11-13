@@ -1,0 +1,16 @@
+{
+  "metaads": [
+    {
+      "status": "ACTIVE",
+      "alias": null,
+      "word_id": "metaads_alpha-one",
+      "permission_group": "always_allow"
+    },
+    {
+      "status": "EXPIRED",
+      "alias": null,
+      "word_id": "metaads_beta-two",
+      "permission_group": "always_allow"
+    }
+  ]
+}

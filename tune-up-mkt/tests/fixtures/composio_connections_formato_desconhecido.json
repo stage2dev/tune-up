@@ -1,0 +1,12 @@
+[
+  {
+    "toolkit": "metaads",
+    "status": "ACTIVE",
+    "id": "metaads_alpha-one"
+  },
+  {
+    "toolkit": "googleads",
+    "status": "EXPIRED",
+    "id": "googleads_alpha-one"
+  }
+]
