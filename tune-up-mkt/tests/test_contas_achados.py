@@ -100,7 +100,10 @@ class Pasta(unittest.TestCase):  # H1, S2
         self.exe(raiz), self.exe(cwd)
         bom = self.exe(bin_)
         path = os.pathsep.join([raiz, cwd, ".", "", "relativo", bin_])
-        self.assertEqual(C.A.achar("claude", raiz, path=path, cwd=cwd), bom)
+        achado = C.A.achar("claude", raiz, path=path, cwd=cwd)
+        self.assertIsNotNone(achado)
+        # PATHEXT supplies the extension casing (.BAT vs .bat); same file on Windows
+        self.assertEqual(os.path.normcase(achado), os.path.normcase(bom))
         self.assertIsNone(C.A.achar("claude", raiz, path=os.pathsep.join([raiz, cwd]), cwd=cwd))
 
     @unittest.skipIf(os.name == "nt", "fake executable is a POSIX shell script")

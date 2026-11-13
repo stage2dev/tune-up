@@ -24,8 +24,8 @@ class TravaOcupada(RuntimeError):
 class TravaDoProcesso:
     """Trava exclusiva NÃO bloqueante, mantida enquanto o processo vive. Ocupada = TravaOcupada na hora."""
 
-    def __init__(self, pasta_dados):
-        self.caminho = os.path.join(pasta_dados, ARQUIVO_TRAVA)
+    def __init__(self, pasta_dados, arquivo=ARQUIVO_TRAVA):
+        self.caminho = os.path.join(pasta_dados, arquivo)
         self.fd = None
 
     def pegar(self):
@@ -43,6 +43,10 @@ class TravaDoProcesso:
                                    % self.caminho)
             raise
         self.fd = fd
+        try:
+            os.utime(self.caminho)   # a hora do arquivo = quando este processo pegou a trava (o preparo compara)
+        except OSError:
+            pass
         return self
 
     def soltar(self):
@@ -57,6 +61,31 @@ class TravaDoProcesso:
         finally:
             os.close(self.fd)
             self.fd = None
+
+
+def ocupada(pasta_dados, arquivo=ARQUIVO_TRAVA):
+    """True se outro processo segura a trava AGORA (o único sinal de "vivo": um pid pode ser reaproveitado). Só testa:
+    não cria o arquivo (sem arquivo = livre) e segura a trava só por um instante. Outro OSError sobe."""
+    try:
+        fd = os.open(os.path.join(pasta_dados, arquivo), os.O_RDWR)
+    except FileNotFoundError:
+        return False
+    try:
+        try:
+            if fcntl is not None:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            else:
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        except OSError as e:
+            if e.errno in OCUPADA:
+                return True
+            raise
+        return False
+    finally:
+        os.close(fd)
 
 
 def substituir(origem, destino, tentativas=3, pausa=0.1):
