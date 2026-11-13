@@ -1,0 +1,10 @@
+{
+  "metaads": [
+    {
+      "status": "EXPIRED",
+      "alias": null,
+      "word_id": "metaads_alpha-one",
+      "permission_group": "always_allow"
+    }
+  ]
+}
