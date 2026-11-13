@@ -3,6 +3,7 @@
 ## 0.3.0
 
 - S1: skills `campaign`, `content`, `seo` and `preflight` (generic, English, replying in the profile language). Each first checks `.tune-up/mkt/contas.json` and sends you to `connect` when a needed service is missing. Rules: campaign analysis ends in a marketing action; writes to an ad or public post only on the owner's explicit request in the current turn; everything created paused with a budget cap; preflight GO/NO-GO before paid media; no invented social proof, scarcity, urgency or price; brand from the tune-up-studio kit when present; credit estimate and ask above `credit_ask_above`.
+- S1-fix: review findings closed in the four work skills (credit rule in the service's own unit, studio panel pointers, brand approval via `marca-ler`, all-blocking preflight, no real effects, stale state, no scheduling, raw-data hygiene, prompt-injection line, live edits, IndexNow scope and responses).
 - S2: README sections Skills, What costs money and Limits; status line and root README line updated.
 
 ## 0.2.0
