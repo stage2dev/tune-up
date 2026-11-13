@@ -57,7 +57,7 @@ class TestRotaUnidade(Base):
                                     for x in [g]), (g, a))
                 r = self.rota([a])
                 self.assertIn("security", r["reviewers"], (g, a))
-        for a in ("migrations/001.sql", "schema.sql", "DB/Migrations/A.PY"):
+        for a in ("migrations/001.sql", "schema.sql", "db/Schema.SQL", "DB/Migrations/A.PY"):
             self.assertIn("database", self.rota([a])["reviewers"], a)
         self.assertNotIn("database", self.rota(["src/Button.tsx"])["reviewers"])
 
@@ -110,8 +110,37 @@ class TestRotaUnidade(Base):
         self.assertIn("security", self.rota(["a.md"], diff=p)["reviewers"])
 
     def test_sem_globs_padrao_nao_desce(self):
-        with self.assertRaises(RuntimeError):
-            R.rota(["a.md"], None, None, {}, "/repo")
+        r = R.rota(["migrations/001.sql"], self.diff("+x = 1\n"), None, {}, "/repo")
+        self.assertEqual((r["executor"], r["reviewers"]), (OPUS, ["failures", "database"]))
+
+    def test_constantes_iguais_ao_padrao_json(self):
+        for k, v in R.PADROES.items():
+            self.assertEqual(list(v), PADRAO[k], k)
+
+    def test_caminho_vazio_nao_conta_como_arquivo(self):
+        for files in ([""], ["  "], ["", " \n "]):
+            r = self.rota(files)
+            self.assertEqual((r["executor"], r["reviewers"]), (OPUS, ["failures", "security"]), files)
+        self.assertEqual(self.rota(["", "src/Button.tsx"])["executor"], SONNET)
+
+    def test_espaco_ou_varios_caminhos_num_argumento_sobem(self):
+        for f in ("schema.sql ", "schema.sql src/a.py", "schema.sql\nsrc/a.py", "src/a.py\r\nschema.sql"):
+            r = self.rota([f])
+            self.assertEqual((r["executor"], r["reviewers"]), (OPUS, ["failures", "database"]), f)
+        r = self.rota(["my folder/Button.tsx"])
+        self.assertEqual((r["executor"], r["reviewers"]), (SONNET, ["failures"]))
+        self.assertEqual(self.rota(["db/my schema.sql"])["executor"], OPUS)
+
+    def test_diff_sem_conteudo_de_diff_sobe_seguranca(self):
+        for texto in ("", "   \n\n", "just some text\n", "--- a/x\n"):
+            r = self.rota(["src/a.py"], diff=self.diff(texto, "x.patch"))
+            self.assertIn("security", r["reviewers"], repr(texto))
+            self.assertTrue(any("no diff content" in w for w in r["why"]), repr(texto))
+        r = self.rota(["src/a.py"], diff=self.diff("--- a/x\n+++ b/x\n@@ -1 +0,0 @@\n-y = 1\n"))
+        self.assertEqual(r["reviewers"], ["failures"])
+
+    def test_erro_inclui_banco(self):
+        self.assertEqual(R.rota_erro(ValueError())["reviewers"], ["failures", "security", "database"])
 
     def test_args(self):
         self.assertEqual(R.ler_args(["--files", "a", "b", "--failed", "opus", "--diff-file", "d"]),
@@ -146,11 +175,44 @@ class TestRotaCli(Base):
         self.assertEqual((r["executor"], r["reviewers"]), (SONNET, ["failures"]))
 
     def test_excecao_e_argumento_ruim_sobem(self):
-        for r in (self.cli("--files", "a.md", env={"TUNEUP_FAKE_EXCECAO": "1"}), self.cli("--x")):
-            self.assertEqual((r["executor"], r["reviewers"]), (OPUS, ["failures", "security"]))
+        for r in (self.cli("--files", "a.md", env={"TUNEUP_FAKE_EXCECAO": "1"}), self.cli("--x"),
+                  self.cli("--files", "migrations/001.sql", "--failed")):
+            self.assertEqual((r["executor"], r["reviewers"]), (OPUS, ["failures", "security", "database"]))
             self.assertIn("route up", r["why"][0])
         with open(os.path.join(self.dados, "erros.log"), encoding="utf-8") as f:
             self.assertIn("rota", f.read())
+
+    def test_padrao_json_antigo_com_listas_do_projeto_nao_perde_padroes(self):
+        """padrao.json without the glob keys (or with a wrong type) + a project that adds its
+        own lists, through the real carregar_config: the built-in defaults still apply."""
+        velho = dict(PADRAO)
+        for k in R.PADROES:
+            del velho[k]
+        velho["database_globs"] = "**/*.sql"  # wrong type: dropped, defaults stay
+        fake = os.path.join(self.tmp, "fake-scripts")
+        os.makedirs(fake)
+        with open(os.path.join(fake, "padrao.json"), "w", encoding="utf-8") as f:
+            json.dump(velho, f)
+        proj = os.path.join(self.tmp, "proj")
+        os.makedirs(os.path.join(proj, ".tune-up"))
+        with open(os.path.join(proj, ".tune-up", "config.json"), "w", encoding="utf-8") as f:
+            json.dump({"risk_globs": ["**/infra/**"], "security_globs": ["**/*crypto*"],
+                       "database_globs": ["**/*.prisma"]}, f)
+        d = os.path.join(self.tmp, "ok.patch")
+        with open(d, "w", encoding="utf-8") as f:
+            f.write("--- a/b\n+++ b/b\n@@\n+x = 1\n")
+        codigo = ("import sys; sys.path.insert(0, sys.argv[1]); from tuneup import config, rota; "
+                  "config.AQUI = sys.argv[2]; rota.roda_rota(sys.argv[3:])")
+        for arq, rev in (("supabase/migrations/001.sql", ["failures", "database"]),
+                         ("src/AuthService.ts", ["failures", "security"]),
+                         ("api/webhook.py", ["failures", "security"]),
+                         ("infra/main.tf", ["failures"])):
+            r = subprocess.run([sys.executable, "-c", codigo, os.path.dirname(SCRIPT), fake,
+                                "--files", arq, "--diff-file", d], cwd=proj, env=self.env,
+                               stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = json.loads(r.stdout.strip())
+            self.assertEqual((out["executor"], out["reviewers"]), (OPUS, rev), (arq, out))
 
 
 if __name__ == "__main__":

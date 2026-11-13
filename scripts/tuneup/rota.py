@@ -16,6 +16,14 @@ ORDEM = ("failures", "security", "database")
 PALAVRAS = ("auth", "token", "secret", "password", "hmac", "signature", "permission",
             "subprocess", "eval", "../", "..\\")
 RE_ABS = re.compile(r"(/|[a-z]:/)")  # after `\` -> `/` and lowercase: POSIX, UNC or `C:/`
+# Defaults live here too (padrao.json may be stale or broken); config can only ADD to them.
+# tests/test_rota.py checks they equal the padrao.json lists.
+RISCO_PADRAO = ("**/migrations/**", "**/*.sql", "**/auth/**", "**/*auth*", "**/*webhook*",
+                "**/*payment*", "**/*billing*", "**/*worker*", "**/*queue*", "**/hooks/**")
+SEG_PADRAO = ("**/*auth*", "**/*webhook*", "**/*secret*", "**/*token*", "**/*payment*",
+              "**/hooks/**", "**/*guard*", "**/*permission*", "**/*upload*")
+BANCO_PADRAO = ("**/*.sql", "**/migrations/**")
+PADROES = {"risk_globs": RISCO_PADRAO, "security_globs": SEG_PADRAO, "database_globs": BANCO_PADRAO}
 
 
 def _barra(p):
@@ -50,13 +58,37 @@ def casa(rel, padrao):
     return pad.startswith("**/") and fnmatch.fnmatchcase(rel, pad[3:])
 
 
+def globs_efetivos(cfg):
+    """The three glob lists `rota` uses (and `info` shows): built-in defaults + config extras."""
+    saida = {}
+    for k, padrao in PADROES.items():
+        extra = cfg.get(k) if isinstance(cfg.get(k), list) else []
+        lista = list(padrao)
+        for g in extra:
+            if isinstance(g, str) and g not in lista:
+                lista.append(g)
+        saida[k] = lista
+    return saida
+
+
+def limpar(files):
+    """One path per line, ends stripped, empties dropped."""
+    return [p.strip() for f in files for p in str(f).splitlines() if p.strip()]
+
+
 def _primeiro(rels, globs):
-    """(original path, glob) of the first match, or None."""
-    for orig, rel in rels:
+    """(original path, glob) of the first match, or None. Each entry holds the whole path
+    and its whitespace-separated pieces: a piece can only add a match."""
+    for orig, cands in rels:
         for g in globs:
-            if casa(rel, str(g)):
+            if any(casa(rel, g) for rel in cands):
                 return orig, g
     return None
+
+
+def tem_diff(texto):
+    """A diff has a `+++ `/`@@` header or an added line; anything else counts as missing."""
+    return any(linha.startswith(("+", "@@")) for linha in texto.splitlines())
 
 
 def palavras_no_diff(texto):
@@ -98,13 +130,11 @@ def ler_args(argv):
 
 
 def rota(files, diff_file, failed, cfg, raiz):
-    risco = [str(x) for x in cfg.get("risk_globs") or []]
-    seg = [str(x) for x in cfg.get("security_globs") or []]
-    banco = [str(x) for x in cfg.get("database_globs") or []]
-    if not (risco and seg and banco):
-        raise RuntimeError("default glob lists missing (padrao.json unreadable?)")
+    gl = globs_efetivos(cfg)
+    risco, seg, banco = gl["risk_globs"], gl["security_globs"], gl["database_globs"]
+    files = limpar(files)
     raizes = {_barra(raiz).lower().rstrip("/"), _barra(os.path.realpath(raiz)).lower().rstrip("/")}
-    rels = [(f, relativo(f, raizes)) for f in files]
+    rels = [(f, [relativo(x, raizes) for x in [f] + f.split()]) for f in files]
     why, executor, rev = [], SONNET, {"failures"}
     if not files:
         executor = OPUS
@@ -142,6 +172,9 @@ def rota(files, diff_file, failed, cfg, raiz):
             rev.add("security")
             why.append("diff unreadable (%s): security runs" % type(e).__name__)
         else:
+            if not tem_diff(texto):
+                rev.add("security")
+                why.append("diff file has no diff content: security runs")
             for k in palavras_no_diff(texto):
                 rev.add("security")
                 why.append("diff keyword in added line: %s" % k)
@@ -151,7 +184,7 @@ def rota(files, diff_file, failed, cfg, raiz):
 
 
 def rota_erro(e):
-    return {"executor": OPUS, "reviewers": ["failures", "security"],
+    return {"executor": OPUS, "reviewers": ["failures", "security", "database"],
             "why": ["error (%s): route up" % type(e).__name__]}
 
 

@@ -49,8 +49,8 @@ except BaseException as _e:
             print(json.dumps({"systemMessage": "tune-up: hooks off (import failed), see %s" % _log}))
         except Exception:
             pass
-    if sys.argv[1:2] == ["rota"]:  # routing never goes down on error: opus + security
-        print('{"executor": "tune-up:executor-opus", "reviewers": ["failures", "security"], '
+    if sys.argv[1:2] == ["rota"]:  # routing never goes down on error: opus + security + database
+        print('{"executor": "tune-up:executor-opus", "reviewers": ["failures", "security", "database"], '
               '"why": ["error (import failed): route up"]}')
     sys.exit(0)  # pacote quebrado: fail-open, não decide nada
 

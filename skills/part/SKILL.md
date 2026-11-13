@@ -2,7 +2,7 @@
 name: part
 description: Runs ONE Part of an already planned phase item by item, with Opus reviewers and a gate, then STOPS. Use for "Phase NNN Part X", "run the part", "execute part", "rode a parte", "toca a parte", with or without /goal.
 argument-hint: "<NNN> <Part>  e.g. 184 B"
-allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info), Bash(graphify update .), Bash(command -v graphify)
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py rota:*), Bash(graphify update .), Bash(command -v graphify)
 ---
 
 # Run a Part
