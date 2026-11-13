@@ -64,7 +64,7 @@ def ultimas(saida, n=LINHAS_FINAIS):
 
 def falha_ao_comecar(motivo, momento=None):
     """Estado de um preparo que nem começou (processo não saiu, pasta sem permissão): "falhou" com um motivo simples,
-    sem passos. A tela mostra o motivo e "Tentar de novo"."""
+    sem passos. A tela mostra o motivo e o botão de tentar de novo; o texto não cita botão nenhum."""
     return {"id": os.urandom(6).hex(), "pid": None, "estado": "falhou", "inicio": momento, "atualizado": momento,
             "fim": momento, "mensagem": motivo, "portas": {}, "passos": []}
 

@@ -28,7 +28,7 @@ TITULOS = {"docker_instalado": "Instalar o programa que roda o WhatsApp",
            "docker_ligado": "Ligar esse programa",
            "evolution_preparada": "Preparar o WhatsApp",
            "evolution_no_ar": "Ligar o WhatsApp",
-           "servico_ligado": "Ligar o serviço de Vendas"}
+           "servico_ligado": "Pôr o serviço de Vendas no ar"}   # não repete o nome do botão "Ligar o serviço"
 SELOS = {"feito": ("feito", "bom"), "rodando": ("fazendo...", "atencao"), "falhou": ("parou aqui", "ruim"),
          "precisa_do_dono": ("falta você", "atencao"), "pendente": ("falta", "neutro")}
 PREPARAR = "Preparar o WhatsApp neste computador"
@@ -141,7 +141,9 @@ def bloco_ligar(estado, pasta_dados=""):
 def topo(ctx, cliente, conexao, base=None, servico_rodando=False, precisa=False):
     """(blocos do topo da aba Conexão, preparo vivo). Vivo: a lista de passos. Serviço parado: "Ligar o serviço" se a
     Evolution está bem, senão "Preparar tudo". Serviço rodando: "Preparar tudo" só se `precisa` (Evolution sem
-    resposta); senão nada. Com VENDAS_EVOLUTION_URL no ambiente, só "Ligar o serviço" (ou nada)."""
+    resposta); senão nada. Com VENDAS_EVOLUTION_URL no ambiente, só "Ligar o serviço" (ou nada). Depois de um preparo
+    que falhou (até no "Ligar o serviço"), "Preparar tudo" com "Tentar de novo": a porta aberta não basta para provar
+    que a Evolution responde, e "Ligar o serviço" de novo prenderia o dono num ciclo."""
     raiz = (ctx or {}).get("raiz") or ""
     if not raiz:
         return [bloco_preparar(None)], False
@@ -152,7 +154,8 @@ def topo(ctx, cliente, conexao, base=None, servico_rodando=False, precisa=False)
     externa = bool(os.environ.get(VAR_URL))
     if servico_rodando:
         return ([bloco_preparar(estado, pasta_dados)] if precisa and not externa else []), False
-    if externa or evolution_ok(raiz, cliente, conexao, estado, base):
+    falhou = (estado or {}).get("estado") == "falhou"
+    if externa or (not falhou and evolution_ok(raiz, cliente, conexao, estado, base)):
         return [bloco_ligar(estado, pasta_dados)], False
     return [bloco_preparar(estado, pasta_dados)], False
 
@@ -183,7 +186,7 @@ def agir(ctx, cliente, acao, base=None):
     try:
         _lancados[raiz] = soltar(argv, os.path.join(pasta_dados, ARQUIVO_LOG))
     except OSError:
-        motivo = "O preparo não começou: este computador não deixou abrir o processo. Clique em Tentar de novo."
+        motivo = "O preparo não começou: este computador não deixou abrir o processo. Clique de novo."
         try:
             travas.gravar_segredo(os.path.join(pasta_dados, ARQUIVO_ESTADO),
                                   json.dumps(sistema.falha_ao_comecar(motivo), ensure_ascii=False))

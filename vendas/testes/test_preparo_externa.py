@@ -9,6 +9,7 @@ import importlib.util  # noqa: E402
 import json  # noqa: E402
 import os  # noqa: E402
 import shutil  # noqa: E402
+import socket  # noqa: E402
 import tempfile  # noqa: E402
 import time  # noqa: E402
 import unittest  # noqa: E402
@@ -103,7 +104,8 @@ class TesteSoServicoSonda(Base):
         s = self.sistema(tem=(), evolution_no_ar=False)
         p = self.rodar(s, so_servico=True)["passos"][0]
         self.assertEqual(p["estado"], "falhou", p)
-        self.assertIn("Preparar tudo", p["mensagem"])
+        self.assertIn("Clique de novo", p["mensagem"])
+        self.assertNotIn("Preparar tudo", p["mensagem"])   # o botão que a tela mostra é "Tentar de novo"
         self.assertEqual((s.chamadas, s.soltos), ([], []))
 
     def test_evolution_local_no_ar_liga_e_so_le(self):
@@ -148,6 +150,74 @@ class TesteReinicio(Base):
         trava = travas.TravaDoProcesso(self.pasta).pegar()
         self.addCleanup(trava.soltar)
         self.assertGreater(os.path.getmtime(caminho), time.time() - 60)
+
+
+BOTOES = ("Preparar tudo", "Tentar de novo", "Já fiz, continuar", "Ligar o serviço")
+
+
+class TesteSemCiclo(Base):
+    """"Ligar o serviço" nunca prende o dono: a sonda espera a Evolution subir, e depois de uma falha a tela mostra o
+    cartão de preparar, com um texto que só cita o botão que está na tela."""
+
+    def citados(self, bloco):
+        return [b for b in BOTOES if b in bloco["descricao"] and b != bloco["botao"]]
+
+    def test_sonda_espera_a_evolution_subir(self):
+        evolution_local.preparar(self.projeto, self.base)
+        s = self.sistema(tem=(), evolution_no_ar=False)
+        original, sondas = s.http, []
+
+        def http(url, tempo=5, cabecalhos=None):
+            if url.endswith("/instance/fetchInstances"):
+                sondas.append(url)
+                s.evolution_no_ar = len(sondas) >= 3   # responde na 3ª sondagem (subindo depois de reiniciar)
+            return original(url, tempo, cabecalhos)
+        s.http = http
+        e = self.rodar(s, so_servico=True)
+        self.assertEqual(e["estado"], "feito", e)
+        self.assertEqual(len(sondas), 3)
+        self.assertEqual(len(s.soltos), 1)
+        self.assertEqual(s.chamadas, [])
+
+    def test_sonda_que_nunca_responde_falha_depois_da_espera(self):
+        evolution_local.preparar(self.projeto, self.base)
+        s = self.sistema(tem=(), evolution_no_ar=False)
+        p = self.rodar(s, so_servico=True)["passos"][0]
+        self.assertEqual(p["estado"], "falhou")
+        self.assertGreaterEqual(s.agora, preparo_evolution.ESPERA_SONDA)
+        self.assertEqual(s.soltos, [])
+
+    def test_tela_depois_da_falha_na_sonda_mostra_preparar(self):
+        evolution_local.preparar(self.projeto, self.base)
+        self.rodar(self.sistema(tem=(), evolution_no_ar=False), so_servico=True)   # a mensagem real do motor
+        escuta = socket.socket()
+        self.addCleanup(escuta.close)
+        escuta.bind(("127.0.0.1", 0))
+        escuta.listen(1)                                  # a porta abre, mas a Evolution não responde
+        caminho = preparo.caminhos(self.pasta)["estado"]
+        with open(caminho, encoding="utf-8") as f:
+            estado = json.load(f)
+        estado["portas"]["evolution"] = escuta.getsockname()[1]
+        travas.gravar_segredo(caminho, json.dumps(estado))
+        mod = carregar_modulo()
+        mod.preparar._lancados.clear()
+        blocos = mod.montar({"raiz": self.projeto, "config": {"porta": 8790}}, base=self.base)["abas"][0]["blocos"]
+        self.assertEqual([(b["acao"], b["botao"]) for b in blocos], [("preparar_tudo", "Tentar de novo")])
+        self.assertEqual(self.citados(blocos[0]), [])
+
+    def test_falha_ao_comecar_nao_cita_botao_ausente(self):
+        mod = carregar_modulo()
+
+        class NaoSolta(SistemaFalso):
+            def soltar(self, args, caminho_log, pasta=None):
+                raise PermissionError(13, "Permission denied")
+        estado = preparo.iniciar(preparo.argumentos(["iniciar", "--projeto", self.projeto, "--base", self.base]),
+                                 NaoSolta())
+        for bloco in (mod.preparar.bloco_preparar(estado), mod.preparar.bloco_ligar(estado)):
+            self.assertEqual(self.citados(bloco), [], bloco)
+        with mock.patch.dict(os.environ, EXTERNA):
+            blocos = mod.montar({"raiz": self.projeto, "config": {"porta": 8790}}, base=self.base)["abas"][0]["blocos"]
+        self.assertEqual([self.citados(b) for b in blocos], [[]])
 
 
 if __name__ == "__main__":

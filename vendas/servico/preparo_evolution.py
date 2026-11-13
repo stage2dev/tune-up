@@ -16,6 +16,7 @@ TEMPO_UP = 600
 TEMPO_PS = 60
 ESPERA_EVOLUTION = 300
 ESPERA_SERVICO = 60
+ESPERA_SONDA = 90   # --so-servico: depois de reiniciar, a porta abre antes de a Evolution responder
 
 
 LISTAS = {"servico": evolution_local.PORTAS_SERVICO, "evolution": evolution_local.PORTAS_EVOLUTION}
@@ -134,18 +135,21 @@ def _reiniciar(ex):
 
 
 def _sondar_antes(ex):
-    """--so-servico: confere (só leitura) se a Evolution responde antes de ligar o serviço. None = responde."""
+    """--so-servico: confere (só leitura) se a Evolution responde antes de ligar o serviço, esperando até
+    ESPERA_SONDA s (ela pode ainda estar subindo). None = responde. Os textos dizem só "clique de novo": a tela mostra
+    "Ligar o serviço" (Evolution de outro endereço) ou "Tentar de novo" (o preparo completo)."""
     if ex.externa:
         url, chave = ex.sistema.var(VAR_URL), ex.sistema.var(VAR_CHAVE) or ""
-        if _sondar(ex, url, chave)[1]:
-            return None
+    else:
+        ambiente = evolution_local.ler_ambiente(ex.pasta_dados)
+        url, chave = ambiente.get(VAR_URL), ambiente.get(VAR_CHAVE) or ""
+    if url and esperar(ex, lambda: _sondar(ex, url, chave)[1], ESPERA_SONDA, "a Evolution responder"):
+        return None
+    if ex.externa:
         return falhou("A Evolution do endereço configurado (VENDAS_EVOLUTION_URL) não respondeu com a chave "
                       "configurada (VENDAS_EVOLUTION_CHAVE). Confira os dois e clique de novo.")
-    ambiente = evolution_local.ler_ambiente(ex.pasta_dados)
-    if ambiente.get(VAR_URL) and _sondar(ex, ambiente[VAR_URL], ambiente.get(VAR_CHAVE) or "")[1]:
-        return None
-    return falhou("O WhatsApp deste computador não está respondendo, então não liguei o serviço. Clique em "
-                  "\"Preparar tudo\": ele liga o que faltar.")
+    return falhou("O WhatsApp deste computador não respondeu em %d s, então não liguei o serviço. Clique de novo: "
+                  "o preparo completo liga o que faltar." % ESPERA_SONDA)
 
 
 def servico_rodando(pasta_dados):

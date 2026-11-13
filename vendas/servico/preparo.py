@@ -242,7 +242,7 @@ def iniciar(args, sistema=None):
         processo = sistema.soltar(argv, caminhos(pasta_dados)["log"])
     except OSError:
         return _nao_comecou(pasta_dados, "O preparo não começou: este computador não deixou abrir o processo. "
-                                         "Clique em Tentar de novo.")
+                                         "Clique de novo.")
     id_antes = (antes or {}).get("id")
     inicio = sistema.relogio()
     while sistema.relogio() - inicio < ESPERA_INICIAR:
@@ -255,8 +255,8 @@ def iniciar(args, sistema=None):
     atual = ler_estado(pasta_dados)
     if atual and atual.get("id") != id_antes:
         return atual
-    return _nao_comecou(pasta_dados, "O preparo não começou (o processo saiu antes do primeiro passo). Clique em "
-                                     "Tentar de novo.")
+    return _nao_comecou(pasta_dados, "O preparo não começou (o processo saiu antes do primeiro passo). Clique "
+                                     "de novo.")
 
 
 def estado(args, sistema=None):
