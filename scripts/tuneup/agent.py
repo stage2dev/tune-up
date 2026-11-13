@@ -5,7 +5,7 @@ import re
 from .mensagens import msg
 from .sessao import decisao_pre, log_erro
 from .usuario import ler_usuario, modelo_proibido, sem_modelo
-from .workflow import RE_WF_TOKEN, workflow_generico
+from .workflow import analisar, contagem, tokens, workflow_generico
 
 # ---------------------------------------------------------------- agent
 
@@ -25,14 +25,13 @@ LIMITE_SCRIPT = 512 * 1024
 RE_WF_ANTES = re.compile(r"model[\"']?\s*[:=]\s*$", re.I)
 
 
-def workflow_proibido(script, lista):
+def workflow_proibido(script, lista, toks=None):
     """Forbidden name (token boundary) in a string literal. Passes: comments, and prose
     (3+ words: no model id has spaces) that is not the value of `model:`."""
-    for m in RE_WF_TOKEN.finditer(script):
-        t = m.group(0)
+    for ini, fim, t in tokens(script) if toks is None else toks:
         if t.startswith("/"):
             continue
-        if len(t[1:-1].split()) >= 3 and not RE_WF_ANTES.search(script[max(0, m.start() - 40):m.start()]):
+        if len(t[1:-1].split()) >= 3 and not RE_WF_ANTES.search(script[max(0, ini - 40):ini]):
             continue
         f = modelo_proibido(t[1:-1], lista)
         if f:
@@ -173,17 +172,20 @@ def ev_agent(d, cfg):
                                        " scriptPath unreadable: pass the script inline or write a literal "
                                        "model on every agent() call.")
                 return None
-        f = workflow_proibido(script, lista)
+        an = analisar(script) if len(script.encode("utf-8", "ignore")) <= LIMITE_SCRIPT else None
+        f = workflow_proibido(script, lista, an and an["toks"])
         if f:
             return decisao_pre("bloquear", msg("modelo_proibido", f))
-        # agent(...) without model inherits the session model, as in Agent
-        if len(re.findall(r"\bagent\s*\(", script)) > len(re.findall(r"\bmodel[\"']?\s*[:=]", script)):
+        # agent(...) without model inherits the session model, as in Agent; too big: counted raw, as before
+        chamadas, modelos = contagem(an) if an else (len(re.findall(r"\bagent\s*\(", script)),
+                                                     len(re.findall(r"\bmodel[\"']?\s*[:=]", script)))
+        if chamadas > modelos:
             sm = modelo_da_sessao(d.get("transcript_path"))
             f = modelo_proibido(sm, lista) if sm else None
             if f:
                 return decisao_pre("bloquear", msg("modelo_proibido_sessao", f))
         modo = cfg.get("workflow_generic")
-        linhas = workflow_generico(script) if modo != "off" else []
+        linhas = workflow_generico(script, an) if modo != "off" and an else []
         if linhas:
             return decisao_pre("bloquear" if modo == "block" else "avisar", msg(
                 "workflow_generico", len(linhas), ", ".join(str(n) for n in linhas[:5])))

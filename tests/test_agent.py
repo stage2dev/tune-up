@@ -279,9 +279,6 @@ class TestWorkflowEFrontmatter(AgentBase):
         self.assertEqual(s["hookSpecificOutput"]["updatedInput"]["model"], "haiku")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class TestWorkflowGenerico(AgentBase):
     """A2: agent() without an explicit agentType warns (or blocks, by config)."""
@@ -385,3 +382,54 @@ class TestWorkflowGenerico(AgentBase):
         self.assertEqual(self.decisao(self.wf({"scriptPath": "wf.js"})), "avisar")
         self.assertIsNone(self.decisao(self.wf({"scriptPath": "nao-existe.js"})))  # unreadable: as before
         self.assertEqual(self.decisao(self.wf({"scriptPath": "nao-existe.js"}, "claude-fable-5")), "bloquear")
+
+    def test_f1_linear_em_scripts_grandes(self):
+        import time
+        from tuneup.workflow import workflow_generico
+        for sc in ["agent(" * 80000, "/*" + "agent('x')\n" * 45000]:  # ~480-500 KB each
+            t = time.time()
+            workflow_generico(sc)
+            self.assertLess(time.time() - t, 3)
+
+    def test_f1_scanner_igual_a_regex(self):
+        import random
+        import re
+        from tuneup.workflow import tokens
+        rx = re.compile(r"//[^\n]*|/\*.*?\*/|'(?:\\.|[^'\\\n])*'|\"(?:\\.|[^\"\\\n])*\"|`(?:\\.|[^`\\])*`", re.S)
+        rnd = random.Random(7)
+        for _ in range(20000):
+            sc = "".join(rnd.choice("/*'\"`\\\nab ${}") for _ in range(rnd.randint(0, 20)))
+            self.assertEqual([(m.start(), m.end(), m.group(0)) for m in rx.finditer(sc)], tokens(sc))
+
+    def test_f2_agent_type_so_no_primeiro_nivel_e_o_ultimo(self):
+        for sc in ["agent('x', {schema: {properties: {agentType: {type: 'string'}}}})",
+                   "agent('x', {agentType: 'tune-up:m', agentType: 'general-purpose'})",
+                   "agent({prompt: 'x', meta: {agentType: 'tune-up:m'}})"]:
+            with self.subTest(sc=sc):
+                self.assertEqual(self.decisao(self.wf(sc)), "avisar")
+        self.assertIsNone(self.decisao(self.wf("agent('x', {agentType: 'general-purpose', agentType: 'tune-up:m'})")))
+
+    def test_f3_definicao_parametro_local_e_chave_computada(self):
+        for sc in ["const o = { agent(p) { return p } }", "class A { async agent(p) { return p } }",
+                   "const f = agent => agent(1)", "function run(a, agent) { return agent('x') }",
+                   "agent('x', {['agentType']: 'tune-up:mapper'})", "agent('x', {[k]: 'v'})"]:
+            with self.subTest(sc=sc):
+                self.assertIsNone(self.decisao(self.wf(sc)))
+        self.assertEqual(self.decisao(self.wf("agent('x', {['agentType']: 'general-purpose'})")), "avisar")
+
+    def test_f4_contagem_ignora_comentario_e_string(self):
+        self.config("off", confiar=True)
+        fable = "claude-fable-5"
+        # a comment mentioning agent() no longer makes the count exceed the model keys
+        self.assertIsNone(self.decisao(self.wf("// Every agent() carries a model\nagent('x', {model: 'opus'})", fable)))
+        self.assertIsNone(self.decisao(self.wf("function agent(p) { return p }\nagent('x', {model: 'opus'})", fable)))
+        # a model: only in a comment or only inside a string does not cover a call
+        for sc in ["// model: 'opus'\nagent('x')", "/* model = 'opus' */ agent('x')",
+                   "agent('x', {prompt: 'model: opus'})", "agent(`${agent('y')}`, {model: 'opus'})"]:
+            with self.subTest(sc=sc):
+                self.assertEqual(self.decisao(self.wf(sc, fable)), "bloquear")
+        self.assertIsNone(self.decisao(self.wf("agent('x', {\"model\": 'opus'})", fable)))
+
+
+if __name__ == "__main__":
+    unittest.main()
