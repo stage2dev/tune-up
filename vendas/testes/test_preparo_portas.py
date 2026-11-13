@@ -32,6 +32,7 @@ class TestePortas(unittest.TestCase):
         self.pasta = pasta.caminho_da_pasta(self.projeto, self.base)
 
     def rodar(self, s):
+        self.addCleanup(lambda: self.assertEqual(s.inesperados, []))
         return preparo.Execucao(self.projeto, self.base, sistema=s, avisar=mudo).rodar()
 
     def passo(self, estado, nome):

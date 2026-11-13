@@ -1,5 +1,7 @@
 """Sistema falso para os testes do preparo: nenhum processo, Docker, rede ou sono de verdade. Simula um mundo com
-docker/compose/colima/brew/winget e uma Evolution e um serviço que respondem (ou não) em 127.0.0.1."""
+docker/compose/colima/brew/winget e uma Evolution e um serviço que respondem (ou não) em 127.0.0.1. Estrito: um
+comando que ele não conhece (argv exato do compose: `-f <compose.yml>` e pull, up -d ou ps) vai para `inesperados`
+e levanta AssertionError."""
 import json
 import os
 
@@ -41,6 +43,8 @@ class SistemaFalso(Sistema):
         self.chave_aceita = None          # None = a Evolution aceita qualquer apikey não vazia
         self.pedidos = []                 # (url, cabeçalhos) de cada GET
         self.corpo_evolution = b"[]"      # o que a porta da Evolution devolve com 200
+        self.saida_ps = "NAME STATUS"     # o que `compose ps` imprime
+        self.inesperados = []             # comandos que nenhum teste previu (os testes conferem que fica vazio)
 
     # sistema
     def achar(self, nome):
@@ -68,15 +72,29 @@ class SistemaFalso(Sistema):
         if programa == "winget":
             self.tem.update({"docker"})
             return 0, "Successfully installed"
-        if "up" in args and "-d" in args:
+        resto = self._compose(args)
+        if resto == ["up", "-d"]:
             self.evolution_no_ar = self.evolution_sobe
             return 0, "Container api Started"
-        if "pull" in args:
+        if resto == ["pull"]:
             return 0, "Pulled"
-        if programa == "open":
+        if resto == ["ps"]:
+            return 0, self.saida_ps
+        if args == ["/usr/bin/open", "-a", "Docker"]:
             self.ligado = True
             return 0, ""
-        return 0, ""
+        self.inesperados.append(args)
+        raise AssertionError("comando inesperado no sistema falso: %r" % args)
+
+    @staticmethod
+    def _compose(args):
+        """O que vem depois de `<compose> -f <.../evolution/compose.yml>`, ou None se não é esse formato."""
+        for prefixo in (["/falso/bin/docker", "compose"], ["/falso/bin/docker-compose"]):
+            n = len(prefixo)
+            if args[:n] == prefixo and args[n:n + 1] == ["-f"] and len(args) > n + 2 \
+                    and os.path.isabs(args[n + 1]) and args[n + 1].endswith(os.path.join("evolution", "compose.yml")):
+                return args[n + 2:]
+        return None
 
     def soltar(self, args, caminho_log, pasta=None):
         self.soltos.append(list(args))

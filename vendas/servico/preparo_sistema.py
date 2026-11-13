@@ -2,6 +2,7 @@
 os testes trocarem por falsos. Comando = lista de argumentos com caminho absoluto, sem shell, com tempo limite."""
 import http.client
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -66,6 +67,15 @@ def falha_ao_comecar(motivo, momento=None):
     sem passos. A tela mostra o motivo e "Tentar de novo"."""
     return {"id": os.urandom(6).hex(), "pid": None, "estado": "falhou", "inicio": momento, "atualizado": momento,
             "fim": momento, "mensagem": motivo, "portas": {}, "passos": []}
+
+
+def sem_casa(texto):
+    """Troca a pasta pessoal por ~ (só onde ela termina numa barra, espaço, aspa ou no fim), para todo comando
+    mostrado ao dono."""
+    casa = os.path.expanduser("~")
+    if not texto or len(casa) < 2:
+        return texto
+    return re.sub(re.escape(casa) + r"(?=[\\/\s\"']|$)", "~", texto)
 
 
 def mascarar(texto, segredos):

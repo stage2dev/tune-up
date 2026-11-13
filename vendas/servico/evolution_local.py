@@ -77,7 +77,7 @@ def _gravar(caminho, texto, exclusivo):
         fd = os.open(alvo, flags, 0o600)
     except FileExistsError:
         if exclusivo:
-            raise JaPreparado("%s já existe; use --refazer para gerar uma chave nova" % caminho)
+            raise JaPreparado("%s já existe; não mexi nele" % caminho)
         os.remove(alvo)  # sobra de uma tentativa que caiu
         fd = os.open(alvo, flags, 0o600)
     try:
@@ -111,7 +111,7 @@ def preparar(raiz, base=None, porta_servico=PORTA_SERVICO, porta_evolution=PORTA
         os.chmod(destino, 0o700)
     env, compose = os.path.join(destino, ARQUIVO_ENV), os.path.join(destino, ARQUIVO_COMPOSE)
     if os.path.exists(env) and not refazer:
-        raise JaPreparado("%s já existe; use --refazer para gerar uma chave nova" % env)
+        raise JaPreparado("%s já existe; não mexi nele" % env)
     senha = None
     if os.path.exists(env) and not senha_nova:
         senha = (_ler_env(env) or {}).get("POSTGRES_PASSWORD")

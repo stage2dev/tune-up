@@ -22,7 +22,7 @@ import secrets  # noqa: E402
 
 from servico import evolution_local, pasta, preparo_docker, preparo_evolution, travas  # noqa: E402
 from servico.conectores.evolution import VAR_URL  # noqa: E402
-from servico.preparo_sistema import Sistema, falha_ao_comecar, falhou, feito, mascarar  # noqa: E402
+from servico.preparo_sistema import Sistema, falha_ao_comecar, falhou, feito, mascarar, sem_casa  # noqa: E402
 
 PASSOS = (
     ("docker_instalado", "Instalar o Docker", preparo_docker.docker_instalado),
@@ -161,6 +161,8 @@ class Execucao:
             except Exception as e:  # um erro inesperado vira falha do passo, nunca um preparo "rodando" para sempre
                 r = falhou("Erro inesperado neste passo.", ("%s: %s" % (type(e).__name__, e))[:300])
             registro.update({k: self._limpo(v) if isinstance(v, str) else v for k, v in r.items()})
+            if registro.get("comando"):
+                registro["comando"] = sem_casa(registro["comando"])   # comando mostrado: ~ no lugar da pasta pessoal
             self.registrar("%s: %s %s" % (nome, registro["estado"], registro["detalhe"] or ""))
             self.avisar("  %s: %s" % (registro["estado"], registro["mensagem"]), flush=True)
             if registro.get("comando"):

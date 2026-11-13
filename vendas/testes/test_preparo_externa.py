@@ -44,7 +44,9 @@ class Base(unittest.TestCase):
 
     def sistema(self, **k):
         k.setdefault("marca", os.path.basename(self.pasta))
-        return SistemaFalso(**k)
+        s = SistemaFalso(**k)
+        self.addCleanup(lambda: self.assertEqual(s.inesperados, []))
+        return s
 
     def rodar(self, s, so_servico=False):
         return preparo.Execucao(self.projeto, self.base, sistema=s, avisar=mudo, so_servico=so_servico).rodar()

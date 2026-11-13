@@ -121,7 +121,7 @@ def bloco_preparar(estado, pasta_dados=""):
         bloco.update(descricao="Falta um passo seu em \"%s\". %s" % (titulo, mensagem), botao="Já fiz, continuar")
         if passo.get("comando"):
             bloco["campos"] = [{"id": "comando", "rotulo": "Comando para copiar e colar num terminal",
-                                "tipo": "texto", "valor": str(passo["comando"])}]
+                                "tipo": "texto", "valor": sistema.sem_casa(str(passo["comando"]))}]
         return bloco
     bloco.update(descricao="O preparo parou em \"%s\". %s" % (titulo, mensagem), botao="Tentar de novo")
     return bloco

@@ -1,8 +1,7 @@
-"""Preparo, passos 3 a 5: arquivos da Evolution, Evolution no ar e serviço de Vendas ligado. Nunca usa --refazer,
+"""Preparo, passos 3 a 5: arquivos da Evolution, Evolution no ar e serviço de Vendas ligado. Nunca troca a chave,
 nunca mexe num .env que já existe, nunca faz `down`, nunca apaga volume, contêiner ou instância."""
 import json
 import os
-import shlex
 import sys
 import urllib.parse
 
@@ -12,10 +11,9 @@ from servico.preparo_docker import achar_docker
 from servico.preparo_sistema import dono, esperar, falhou, feito, ultimas
 
 SERVICO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "servico.py")
-EVOLUTION_LOCAL = os.path.join(os.path.dirname(SERVICO), "evolution_local.py")
-PYTHON = "python" if os.name == "nt" else "python3"
 TEMPO_PULL = 1800
 TEMPO_UP = 600
+TEMPO_PS = 60
 ESPERA_EVOLUTION = 300
 ESPERA_SERVICO = 60
 
@@ -47,9 +45,8 @@ def evolution_preparada(ex):
     env = evolution_local.caminho_env(ex.pasta_dados)
     if os.path.exists(env):
         if not evolution_local.ler_ambiente(ex.pasta_dados):
-            return dono("O arquivo de configuração da Evolution existe, mas está incompleto. Não mexi nele. Se quiser "
-                        "gerar uma chave nova, rode este comando num terminal e clique de novo.",
-                        "%s -B %s preparar --projeto %s --refazer" % (PYTHON, _citar(EVOLUTION_LOCAL), _citar(ex.raiz)))
+            return dono("O arquivo de configuração do WhatsApp existe, mas está incompleto. Não mexi nele, para não "
+                        "perder o que já está guardado. Peça ajuda a quem instalou o plugin (README, \"Fazer à mão\").")
         return feito("Os arquivos da Evolution já estavam prontos (não mexi neles).")
     porta_evolution = _porta(ex, ex.porta_evolution, "evolution")
     if porta_evolution is None:
@@ -64,10 +61,6 @@ def evolution_preparada(ex):
     except (ValueError, OSError, pasta.PastaRecusada) as e:
         return falhou("Não consegui preparar os arquivos da Evolution.", str(e))
     return feito("Preparei os arquivos da Evolution (porta %d em 127.0.0.1)." % porta_evolution)
-
-
-def _citar(caminho):
-    return '"%s"' % caminho if os.name == "nt" else shlex.quote(caminho)
 
 
 def _sondar(ex, url, chave):
@@ -122,6 +115,8 @@ def evolution_no_ar(ex):
         return falhou("O Docker não conseguiu ligar a Evolution. Veja o detalhe e clique de novo.", ultimas(saida))
     if esperar(ex, lambda: _sondar(ex, url, chave)[1], ESPERA_EVOLUTION, "a Evolution responder"):
         return feito("A Evolution está no ar em %s." % url)
+    _, saida = ex.sistema.rodar(compose + ["-f", arquivo, "ps"], TEMPO_PS, pasta_ev)   # só leitura: o estado de cada
+    ex.registrar("compose ps (fim):\n%s" % (ultimas(saida) or ""))                     # contêiner, mascarado no log
     return falhou("A Evolution não respondeu em %d minutos. Clique de novo; se repetir, veja o log do preparo."
                   % (ESPERA_EVOLUTION // 60), ultimas(saida))
 
@@ -154,14 +149,9 @@ def _sondar_antes(ex):
 
 
 def servico_rodando(pasta_dados):
-    """A trava do serviço ocupada = um serviço de Vendas está rodando para este projeto."""
-    trava = travas.TravaDoProcesso(pasta_dados)
-    try:
-        trava.pegar()
-    except travas.TravaOcupada:
-        return True
-    trava.soltar()
-    return False
+    """A trava do serviço ocupada = um serviço de Vendas está rodando para este projeto (só sonda: não a cria nem
+    muda a hora dela, que marca quando o serviço começou)."""
+    return travas.ocupada(pasta_dados)
 
 
 def _ler_final(caminho, n=15):

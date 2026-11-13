@@ -80,12 +80,11 @@ class Base(unittest.TestCase):
     def conexao(self, r=None):
         return (r or self.montar())["abas"][0]["blocos"]
 
-    def limpo(self, blocos, comando=None):
+    def limpo(self, blocos):
+        """Nada de caminho, log, chave ou saída crua em lugar nenhum dos blocos, o campo do comando incluído."""
         texto = json.dumps(blocos, ensure_ascii=False)
-        if comando:
-            texto = texto.replace(json.dumps(comando, ensure_ascii=False)[1:-1], "")
         for proibido in (self.pasta, self.base, self.tmp, "preparo.log", "preparo.json", CHAVE, CRU, "token",
-                         "progresso"):
+                         "progresso", os.path.expanduser("~") + os.sep, "--refazer"):
             self.assertNotIn(proibido, texto)
         return texto
 
@@ -125,7 +124,7 @@ class TesteBlocos(Base):
         self.assertEqual((b["acao"], b["botao"]), ("preparar_tudo", "Já fiz, continuar"))
         self.assertEqual([c["valor"] for c in b["campos"]], [comando])
         self.assertIn("Cole este comando", b["descricao"])
-        self.limpo(blocos, comando)
+        self.limpo(blocos)
 
     def test_falhou_motivo_e_tentar_de_novo(self):
         self.estado("falhou", self.passos(3, "falhou", mensagem="Não consegui baixar. Confira a internet."))
@@ -133,6 +132,13 @@ class TesteBlocos(Base):
         self.assertEqual((b["acao"], b["botao"], b["campos"]), ("preparar_tudo", "Tentar de novo", []))
         self.assertIn("Confira a internet", b["descricao"])
         self.limpo([b])
+
+    def test_comando_com_a_pasta_pessoal_sai_com_til(self):
+        comando = "%s/bin/colima start" % os.path.expanduser("~")
+        self.estado("precisa_do_dono", self.passos(1, "precisa_do_dono", comando=comando, mensagem="Rode isto."))
+        blocos = self.conexao()
+        self.assertEqual(blocos[0]["campos"][0]["valor"], "~/bin/colima start")
+        self.limpo(blocos)
 
     def test_mensagem_com_a_pasta_de_dados_sai_mascarada(self):
         self.estado("falhou", self.passos(2, "falhou", mensagem="Não gravei em %s/evolution." % self.pasta))
