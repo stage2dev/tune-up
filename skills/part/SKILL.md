@@ -21,9 +21,9 @@ You (main session, highest effort) coordinate and judge; you do not write the it
 |---|---|---|---|
 | Map / recheck lines | `tune-up:mapper` | haiku | medium |
 | Pick skills for an item | `tune-up:skill-finder` | haiku | medium |
-| Simple item (screen, text, simple route, test, doc) | `tune-up:executor-sonnet` | sonnet | medium |
-| Risky item (migration, trigger, access rules, RPC, worker, money, auth, external sending, concurrency) | `tune-up:executor-opus` | opus | medium |
-| Review the diff | `tune-up:reviewer-failures`, `tune-up:reviewer-database`, `tune-up:reviewer-security` | opus | high |
+| Item routed to sonnet by `rota` (simple: screen, text, test, doc) | `tune-up:executor-sonnet` | sonnet | medium |
+| Item routed to opus by `rota` (risky: migration, access rules, RPC, worker, money, auth, sending, concurrency; any doubt) | `tune-up:executor-opus` | opus | medium |
+| Review the diff (the reviewers `rota` lists) | `tune-up:reviewer-failures`, `tune-up:reviewer-database`, `tune-up:reviewer-security` | opus | high |
 | Definition of done | `tune-up:checker` | haiku | medium |
 | Edit goal/progress/docs | `tune-up:writer` | sonnet | medium |
 
@@ -40,6 +40,7 @@ You (main session, highest effort) coordinate and judge; you do not write the it
 - If you orchestrate with the Workflow tool, start from `${CLAUDE_PLUGIN_ROOT}/templates/workflow-template.js`.
 - Every `agent()` carries a literal `agentType` from the table above, plus `model` and `effort`. Never let an agent inherit the session model.
 - A generic agent (no `agentType`, or `general-purpose`) starts with about three times the context of a `tune-up:*` agent. Use one only for work that needs MCP tools, a browser or images, and mark the line above with `// tune-up: allow-generic <reason>`. The guard warns (or blocks, with `"workflow_generic": "block"` in the profile config) otherwise.
+- Each item's `reviewers` in the script args comes from `rota`; empty means `['failures','security']`.
 - Review loop in a script: at most 2 fix rounds per item; after each fix only the reviewers that rejected run again; CRITICAL/HIGH left after the review that follows the second fix -> `names.need_you`, never a third fix.
 - A `null` result or a "hit your ... limit" reply is an interrupted item: do not relaunch it and do not count it as done; check git before resuming.
 
@@ -57,11 +58,11 @@ You (main session, highest effort) coordinate and judge; you do not write the it
 
 ## Step 3 - One item at a time
 
-Build the work order from `${CLAUDE_PLUGIN_ROOT}/templates/work-order.md` and dispatch in background. "Skills to read" ALWAYS includes every entry of `info.pitfall_skills` whose `paths` globs match the absolute path of an owned file (worktree + path, no `:lines` suffix; `**/` also matches zero folders), with or without a catalog, plus the goal's "Skills"; the skill-finder (Step 2) only adds extras. A handoff whose json `skills_read` misses a matched pitfall skill: note it in progress and tell the reviewers, who get the same paths under PITFALLS TO READ. 1 item (or items in the same files). `maxTurns` 220; past ~150 steps the executor stops and reports. Database item: the executor proves it on a local database, never production. The executor commits its own item on the Part branch with `git add` by name; push and PR go at the end through `/tune-up:ship`, only with the request above.
+Route: run `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py rota --files <the item's owned files>` and follow `executor`; after a failed Sonnet attempt rerun with `--failed sonnet`. You may go UP from the route on your judgement, never down; note any divergence and its reason in progress. Build the work order from `${CLAUDE_PLUGIN_ROOT}/templates/work-order.md` (it carries the `ROUTE:`) and dispatch in background. "Skills to read" ALWAYS includes every entry of `info.pitfall_skills` whose `paths` globs match the absolute path of an owned file (worktree + path, no `:lines` suffix; `**/` also matches zero folders), with or without a catalog, plus the goal's "Skills"; the skill-finder (Step 2) only adds extras. A handoff whose json `skills_read` misses a matched pitfall skill: note it in progress and tell the reviewers, who get the same paths under PITFALLS TO READ. 1 item (or items in the same files). `maxTurns` 220; past ~150 steps the executor stops and reports. Database item: the executor proves it on a local database, never production. The executor commits its own item on the Part branch with `git add` by name; push and PR go at the end through `/tune-up:ship`, only with the request above.
 
 ## Step 4 - Item review
 
-- Up to 3 reviewers (opus, high), ALL in ONE message, receiving ONLY the item's diff + criterion C + `PITFALLS TO READ` (the same absolute paths as the executor's pitfall skills): `tune-up:reviewer-failures` always; `tune-up:reviewer-database` for migration/access rules/RPC/trigger/SQL; `tune-up:reviewer-security` for auth, personal data, payment, webhook or sending.
+- After the executor commits, write `git diff <base>..<commit>` (no path filter) to `<scratchpad>/diff-item-N.patch` and rerun `rota` with `--diff-file` on it. Call the reviewers it lists (failures always; never fewer than the route), opus, high, ALL in ONE message, each receiving the patch path + criterion C + `PITFALLS TO READ` (the same absolute paths as the executor's pitfall skills).
 - Reviewers end with a fenced json block `{"verdict","findings":[{"sev","file","line","introduced","proof","title"}]}` (proof: observed|read|suspected) and the last line `Verdict: ...`. Route by the json: `introduced` and sev CRITICAL/HIGH goes back; the rest goes to the later document. Missing or invalid json: ask again once.
 - All CRITICAL/HIGH from all reviewers become ONE fix round: a NEW executor gets the ORIGINAL order + the findings + the item's cumulative diff (never SendMessage to the old one). A MEDIUM of 1-3 obvious lines may ride along, never alone.
 - MEDIUM, LOW and pre-existing -> the phase `names.later` document (1 line: file:line, finding, reviewer).
