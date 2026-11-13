@@ -74,7 +74,7 @@
       "permitir": [
         "Edit({trabalho}/**)"
       ],
-      "prompt": "/tune-up-studio:post Pasta de trabalho: {trabalho}. Formato: {formato}. Quadros: {quadros}. Objetivo: {objetivo}. Briefing no arquivo {briefing}",
+      "prompt": "/tune-up:post Pasta de trabalho: {trabalho}. Formato: {formato}. Quadros: {quadros}. Objetivo: {objetivo}. Briefing no arquivo {briefing}",
       "nome_sessao": "Post: {formato}",
       "params": [
         {
@@ -207,7 +207,7 @@
       "permitir": [
         "Edit({trabalho}/**)"
       ],
-      "prompt": "/tune-up-studio:video Pasta de trabalho: {trabalho}. Motor: reserva. Duracao: {duracao}. Objetivo: {objetivo}. Estilo: {estilo}. Briefing no arquivo {briefing}",
+      "prompt": "/tune-up:video Pasta de trabalho: {trabalho}. Motor: reserva. Duracao: {duracao}. Objetivo: {objetivo}. Estilo: {estilo}. Briefing no arquivo {briefing}",
       "nome_sessao": "Vídeo: {duracao} s",
       "params": [
         {
@@ -343,7 +343,7 @@
       "permitir": [
         "Edit({trabalho}/**)"
       ],
-      "prompt": "/tune-up-studio:video Pasta de trabalho: {trabalho}. Motor: hyperframes. Duracao: {duracao}. Objetivo: {objetivo}. Estilo: {estilo}. Briefing no arquivo {briefing}",
+      "prompt": "/tune-up:video Pasta de trabalho: {trabalho}. Motor: hyperframes. Duracao: {duracao}. Objetivo: {objetivo}. Estilo: {estilo}. Briefing no arquivo {briefing}",
       "nome_sessao": "Vídeo: {duracao} s",
       "params": [
         {
@@ -464,7 +464,7 @@
       "permitir": [
         "Edit({trabalho}/**)"
       ],
-      "prompt": "/tune-up-studio:anuncio Pasta de trabalho: {trabalho}. Plataforma: {plataforma}. URL: {url}. Briefing no arquivo {briefing}",
+      "prompt": "/tune-up:anuncio Pasta de trabalho: {trabalho}. Plataforma: {plataforma}. URL: {url}. Briefing no arquivo {briefing}",
       "nome_sessao": "Anúncio: {plataforma}",
       "params": [
         {

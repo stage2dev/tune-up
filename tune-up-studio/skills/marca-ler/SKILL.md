@@ -1,5 +1,6 @@
 ---
 name: marca-ler
+disable-model-invocation: true
 description: "Reads the project's brand (marca.json) and says whether the owner approved it. Read-only: never approves, edits or writes anything. Use on: read the brand, is the brand approved, ler marca, marca aprovada."
 allowed-tools: Read
 ---

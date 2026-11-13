@@ -12,7 +12,7 @@ The reel was built, rendered and looked at frame by frame for a garage, a pet sh
 - The motion is the studio engine (JavaScript, no library, no network), pasted whole by the script.
 
 ## Styles (`"estilo"` in `peca.json`: the file name)
-The style decides scene 2, the device that builds itself. Take the `Estilo` of the prompt; when it is `a IA escolhe`, pick by this table from the briefing (never the style of the piece before it when you know it). Then Read `${CLAUDE_PLUGIN_ROOT}/referencias/estilos-video/<file>.md`, that one file only: it has the slots of scene 2, the storyboard beat by beat and what never to do.
+The style decides scene 2, the device that builds itself. Take the `Estilo` of the prompt; when it is `a IA escolhe`, pick by this table from the briefing (never the style of the piece before it when you know it). Then Read `${CLAUDE_PLUGIN_ROOT}/tune-up-studio/referencias/estilos-video/<file>.md`, that one file only: it has the slots of scene 2, the storyboard beat by beat and what never to do.
 
 | `Estilo` of the prompt | file (`estilo`) | scene 2 | pick it when the briefing |
 |---|---|---|---|
@@ -53,7 +53,7 @@ Pick the theme by the hook: a question about a problem opens dark (`noite`, `tin
 Mold (a barber shop, invented): `{"estilo": "produto-em-destaque", "gancho": {"titulo": "Barba por fazer", "destaque": "na sexta?"}, "rampa": {"titulo": "Corte e barba juntos", "apoio": "em 50 minutos"}, "oferta": {"nome": "Combo da sexta", "valor": "R$ 70", "prova": "com hora marcada"}, "final": {"titulo": "Garanta seu horário", "condicao": "só às sextas", "contato": "@barbearia.exemplo", "canal": "instagram"}, "heroi_topo": 120}`
 
 ## Run it
-`python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/montar.py --tipo video --peca peca.json --heroi heroi.svg --out fonte --duracao D`. It prints one line per scene with the sizes it chose and the variant, or, with exit 1, the one thing to fix (a slot too long, too many words in a scene, a hero with no change).
+`python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/montar.py --tipo video --peca peca.json --heroi heroi.svg --out fonte --duracao D`. It prints one line per scene with the sizes it chose and the variant, or, with exit 1, the one thing to fix (a slot too long, too many words in a scene, a hero with no change).
 
 | D | style | `--tempos` (reserve) | slides `--at` (85% of each scene) | look `--at` (0, then 25% and 75% of each scene) |
 |---|---|---|---|---|

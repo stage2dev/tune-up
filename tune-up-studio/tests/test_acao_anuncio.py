@@ -73,7 +73,7 @@ class AdAction(unittest.TestCase):
         self.assertEqual((self.acao["modelos"], self.acao["esforco"]), (["opus"], "medium"))
 
     def test_prompt_and_params(self):
-        self.assertTrue(self.acao["_prompt"].startswith("/tune-up-studio:anuncio "))
+        self.assertTrue(self.acao["_prompt"].startswith("/tune-up:anuncio "))
         for marker in ("{trabalho}", "{briefing}", "{plataforma}", "{url}"):
             self.assertIn(marker, self.acao["_prompt"])
         p = {x["nome"]: x for x in self.acao["params"]}

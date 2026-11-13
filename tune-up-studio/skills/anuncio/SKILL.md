@@ -1,7 +1,8 @@
 ---
 name: anuncio
+disable-model-invocation: true
 description: "Makes a hook-first, business-oriented ad from a briefing, using only the owner-approved brand: one master image plus the aspect-ratio adaptations the platform needs, text variations inside the platform limits, and an import sheet with everything Paused (Google Ads Editor CSV, or an experimental Meta sheet). Publishes nothing and calls no ad API. Runs unattended from the panel action estudio.anuncio. Use on: anúncio, anuncio, ad, Google Ads, Meta Ads."
-allowed-tools: Read, Bash(${CLAUDE_PLUGIN_ROOT}/node/node_modules/.bin/hyperframes *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/qa_imagem.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/fontes.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/fotos.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/anuncio.py *)
+allowed-tools: Read, Bash(${CLAUDE_PLUGIN_ROOT}/node/node_modules/.bin/hyperframes *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/qa_imagem.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/fontes.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/fotos.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/anuncio.py *)
 ---
 
 # Ad (images, texts and a paused import sheet)
@@ -12,13 +13,13 @@ Nothing is published. Never call an ad platform, never write a sheet by hand: th
 
 The prompt gives: the working folder (`{trabalho}`, your current folder), `Plataforma` (`google` or `meta`, called `P` below), `URL` (the landing page) and the briefing file. Write only inside the working folder. Use relative paths made of letters, digits, `_`, `.` and `/` only (no `-`, no `..`).
 
-`AN` = `python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/anuncio.py`. `W` = the absolute path of the working folder.
+`AN` = `python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/anuncio.py`. `W` = the absolute path of the working folder.
 
 ## 1. Plan
 
 1. Read the briefing file named in the prompt. The scripts read the facts only from `entrada.md` in the working folder (the panel writes the briefing there): if the prompt names another file, Write its exact text to `entrada.md` first. Without it `AN --exportar` and `AN --final` fail.
 2. Run `AN --plano P`. It prints the pieces (`a1` is the master, the next ones are the adaptations), each with `largura`, `altura` and `nome`, and the text limits: for each field `[min items, max items, max characters]`.
-3. Read once: `${CLAUDE_PLUGIN_ROOT}/referencias/ganchos.md` and `checklist-atencao.md` (same folder); for Meta pieces also the *Arrangements* section of `arquetipos-post.md` and `recursos-visuais.md`. They hold the hook families, the regulated-niche rules, the self-check and the visual devices; this file does not repeat them.
+3. Read once: `${CLAUDE_PLUGIN_ROOT}/tune-up-studio/referencias/ganchos.md` and `checklist-atencao.md` (same folder); for Meta pieces also the *Arrangements* section of `arquetipos-post.md` and `recursos-visuais.md`. They hold the hook families, the regulated-niche rules, the self-check and the visual devices; this file does not repeat them.
 
 Ad angles (each variation takes one; pt-BR molds from invented businesses):
 
@@ -37,9 +38,9 @@ Google RSA mix: 3-4 headlines with benefit or keyword, 2-3 proof (only with proo
 
 ## 2. Brand (read-only, as the `marca-ler` skill)
 
-Same as the `post` skill: read `<root>/.tune-up/estudio/marca/marca.json` (root = the working folder path cut right before `/.tune-up/`), use only `campos` colors and fonts, run `python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/fontes.py --trabalho W` once and paste every printed line at the top of each piece's `<style>`. Also read `campos.nome`, `campos.descricao` and the top-level `tom.valor` (voice). Contrast comes from a script, never from you: run `python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/qa_imagem.py --pares W` once and use only the color pairs it prints (text 4.5:1 or more; a headline of 88 px or more may use a pair of 3:1 or more). Meta only (a Google piece carries no logo): an `.svg` logo in `<root>/.tune-up/estudio/marca/assets/`: Read it and Write the same text to `a<N>/fonte/assets/logo.svg`; a PNG, JPEG or WebP logo comes only from `fotos.py --logo`; no logo file: leave it out and say so in `resultado.md`. Never write in the brand folder.
+Same as the `post` skill: read `<root>/.tune-up/estudio/marca/marca.json` (root = the working folder path cut right before `/.tune-up/`), use only `campos` colors and fonts, run `python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/fontes.py --trabalho W` once and paste every printed line at the top of each piece's `<style>`. Also read `campos.nome`, `campos.descricao` and the top-level `tom.valor` (voice). Contrast comes from a script, never from you: run `python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/qa_imagem.py --pares W` once and use only the color pairs it prints (text 4.5:1 or more; a headline of 88 px or more may use a pair of 3:1 or more). Meta only (a Google piece carries no logo): an `.svg` logo in `<root>/.tune-up/estudio/marca/assets/`: Read it and Write the same text to `a<N>/fonte/assets/logo.svg`; a PNG, JPEG or WebP logo comes only from `fotos.py --logo`; no logo file: leave it out and say so in `resultado.md`. Never write in the brand folder.
 
-Photos: when `marca.json` has a non-empty `fotos` list, images come only from `python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/fotos.py --trabalho W --para a<N>/fonte` (Meta: add `--logo`, up to 2 photos; Google: add `--quantas 1`, never `--logo`). It copies them as `assets/foto1.<ext>` (the main photo), `assets/foto2.<ext>` and prints one line per file: use exactly those names. Never pick, read or copy an image yourself, and never use an image made by AI, drawn to look like a photo, or from anywhere else.
+Photos: when `marca.json` has a non-empty `fotos` list, images come only from `python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/fotos.py --trabalho W --para a<N>/fonte` (Meta: add `--logo`, up to 2 photos; Google: add `--quantas 1`, never `--logo`). It copies them as `assets/foto1.<ext>` (the main photo), `assets/foto2.<ext>` and prints one line per file: use exactly those names. Never pick, read or copy an image yourself, and never use an image made by AI, drawn to look like a photo, or from anywhere else.
 
 ## 3. Strategy
 
@@ -95,7 +96,7 @@ Per piece (`HF` = `${CLAUDE_PLUGIN_ROOT}/node/node_modules/.bin/hyperframes`, ab
 
 1. `HF snapshot a<N>/fonte --at 0 --no-end -o a<N>/snap` -> `a<N>/snap/frame-00-at-0s.png`.
 2. `HF check a<N>/fonte --json --strict`. Do not copy its output anywhere.
-3. `python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/qa_imagem.py --source a<N>/fonte --png W/a<N>/snap/frame-00-at-0s.png --width <largura> --height <altura> --out a<N>/qa.json`. Exit 0 = green. Never use `--formato` here. The "no text" (Google) and "safe zone" (9:16) rules are checked by `AN --final`, not here.
+3. `python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/qa_imagem.py --source a<N>/fonte --png W/a<N>/snap/frame-00-at-0s.png --width <largura> --height <altura> --out a<N>/qa.json`. Exit 0 = green. Never use `--formato` here. The "no text" (Google) and "safe zone" (9:16) rules are checked by `AN --final`, not here.
 
 Fix rounds: if the QA is not green, read `a<N>/qa.json`, edit `a<N>/fonte/index.html` and redo steps 1 to 3. At most 2 fix rounds per piece. Never silence a check; never write inside `.hyperframes/`. A `snapshot` check with `Fonts failed` means the brand font is not on this machine: do not swap it and do not spend fix rounds on it.
 

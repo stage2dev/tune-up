@@ -69,7 +69,7 @@ class PostAction(unittest.TestCase):
         self.assertEqual((self.acao["modelos"], self.acao["esforco"]), (["opus"], "medium"))
 
     def test_prompt_calls_the_skill_with_work_folder_and_briefing_file(self):
-        self.assertTrue(self.acao["_prompt"].startswith("/tune-up-studio:post "))
+        self.assertTrue(self.acao["_prompt"].startswith("/tune-up:post "))
         for marker in ("{trabalho}", "{briefing}", "{formato}", "{quadros}", "{objetivo}"):
             self.assertIn(marker, self.acao["_prompt"])
         self.assertIn("Objetivo: {objetivo}. Briefing no arquivo {briefing}", self.acao["_prompt"])
