@@ -2,7 +2,6 @@
 os testes trocarem por falsos. Comando = lista de argumentos com caminho absoluto, sem shell, com tempo limite."""
 import http.client
 import os
-import shutil
 import socket
 import subprocess
 import sys
@@ -14,6 +13,30 @@ EXTRAS_POSIX = ("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr
                 "/Applications/Docker.app/Contents/Resources/bin")  # CLI do Docker Desktop no Mac, sem link
 INTERVALO_S = 3
 LINHAS_FINAIS = 15
+# Ambiente dos processos filhos do preparo (brew, colima, docker, winget e o python do serviço): SÓ estas variáveis
+# passam, nunca o ambiente inteiro do terminal ou do painel (chaves de API, tokens). Nomes sem caixa (o Windows não
+# distingue). Esta é a única lista; o README aponta para ela.
+AMBIENTE_PERMITIDO = (
+    "PATH", "PATHEXT", "HOME", "USER", "LOGNAME", "LANG", "TMPDIR", "TEMP", "TMP", "XDG_DATA_HOME", "XDG_RUNTIME_DIR",
+    "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "APPDATA", "LOCALAPPDATA", "PROGRAMFILES", "PROGRAMDATA",
+    "USERPROFILE", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG",
+    "VENDAS_EVOLUTION_URL", "VENDAS_EVOLUTION_CHAVE", "VENDAS_OPENAI_URL", "VENDAS_PLACES_URL",
+    "VENDAS_ELEVENLABS_URL")
+AMBIENTE_PREFIXOS = ("LC_", "HOMEBREW_")
+
+
+def ambiente_permitido(ambiente):
+    """Cópia de `ambiente` só com as variáveis de AMBIENTE_PERMITIDO e dos prefixos AMBIENTE_PREFIXOS."""
+    return {k: v for k, v in ambiente.items()
+            if k.upper() in AMBIENTE_PERMITIDO or k.upper().startswith(AMBIENTE_PREFIXOS)}
+
+
+def _var(ambiente, nome):
+    """Valor de `nome` sem olhar a caixa (no Windows, os.environ guarda PROGRAMFILES, não ProgramFiles)."""
+    for k, v in ambiente.items():
+        if k.upper() == nome.upper():
+            return v
+    return None
 
 
 def resultado(estado, mensagem, comando=None, detalhe=None):
@@ -59,8 +82,8 @@ def _texto(dado):
 
 
 def extras_windows(ambiente):
-    arquivos = ambiente.get("ProgramFiles") or r"C:\Program Files"
-    local = ambiente.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local")
+    arquivos = _var(ambiente, "ProgramFiles") or r"C:\Program Files"
+    local = _var(ambiente, "LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local")
     return (os.path.join(arquivos, "Docker", "Docker", "resources", "bin"),
             os.path.join(local, "Microsoft", "WindowsApps"))
 
@@ -75,13 +98,17 @@ class Sistema:
 
     def __init__(self, plataforma=None, caminho=None, ambiente=None):
         self.plataforma = plataforma or sys.platform
-        amb = dict(os.environ if ambiente is None else ambiente)
+        amb = ambiente_permitido(os.environ if ambiente is None else ambiente)
         if caminho is None:
-            atuais = [p for p in amb.get("PATH", "").split(os.pathsep) if p]
+            atuais = [p for p in (_var(amb, "PATH") or "").split(os.pathsep) if p]
             extras = extras_windows(amb) if self.windows else EXTRAS_POSIX
             caminho = os.pathsep.join(atuais + [e for e in extras if e not in atuais])
         self.caminho = caminho
+        for k in [k for k in amb if k.upper() == "PATH"]:
+            del amb[k]
         amb["PATH"] = caminho
+        if self.windows:   # um filho nunca acha programa no diretório atual
+            amb["NoDefaultCurrentDirectoryInExePath"] = "1"
         self.ambiente = amb
 
     @property
@@ -92,8 +119,25 @@ class Sistema:
     def mac(self):
         return self.plataforma == "darwin"
 
+    def var(self, nome):
+        return _var(self.ambiente, nome)
+
     def achar(self, nome):
-        return shutil.which(nome, path=self.caminho)
+        """Caminho ABSOLUTO do programa, só de uma pasta absoluta do PATH estendido: nunca o diretório atual nem uma
+        entrada relativa do PATH (o shutil.which do Windows olha o diretório atual primeiro)."""
+        finais = [""]
+        if self.windows:
+            finais = [e for e in (self.var("PATHEXT") or ".COM;.EXE;.BAT;.CMD").lower().split(";") if e]
+            if os.path.splitext(nome)[1].lower() in finais:
+                finais = [""]
+        for pasta in self.caminho.split(os.pathsep):
+            if not pasta or not os.path.isabs(pasta):
+                continue
+            for final in finais:
+                candidato = os.path.join(pasta, nome + final)
+                if os.path.isfile(candidato) and os.access(candidato, os.X_OK):
+                    return os.path.normpath(candidato)
+        return None
 
     def rodar(self, args, tempo, pasta=None):
         """(código, saída) do comando; código None = não rodou ou passou do tempo limite."""
@@ -107,7 +151,9 @@ class Sistema:
         return r.returncode, _texto(r.stdout)
 
     def soltar(self, args, caminho_log, pasta=None):
-        """Processo destacado (sessão nova / grupo novo), stdin fechado, saída no log 0600. Devolve o Popen."""
+        """Processo destacado (sessão nova / grupo novo), stdin fechado, saída no log 0600, cwd na pasta do log (a
+        pasta de dados) quando `pasta` não vem. Devolve o Popen."""
+        pasta = pasta or os.path.dirname(os.path.abspath(caminho_log))
         fd = os.open(caminho_log, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
         if os.name != "nt":
             os.chmod(caminho_log, 0o600)

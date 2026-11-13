@@ -176,7 +176,7 @@ def _ligar_mac(ex):
 
 def _ligar_windows(ex):
     s = ex.sistema
-    arquivos = s.ambiente.get("ProgramFiles") or r"C:\Program Files"
+    arquivos = s.var("ProgramFiles") or r"C:\Program Files"
     exe = os.path.join(arquivos, "Docker", "Docker", "Docker Desktop.exe")
     if not s.existe(exe):
         return dono("Abra o Docker Desktop pelo menu Iniciar, espere ele ligar e clique de novo.")
