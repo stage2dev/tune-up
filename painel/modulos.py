@@ -48,7 +48,8 @@ def caminho_do_modulo(cfg, mid):
     if mid not in (cfg.get("modulos") or []) and mid in embutidos.ligados(cfg):  # embutido (embutidos.py)
         real = embutidos.caminho(mid)
         if not real:
-            raise ErroModulo(404, "Essa tela não existe neste projeto.", ["módulo embutido %s sem modulo.py" % mid])
+            raise ErroModulo(404, "Essa tela não existe neste projeto.",
+                             ["módulo embutido %s sem modulo.py (ou ele é atalho): não carreguei" % mid])
         return real
     if mid not in (cfg.get("modulos") or []):
         chave = modulos_plugin.ligados(cfg)[0].get(mid)

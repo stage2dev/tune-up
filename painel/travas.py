@@ -150,7 +150,9 @@ def argv_travas(acao, cfg=None):
     protegidos = [cfg.get("painel_dir"), cfg.get("pacote_dir"), cfg.get("arquivo")]
     liberados = [os.path.join(cfg["pacote_dir"], "dados")] if cfg.get("pacote_dir") else []
     dados = cfg.get("dados_dir") or ""  # estes saem da exceção `dados`: só o servidor grava
+    import embutidos  # aqui dentro, como o sandbox: o gancho roda com -I e não importa nada do painel
     import sandbox
+    protegidos += embutidos.pastas_codigo()  # o código dos embutidos, ligados ou não: o painel importa e roda
     protegidos += [os.path.join(dados, x) for x in sandbox.DONO] if dados else []
     perguntas = os.path.join(dados, "perguntas") if dados else None
     return ["--settings", settings_da_sessao(acao, protegidos, liberados, workspace=cfg.get("workspace") or "",

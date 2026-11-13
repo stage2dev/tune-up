@@ -12,7 +12,8 @@ sys.path.insert(0, os.path.join(STUDIO, "painel"))
 sys.path.insert(0, os.path.join(ROOT, "painel"))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 SKILLS = ["post", "video", "anuncio", "marca", "marca-ler"]
-BARE = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/(scripts|referencias|formatos\.json|kit)")
+# node/: o hyperframes mora em tune-up-studio/node (ou em <dados>/estudio-node, vindo do painel)
+BARE = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/(scripts|referencias|formatos\.json|kit|node/)")
 
 
 class SkillsNucleo(unittest.TestCase):

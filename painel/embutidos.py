@@ -6,6 +6,7 @@ plugin (a pasta acima de painel/) e passa pela checagem de caminho real. Ligado 
 linha antiga do painel.json ("modulos_de_plugins": ["tune-up-studio@...:estudio"], do plugin separado de
 antes) só conta como ligado enquanto o arquivo não fala daquele id. Arquivo ilegível = tudo desligado.
 As regras de negar vêm da lista fixa daqui, sem importar o módulo (import quebrado travaria toda sessão).
+O código deles (PASTAS_CODIGO, ligado ou não) é protegido nas sessões como painel/ (travas.argv_travas).
 `{estudio_hf}` (prompt e travas da ação): o caminho do HyperFrames do Estúdio, calculado aqui (nunca lido do
 ambiente.json, que uma sessão sem sandbox pode gravar). Python 3.9, só biblioteca padrão.
 """
@@ -36,28 +37,43 @@ EMBUTIDOS = (
     {"id": "estudio", "titulo": "Estúdio", "plugin": "tune-up-studio",
      "descricao": "Cria posts, vídeos e anúncios com a marca do seu negócio, e você aprova antes de usar.",
      "modulo": "tune-up-studio/painel/modulos/estudio/modulo.py", "acoes": "tune-up-studio/painel/acoes",
-     "negar": (), "aviso": None,
+     "negar": (), "dados": (), "aviso": None,
      "sem_windows": "o Studio precisa do sandbox do Claude Code, que não roda no Windows; use macOS, Linux ou WSL2"},
     {"id": "vendas", "titulo": "Vendas", "plugin": "tune-up-vendas",
      "descricao": "Responde e acompanha as conversas de venda do seu WhatsApp.",
      "modulo": "vendas/painel/modulos/vendas/modulo.py", "acoes": None,
-     "negar": NEGAR_VENDAS, "aviso": "primeira versão testada só no macOS; precisa de Docker", "sem_windows": None},
+     "negar": NEGAR_VENDAS, "dados": PASTAS_DADOS_VENDAS,
+     "aviso": "primeira versão testada só no macOS; precisa de Docker", "sem_windows": None},
 )
 _POR_ID = {e["id"]: e for e in EMBUTIDOS}
+# tudo o que os módulos importam ou rodam no servidor (irmãos, scripts/, node/, servico/) mora nestas pastas
+PASTAS_CODIGO = ("tune-up-studio", "vendas")
 
 
-def _dentro(rel):
-    """Caminho real de `rel` sob a raiz do plugin, ou None se escapa dela."""
-    base = os.path.realpath(os.path.dirname(config.PAINEL))
-    real = os.path.realpath(os.path.join(base, rel))
-    return real if real.startswith(base.rstrip(os.sep) + os.sep) else None
+def pastas_codigo():
+    """As pastas de código dos embutidos, como o painel as vê e pelo caminho real (as duas formas)."""
+    raiz = os.path.dirname(config.PAINEL)
+    out = []
+    for nome in PASTAS_CODIGO:
+        for p in (os.path.join(raiz, nome), os.path.join(os.path.realpath(raiz), nome)):
+            out += [p] if p not in out else []
+    return out
+
+
+def _pasta(rel):
+    """Caminho real da pasta `rel` sob a raiz do plugin, ou None se ela (ou algo no meio) é atalho."""
+    pasta = os.path.join(os.path.realpath(os.path.dirname(config.PAINEL)), rel)
+    return pasta if os.path.realpath(pasta) == pasta and os.path.isdir(pasta) else None
 
 
 def caminho(mid):
-    """Caminho real do modulo.py do embutido `mid`, ou None."""
+    """Caminho real do modulo.py do embutido `mid`, ou None (atalho ou fora da própria pasta: recusado)."""
     e = _POR_ID.get(mid)
-    real = _dentro(e["modulo"]) if e else None
-    return real if real and os.path.isfile(real) else None
+    pasta = _pasta(os.path.dirname(e["modulo"])) if e else None
+    arq = os.path.join(pasta, os.path.basename(e["modulo"])) if pasta else None
+    if not arq or os.path.islink(arq) or os.path.realpath(arq) != arq or not os.path.isfile(arq):
+        return None
+    return arq
 
 
 def _motivo(e):
@@ -124,7 +140,9 @@ def _situacao(cfg):
         if e["aviso"]:
             avisos.append(e["aviso"])
         ligado = False if estado is None else estado.get(mid, mid in antigas)
-        conhecido = estado is None or mid in estado or mid in antigas
+        casa = cfg.get("home") or os.path.expanduser("~")  # pasta de dados em disco: sinal fora de dados_dir
+        conhecido = (estado is None or mid in estado or mid in antigas
+                     or any(os.path.isdir(os.path.join(casa, d[2:])) for d in e["dados"]))
         saida.append((e, bool(ligado) and not _motivo(e), conhecido, avisos))
     return saida
 
@@ -136,8 +154,8 @@ def ligados(cfg):
 
 def pastas_de_acoes(cfg):
     """Pastas de ações dos embutidos ligados (código do núcleo: sem a trava das extensões)."""
-    pastas = [_dentro(_POR_ID[mid]["acoes"]) for mid in ligados(cfg) if _POR_ID[mid]["acoes"]]
-    return [p for p in pastas if p and os.path.isdir(p)]
+    pastas = [_pasta(_POR_ID[mid]["acoes"]) for mid in ligados(cfg) if _POR_ID[mid]["acoes"]]
+    return [p for p in pastas if p]
 
 
 def negar(cfg):

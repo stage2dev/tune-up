@@ -222,8 +222,9 @@ class TesteEmbutidosProjeto(unittest.TestCase):
                        modulos_de_plugins=["tune-up-studio@tune-up:estudio"])
         pastas, avisos = extensoes.pastas_de_acoes(cfg)
         self.assertEqual(pastas, [])
-        self.assertTrue([a for a in avisos if AVISO_COMPAT in a], avisos)
-        ids = [a["id"] for a in catalogo.catalogo_do_projeto(cfg)[0]]
+        self.assertTrue([a for a in avisos if "ligue o Estúdio na tela Módulos; depois pode tirar essa linha "
+                         "do painel.json" in a], avisos)
+        ids =[a["id"] for a in catalogo.catalogo_do_projeto(cfg)[0]]
         self.assertIn("estudio.post", ids)
         self.assertNotIn("estudio.velho", ids)
         self.assertFalse(os.path.exists(os.path.join(cfg["dados_dir"], extensoes.ARQUIVO)))  # nem conferiu

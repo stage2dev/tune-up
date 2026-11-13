@@ -2,7 +2,7 @@
 name: post
 disable-model-invocation: true
 description: "Makes a hook-first, business-oriented still post or carousel (PNG per frame) from a briefing, using only the owner-approved brand: strategy first, one chosen hook, a composition of the studio kit with a hero drawn for this briefing, one call to action, and every frame checked by the studio QA. Runs unattended from the panel action estudio.post. Use on: post, carrossel, carousel, peça estática, post do Instagram."
-allowed-tools: Read, Bash(${CLAUDE_PLUGIN_ROOT}/node/node_modules/.bin/hyperframes *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/qa_imagem.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/montar.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/fotos.py *)
+allowed-tools: Read, Bash(*/estudio-node/*/node/node_modules/.bin/hyperframes *), Bash(${CLAUDE_PLUGIN_ROOT}/tune-up-studio/node/node_modules/.bin/hyperframes *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/qa_imagem.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/montar.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/fotos.py *)
 ---
 
 # Post and carousel
@@ -67,7 +67,7 @@ What the kit writes, so you know what the QA sees: one `<h1>`, at most 3 type le
 
 ## 6. Snapshot, look, check, QA (per frame)
 
-`HF` = `${CLAUDE_PLUGIN_ROOT}/node/node_modules/.bin/hyperframes` (absolute path, no `npx`). Run each as a single command, no `cd`, no `;`, no `>`, no `|`.
+`HF` = the path after `HyperFrames:` in the request, exactly as given (the panel computes it; it comes quoted when it has a space); with none (skill started outside the panel, in a checkout), `${CLAUDE_PLUGIN_ROOT}/tune-up-studio/node/node_modules/.bin/hyperframes` (absolute path, no `npx`). Run each as a single command, no `cd`, no `;`, no `>`, no `|`.
 
 1. `HF snapshot q<N>/fonte --at 0 --no-end -o q<N>/snap` -> `q<N>/snap/frame-00-at-0s.png`.
 2. Read that PNG and score `checklist-atencao.md` (a single post: 9 items; a carousel: items 1 to 11), then its director score (0-10), as the stranger who will judge it. Any item at 0: fix the worst now (it counts as a fix round) and redo from step 5.2; a director score below 9: fix its weakest criterion (a visual round) by the last table of kit-post.md, most often the hero's drawing, and redo from step 5.2.
