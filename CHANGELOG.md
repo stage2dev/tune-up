@@ -7,6 +7,8 @@ Every new rule goes in through `/tune-up:learn`: memory + a change here + a test
 - Workflow script template: `templates/workflow-template.js`.
 - The guard warns on untyped `agent()` calls in Workflow scripts (`workflow_generic`: `warn`, `block` or `off`).
 - The `part` and `plan` skills document Workflow scripts (typed agents, effort, review-loop cap).
+- `guarda.py rota`: picks the executor (opus/sonnet) and reviewers (failures, security, database) from the file paths and the diff; any doubt or error routes up. New config keys `risk_globs`, `security_globs`, `database_globs` (add to the defaults, also exposed by `guarda.py info`) and `router` (trusted profile only, validated, off by default).
+- The Bash guard lets the exact read-only `guarda.py rota` call through, like `guarda.py info`.
 
 ## tune-up-studio 0.4.0
 

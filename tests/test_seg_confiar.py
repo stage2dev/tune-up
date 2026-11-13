@@ -110,5 +110,23 @@ class TestB1InfoComPontoPonto(unittest.TestCase):
             self.assertFalse(bg.chamada_info("python3 %s/dev/./tune-up/scripts/guarda.py info" % t))
 
 
+class TestRotaSoLeitura(PromptBase):
+    """`guarda.py rota` is read-only: the Bash guard lets the exact form through and nothing else."""
+    def test_rota_exata_passa_resto_pergunta(self):
+        g = sh_path(SCRIPT)
+        for ok in ("python3 %s rota --files migrations/001.sql src/Button.tsx" % g,
+                   "python3 %s rota --files a.md --diff-file d.patch --failed sonnet" % g,
+                   "python3 %s rota --failed opus --files 'a b.md'" % g, "python3 %s rota" % g,
+                   "python3 %s info" % g):
+            self.assertIsNone(self.bash(ok), ok)
+        for ruim in ("python3 %s rota --files a.md; touch x" % g, "python3 %s rota --files a > o" % g,
+                     "python3 %s rota --files $(id)" % g, "python3 %s rota --failed haiku" % g,
+                     "python3 %s rota --x" % g, "python3 %s rota --diff-file" % g,
+                     "python3 %s info --files a" % g, "python3 %s trust c.json" % g,
+                     "python3 %s/../scripts/guarda.py rota" % g.rsplit("/", 2)[0],
+                     "python3 -c x %s rota" % g, "FOO=1 python3 %s rota" % g):
+            self.assertIsNotNone(self.bash(ruim), ruim)
+
+
 if __name__ == "__main__":
     unittest.main()

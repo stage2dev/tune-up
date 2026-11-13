@@ -5,7 +5,7 @@ import re
 import time
 from .bash_parse import analisar_git, comandos, flags_curtas, junta_dir, posicionais, sem_heredoc
 from .config import SEVERIDADE, TESTE
-from .bash_guarda import chamada_info, citacoes, grava_algo, ln_da_guarda, nega_em_conversa, nivel_do_texto
+from .bash_guarda import chamada_info, chamada_rota, citacoes, grava_algo, ln_da_guarda, nega_em_conversa, nivel_do_texto
 from .escrita import alvos_de_escrita, alvos_que_contem, contem_protegida, protecao_da_guarda
 from .mensagens import msg
 from .sessao import decisao_pre, dentro, ler_sessao, log_erro
@@ -138,7 +138,7 @@ def ev_bash(d, cfg):
     if d.get("tool_name") == "PowerShell":  # same hook (matcher Bash|PowerShell)
         from .powershell import ev_powershell
         return ev_powershell(cmd, d, cfg)
-    if chamada_info(cmd.strip()):  # skills inject `sh <root>/scripts/py scripts/guarda.py info`
+    if chamada_info(cmd.strip()) or chamada_rota(cmd.strip()):  # read-only guarda.py calls
         return None
     return decidir(achados_bash(cmd, d, cfg))
 

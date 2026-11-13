@@ -21,6 +21,7 @@ from .agent import ev_agent
 from .bash import ev_bash
 from .config import TESTE, carregar_config, confiar
 from .info import roda_info
+from .rota import roda_rota, rota_erro
 from .mensagens import definir_idioma, msg
 from .escrita import ev_escrita
 from .pos_bash import ev_pos_bash
@@ -48,6 +49,13 @@ def main():
             roda_info()
         except Exception as e:
             log_erro(evento, "%s: %s" % (type(e).__name__, e))
+        return
+    if evento == "rota":  # never reads stdin; any error still prints JSON that routes up
+        try:
+            roda_rota(sys.argv[2:])
+        except Exception as e:
+            log_erro(evento, "%s: %s" % (type(e).__name__, e))
+            print(json.dumps(rota_erro(e)))
         return
     try:
         bruto = sys.stdin.read()

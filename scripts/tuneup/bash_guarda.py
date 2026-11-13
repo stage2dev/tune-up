@@ -169,14 +169,48 @@ def chamada_info(cmd):
         toks = shlex.split(cmd)
     except ValueError:
         return False
+    return _resto_da_guarda(toks) == ["info"]
+
+
+def _resto_da_guarda(toks):
+    """The words after this plugin's guarda.py (`sh <py> scripts/guarda.py|<g>` or
+    `python3|python <g>`), or None when the command does not start that way."""
     g = os.path.join(RAIZ_PLUGIN, "scripts", "guarda.py")
-    if len(toks) == 4 and toks[0] == "sh" and toks[3] == "info":
+    if len(toks) >= 3 and toks[0] == "sh":
         if not _exato(toks[1], os.path.join(RAIZ_PLUGIN, "scripts", "py")):
-            return False
-        return toks[2] == "scripts/guarda.py" or _exato(toks[2], g)
-    if len(toks) != 3 or toks[0] not in ("python3", "python") or toks[2] != "info":
+            return None
+        return toks[3:] if toks[2] == "scripts/guarda.py" or _exato(toks[2], g) else None
+    if len(toks) >= 2 and toks[0] in ("python3", "python") and _exato(toks[1], g):
+        return toks[2:]
+    return None
+
+
+def chamada_rota(cmd):
+    """`<launcher as in chamada_info> rota` with only `--files <paths>`, `--diff-file <path>` and
+    `--failed sonnet|opus`: rota only reads and prints JSON. Same refusals as chamada_info
+    (operators, redirection, expansion, backslash)."""
+    import shlex
+    if re.search(r"[;&|<>$`()\n\\]", cmd):
         return False
-    return _exato(toks[1], g)
+    try:
+        resto = _resto_da_guarda(shlex.split(cmd))
+    except ValueError:
+        return False
+    if not resto or resto[0] != "rota":
+        return False
+    i, args = 1, resto
+    while i < len(args):
+        if args[i] == "--files":
+            i += 1
+            while i < len(args) and not args[i].startswith("-"):
+                i += 1
+        elif args[i] == "--diff-file" and i + 1 < len(args) and not args[i + 1].startswith("-"):
+            i += 2
+        elif args[i] == "--failed" and args[i + 1:i + 2] in (["sonnet"], ["opus"]):
+            i += 2
+        else:
+            return False
+    return True
 
 
 def _exato(tok, alvo):

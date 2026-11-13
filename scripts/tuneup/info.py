@@ -162,6 +162,9 @@ def montar_info(cwd=None):
         "plugin_source": repo_git(usuario["plugin_source"]),
         "catalog_path": os.path.realpath(catalogo) if os.path.isfile(catalogo) else None,
         "pitfall_skills": pitfall_skills(),
+        "risk_globs": cfg.get("risk_globs") or [],
+        "security_globs": cfg.get("security_globs") or [],
+        "database_globs": cfg.get("database_globs") or [],
     }
 
 
