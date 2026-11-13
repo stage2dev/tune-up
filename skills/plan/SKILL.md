@@ -35,7 +35,7 @@ You (main session, highest effort) coordinate: think, decide, dispatch, check. Y
 
 1. Read the project profile (`profile_path` from `info`; ask nothing) and the repo AGENTS/CLAUDE file: plans folder, production, pitfalls.
 2. `git fetch`; note the hash of `origin/<main>`. Do not trust a previous session's summary.
-3. Read-only worktree of `origin/<main>` in the scratchpad (`git worktree add --detach <scratchpad>/wt-main origin/<main>`). Every map uses this base and cites the hash.
+3. Read-only worktree of `origin/<main>` in the scratchpad (`git -c core.longpaths=true worktree add --detach <scratchpad>/wt-main origin/<main>`). Every map uses this base and cites the hash.
 4. Number the phase: `ls <plans_dir>/phases | sort -t- -k1,1n | tail -5` right BEFORE `mkdir` (parallel sessions collide). Folder `NNN-short-kebab/`.
 5. Pasted request: save a verbatim copy as `ORIGINAL-REQUEST.md`. Outside plans are adapted to this format, never executed as they came.
 6. If the profile mandates synced folders, run `chmod u+w` (macOS/Linux; on Windows `attrib -r`) in the SAME command as `mkdir`.

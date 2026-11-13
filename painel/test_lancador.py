@@ -14,6 +14,9 @@ import unittest  # noqa: E402
 import catalogo  # noqa: E402
 import config  # noqa: E402
 import lancador  # noqa: E402
+import importlib.util  # noqa: E402
+_spec = importlib.util.spec_from_file_location("atalho", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tests", "atalho.py"))
+_atalho = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_atalho)
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 ESTADO = {"fases": [{"numero": "187", "partes": [{"id": "A", "status": "fechada"},
@@ -339,7 +342,7 @@ class TesteConfigELeitor(unittest.TestCase):
         os.makedirs(os.path.join(self.tmp, ".tune-up"))
         fora = os.path.join(self.tmp, "fora")
         os.makedirs(fora)
-        os.symlink(fora, os.path.join(self.tmp, ".tune-up", "painel-projeto"))
+        _atalho.link_dir(fora, os.path.join(self.tmp, ".tune-up", "painel-projeto"))
         c = config.carregar(self.tmp, home=self.tmp)
         self.assertFalse(c.pacote_ok)
         self.assertFalse(c.dados_dir.startswith(fora))
@@ -381,11 +384,7 @@ class TesteConfigELeitor(unittest.TestCase):
         fora = os.path.join(self.tmp, "fora.md")
         with open(fora, "w") as f:
             f.write("| Parte | Itens |\n|---|---|\n| A | a |\n")
-        os.symlink(fora, os.path.join(fase, "GOAL.md"))
-        avisos = []
-        self.assertIsNone(leitor.ler_texto(os.path.join(fase, "GOAL.md"), avisos, plans))
-        self.assertIn("atalho", avisos[0])
-        os.symlink(self.tmp, os.path.join(plans, "phases", "002-fuga"))
+        _atalho.link_dir(self.tmp, os.path.join(plans, "phases", "002-fuga"))  # first: a junction needs no privilege
         avisos = []
         self.assertNotIn("002-fuga", [os.path.basename(p) for p in leitor.listar_fases(plans, avisos)])
         avisos = []
@@ -393,6 +392,10 @@ class TesteConfigELeitor(unittest.TestCase):
                                 avisos, cfg_teste(self.tmp))
         self.assertEqual((nomes["goal"], nomes["progress"], nomes["later"]), ("GOAL.md", "P.md", "DEPOIS.md"))
         self.assertEqual(len(avisos), 2)
+        _atalho.symlink(fora, os.path.join(fase, "GOAL.md"))  # last: skips on Windows without the privilege
+        avisos = []
+        self.assertIsNone(leitor.ler_texto(os.path.join(fase, "GOAL.md"), avisos, plans))
+        self.assertIn("atalho", avisos[0])
 
 
 if __name__ == "__main__":

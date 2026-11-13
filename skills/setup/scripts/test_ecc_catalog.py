@@ -11,6 +11,9 @@ from contextlib import redirect_stderr, redirect_stdout
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import ecc_catalog  # noqa: E402
+import importlib.util  # noqa: E402
+_spec = importlib.util.spec_from_file_location("atalho", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "tests", "atalho.py"))
+_atalho = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_atalho)
 
 FIX = os.path.join(HERE, "fixtures", "ecc")
 
@@ -146,8 +149,8 @@ class EccCatalogTest(Base):
         secret = os.path.join(self.tmp, "secret.txt")
         with open(secret, "w", encoding="utf-8") as fh:
             fh.write("secret")
-        os.symlink(secret, os.path.join(src, "skills", "alpha-site", "link.txt"))
-        os.symlink(self.tmp, os.path.join(src, "skills", "alpha-site", "linkdir"))
+        _atalho.symlink(secret, os.path.join(src, "skills", "alpha-site", "link.txt"))
+        _atalho.symlink(self.tmp, os.path.join(src, "skills", "alpha-site", "linkdir"), dir_=True)
         before = snapshot(self.tmp)
         self.run_cli("--source", src)
         new = snapshot(self.tmp) - before
@@ -162,7 +165,7 @@ class EccCatalogTest(Base):
         os.makedirs(os.path.join(self.out, "ecc-skills"))
         outside = os.path.join(self.tmp, "elsewhere")
         os.makedirs(outside)
-        os.symlink(outside, os.path.join(self.out, "ecc-skills", "alpha-site"))
+        _atalho.link_dir(outside, os.path.join(self.out, "ecc-skills", "alpha-site"))
         code, _, se = self.run_cli()
         self.assertNotEqual(code, 0)
         self.assertEqual(os.listdir(outside), [])
@@ -206,7 +209,7 @@ class EccCatalogTest(Base):
         os.makedirs(os.path.join(self.out, "ecc-skills"))
         outside = os.path.join(self.tmp, "elsewhere")
         os.makedirs(outside)
-        os.symlink(outside, os.path.join(self.out, "ecc-skills", "beta-ads"))  # alpha-site is written first
+        _atalho.link_dir(outside, os.path.join(self.out, "ecc-skills", "beta-ads"))  # alpha-site is written first
         code, _, _ = self.run_cli()
         self.assertNotEqual(code, 0)
         files = json.loads(self.read("manifest.json"))["files"]
@@ -260,7 +263,7 @@ class InstallTest(Base):
         outside = os.path.join(self.tmp, "elsewhere")
         os.makedirs(outside)
         os.makedirs(self.dest)
-        os.symlink(outside, os.path.join(self.dest, "beta-ads"))
+        _atalho.link_dir(outside, os.path.join(self.dest, "beta-ads"))
         res = json.loads(self.install("beta-ads")[1])
         self.assertEqual(res["skipped_existing"], ["beta-ads"])
         self.assertEqual(os.listdir(outside), [])
@@ -282,7 +285,7 @@ class InstallTest(Base):
         secret = os.path.join(self.tmp, "secret.txt")
         with open(secret, "w", encoding="utf-8") as fh:
             fh.write("secret")
-        os.symlink(secret, os.path.join(self.out, "ecc-skills", "alpha-site", "leak.txt"))
+        _atalho.symlink(secret, os.path.join(self.out, "ecc-skills", "alpha-site", "leak.txt"))
         self.install("alpha-site")
         self.assertFalse(os.path.lexists(os.path.join(self.dest, "alpha-site", "leak.txt")))
 

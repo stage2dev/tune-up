@@ -152,7 +152,10 @@ class Exportar(Base):
     def test_deep_json_is_a_problem_not_a_crash(self):
         with open(os.path.join(self.pasta, "textos.json"), "w", encoding="utf-8") as f:
             f.write("[" * 5000 + "]" * 5000)
-        self.assertEqual(anuncio.ler_textos(self.pasta)[0], None)
+        anuncio.ler_textos(self.pasta)  # must not raise; up to 3.11 gives None, 3.12+ parses the nested list
+        ok, problemas = anuncio.exportar(self.pasta, "google")
+        self.assertFalse(ok)
+        self.assertTrue(problemas and all(isinstance(p, str) for p in problemas))
         self.assertEqual(anuncio.qa_imagem.load_json(os.path.join(self.pasta, "textos.json"))[0], None)
 
     def test_google_piece_is_clean_and_9x16_text_stays_in_the_safe_zone(self):

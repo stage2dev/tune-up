@@ -52,6 +52,9 @@ jobs:
         working-directory: painel
         run: python -B -m unittest -v
 
+      - name: Studio tests
+        run: python -B -m unittest discover -s tune-up-studio/tests -v
+
       - name: Sales module tests
         working-directory: vendas
         run: python -B -m unittest discover -s testes -t . -v
