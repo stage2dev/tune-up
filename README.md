@@ -156,7 +156,16 @@ You can override models and effort per role in the `models` key of `user.json`.
 
 Buttons only launch actions from a closed list; each action carries its own tool rules. Details, configuration (`.tune-up/painel.json`) and the module contract: [`painel/README.md`](painel/README.md) (Portuguese). macOS and Linux; Python 3.9+; no install step.
 
-Optional modules: `tune-up-studio` (posts and short videos), `tune-up-vendas` (WhatsApp sales screen) and `tune-up-mkt` (marketing accounts, skills and a guard for ad-account and public-post writes; 0.1.0 is a skeleton, see [`tune-up-mkt/README.md`](tune-up-mkt/README.md)). Install with `/plugin install <name>@tune-up`.
+Other optional plugin: `tune-up-mkt` (marketing accounts, skills and a guard for ad-account and public-post writes; 0.1.0 is a skeleton, see [`tune-up-mkt/README.md`](tune-up-mkt/README.md)). Install with `/plugin install tune-up-mkt@tune-up`. Studio and Vendas come inside tune-up: see the next section.
+
+## Built-in modules
+
+Studio and Vendas come inside tune-up and arrive off. Open the panel's **Módulos** screen (`/modulos`) and press the button on the one you want; press it again to turn it off. No `painel.json` edit and no separate plugin install.
+
+- **Studio** (posts, short videos and ads with your brand): five commands, typed by you, Claude does not start them on its own: `/tune-up:post`, `/tune-up:video`, `/tune-up:anuncio`, `/tune-up:marca`, `/tune-up:marca-ler`. Works on macOS, Linux and WSL2; not on native Windows. Details: [`tune-up-studio/README.md`](tune-up-studio/README.md).
+- **Vendas** (WhatsApp sales screen): first version tested only on macOS; needs Docker. Details: [`vendas/README.md`](vendas/README.md).
+
+Do NOT install the separate `tune-up-studio` 0.4.0 plugin together with tune-up 2.11.0 or later: its commands now live in the core and would show twice. Whoever already prepared the Studio must prepare it again, once (Estúdio screen, Ambiente, Preparar).
 
 ## Guards (hooks)
 

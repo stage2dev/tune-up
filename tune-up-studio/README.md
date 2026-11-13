@@ -1,41 +1,32 @@
 # tune-up-studio
 
-Status: work in progress. A plugin of the `tune-up` marketplace that depends on
-`tune-up` (it adds a module to its panel):
-
-```sh
-claude plugin marketplace add stage2dev/tune-up
-claude plugin install tune-up@tune-up
-claude plugin install tune-up-studio@tune-up
-```
+Status: work in progress. From `tune-up` 2.11.0 the Studio is built into the
+`tune-up` core: it arrives off and you turn it on with one button. Do not
+install this plugin separately together with core 2.11.0 or later: its
+commands now live in the core and would show twice.
 
 Platforms: the studio runs on macOS, Linux and WSL2 only. Native Windows is not
 supported (the Claude Code sandbox it relies on does not run there); the
 `tune-up` panel itself still runs on Windows.
 
-## Turn it on in a project
+## Turn it on
 
-The panel loads nothing from a plugin unless the project names it. In the
-project's `painel.json`:
+Open the panel's **Módulos** screen (`/modulos`) and press the button on
+Estúdio. No `painel.json` edit, no `--aceitar-extensao`, no separate install.
+Press it again to turn it off. An old `painel.json` line
+(`"modulos_de_plugins": ["tune-up-studio@tune-up:estudio"]`) still counts as on
+until you use the button; the screen says the line can be removed.
 
-```json
-{
-  "modulos_de_plugins": ["tune-up-studio@tune-up:estudio"],
-  "acoes_de_plugins": ["tune-up-studio@tune-up"],
-  "estudio": {"video_rede_local": false}
-}
-```
-
-- `modulos_de_plugins` adds the Estudio screen; `acoes_de_plugins` adds the
-  `estudio.*` actions.
-- The first time, and after every plugin update, the panel pins the plugin's
-  version and sha256 and refuses it until you confirm in a terminal:
-  `python3 painel.py --aceitar-extensao tune-up-studio@tune-up`.
-- `estudio.video_rede_local: true` turns on the render action
+- The commands are `/tune-up:post`, `/tune-up:video`, `/tune-up:anuncio`,
+  `/tune-up:marca` and `/tune-up:marca-ler`. You type them yourself; Claude does
+  not start them on its own.
+- `estudio.video_rede_local: true` in `painel.json` turns on the render action
   (`estudio.video-motion`). It lets the page being rendered reach localhost and
   the machine's LAN address on macOS, so it is off by default; without it,
   videos come from the FFmpeg slide reserve.
 - Then open the Estudio screen and follow its steps: Ambiente, Marca, Novo.
+- The environment (HyperFrames) is keyed by the lockfile, not the plugin
+  version; updating the core does not ask to prepare again.
 
 ## What it is
 

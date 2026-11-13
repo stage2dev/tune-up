@@ -4,19 +4,25 @@ Every new rule goes in through `/tune-up:learn`: memory + a change here + a test
 
 ## Unreleased
 
+## 2.11.0
+
+Studio and Vendas come built into the tune-up core, off until the owner turns them on, and the Studio's HyperFrames and scripts work when tune-up is installed from a marketplace.
+
+- Built-in modules **Estúdio** and **Vendas** (`painel/embutidos.py`, a fixed list): they arrive off. On or off lives in `<dados>/embutidos-ligados.json`, written only by the server. No `painel.json` edit, no `--aceitar-extensao`, no separate plugin install.
+- New screen **Módulos** (`/modulos`): one button per module. `GET /api/embutidos` lists them and `POST /api/embutidos/<id>` turns one on or off. Studio says it needs macOS, Linux or WSL2 (not native Windows); Vendas says its first version was tested only on macOS and needs Docker.
+- The Studio skills load from the core as `/tune-up:post`, `/tune-up:video`, `/tune-up:anuncio`, `/tune-up:marca` and `/tune-up:marca-ler` (they were `/tune-up-studio:*`). They are user-invoked only (`disable-model-invocation`).
+- Compatibility: an old `painel.json` line `"modulos_de_plugins": ["tune-up-studio@tune-up:estudio"]` (or `tune-up-vendas@...:vendas`) still counts as on until the owner uses the button; the screen says the line can be removed. `"acoes_de_plugins": ["tune-up-studio@..."]` is ignored with a warning to turn the Estúdio on in Módulos.
+- Guard: the built-in code folders (`tune-up-studio`, `vendas`) are protected in sessions like the panel's own, on or off. The Vendas deny rules come from the fixed list, so they survive a missing or unreadable state file.
+- The marketplace still lists the four plugins; the separate `tune-up-studio`, `tune-up-vendas` and `tune-up-mkt` entries go in 2.12.0. Until then, do not install `tune-up-studio` 0.4.0 together with this core: its commands now live in the core and would show twice.
 - Workflow script template: `templates/workflow-template.js`.
 - The guard warns on untyped `agent()` calls in Workflow scripts (`workflow_generic`: `warn`, `block` or `off`).
 - The `part` and `plan` skills document Workflow scripts (typed agents, effort, review-loop cap).
-
-## 2.11.0
-
-The Studio's HyperFrames and scripts work when tune-up is installed from a marketplace.
-
 - **Anyone who already prepared the Studio must prepare it again, once** (Estúdio screen, tab 1. Ambiente, Preparar): "ready" now follows a key of the pinned HyperFrames (`chave_do_ambiente()`, the first 12 hex of the sha256 of `tune-up-studio/node/package-lock.json`), not the plugin version, and an older `ambiente.json` has no key. Updating only the core version no longer asks for it.
 - Under `~/.claude` Preparar installs in `<dados>/estudio-node/<key>/node` (`dados` = the panel's `dados_dir`) and removes other key folders and the old `<dados>/tune-up-studio/` folder (a symlink is removed, never followed); from a checkout or `--plugin-dir` it stays in `tune-up-studio/node`.
 - New prompt/rule marker `{estudio_hf}`: the server computes the exact HyperFrames path (never read from `ambiente.json`); the 4 Studio actions pass it in the prompt (`HyperFrames: …`, quoted for the shell when it has a space) and their Bash rules accept only that exact path (`regras/bash-estudio.json`). A Studio action launched before Preparar is refused with 409 "Prepare o Estúdio antes…".
 - Guard: `estudio-node` joins the owner-only names (`travas.DONO`, sandbox `denyWrite`). In sandboxed actions only, the exact HyperFrames binary and `python3 -I [-B] <plugin root>/tune-up-studio/scripts/<studio script>.py` no longer trip the protected-path check (the binary lives in the panel data folder, the scripts under `~/.claude/plugins`); the rest of the command is still checked.
 - Skills `video` and `anuncio`: `HF` is the path given in the request.
+- The Studio skills no longer pre-approve any HyperFrames path under `estudio-node`: outside the panel, Claude Code asks for permission before running it.
 
 ## tune-up-studio 0.4.0
 
