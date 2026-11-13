@@ -6,8 +6,10 @@ plugin (a pasta acima de painel/) e passa pela checagem de caminho real. Ligado 
 linha antiga do painel.json ("modulos_de_plugins": ["tune-up-studio@...:estudio"], do plugin separado de
 antes) só conta como ligado enquanto o arquivo não fala daquele id. Arquivo ilegível = tudo desligado.
 As regras de negar vêm da lista fixa daqui, sem importar o módulo (import quebrado travaria toda sessão).
-Python 3.9, só biblioteca padrão.
+`{estudio_hf}` (prompt e travas da ação): o caminho do HyperFrames do Estúdio, calculado aqui (nunca lido do
+ambiente.json, que uma sessão sem sandbox pode gravar). Python 3.9, só biblioteca padrão.
 """
+import hashlib
 import json
 import os
 import stat
@@ -15,6 +17,7 @@ import sys
 import threading
 
 import config
+from catalogo import ESTUDIO_HF, RE_CONTROLE, ErroAcao
 
 ARQUIVO = "embutidos-ligados.json"
 MAX_BYTES = 4096
@@ -190,3 +193,48 @@ def mudar(cfg, mid, corpo, depois=None):
     if depois:
         depois()
     return 200, {"ok": True, "embutidos": _publico(cfg)}
+
+
+MARCA_HF = "{" + ESTUDIO_HF + "}"
+REL_HF = ("node", "node_modules", ".bin", "hyperframes")
+
+
+def chave_do_ambiente(studio):
+    """= preparar_estudio.chave_do_ambiente (test_estudio_hf confere): 12 hex do sha256 do package-lock.json."""
+    with open(os.path.join(studio, "node", "package-lock.json"), "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()[:12]
+
+
+def _sob(caminho, pasta):
+    c, p = os.path.realpath(caminho), os.path.realpath(pasta)
+    return c == p or c.startswith(p.rstrip(os.sep) + os.sep)
+
+
+def estudio_hf(cfg):
+    """Caminho exato do HyperFrames do Estúdio ou None. Sob ~/.claude (instalado do marketplace):
+    <dados_dir real>/estudio-node/<chave>/node/...; fora (checkout, --plugin-dir): <raiz>/tune-up-studio/node/..."""
+    studio = os.path.join(os.path.realpath(os.path.dirname(config.PAINEL)), "tune-up-studio")
+    try:
+        if not _sob(studio, os.path.join(cfg.get("home") or os.path.expanduser("~"), ".claude")):
+            hf = os.path.join(studio, *REL_HF)
+        elif cfg.get("dados_dir"):
+            base = os.path.join(os.path.realpath(cfg["dados_dir"]), "estudio-node")
+            hf = os.path.join(base, chave_do_ambiente(studio), *REL_HF)
+            hf = hf if os.path.realpath(hf).startswith(base + os.sep) else None  # atalho para fora: não
+        else:
+            hf = None
+    except OSError:
+        return None
+    return hf if hf and os.path.isabs(hf) and not RE_CONTROLE.search(hf) else None
+
+
+def estudio_da_acao(cfg, acao):
+    """{"hf", "py"} da ação que cita {estudio_hf} (prompt ou travas); None se não cita. Levanta ErroAcao 409
+    se o Estúdio não está preparado para esta chave (o binário não existe no caminho calculado)."""
+    if MARCA_HF not in acao["_prompt"] + json.dumps(acao.get("_travas") or {}, ensure_ascii=False):
+        return None
+    hf = estudio_hf(cfg)
+    if not hf or not os.path.isfile(hf):
+        raise ErroAcao("Prepare o Estúdio antes: abra a tela Estúdio, aba 1. Ambiente, e clique em Preparar.", 409)
+    py = os.path.join(os.path.realpath(os.path.dirname(config.PAINEL)), "tune-up-studio", "scripts") + os.sep
+    return {"hf": hf, "py": py}

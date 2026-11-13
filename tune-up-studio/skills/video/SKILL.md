@@ -2,7 +2,7 @@
 name: video
 disable-model-invocation: true
 description: "Makes a hook-first, business-oriented silent vertical reel (9:16, 1080x1920 MP4, 10 or 15 s) from a briefing, using only the owner-approved brand: strategy, the reel composition of the studio kit filled with the script and a hero drawn for this briefing, motion by the studio JavaScript engine (seek-safe, no network), render or slide reserve, and the studio QA. Runs unattended from the panel actions estudio.video and estudio.video-motion. Use on: vídeo, reel, reels, story em vídeo."
-allowed-tools: Read, Bash(${CLAUDE_PLUGIN_ROOT}/node/node_modules/.bin/hyperframes *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/qa_video.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/reserva_slides.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/montar.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/fotos.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/qa_imagem.py *)
+allowed-tools: Read, Bash(*/estudio-node/*/node/node_modules/.bin/hyperframes *), Bash(${CLAUDE_PLUGIN_ROOT}/tune-up-studio/node/node_modules/.bin/hyperframes *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/qa_video.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/reserva_slides.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/montar.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/fotos.py *), Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/qa_imagem.py *)
 ---
 
 # Reel (9:16 video)
@@ -69,7 +69,7 @@ Never edit `fonte/index.html`: a change is a change of `peca.json` or `heroi.svg
 
 ## 6. Loop: lint, check, look (QA rounds and visual rounds)
 
-`HF` = `${CLAUDE_PLUGIN_ROOT}/node/node_modules/.bin/hyperframes` (absolute path, no `npx`). Run each as a single command, no `cd`, no `;`, no `>`, no `|`.
+`HF` = the path after `HyperFrames:` in the request, exactly as given (the panel computes it; it comes quoted when it has a space); with none (skill typed by hand in a checkout), `${CLAUDE_PLUGIN_ROOT}/tune-up-studio/node/node_modules/.bin/hyperframes` (absolute path, no `npx`). Run each as a single command, no `cd`, no `;`, no `>`, no `|`.
 
 1. `HF lint fonte`
 2. `HF check fonte --json --strict`. Do not read or copy its long output: HyperFrames saves the report under `fonte/.hyperframes/` and the QA reads it from there. Then run `python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/qa_imagem.py --achados fonte`: it prints only the `warning`/`error` findings of that report, one per line (exit 1 = fix them).

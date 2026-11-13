@@ -7,6 +7,7 @@ import sys
 
 sys.dont_write_bytecode = True
 
+import hashlib  # noqa: E402
 import io  # noqa: E402
 import json  # noqa: E402
 import os  # noqa: E402
@@ -149,10 +150,10 @@ class TesteMarcaTela(tem.TesteMarca):
         self.assertEqual(self.recusa().codigo, 409)
         self.assertIsNotNone(self.bloco("marca-confirmar"))
         self.assertEqual(self.bloco("marca-cores")["itens"][0]["valor"], "#abcdef")
-        with open(os.path.join(os.path.dirname(os.path.dirname(tem.REAL)), os.pardir, os.pardir, ".claude-plugin",
-                               "plugin.json"), encoding="utf-8") as f:
-            versao = json.load(f)["version"]
-        escrever(os.path.join(self.cfg["dados_dir"], "ambiente.json"), json.dumps({"pronto": True, "estudio": versao}))
+        with open(os.path.join(os.path.dirname(os.path.dirname(tem.REAL)), os.pardir, os.pardir, "node",
+                               "package-lock.json"), "rb") as f:
+            chave = hashlib.sha256(f.read()).hexdigest()[:12]  # preparar_estudio.chave_do_ambiente
+        escrever(os.path.join(self.cfg["dados_dir"], "ambiente.json"), json.dumps({"pronto": True, "chave": chave}))
         novo = json.dumps(self.aba("novo"), ensure_ascii=False)
         self.assertIn("confirme de novo", novo)
 

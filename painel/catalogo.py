@@ -33,6 +33,7 @@ TEXTO_MAX, TEXTO_PADRAO = 2000, 500
 TEXTO_LONGO_MAX = 6000  # texto com "linhas": pedido de chat, resposta numa conversa
 ARQUIVO_MAX = 4000  # tipo texto_longo: vai para <trabalho>/entrada.md; o prompt leva só o caminho
 TRABALHO = "trabalho"  # {trabalho} no prompt e nas travas = pasta de trabalho da execução (trabalho.py)
+ESTUDIO_HF = "estudio_hf"  # {estudio_hf} = o HyperFrames do Estúdio, caminho calculado pelo servidor (embutidos.py)
 RE_MODELO = re.compile(r"^[a-z0-9][a-z0-9.\-]{0,60}$")  # apelido do CLI (fable, opus, sonnet...) ou nome inteiro
 ESFORCOS = ("low", "medium", "high", "xhigh", "max")
 GRUPO_CHAT = "chat"  # cada ação deste grupo é um nível do chat da tela inicial
@@ -50,8 +51,8 @@ class ErroAcao(Exception):
 def _validar_param(p):
     if not isinstance(p, dict) or not RE_NOME_PARAM.match(str(p.get("nome", ""))):
         raise ValueError("parâmetro sem nome válido")
-    if p["nome"] == TRABALHO:
-        raise ValueError("parâmetro não pode se chamar %s (marcador reservado)" % TRABALHO)
+    if p["nome"] in (TRABALHO, ESTUDIO_HF):
+        raise ValueError("parâmetro não pode se chamar %s (marcador reservado)" % p["nome"])
     if p.get("tipo") not in TIPOS:
         raise ValueError("parâmetro %s com tipo inválido" % p["nome"])
     out = {"nome": p["nome"], "rotulo": str(p.get("rotulo") or p["nome"])[:80], "tipo": p["tipo"],
@@ -117,7 +118,7 @@ def validar_acao(a):
     if len(set(nomes)) != len(nomes):
         raise ValueError("ação %s: parâmetro repetido" % a["id"])
     nome_sessao = a.get("nome_sessao") if isinstance(a.get("nome_sessao"), str) else None
-    for texto, aceitos in ((prompt, nomes + [TRABALHO]), (nome_sessao or "", nomes)):
+    for texto, aceitos in ((prompt, nomes + [TRABALHO, ESTUDIO_HF]), (nome_sessao or "", nomes)):
         for campo in RE_CAMPO.findall(texto):
             if campo not in aceitos:
                 raise ValueError("ação %s: {%s} no modelo sem parâmetro" % (a["id"], campo))

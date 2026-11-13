@@ -8,6 +8,16 @@ Every new rule goes in through `/tune-up:learn`: memory + a change here + a test
 - The guard warns on untyped `agent()` calls in Workflow scripts (`workflow_generic`: `warn`, `block` or `off`).
 - The `part` and `plan` skills document Workflow scripts (typed agents, effort, review-loop cap).
 
+## 2.11.0
+
+The Studio's HyperFrames and scripts work when tune-up is installed from a marketplace.
+
+- **Anyone who already prepared the Studio must prepare it again, once** (Estúdio screen, tab 1. Ambiente, Preparar): "ready" now follows a key of the pinned HyperFrames (`chave_do_ambiente()`, the first 12 hex of the sha256 of `tune-up-studio/node/package-lock.json`), not the plugin version, and an older `ambiente.json` has no key. Updating only the core version no longer asks for it.
+- Under `~/.claude` Preparar installs in `<dados>/estudio-node/<key>/node` (`dados` = the panel's `dados_dir`) and removes other key folders and the old `<dados>/tune-up-studio/` folder (a symlink is removed, never followed); from a checkout or `--plugin-dir` it stays in `tune-up-studio/node`.
+- New prompt/rule marker `{estudio_hf}`: the server computes the exact HyperFrames path (never read from `ambiente.json`); the 4 Studio actions pass it in the prompt (`HyperFrames: …`, quoted for the shell when it has a space) and their Bash rules accept only that exact path (`regras/bash-estudio.json`). A Studio action launched before Preparar is refused with 409 "Prepare o Estúdio antes…".
+- Guard: `estudio-node` joins the owner-only names (`travas.DONO`, sandbox `denyWrite`). In sandboxed actions only, the exact HyperFrames binary and `python3 -I [-B] <plugin root>/tune-up-studio/scripts/<studio script>.py` no longer trip the protected-path check (the binary lives in the panel data folder, the scripts under `~/.claude/plugins`); the rest of the command is still checked.
+- Skills `video` and `anuncio`: `HF` is the path given in the request.
+
 ## tune-up-studio 0.4.0
 
 Pieces that stop the scroll and lead to a message or a sale, for any business. The tune-up core stays 2.10.0.

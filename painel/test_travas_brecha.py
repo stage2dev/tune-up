@@ -191,7 +191,8 @@ class TesteNomesDoDono(unittest.TestCase):
     def test_sandbox_dono_tem_os_nomes_do_servidor(self):
         import sandbox
         self.assertEqual(set(sandbox.DONO), {"estudio-dono.json", "aprovados", "extensoes.json",
-                                             "embutidos-ligados.json", "embutidos-ligados.json.gravando"})
+                                             "embutidos-ligados.json", "embutidos-ligados.json.gravando",
+                                             "estudio-node"})
 
 
 @unittest.skipIf(os.name == "nt", "o comando do gancho é texto de shell POSIX (shlex.quote)")

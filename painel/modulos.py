@@ -152,7 +152,7 @@ def info(mod, mid):
 def contexto(cfg):
     pacote = cfg.get("pacote_dir") or ""
     return {"raiz": cfg.get("raiz") or cfg.get("workspace"), "pacote": pacote,
-            "dados": os.path.join(pacote, "dados") if pacote else "",
+            "dados": os.path.join(pacote, "dados") if pacote else "", "dados_dir": cfg.get("dados_dir") or "",
             "config": dict(cfg.get("bruto") or {}), "hoje": datetime.date.today(),
             "execucoes": cfg.get("_execucoes"), "dono_faltando": lambda requer: dono.faltando(cfg, requer)}
 

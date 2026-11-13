@@ -55,7 +55,7 @@ class AdAction(unittest.TestCase):
         # the studio list without ffmpeg/ffprobe: nothing may stretch a piece after its snapshot
         comum = [r for r in load(RULES)["negar"] if not r["entrada"].startswith(("^ffmpeg", "^ffprobe"))]
         self.assertEqual(bash[1:], comum[1:])
-        self.assertEqual(bash[0]["entrada"], "^(?!python3(?: |\\Z)|/)")
+        self.assertEqual(bash[0]["entrada"], "^(?!python3(?: |\\Z)|/|{estudio_hf} )")
         for cmd in ("ffmpeg -i a1/snap/frame-00-at-0s.png -vf scale=1200:1200 a2/snap/x.png", "ffprobe a1/x.png"):
             self.assertRegex(cmd, bash[0]["entrada"])
         self.assertNotRegex("python3 -I /x/tune-up-studio/scripts/anuncio.py --plano google", bash[0]["entrada"])
