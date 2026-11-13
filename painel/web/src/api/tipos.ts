@@ -180,6 +180,21 @@ export interface ListaModulos {
   avisos: string[];
 }
 
+/** Parte extra que ja vem com o tune-up e pode ser ligada/desligada (tela Modulos). */
+export interface Embutido {
+  id: string;
+  titulo: string;
+  descricao: string;
+  ligado: boolean;
+  disponivel: boolean;
+  motivo: string | null;
+  avisos: string[];
+}
+
+export interface ListaEmbutidos {
+  embutidos: Embutido[];
+}
+
 export interface AlertaModulo {
   nivel: NivelAlerta;
   texto: string;

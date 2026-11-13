@@ -2,7 +2,7 @@
 // (sem zustand/API deles; menu em gaveta no celular; navegacao do painel tune-up)
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
-import { Bot, ClipboardList, Home, ListChecks, Menu, MessageSquare, Play, X, Zap, type LucideIcon } from 'lucide-react';
+import { Blocks, Bot, ClipboardList, Home, ListChecks, Menu, MessageSquare, Play, X, Zap, type LucideIcon } from 'lucide-react';
 import { useEstado, useModulos, useSessao } from './api/ganchos';
 import { nomeDoProjeto } from './api/projeto';
 import { iconeDoModulo } from './componentes/iconesModulo';
@@ -24,6 +24,7 @@ const ITENS: ItemMenu[] = [
   { para: '/fases', rotulo: 'Fases', icone: ListChecks },
   { para: '/execucoes', rotulo: 'Execuções', icone: Play },
   { para: '/acompanhamento', rotulo: 'Acompanhamento', icone: ClipboardList },
+  { para: '/modulos', rotulo: 'Módulos', icone: Blocks },
 ];
 
 function Navegacao({ aoEscolher }: { aoEscolher?: () => void }) {
