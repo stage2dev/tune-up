@@ -11,5 +11,6 @@
   "research_on_phrases": [],
   "research_off_phrases": [],
   "plans_dir": ".planning",
-  "supabase_guard": true
+  "supabase_guard": true,
+  "workflow_generic": "warn"
 }

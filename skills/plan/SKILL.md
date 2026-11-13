@@ -31,6 +31,12 @@ You (main session, highest effort) coordinate: think, decide, dispatch, check. Y
 - Planning changes no app file. A finding during planning becomes a GOAL item, never a PR.
 - If the user said "research only" / "change nothing": stop after Step 2 and use `/tune-up:research`.
 
+## Workflow scripts
+
+If you orchestrate with the Workflow tool, every `agent()` carries a literal `agentType` from the table above (`tune-up:mapper`, `tune-up:researcher`, `tune-up:writer`, `tune-up:plan-reviewer`), plus `model` and `effort`.
+A generic agent (no `agentType`) only for work that needs MCP tools, a browser or images, marked with `// tune-up: allow-generic <reason>` on the line above.
+Template and review-loop rules: see "Workflow scripts" in the `part` skill.
+
 ## Step 1 - Prepare
 
 1. Read the project profile (`profile_path` from `info`; ask nothing) and the repo AGENTS/CLAUDE file: plans folder, production, pitfalls.

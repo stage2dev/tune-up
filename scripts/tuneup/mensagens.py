@@ -89,6 +89,10 @@ CATALOG = {
                            "Declare another model (haiku, sonnet or opus).",
         "modelo_proibido_sessao": "the session is on %s and the subagent would inherit it; declare model "
                                   "(haiku, sonnet or opus).",
+        "workflow_generico": "%s agent() call(s) without agentType (lines %s): a generic agent loads every "
+                             "tool and starts ~3x heavier. Pass agentType of a lean agent (e.g. "
+                             "tune-up:executor-sonnet, tune-up:reviewer-failures, tune-up:mapper) or mark "
+                             "the line `// tune-up: allow-generic <reason>`.",
         # talk mode (/tune-up:talk)
         "talk_liga": "tune-up: TALK MODE (/tune-up:talk) — conversation only: no code changes; notes go "
                      "to .md in docs/, the plans folder, .tune-up/, memory or the scratchpad. "
@@ -173,6 +177,10 @@ CATALOG = {
                            "Declare outro model (haiku, sonnet ou opus).",
         "modelo_proibido_sessao": "a sessão está em %s e o subagente herdaria; declare model "
                                   "(haiku, sonnet ou opus).",
+        "workflow_generico": "%s chamada(s) agent() sem agentType (linhas %s): agente genérico carrega todas "
+                             "as ferramentas e começa ~3x mais pesado. Passe o agentType de um agente enxuto "
+                             "(ex.: tune-up:executor-sonnet, tune-up:reviewer-failures, tune-up:mapper) ou "
+                             "marque a linha com `// tune-up: allow-generic <motivo>`.",
         "talk_liga": "tune-up: MODO CONVERSA (/tune-up:talk) — só conversa: nada de mudar código; notas "
                      "vão para .md em docs/, na pasta de planos, em .tune-up/, na memória ou no scratchpad. "
                      "Sai com \"pode construir\".",

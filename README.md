@@ -190,6 +190,8 @@ Some guards only warn or ask, they do not block: research mode, self-protection,
 - Windows ACLs are not read. Trusted files (profile trust) must be inside your user profile folder.
 - Paths from Git Bash (`/c/Users/...`, `/tmp`, `~`) are converted to Windows paths before they are compared with the protected folders.
 
+Workflow scripts: the guard also warns when a Workflow script calls `agent()` without a literal `tune-up:*` `agentType` (a generic agent starts with about three times the context). Mark a justified exception with `// tune-up: allow-generic <reason>` on the line above. The `workflow_generic` key in `config.json` sets the behavior: `warn` (default), `block` or `off`. Start scripts from `templates/workflow-template.js`.
+
 ## Configuration
 
 | File | What |

@@ -34,5 +34,7 @@
   "_comment_line_limit": "Max lines per code file (new files above it are denied). Raising it only works in a trusted project.",
   "line_limit": 450,
   "_comment_line_limit_exclude": "Extra globs exempt from the line limit, e.g. generated code.",
-  "line_limit_exclude": []
+  "line_limit_exclude": [],
+  "_comment_workflow_generic": "Workflow agent() calls without agentType: warn, block or off. Loosening it only works in a trusted project.",
+  "workflow_generic": "warn"
 }
