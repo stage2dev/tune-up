@@ -55,10 +55,10 @@ Rules shared by the work skills:
 - Any write to an ad or a public post happens only on the owner's explicit request in the current turn; anything created is created paused, with a budget cap.
 - `preflight` runs before any paid media; a NO-GO blocks the launch.
 - No invented social proof, scarcity, urgency or price.
-- The brand is read through the tune-up-studio `marca-ler` rule (approval from the panel); an unapproved kit is only a draft. Producing the pieces is started by the owner from the tune-up panel (Studio tab); the skills never invoke `post`, `video` or `anuncio` themselves.
+- The brand is read through the tune-up-studio `marca-ler` rule (approval from the panel); an unapproved kit is only a draft; without tune-up-studio there is no kit, so the skill asks for tone and colours and marks them as a draft. Producing the pieces is started by the owner from the tune-up panel (Studio tab); the skills never invoke `post`, `video` or `anuncio` themselves.
 - Before ANY call that spends money or credits, the skill estimates the total for the task in the service's own unit and asks when the service bills in money, the free balance does not renew, or the estimate in credits is above `credit_ask_above` (in `config.json`, default 2000; set with `contas.py config --credit-ask-above N`). Unsure of the price: it asks.
 - `preflight`: all 9 items block (a fail or "not checked" = NO-GO); the GO holds only for the ad as checked, and it never fires real events.
-- Raw data saved under `.tune-up/mkt/` has personal data and tokens removed; do not commit it.
+- Raw data and backups are saved under `.tune-up/mkt/bruto/` with personal data and tokens removed; do not commit it (add it to `.gitignore`).
 
 ## What costs money
 
