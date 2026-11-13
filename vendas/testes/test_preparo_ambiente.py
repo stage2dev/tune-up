@@ -80,7 +80,8 @@ class TesteAmbiente(unittest.TestCase):
         self.assertIn(os.path.join("D:\\PF", "Docker", "Docker", "resources", "bin"), s.caminho)
 
     def test_filho_de_verdade_nao_ve_o_segredo(self):
-        amb = dict(self.AMBIENTE, PATH=os.environ.get("PATH", ""))
+        # o ambiente real da máquina (no Windows o Python filho não sobe sem o SystemRoot verdadeiro) mais um segredo
+        amb = dict(os.environ, OPENAI_API_KEY="sk-segredo", VENDAS_EVOLUTION_URL="http://127.0.0.1:9")
         s = Sistema(ambiente=amb)
         codigo, saida = s.rodar([sys.executable, "-c", "import os; print(os.environ.get('OPENAI_API_KEY'), "
                                  "os.environ.get('VENDAS_EVOLUTION_URL'))"], 30)
