@@ -21,7 +21,7 @@ import json  # noqa: E402
 import secrets  # noqa: E402
 
 from servico import evolution_local, pasta, preparo_docker, preparo_evolution, travas  # noqa: E402
-from servico.preparo_sistema import Sistema, falhou, mascarar  # noqa: E402
+from servico.preparo_sistema import Sistema, falha_ao_comecar, falhou, mascarar  # noqa: E402
 
 PASSOS = (
     ("docker_instalado", "Instalar o Docker", preparo_docker.docker_instalado),
@@ -59,8 +59,9 @@ def segredos(pasta_dados):
     return [valores.get("AUTHENTICATION_API_KEY"), valores.get("POSTGRES_PASSWORD")]
 
 
-def ler_estado(pasta_dados, sistema=None):
-    """Estado do último preparo, ou None. "rodando" com o processo morto vira "interrompido"."""
+def ler_estado(pasta_dados):
+    """Estado do último preparo, ou None. "rodando" com a trava preparo.trava LIVRE vira "interrompido" (o pid não
+    basta: o número pode ter sido reaproveitado por outro processo)."""
     try:
         with open(caminhos(pasta_dados)["estado"], encoding="utf-8") as f:
             estado = json.load(f)
@@ -68,7 +69,7 @@ def ler_estado(pasta_dados, sistema=None):
         return None
     if not isinstance(estado, dict):
         return None
-    if estado.get("estado") == "rodando" and not (sistema or Sistema()).pid_vivo(estado.get("pid")):
+    if estado.get("estado") == "rodando" and not travas.ocupada(pasta_dados, ARQUIVO_TRAVA):
         estado["estado"] = "interrompido"
         for passo in estado.get("passos") or []:
             if passo.get("estado") == "rodando":
@@ -93,7 +94,7 @@ class Execucao:
         arquivos = caminhos(self.pasta_dados)
         self.caminho_estado, self.caminho_log = arquivos["estado"], arquivos["log"]
         self.caminho_log_servico = arquivos["servico"]
-        anterior = ler_estado(self.pasta_dados, self.sistema) or {}
+        anterior = ler_estado(self.pasta_dados) or {}
         self.portas = dict(anterior.get("portas") or {})
         self.dados = {}
         self.atual = None
@@ -178,7 +179,7 @@ def rodar(args, sistema=None, avisar=print):
         return 2
     trava = travas.TravaDoProcesso(ex.pasta_dados, ARQUIVO_TRAVA)
     try:
-        trava.pegar()
+        _pegar(trava, ex.sistema)
     except travas.TravaOcupada:
         avisar("vendas: já há um preparo rodando para este projeto; acompanhe com: preparo.py estado",
                file=sys.stderr)
@@ -189,6 +190,28 @@ def rodar(args, sistema=None, avisar=print):
         trava.soltar()
 
 
+def _pegar(trava, sistema, tentativas=5):
+    """Pega a trava. Quem só confere se um preparo está vivo (travas.ocupada) a segura por um instante; por isso
+    tenta mais algumas vezes antes de dizer que outro preparo roda."""
+    for n in range(tentativas):
+        try:
+            return trava.pegar()
+        except travas.TravaOcupada:
+            if n == tentativas - 1:
+                raise
+            sistema.dormir(0.05)
+
+
+def _nao_comecou(pasta_dados, motivo):
+    """Grava (se der) e devolve o estado "falhou" de um preparo que não começou."""
+    estado = falha_ao_comecar(motivo, agora())
+    try:
+        travas.gravar_segredo(caminhos(pasta_dados)["estado"], json.dumps(estado, ensure_ascii=False, indent=1))
+    except OSError:
+        pass   # nem o estado dá para gravar (pasta sem permissão): quem chamou recebe o mesmo estado
+    return estado
+
+
 def iniciar(args, sistema=None):
     """Começa o preparo destacado e volta logo com o estado. Se um preparo vivo já roda, devolve o dele."""
     sistema = sistema or Sistema()
@@ -196,7 +219,7 @@ def iniciar(args, sistema=None):
     if not os.path.isdir(raiz):
         raise ValueError("a raiz do projeto %s não existe" % raiz)
     pasta_dados = pasta.pasta_de_dados(raiz, args.base)
-    antes = ler_estado(pasta_dados, sistema)
+    antes = ler_estado(pasta_dados)
     if antes and antes.get("estado") == "rodando":
         return antes
     argv = [sys.executable, "-B", os.path.abspath(__file__), "rodar", "--projeto", raiz, "--painel", args.painel,
@@ -207,25 +230,30 @@ def iniciar(args, sistema=None):
         argv += ["--base", args.base]
     if args.so_servico:
         argv.append("--so-servico")
-    processo = sistema.soltar(argv, caminhos(pasta_dados)["log"])
+    try:
+        processo = sistema.soltar(argv, caminhos(pasta_dados)["log"])
+    except OSError:
+        return _nao_comecou(pasta_dados, "O preparo não começou: este computador não deixou abrir o processo. "
+                                         "Clique em Tentar de novo.")
     id_antes = (antes or {}).get("id")
     inicio = sistema.relogio()
     while sistema.relogio() - inicio < ESPERA_INICIAR:
-        atual = ler_estado(pasta_dados, sistema)
+        atual = ler_estado(pasta_dados)
         if atual and atual.get("id") != id_antes:
             return atual   # o nosso, ou o de um `iniciar` que ganhou a corrida pela trava
         if processo.poll() not in (None, 3):
             break
         sistema.dormir(0.2)
-    atual = ler_estado(pasta_dados, sistema)
+    atual = ler_estado(pasta_dados)
     if atual and atual.get("id") != id_antes:
         return atual
-    return {"estado": "falhou", "mensagem": "O preparo não começou; veja o log.", "log": caminhos(pasta_dados)["log"]}
+    return _nao_comecou(pasta_dados, "O preparo não começou (o processo saiu antes do primeiro passo). Clique em "
+                                     "Tentar de novo.")
 
 
 def estado(args, sistema=None):
     raiz = os.path.realpath(args.projeto)
-    return ler_estado(pasta.caminho_da_pasta(raiz, args.base), sistema) or {"estado": "nunca_rodou"}
+    return ler_estado(pasta.caminho_da_pasta(raiz, args.base)) or {"estado": "nunca_rodou"}
 
 
 def argumentos(argv):

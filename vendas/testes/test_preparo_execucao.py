@@ -185,6 +185,9 @@ class TesteIniciar(Base):
         terceiro = preparo.iniciar(self.args("iniciar"), s)   # um vivo já roda: devolve o dele, não solta outro
         self.assertEqual(terceiro["id"], respostas[0]["id"])
         soltos = len(s.soltos)
+        fim = time.monotonic() + 10   # os perdedores desistem (3) antes de o vencedor terminar
+        while sum(c["codigo"] is None for c in s.corridas) > 1 and time.monotonic() < fim:
+            time.sleep(0.02)
         s.portao.set()
         for c in s.corridas:
             c["thread"].join(20)
@@ -247,17 +250,14 @@ class TesteSistemaDeVerdade(Base):
         win = preparo_sistema.Sistema(plataforma="win32", ambiente={"PATH": "", "ProgramFiles": "C:\\PF"})
         self.assertIn(os.path.join("C:\\PF", "Docker", "Docker", "resources", "bin"), win.caminho)
 
-    def test_soltar_grava_no_log_0600_e_pid_vivo(self):
+    def test_soltar_grava_no_log_0600(self):
         os.makedirs(self.pasta_dados, exist_ok=True)
         log = self.arquivos["log"]
         processo = preparo_sistema.Sistema().soltar([sys.executable, "-c", "print('solto')"], log)
-        self.assertTrue(preparo_sistema.pid_vivo(os.getpid()))
         processo.wait(30)
         self.assertIn("solto", ler(log))
         if os.name != "nt":
             self.assertEqual(stat.S_IMODE(os.stat(log).st_mode), 0o600)
-        self.assertFalse(preparo_sistema.pid_vivo(processo.pid))
-        self.assertFalse(preparo_sistema.pid_vivo(None))
 
     def test_evolution_falsa_em_127_responde_pelo_http_de_verdade(self):
         servidor = http.server.HTTPServer(("127.0.0.1", 0), Evolution)

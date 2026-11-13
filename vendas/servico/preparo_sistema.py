@@ -38,6 +38,13 @@ def ultimas(saida, n=LINHAS_FINAIS):
     return "\n".join(linhas[-n:]) or None
 
 
+def falha_ao_comecar(motivo, momento=None):
+    """Estado de um preparo que nem começou (processo não saiu, pasta sem permissão): "falhou" com um motivo simples,
+    sem passos. A tela mostra o motivo e "Tentar de novo"."""
+    return {"id": os.urandom(6).hex(), "pid": None, "estado": "falhou", "inicio": momento, "atualizado": momento,
+            "fim": momento, "mensagem": motivo, "portas": {}, "passos": []}
+
+
 def mascarar(texto, segredos):
     for segredo in segredos:
         if segredo and len(segredo) >= 8:
@@ -160,34 +167,6 @@ class Sistema:
                 return f.read()
         except (OSError, UnicodeDecodeError):
             return None
-
-    def pid_vivo(self, pid):
-        return pid_vivo(pid)
-
-
-def pid_vivo(pid):
-    if not isinstance(pid, int) or pid <= 0:
-        return False
-    if os.name == "nt":
-        import ctypes
-        k = ctypes.windll.kernel32
-        h = k.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
-        if not h:
-            return False
-        try:
-            codigo = ctypes.c_ulong()
-            return bool(k.GetExitCodeProcess(h, ctypes.byref(codigo))) and codigo.value == 259  # STILL_ACTIVE
-        finally:
-            k.CloseHandle(h)
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-    return True
 
 
 def esperar(ex, teste, limite, o_que):

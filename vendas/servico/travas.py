@@ -59,6 +59,31 @@ class TravaDoProcesso:
             self.fd = None
 
 
+def ocupada(pasta_dados, arquivo=ARQUIVO_TRAVA):
+    """True se outro processo segura a trava AGORA (o único sinal de "vivo": um pid pode ser reaproveitado). Só testa:
+    não cria o arquivo (sem arquivo = livre) e segura a trava só por um instante. Outro OSError sobe."""
+    try:
+        fd = os.open(os.path.join(pasta_dados, arquivo), os.O_RDWR)
+    except FileNotFoundError:
+        return False
+    try:
+        try:
+            if fcntl is not None:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            else:
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        except OSError as e:
+            if e.errno in OCUPADA:
+                return True
+            raise
+        return False
+    finally:
+        os.close(fd)
+
+
 def substituir(origem, destino, tentativas=3, pausa=0.1):
     """os.replace; no Windows, PermissionError (antivírus ou indexador segurando o arquivo) tenta de novo até
     `tentativas` vezes com uma pausa curta. Fora do Windows, sem nova tentativa."""

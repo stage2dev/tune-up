@@ -16,7 +16,7 @@ import unittest  # noqa: E402
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(AQUI))
 
-from servico import pasta, preparo  # noqa: E402
+from servico import pasta, preparo, travas  # noqa: E402
 from testes.test_servico import carregar_modulo  # noqa: E402
 
 CHAVE = "chave-evolution-0123456789abcdef"
@@ -57,6 +57,11 @@ class Base(unittest.TestCase):
                     "preparo.log"), "portas": portas or {}, "passos": passos}
         with open(os.path.join(self.pasta, "preparo.json"), "w", encoding="utf-8") as f:
             json.dump(registro, f)
+
+    def segurar(self):
+        """Um preparo vivo de verdade: a trava preparo.trava ocupada (o pid sozinho não conta)."""
+        trava = travas.TravaDoProcesso(self.pasta, preparo.ARQUIVO_TRAVA).pegar()
+        self.addCleanup(trava.soltar)
 
     def passos(self, atual, estado_atual, **extra):
         lista = []
@@ -99,6 +104,7 @@ class TesteBlocos(Base):
         self.assertEqual(r["atualizar_em"], 15)
 
     def test_rodando_em_cada_passo_lista_com_o_atual_fazendo(self):
+        self.segurar()
         for i in range(len(NOMES)):
             self.estado("rodando", self.passos(i, "rodando"))
             r = self.montar()
@@ -180,9 +186,12 @@ class TesteAgir(Base):
         self.assertEqual(self.montar()["atualizar_em"], 3)
         self.processos[0].codigo = 0
         self.estado("rodando", self.passos(2, "rodando"))   # o preparo destacado está andando
+        trava = travas.TravaDoProcesso(self.pasta, preparo.ARQUIVO_TRAVA).pegar()
+        self.addCleanup(trava.soltar)
         self.agir("preparar_tudo")
         self.agir("ligar_servico")
         self.assertEqual(len(self.soltos), 1)
+        trava.soltar()
         self.estado("falhou", self.passos(2, "falhou", mensagem="parou"))
         self.agir("preparar_tudo")   # parou: o clique seguinte retoma
         self.assertEqual(len(self.soltos), 2)

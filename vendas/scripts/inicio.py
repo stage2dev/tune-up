@@ -53,10 +53,8 @@ def preparado(raiz, base=None):
     except (OSError, ValueError):
         estado = None
     final = estado.get("estado") if isinstance(estado, dict) else None
-    if final == "rodando":
-        if _carregar("preparo_sistema").pid_vivo(estado.get("pid")):
-            return True
-        return False   # o processo saiu no meio
+    if final == "rodando":   # vivo só com a trava ocupada (um pid vivo pode ter sido reaproveitado)
+        return _carregar("travas").ocupada(pasta, "preparo.trava")
     if not all(os.path.isfile(os.path.join(pasta, "evolution", n)) for n in ("compose.yml", ".env")):
         return False
     return final not in ("falhou", "precisa_do_dono")

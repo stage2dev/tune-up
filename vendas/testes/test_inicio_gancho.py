@@ -19,7 +19,7 @@ VENDAS = os.path.dirname(AQUI)
 sys.path.insert(0, VENDAS)
 SCRIPT = os.path.join(VENDAS, "scripts", "inicio.py")
 
-from servico import pasta  # noqa: E402
+from servico import pasta, travas  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location("vendas_inicio_teste", SCRIPT)
 inicio = importlib.util.module_from_spec(_spec)
@@ -81,9 +81,11 @@ class TesteGancho(unittest.TestCase):
         for final in ("falhou", "precisa_do_dono"):
             self.estado({"estado": final, "passos": []})
             self.assertEqual(self.linha(), inicio.LINHA)
-        self.estado({"estado": "rodando", "pid": os.getpid()})   # preparo vivo: não avisa no meio
+        trava = travas.TravaDoProcesso(self.pasta, "preparo.trava").pegar()
+        self.estado({"estado": "rodando", "pid": os.getpid()})   # preparo vivo (trava ocupada): não avisa no meio
         self.assertEqual(self.linha(), "")
-        self.estado({"estado": "rodando", "pid": 2 ** 30})        # o processo saiu no meio
+        trava.soltar()
+        self.estado({"estado": "rodando", "pid": 2 ** 30})        # o processo saiu no meio (trava livre)
         self.assertEqual(self.linha(), inicio.LINHA)
 
     def test_nunca_levanta(self):

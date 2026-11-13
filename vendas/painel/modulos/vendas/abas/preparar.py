@@ -13,11 +13,15 @@ PREPARO = os.path.join(PLUGIN, "servico", "preparo.py")
 _spec = importlib.util.spec_from_file_location("tune_up_vendas_preparo_sistema",
                                                os.path.join(PLUGIN, "servico", "preparo_sistema.py"))
 sistema = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(sistema)   # só biblioteca padrão: Sistema.soltar e pid_vivo
+_spec.loader.exec_module(sistema)   # só biblioteca padrão: Sistema.soltar e o estado de falha ao começar
+_spec = importlib.util.spec_from_file_location("tune_up_vendas_preparo_travas", os.path.join(PLUGIN, "servico", "travas.py"))
+travas = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(travas)   # só biblioteca padrão: preparo vivo = trava ocupada
 
 ACOES = ("preparar_tudo", "ligar_servico")
 ARQUIVO_ESTADO = "preparo.json"   # o mesmo de servico/preparo.py
 ARQUIVO_LOG = "preparo.log"
+ARQUIVO_TRAVA = "preparo.trava"
 PORTA_EVOLUTION = 8080
 TITULOS = {"docker_instalado": "Instalar o programa que roda o WhatsApp",
            "docker_ligado": "Ligar esse programa",
@@ -40,16 +44,20 @@ def _pasta(raiz, cliente, base):
 
 
 def ler_estado(raiz, cliente, base=None):
-    """Estado do último preparo, ou None (sem arquivo, ilegível). "rodando" com o processo morto = "interrompido"."""
+    """Estado do último preparo, ou None (sem arquivo, ilegível). "rodando" com a trava preparo.trava livre =
+    "interrompido" (um pid vivo não basta: pode ter sido reaproveitado)."""
+    pasta_dados = _pasta(raiz, cliente, base)
     try:
-        with open(os.path.join(_pasta(raiz, cliente, base), ARQUIVO_ESTADO), encoding="utf-8") as f:
+        with open(os.path.join(pasta_dados, ARQUIVO_ESTADO), encoding="utf-8") as f:
             estado = json.load(f)
+        if isinstance(estado, dict) and estado.get("estado") == "rodando":
+            if not travas.ocupada(pasta_dados, ARQUIVO_TRAVA):
+                estado["estado"] = "interrompido"
     except (OSError, ValueError):
         return None
     if not isinstance(estado, dict) or not isinstance(estado.get("passos", []), list):
         return None
-    if estado.get("estado") == "rodando" and not sistema.pid_vivo(estado.get("pid")):
-        estado["estado"] = "interrompido"
+    if estado.get("estado") == "interrompido":
         for passo in estado.get("passos") or []:
             if isinstance(passo, dict) and passo.get("estado") == "rodando":
                 passo.update(estado="falhou", mensagem="O preparo parou no meio deste passo. Clique de novo para "
@@ -103,6 +111,8 @@ def bloco_preparar(estado, pasta_dados=""):
     bloco = {"tipo": "formulario", "id": "preparar_tudo", "titulo": PREPARAR, "descricao": EXPLICA,
              "acao": "preparar_tudo", "botao": "Preparar tudo", "campos": []}
     if passo is None:
+        if (estado or {}).get("estado") == "falhou" and estado.get("mensagem"):   # nem começou
+            bloco.update(descricao=_texto(estado["mensagem"], pasta_dados), botao="Tentar de novo")
         return bloco
     titulo = TITULOS.get(passo.get("nome"), "um passo")
     mensagem = _texto(passo.get("mensagem"), pasta_dados) or "O preparo parou neste passo."
@@ -120,8 +130,9 @@ def bloco_ligar(estado, pasta_dados=""):
     descricao = ("O WhatsApp deste computador já está pronto; falta só ligar o serviço de Vendas (isso acontece depois "
                  "de reiniciar o computador). Um clique liga.")
     passo = next((p for p in _passos(estado) if p.get("estado") in ("precisa_do_dono", "falhou")), None)
-    if passo is not None and passo.get("mensagem"):
-        descricao += " Da última vez: " + _texto(passo["mensagem"], pasta_dados)
+    ultima = (passo or {}).get("mensagem") or ((estado or {}).get("mensagem") if passo is None else None)
+    if ultima:
+        descricao += " Da última vez: " + _texto(ultima, pasta_dados)
     return {"tipo": "formulario", "id": "ligar_servico", "titulo": LIGAR, "descricao": descricao,
             "acao": "ligar_servico", "botao": "Ligar o serviço", "campos": []}
 
@@ -170,7 +181,13 @@ def agir(ctx, cliente, acao, base=None):
     try:
         _lancados[raiz] = soltar(argv, os.path.join(pasta_dados, ARQUIVO_LOG))
     except OSError:
-        return {"ok": False, "mensagem": "Não consegui começar o preparo neste computador."}
+        motivo = "O preparo não começou: este computador não deixou abrir o processo. Clique em Tentar de novo."
+        try:
+            travas.gravar_segredo(os.path.join(pasta_dados, ARQUIVO_ESTADO),
+                                  json.dumps(sistema.falha_ao_comecar(motivo), ensure_ascii=False))
+        except OSError:
+            pass   # nem o estado dá para gravar; a mensagem abaixo diz o motivo
+        return {"ok": False, "mensagem": motivo}
     if acao == "ligar_servico":
         return {"ok": True, "mensagem": "Ligando o serviço. Em instantes a tela muda."}
     return {"ok": True, "mensagem": "Comecei a preparar. Acompanhe os passos aqui."}
