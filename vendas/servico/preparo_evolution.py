@@ -126,6 +126,33 @@ def evolution_no_ar(ex):
                   % (ESPERA_EVOLUTION // 60), ultimas(saida))
 
 
+def _reiniciar(ex):
+    """O serviço rodando começou antes de o .env da Evolution existir (a trava marca a hora em que ele começou): ele
+    não leu a chave e precisa ser reiniciado. Com a Evolution de outro endereço, não há .env para comparar."""
+    if ex.externa:
+        return False
+    try:
+        return os.path.getmtime(evolution_local.caminho_env(ex.pasta_dados)) > os.path.getmtime(
+            os.path.join(ex.pasta_dados, travas.ARQUIVO_TRAVA))
+    except OSError:
+        return False
+
+
+def _sondar_antes(ex):
+    """--so-servico: confere (só leitura) se a Evolution responde antes de ligar o serviço. None = responde."""
+    if ex.externa:
+        url, chave = ex.sistema.var(VAR_URL), ex.sistema.var(VAR_CHAVE) or ""
+        if _sondar(ex, url, chave)[1]:
+            return None
+        return falhou("A Evolution do endereço configurado (VENDAS_EVOLUTION_URL) não respondeu com a chave "
+                      "configurada (VENDAS_EVOLUTION_CHAVE). Confira os dois e clique de novo.")
+    ambiente = evolution_local.ler_ambiente(ex.pasta_dados)
+    if ambiente.get(VAR_URL) and _sondar(ex, ambiente[VAR_URL], ambiente.get(VAR_CHAVE) or "")[1]:
+        return None
+    return falhou("O WhatsApp deste computador não está respondendo, então não liguei o serviço. Clique em "
+                  "\"Preparar tudo\": ele liga o que faltar.")
+
+
 def servico_rodando(pasta_dados):
     """A trava do serviço ocupada = um serviço de Vendas está rodando para este projeto."""
     trava = travas.TravaDoProcesso(pasta_dados)
@@ -146,7 +173,15 @@ def _ler_final(caminho, n=15):
 
 
 def servico_ligado(ex):
+    if ex.so_servico:
+        r = _sondar_antes(ex)
+        if r is not None:
+            return r
     if servico_rodando(ex.pasta_dados):
+        if _reiniciar(ex):
+            return dono("O serviço de Vendas já estava ligado antes de o WhatsApp ficar pronto, então ainda não sabe "
+                        "falar com ele. Reinicie o serviço de Vendas: feche a janela em que ele roda (ou reinicie o "
+                        "computador) e depois clique em \"Ligar o serviço\".")
         return feito("O serviço de Vendas já está ligado.")
     s = ex.sistema
     porta = _porta(ex, ex.porta_servico(), "servico")

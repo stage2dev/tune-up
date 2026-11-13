@@ -22,6 +22,7 @@ ACOES = ("preparar_tudo", "ligar_servico")
 ARQUIVO_ESTADO = "preparo.json"   # o mesmo de servico/preparo.py
 ARQUIVO_LOG = "preparo.log"
 ARQUIVO_TRAVA = "preparo.trava"
+VAR_URL = "VENDAS_EVOLUTION_URL"   # Evolution de outro endereço: conta como pronta (servico/conectores/evolution.py)
 PORTA_EVOLUTION = 8080
 TITULOS = {"docker_instalado": "Instalar o programa que roda o WhatsApp",
            "docker_ligado": "Ligar esse programa",
@@ -140,7 +141,7 @@ def bloco_ligar(estado, pasta_dados=""):
 def topo(ctx, cliente, conexao, base=None, servico_rodando=False, precisa=False):
     """(blocos do topo da aba Conexão, preparo vivo). Vivo: a lista de passos. Serviço parado: "Ligar o serviço" se a
     Evolution está bem, senão "Preparar tudo". Serviço rodando: "Preparar tudo" só se `precisa` (Evolution sem
-    resposta); senão nada."""
+    resposta); senão nada. Com VENDAS_EVOLUTION_URL no ambiente, só "Ligar o serviço" (ou nada)."""
     raiz = (ctx or {}).get("raiz") or ""
     if not raiz:
         return [bloco_preparar(None)], False
@@ -148,9 +149,10 @@ def topo(ctx, cliente, conexao, base=None, servico_rodando=False, precisa=False)
     pasta_dados = _pasta(raiz, cliente, base)
     if vivo(raiz, estado):
         return [bloco_lista(estado if (estado or {}).get("estado") == "rodando" else None)], True
+    externa = bool(os.environ.get(VAR_URL))
     if servico_rodando:
-        return ([bloco_preparar(estado, pasta_dados)] if precisa else []), False
-    if evolution_ok(raiz, cliente, conexao, estado, base):
+        return ([bloco_preparar(estado, pasta_dados)] if precisa and not externa else []), False
+    if externa or evolution_ok(raiz, cliente, conexao, estado, base):
         return [bloco_ligar(estado, pasta_dados)], False
     return [bloco_preparar(estado, pasta_dados)], False
 

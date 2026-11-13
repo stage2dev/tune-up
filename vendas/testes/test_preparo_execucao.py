@@ -104,7 +104,8 @@ class TesteEstadoELog(Base):
         self.assertEqual(preparo.ler_estado(self.pasta_dados)["estado"], "feito")
 
     def test_so_servico_roda_so_o_ultimo_passo(self):
-        s = self.sistema(tem=(), ligado=False)   # sem Docker: o preparo inteiro pararia no passo 1
+        evolution_local.preparar(self.projeto, self.base)
+        s = self.sistema(tem=(), ligado=False, evolution_no_ar=True)   # sem Docker: o preparo inteiro pararia no 1
         args = preparo.argumentos(["rodar", "--projeto", self.projeto, "--base", self.base, "--so-servico"])
         self.assertEqual(preparo.rodar(args, s, mudo), 0)
         self.assertEqual(s.chamadas, [])                     # nenhum comando do Docker

@@ -288,7 +288,9 @@ class TesteEvolutionEServico(Base):
 
     def test_servico_ja_rodando_nao_sobe_outro(self):
         from servico import travas
-        os.makedirs(self.pasta_dados, exist_ok=True)
+        evolution_local.preparar(self.projeto, self.base)   # o .env já existia quando o serviço ligou
+        antes = os.path.getmtime(evolution_local.caminho_env(self.pasta_dados)) - 60
+        os.utime(evolution_local.caminho_env(self.pasta_dados), (antes, antes))
         trava = travas.TravaDoProcesso(self.pasta_dados).pegar()
         self.addCleanup(trava.soltar)
         s = self.sistema()

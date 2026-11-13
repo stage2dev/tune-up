@@ -16,8 +16,8 @@ class ProcessoFalso:
 
 class SistemaFalso(Sistema):
     def __init__(self, plataforma="darwin", tem=("docker", "colima"), compose_plugin=True, ligado=True,
-                 evolution_no_ar=False, marca=None):
-        super().__init__(plataforma=plataforma, caminho="", ambiente={"ProgramFiles": "C:\\PF"})
+                 evolution_no_ar=False, marca=None, ambiente=None):
+        super().__init__(plataforma=plataforma, caminho="", ambiente=dict({"ProgramFiles": "C:\\PF"}, **(ambiente or {})))
         self.tem = set(tem)
         self.compose_plugin = compose_plugin
         self.ligado = ligado
@@ -28,6 +28,7 @@ class SistemaFalso(Sistema):
         self.servico_sai = False
         self.chamadas = []
         self.soltos = []
+        self.ambientes_soltos = []        # o ambiente que cada processo solto receberia
         self.agora = 0.0
         self.dormido = 0.0
         self.ocupadas = set()
@@ -79,6 +80,7 @@ class SistemaFalso(Sistema):
 
     def soltar(self, args, caminho_log, pasta=None):
         self.soltos.append(list(args))
+        self.ambientes_soltos.append(dict(self.ambiente))
         if any(a.endswith("servico.py") for a in args):
             if self.servico_sai:
                 with open(caminho_log, "a", encoding="utf-8") as f:

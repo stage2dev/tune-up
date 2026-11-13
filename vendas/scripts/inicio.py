@@ -66,6 +66,8 @@ def linha(entrada, base=None):
         dados = json.loads(entrada or "{}")
         cwd = dados.get("cwd") if isinstance(dados, dict) else None
         raiz = raiz_do_projeto(cwd if isinstance(cwd, str) and cwd else os.getcwd())
+        if os.environ.get("VENDAS_EVOLUTION_URL"):   # Evolution de outro endereço: nada a preparar aqui
+            return ""
         if raiz is None or not modulo_ligado(raiz) or preparado(raiz, base):
             return ""
         return LINHA

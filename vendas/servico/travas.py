@@ -43,6 +43,10 @@ class TravaDoProcesso:
                                    % self.caminho)
             raise
         self.fd = fd
+        try:
+            os.utime(self.caminho)   # a hora do arquivo = quando este processo pegou a trava (o preparo compara)
+        except OSError:
+            pass
         return self
 
     def soltar(self):

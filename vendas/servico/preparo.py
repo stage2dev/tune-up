@@ -21,7 +21,8 @@ import json  # noqa: E402
 import secrets  # noqa: E402
 
 from servico import evolution_local, pasta, preparo_docker, preparo_evolution, travas  # noqa: E402
-from servico.preparo_sistema import Sistema, falha_ao_comecar, falhou, mascarar  # noqa: E402
+from servico.conectores.evolution import VAR_URL  # noqa: E402
+from servico.preparo_sistema import Sistema, falha_ao_comecar, falhou, feito, mascarar  # noqa: E402
 
 PASSOS = (
     ("docker_instalado", "Instalar o Docker", preparo_docker.docker_instalado),
@@ -99,6 +100,8 @@ class Execucao:
         self.dados = {}
         self.atual = None
         self.passos = PASSOS[-1:] if so_servico else PASSOS
+        self.so_servico = so_servico
+        self.externa = bool(self.sistema.var(VAR_URL))   # Evolution de outro endereço: conta como pronta
         self.estado = {"id": secrets.token_hex(6), "pid": os.getpid(), "estado": "rodando", "inicio": agora(),
                        "atualizado": agora(), "fim": None, "log": self.caminho_log, "portas": self.portas,
                        "passos": [{"nome": n, "titulo": t, "estado": "pendente", "mensagem": None, "comando": None,
@@ -151,7 +154,10 @@ class Execucao:
             self.gravar()
             self.avisar("%s..." % titulo, flush=True)
             try:
-                r = passo(self)
+                if self.externa and nome != "servico_ligado":
+                    r = feito("Não mexi aqui: a Evolution é a do endereço configurado (VENDAS_EVOLUTION_URL).")
+                else:
+                    r = passo(self)
             except Exception as e:  # um erro inesperado vira falha do passo, nunca um preparo "rodando" para sempre
                 r = falhou("Erro inesperado neste passo.", ("%s: %s" % (type(e).__name__, e))[:300])
             registro.update({k: self._limpo(v) if isinstance(v, str) else v for k, v in r.items()})
