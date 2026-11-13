@@ -20,6 +20,7 @@ import sys
 import threading
 
 import config
+import registro
 
 RE_NOME = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
 ARQUIVO = "extensoes.json"
@@ -64,8 +65,11 @@ def _arquivos(base):
     return sorted(saida)
 
 
-def soma(base):
-    """sha256 da pasta instalada (nomes e conteúdo). Levanta ValueError se passa dos limites."""
+def soma(base, nt=None):
+    """sha256 da pasta instalada (nomes e conteúdo). Levanta ValueError se passa dos limites.
+    No Windows não usa o cache: lá st_ctime é a hora de criação, e trocar o conteúdo mantendo
+    tamanho e mtime deixaria a assinatura igual."""
+    nt = os.name == "nt" if nt is None else nt
     lista = _arquivos(base)
     assin = []
     for rel, cam in lista:
@@ -73,7 +77,7 @@ def soma(base):
         assin.append((rel, st.st_size, st.st_mtime_ns, st.st_ctime_ns, st.st_ino, os.path.islink(cam)))
     assin = tuple(assin)
     with _lock:
-        if _somas.get(base, (None,))[0] == assin:
+        if not nt and _somas.get(base, (None,))[0] == assin:
             return _somas[base][1]
     if sum(a[1] for a in assin) > MAX_BYTES:
         raise ValueError("mais de %d MB" % (MAX_BYTES // (1024 * 1024)))
@@ -113,7 +117,7 @@ def _registro(cfg):
 def _ler(cfg):
     """{chave: {...}} aceitas; {} se o arquivo não existe; None se existe e não lê."""
     try:
-        with open(_registro(cfg), encoding="utf-8") as f:
+        with open(_registro(cfg), encoding="utf-8-sig") as f:  # -sig: o PowerShell 5.1 grava BOM
             dado = json.load(f)
     except FileNotFoundError:
         return {}
@@ -129,7 +133,7 @@ def _gravar(cfg, dado):
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0), 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump(dado, f, ensure_ascii=False, indent=1, sort_keys=True)
-    os.replace(tmp, _registro(cfg))
+    registro._insistir(lambda: os.replace(tmp, _registro(cfg)))  # Windows: arquivo aberto por outro
 
 
 def _atual(cfg, chave):

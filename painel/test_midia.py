@@ -71,6 +71,9 @@ class TesteMidia(unittest.TestCase):
         cls.tem_atalho = _symlink(os.path.join(t, "segredo.png"), os.path.join(pecas, "fuga.png"))
         _symlink(os.path.join(pecas, "v.mp4"), os.path.join(pecas, "dentro.mp4"))
         _symlink(t, os.path.join(pac, "dados", "link"))
+        escrever(os.path.join(pecas, ".oculta", "y.png"), "oculto na pasta")
+        cls.atalho_oculto = (_symlink(os.path.join(pecas, ".oculto.png"), os.path.join(pecas, "visivel.png"))
+                             and _symlink(os.path.join(pecas, ".oculta"), os.path.join(pecas, "vis")))
         cls.cfg = config.carregar(t, home=t)
         cls.app = painel.App(cls.cfg, rodar_externos=False)
         cls.app.log = False
@@ -258,6 +261,38 @@ class TesteMidia(unittest.TestCase):
         self.assertEqual(resp.count(b"HTTP/1."), 1, resp)
         self.assertNotIn(b" 500 ", resp)
         self.assertTrue(resp.endswith(b"\r\n\r\nabc"), resp[-40:])
+
+    # ---- o nome pedido não começa com ponto, mas o caminho real sim (atalho; no Windows, nome curto 8.3)
+    def test_atalho_para_oculto_recusado(self):
+        if not self.atalho_oculto:
+            self.skipTest("sem permissão de symlink")
+        for c in ("visivel.png", "vis/y.png"):
+            st, _c, dados = self.arq(c)
+            self.assertEqual(st, 404, c)
+            self.assertNotIn(b"oculto", dados)
+
+    @unittest.skipUnless(os.name == "nt", "nome curto 8.3 só existe no Windows")
+    def test_nome_curto_8_3_de_oculto_recusado(self):
+        import ctypes
+        longo = os.path.join(self.tmp, ".tune-up", "painel-projeto", "dados", "pecas", ".oculto.png")
+        buf = ctypes.create_unicode_buffer(1024)
+        n = ctypes.windll.kernel32.GetShortPathNameW(longo, buf, 1024)
+        curto = os.path.basename(buf.value) if n else ""
+        if not curto or curto.startswith("."):
+            self.skipTest("nomes 8.3 desligados neste volume")
+        st, _c, dados = self.arq(curto)
+        self.assertEqual(st, 404, curto)
+        self.assertNotIn(b"oculto", dados)
+
+    def test_estaticos_atalho_para_oculto_recusado(self):
+        import estaticos
+        web = os.path.join(self.tmp, "dist")
+        escrever(os.path.join(web, "index.html"), "<p>painel</p>")
+        escrever(os.path.join(web, ".segredo.js"), "segredo()")
+        if not _symlink(os.path.join(web, ".segredo.js"), os.path.join(web, "visivel.js")):
+            self.skipTest("sem permissão de symlink")
+        self.assertEqual(estaticos.resolver("/visivel.js", web)[0], 404)
+        self.assertEqual(estaticos.resolver("/index.html", web)[0], 200)
 
 
 class TesteIntervalo(unittest.TestCase):

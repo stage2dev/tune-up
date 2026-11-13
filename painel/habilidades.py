@@ -104,7 +104,7 @@ def _ler_json(caminho, avisos, rotulo):
     try:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
             raise OSError("não é arquivo comum")
-        dado = json.loads(os.read(fd, 256 * 1024).decode("utf-8"))
+        dado = json.loads(os.read(fd, 256 * 1024).decode("utf-8-sig"))  # -sig: BOM do PowerShell 5.1
     except (OSError, ValueError, UnicodeDecodeError) as e:
         avisos.append("%s ilegível (%s); ignorei" % (rotulo, type(e).__name__))
         return {}

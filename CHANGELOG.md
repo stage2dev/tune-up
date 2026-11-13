@@ -2,6 +2,21 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## 2.12.0
+
+Native Windows, Part 2: the panel guards hold on Windows. `tune-up-studio` 0.3.1. Nothing changes on macOS and Linux unless stated.
+
+- **The PowerShell tool is denied in every panel session**, with the reason "use the Bash (Git Bash)". The guard reads the command text, and PowerShell has too many ways to build a path that text cannot see (curly quotes, en dash, `Join-String`, `iwr -OutFile`, `\??\`). Two layers: the hook denies it first (before `permitir`), and on Windows `--settings` also carries a `PowerShell` deny rule, which holds even if the hook does not run. `sandbox.py` and the studio actions deny it too. The tool does not exist on macOS/Linux.
+- Windows only, in the Bash tool: calling `cmd`, `powershell`, `pwsh`, `wsl` (by name, by path or through `%COMSPEC%`) or running a `.bat`/`.cmd` gets the strong decision (deny at read/draft level, ask at code/credit level), before `permitir`. cmd expands `%VAR%`, and the guard cannot read what another shell runs.
+- The hook runs with `python -I -BXutf8`: stdin JSON is read as UTF-8 under cp1252, so a protected path with an accent matches, and a reason outside cp1252 no longer crashes it.
+- Windows path forms are compared the way Win32 reads them: no `::$DATA` stream suffix, no trailing dots or spaces on each component, 8.3 short names expanded with `realpath`, `\\?\`, `\\.\` and `\??\` prefixes, `C:rel` drive-relative paths, rooted paths without a drive, and Git Bash `/c/`, `/mnt/c/`, `/cygdrive/c/` (also glued to an option, `-t/c/...`, or inside braces). Network and device paths the hook cannot resolve are treated as hidden (strong decision).
+- `painel/travas_sessao.py` (new) holds what only the panel uses (`config_gancho`, `settings_da_sessao`, `argv_travas`); `travas.py` stays under 450 lines and still exports those names. `conf["bash"]` comes from Bash rules only.
+- `dono.py`: an approved path with a backslash, a drive letter or an NTFS stream is refused, and `realpath` must stay inside the root. `midia.py` and `estaticos.resolver`: after `realpath`, no real segment may start with `.` (an 8.3 name could read a hidden file). On macOS/Linux this also refuses a `.tune-up` or media folder that is a symlink to outside the root or to a dot-folder (only adds refusals).
+- `extensoes.soma()` does not cache on Windows (ctime is creation time there, so a same-size swap with mtime restored went unseen).
+- User-editable JSON is read with `utf-8-sig` (PowerShell 5.1 writes a BOM): `config.py`, `habilidades.py`, `catalogo.py`, `dono.py`, `extensoes`.
+- `os.replace`/`os.unlink` in the hook, `dono.py`, `extensoes` and `modelos` retry a `PermissionError` for up to 2 s on Windows. `leitor.py` compares the session cwd with `normcase` (drive-letter case).
+- Not proven here (no Windows machine, Windows CI never ran): a real Windows session with the PowerShell tool denied by `--settings`, the hook under a real cp1252 console, real 8.3 expansion, and `PermissionError` retries against a real open handle. Open lower-severity review findings are listed for later.
+
 ## 2.11.0
 
 Native Windows, Part 1: the panel starts, launches and opens sessions on Windows 11 (Git Bash, Python 3.9+ as `python`/`py -3`, cp1252 code page). Nothing changes on macOS and Linux unless stated.

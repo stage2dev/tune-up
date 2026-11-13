@@ -69,7 +69,8 @@
           "motivo": "Bash do estúdio: só o hyperframes fixado cita .hyperframes (o QA confia nos relatórios dessa pasta)"
         },
         "Skill(hyperframes)",
-        "Skill(hyperframes-cli)"
+        "Skill(hyperframes-cli)",
+        "PowerShell"
       ],
       "permitir": [
         "Edit({trabalho}/**)"
@@ -187,7 +188,8 @@
           "motivo": "Bash do estúdio: só o hyperframes fixado cita .hyperframes (o QA confia nos relatórios dessa pasta)"
         },
         "Skill(hyperframes)",
-        "Skill(hyperframes-cli)"
+        "Skill(hyperframes-cli)",
+        "PowerShell"
       ],
       "permitir": [
         "Edit({trabalho}/**)"
@@ -288,7 +290,8 @@
           "motivo": "Bash do estúdio: só o hyperframes fixado cita .hyperframes (o QA confia nos relatórios dessa pasta)"
         },
         "Skill(hyperframes)",
-        "Skill(hyperframes-cli)"
+        "Skill(hyperframes-cli)",
+        "PowerShell"
       ],
       "permitir": [
         "Edit({trabalho}/**)"
@@ -374,7 +377,8 @@
           "motivo": "Bash do estúdio: só o hyperframes fixado cita .hyperframes (o QA confia nos relatórios dessa pasta)"
         },
         "Skill(hyperframes)",
-        "Skill(hyperframes-cli)"
+        "Skill(hyperframes-cli)",
+        "PowerShell"
       ],
       "permitir": [
         "Edit({trabalho}/**)"

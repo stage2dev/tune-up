@@ -161,7 +161,7 @@ def _ler_arquivo(caminho, avisos):
         if len(bruto) > LIMITE_JSON:
             avisos.append("painel.json passou de 64 KB; ignorei")
             return {}
-        dado = json.loads(bruto.decode("utf-8"))
+        dado = json.loads(bruto.decode("utf-8-sig"))  # -sig: o PowerShell 5.1 grava BOM
     except (OSError, ValueError, UnicodeDecodeError) as e:
         avisos.append("painel.json ilegível (%s); usei os padrões" % type(e).__name__)
         return {}

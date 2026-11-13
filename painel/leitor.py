@@ -7,6 +7,7 @@ Python 3.9, só biblioteca padrão.
 """
 import datetime
 import json
+import ntpath
 import os
 import re
 import subprocess
@@ -97,6 +98,14 @@ def dentro_de(caminho, raiz):
     """O caminho real (seguindo atalhos) fica dentro da raiz real?"""
     real, base = os.path.realpath(caminho), os.path.realpath(raiz)
     return real == base or real.startswith(base.rstrip(os.sep) + os.sep)
+
+
+def da_raiz(cwd, raiz, nt=None):
+    """A sessão roda na raiz ou abaixo dela? No Windows sem caixa e com barras normalizadas (c:\\ = C:\\)."""
+    sep = os.sep
+    if os.name == "nt" if nt is None else nt:
+        cwd, raiz, sep = ntpath.normcase(ntpath.normpath(cwd)), ntpath.normcase(ntpath.normpath(raiz)), "\\"
+    return cwd == raiz or cwd.startswith(raiz + sep)
 
 
 def ler_texto(caminho, avisos=None, raiz=None):
@@ -391,7 +400,7 @@ def montar_estado(plans_cli=None, cache=None, rodar_externos=True, cfg=None):
     else:
         prs, sessoes = [], []
     sessoes_proj = [{k: v for k, v in s.items() if k != "cwd"} for s in sessoes
-                    if s["cwd"] == workspace or s["cwd"].startswith(workspace + os.sep)]
+                    if da_raiz(s["cwd"], workspace)]
 
     fases = []
     for pasta in listar_fases(plans_dir, avisos):

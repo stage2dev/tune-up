@@ -193,7 +193,7 @@ def carregar_catalogo(pastas):
             if os.path.islink(arq) or not real.startswith(os.path.realpath(pasta).rstrip(os.sep) + os.sep) \
                     or os.path.getsize(arq) > LIMITE_ACOES:
                 raise ValueError("atalho ou grande demais")
-            with open(arq, encoding="utf-8") as f:
+            with open(arq, encoding="utf-8-sig") as f:  # -sig: o PowerShell 5.1 grava BOM
                 dado = json.load(f)
         except (OSError, ValueError) as e:
             avisos.append("%s ilegível: %s" % (nome, str(e)[:120]))

@@ -1,0 +1,81 @@
+"""Parte das travas que só o processo do painel usa: a configuração do gancho e o `--settings` da sessão.
+
+O gancho (travas.py) roda com `-I` e nunca importa este arquivo; os nomes daqui seguem importáveis de `travas`
+(`travas.settings_da_sessao`, `from travas import argv_travas`).
+"""
+import base64
+import json
+import re
+import shlex
+import sys
+
+import travas
+from travas import NEGAR_LEVE, RISCO_LEVE
+
+# `os` de travas, não o daqui: os testes trocam `travas.os` por um Windows simulado (ntpath) e isso tem de valer aqui
+
+
+def _os():
+    return travas.os
+
+
+def config_gancho(acao, protegidos=(), liberados=(), perguntas_dir=None):
+    trv = acao.get("_travas") or {}
+    leve = acao.get("risco") in RISCO_LEVE
+    # Bash no `permitir`: liga a checagem de comando composto (o PowerShell é negado sempre: não conta)
+    bash = (any(re.match(r"Bash(\(|$)", r) for r in trv.get("permitir") or [])
+            or any(re.fullmatch(r["ferramenta"], "Bash") for r in trv.get("regras_permitir") or []))
+    conf = {"v": 1, "falha": "deny" if leve else "ask", "forte": "deny" if leve else "ask",
+            "leve": leve, "bash": bash, "sb": bool(acao.get("sandbox")),
+            "prot": [p for p in protegidos if p], "lib": [p for p in liberados if p],
+            "n": trv.get("regras_negar") or [], "p": trv.get("regras_permitir") or []}
+    if perguntas_dir and acao.get("_perguntas_chat"):
+        conf["perg"] = perguntas_dir  # pergunta de múltipla escolha vai para o chat, não para o terminal
+    return conf
+
+
+def _codificar(conf):
+    bruto = json.dumps(conf, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return base64.urlsafe_b64encode(bruto).decode("ascii")
+
+
+def settings_da_sessao(acao, protegidos=(), liberados=(), python=None, este_arquivo=None, workspace="", dados="",
+                       perguntas_dir=None):
+    """Texto JSON para `--settings`. Sem segredo: só regra, o caminho deste gancho e o bloco `sandbox`/`env`."""
+    python = python or sys.executable or "python3"
+    este_arquivo = este_arquivo or _os().path.abspath(travas.__file__)
+    conf = config_gancho(acao, protegidos, liberados, perguntas_dir)
+    # -X utf8 (junto do -B, para o <conf> seguir no 5º pedaço): o gancho lê e escreve JSON em UTF-8 mesmo com o
+    # sistema em cp1252 (Windows); sem isso, caminho com acento não casa e motivo fora do cp1252 derruba o gancho.
+    comando = " ".join(shlex.quote(x) for x in (python, "-I", "-BXutf8", este_arquivo, _codificar(conf)))
+    comando += " || exit 2"  # python ausente ou quebrado: código 2 bloqueia a chamada (não deixa passar)
+    cfg = {"hooks": {"PreToolUse": [{"matcher": "*", "hooks": [
+        {"type": "command", "command": comando, "timeout": 15}]}]}}
+    trv = acao.get("_travas") or {}
+    import sandbox  # aqui dentro: o gancho roda com -I e não importa nada do painel
+    topo, negar_sb, perm = sandbox.bloco(acao, workspace, dados)
+    negar = (list(NEGAR_LEVE) if acao.get("risco") in RISCO_LEVE else []) + list(trv.get("negar") or [])
+    # Windows: PowerShell negado também por regra de permissão (vale até se o gancho não rodar, sem Git Bash)
+    negar += [r for r in negar_sb + ["PowerShell"] * (getattr(_os(), "name", "") == "nt") if r not in negar]
+    if negar:
+        perm["deny"] = negar
+    if trv.get("permitir"):
+        perm["allow"] = list(trv["permitir"])
+    if perm:
+        cfg["permissions"] = perm
+    cfg.update(topo)
+    return json.dumps(cfg, ensure_ascii=False, separators=(",", ":"))
+
+
+def argv_travas(acao, cfg=None):
+    """Pedaço do argv do `claude --bg` com as travas da ação."""
+    cfg = cfg or {}
+    protegidos = [cfg.get("painel_dir"), cfg.get("pacote_dir"), cfg.get("arquivo")]
+    os = _os()
+    liberados = [os.path.join(cfg["pacote_dir"], "dados")] if cfg.get("pacote_dir") else []
+    dados = cfg.get("dados_dir") or ""  # estes saem da exceção `dados`: só o servidor grava
+    import sandbox
+    protegidos += [os.path.join(dados, x) for x in sandbox.DONO] if dados else []
+    perguntas = os.path.join(dados, "perguntas") if dados else None
+    return ["--settings", settings_da_sessao(acao, protegidos, liberados, workspace=cfg.get("workspace") or "",
+                                             dados=dados, perguntas_dir=perguntas)]

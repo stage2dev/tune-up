@@ -105,7 +105,6 @@ class TesteExtensoes(unittest.TestCase):
         self.assertIn("estudio.post", self.ids(cfg)[0])
         self.assertEqual(modulos.montar(cfg, "estudio", usar_cache=False)[0], 200)
 
-    @unittest.skipIf(os.name == "nt", "st_ctime é a hora de criação no Windows")
     def test_conteudo_trocado_com_mesmo_tamanho_e_mtime_e_visto(self):
         qa = os.path.join(self.inst, "scripts", "qa.py")
         antes = extensoes.soma(self.inst)
