@@ -2,6 +2,12 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## Unreleased
+
+- Workflow script template: `templates/workflow-template.js`.
+- The guard warns on untyped `agent()` calls in Workflow scripts (`workflow_generic`: `warn`, `block` or `off`).
+- The `part` and `plan` skills document Workflow scripts (typed agents, effort, review-loop cap).
+
 ## tune-up-studio 0.4.0
 
 Pieces that stop the scroll and lead to a message or a sale, for any business. The tune-up core stays 2.10.0.

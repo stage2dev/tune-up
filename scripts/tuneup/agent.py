@@ -5,6 +5,7 @@ import re
 from .mensagens import msg
 from .sessao import decisao_pre, log_erro
 from .usuario import ler_usuario, modelo_proibido, sem_modelo
+from .workflow import RE_WF_TOKEN, workflow_generico
 
 # ---------------------------------------------------------------- agent
 
@@ -18,8 +19,6 @@ def proibidos():
     return [m.strip().lower() for m in ler_usuario()[0]["forbidden_subagent_models"] if m.strip()]
 
 
-# comments are skipped; every string literal (any length, any character) is checked whole
-RE_WF_TOKEN = re.compile(r"//[^\n]*|/\*.*?\*/|'(?:\\.|[^'\\\n])*'|\"(?:\\.|[^\"\\\n])*\"|`(?:\\.|[^`\\])*`", re.S)
 LIMITE_SCRIPT = 512 * 1024
 
 
@@ -183,6 +182,11 @@ def ev_agent(d, cfg):
             f = modelo_proibido(sm, lista) if sm else None
             if f:
                 return decisao_pre("bloquear", msg("modelo_proibido_sessao", f))
+        modo = cfg.get("workflow_generic")
+        linhas = workflow_generico(script) if modo != "off" else []
+        if linhas:
+            return decisao_pre("bloquear" if modo == "block" else "avisar", msg(
+                "workflow_generico", len(linhas), ", ".join(str(n) for n in linhas[:5])))
         return None
     if nome not in ("Agent", "Task"):
         return None
