@@ -4,9 +4,12 @@ Nada chama o claude de verdade (CLI falso). A prova com sessão real fica em tes
 """
 import json
 import os
+import tempfile
 import unittest
+from unittest import mock
 
 import catalogo
+import embutidos
 import sandbox
 import test_chat
 import trabalho
@@ -18,6 +21,7 @@ WS, PACOTE = "/proj [1]", "/proj [1]/.tune-up/painel"
 DADOS = PACOTE + "/dados"
 CFG = {"workspace": WS, "pacote_dir": PACOTE, "dados_dir": DADOS, "painel_dir": "/plugin/painel"}
 SIMPLES = {"id": "dev.x", "grupo": "dev", "titulo": "X", "risco": "leitura", "prompt": "faça"}
+EST = {"hf": "/plugin/tune-up-studio/node/node_modules/.bin/hyperframes", "py": "/plugin/tune-up-studio/scripts/"}
 
 
 def fixture():
@@ -27,7 +31,7 @@ def fixture():
 
 def settings(acao, pasta="/proj [1]/.tune-up/painel/dados/trabalhos/abc", cfg=CFG):
     if pasta:
-        acao = trabalho.resolver_travas(acao, pasta)
+        acao = trabalho.resolver_travas(acao, pasta, EST)
     return json.loads(travas.argv_travas(acao, cfg)[1])
 
 
@@ -76,7 +80,8 @@ class TesteSettings(unittest.TestCase):
             "filesystem": {"denyRead": [WS + "/.env*", WS + "/*.pem", WS + "/*.key",
                                         WS + "/**/.env*", WS + "/**/*.pem", WS + "/**/*.key"],
                            "denyWrite": [DADOS + "/estudio-dono.json", DADOS + "/aprovados",
-                                         DADOS + "/extensoes.json"]}})
+                                         DADOS + "/extensoes.json", DADOS + "/embutidos-ligados.json",
+                                         DADOS + "/embutidos-ligados.json.gravando", DADOS + "/estudio-node"]}})
         self.assertEqual(conf["worktree"], {"bgIsolation": "none"})
         self.assertEqual(conf["env"], {"HYPERFRAMES_NO_TELEMETRY": "1", "DO_NOT_TRACK": "1",
                                        "HYPERFRAMES_NO_UPDATE_CHECK": "1", "HYPERFRAMES_NO_AUTO_INSTALL": "1",
@@ -189,6 +194,12 @@ class TesteLancadorSandbox(test_chat.Base):
         test_chat.Base.setUp(self)
         with open(FIXTURE, encoding="utf-8") as f:
             self.gravar_acoes(json.load(f)["acoes"])
+        hf = tempfile.NamedTemporaryFile(delete=False)  # a fixture cita {estudio_hf}: o Estúdio "preparado"
+        hf.close()
+        self.addCleanup(os.unlink, hf.name)
+        p = mock.patch.object(embutidos, "estudio_hf", return_value=hf.name)
+        p.start()
+        self.addCleanup(p.stop)
 
     def lanc(self, **extra):  # a fixture tem rede_local, então so_com: o projeto liga a chave
         return test_chat.Base.lanc(self, bruto={"estudio": {"video_rede_local": True}}, **extra)

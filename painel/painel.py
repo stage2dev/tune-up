@@ -24,6 +24,7 @@ import urllib.parse  # noqa: E402
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer  # noqa: E402
 
 import config  # noqa: E402
+import embutidos  # noqa: E402
 import envio  # noqa: E402
 import estaticos  # noqa: E402
 import extensoes  # noqa: E402
@@ -35,9 +36,9 @@ import midia  # noqa: E402
 import modulos  # noqa: E402
 import teto  # noqa: E402
 import transcricao  # noqa: E402
+from config import HOSTS_OK, host_permitido  # noqa: E402,F401 - test_leitor chama painel.host_permitido
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
-HOSTS_OK = {"127.0.0.1", "localhost"}
 TTL_ESTADO = 3  # segundos: várias abas abertas não refazem a leitura toda hora
 CORPO_MAX = 32 * 1024  # uma mensagem do chat tem até 6000 letras (acento = 2 bytes)
 RE_ROTA_EXEC = re.compile(r"^/api/execucoes/([^/]{1,40})/(eventos|parar|abrir|responder)$")
@@ -86,16 +87,6 @@ class Estado:
         self.cache.esquecer("sessoes")
         with self._lock:
             self._ultimo = (0.0, None, None)
-
-
-def host_permitido(valor):
-    if not valor:
-        return False
-    host = valor.strip().lower()
-    if host.startswith("["):
-        return False  # IPv6 não é servido
-    host = host.rsplit(":", 1)[0] if ":" in host else host
-    return host in HOSTS_OK
 
 
 class App:
@@ -276,6 +267,8 @@ def fazer_handler(app):
                 return self._agentes(query)
             if caminho == "/api/modulos":
                 return self._json(200, modulos.listar(app.cfg))
+            if caminho == "/api/embutidos":
+                return self._json(*embutidos.listar(app.cfg))
             if caminho == "/api/habilidades":
                 return self._json(200, habilidades.para_tela(habilidades.listar(app.cfg)))
             m = RE_ROTA_MODULO.match(caminho)
@@ -370,6 +363,9 @@ def fazer_handler(app):
                                                 habilidades=corpo.get("habilidades"))
                     app.estado.invalidar()
                     return self._json(200, {"execucao": para_tela(ex)})
+                if caminho.startswith("/api/embutidos/"):  # liga/desliga Estúdio ou Vendas (embutidos.py)
+                    return self._json(*embutidos.mudar(app.cfg, caminho[len("/api/embutidos/"):], corpo,
+                                                       depois=lambda: (modulos.esquecer(), app.estado.invalidar())))
                 m = RE_ROTA_MODULO_ACAO.match(caminho)
                 if m:  # `dados` vai intacto para o módulo e nunca é registrado nem ecoado
                     return self._json(*modulos.agir(app.cfg, urllib.parse.unquote(m.group(1)),

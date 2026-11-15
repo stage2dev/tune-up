@@ -44,7 +44,7 @@ Everything is optional except `h_corpo` and, for a reel, one `h_depois*` or `h_t
 
 An `h_depois` part drawn behind the body goes before `h_corpo` in the file (the loaves behind the basket's rim). A badge gets its own shadow: the same circle in `t`, 6 px down and right, under it.
 
-## Worked examples (in `${CLAUDE_PLUGIN_ROOT}/kit/herois/`; Read the one closest in construction, one only)
+## Worked examples (in `${CLAUDE_PLUGIN_ROOT}/tune-up-studio/kit/herois/`; Read the one closest in construction, one only)
 | file | object and moment | briefing detail | before -> after | shapes |
 |---|---|---|---|---|
 | `carro-com-bagagem.svg` | a hatchback in profile on the road, two-tone body, glass in two planes | two suitcases on the roof rack (a holiday check-up) | nothing -> three "checked" badges pop on wheels and glass; the wheels turn | 42 |

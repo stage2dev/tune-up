@@ -61,7 +61,9 @@ SEP_BASH = re.compile(r"&&|\|\||\$\(|[;&|\n(){}`]")
 META_BASH = re.compile(r";|&&|\|\||\||\$\(|`|<<|[<>]\(|\n|(?<![<>])&(?!>)")
 CURINGA = re.compile(r"[*?\[{$`]")
 NOMES_CONFIG = (".claude", ".tune-up", "claude.md", "claude.local.md", ".mcp.json")
-DONO = ("estudio-dono.json", "aprovados", "extensoes.json")  # em <dados>: só o servidor grava (sandbox.DONO)
+DONO = ("estudio-dono.json", "aprovados", "extensoes.json",  # em <dados>: só o servidor grava (sandbox.DONO)
+        "embutidos-ligados.json", "embutidos-ligados.json.gravando",  # o temporário também: nada plantado
+        "estudio-node")  # o HyperFrames do Estúdio instalado do marketplace ({estudio_hf})
 # escrita que cita esses nomes em qualquer caminho: `cd <dados> && echo > estudio-dono.json` não passa
 RE_DONO = re.compile(r"(?i)(^|[/\s'\"=<>;|&()])(%s)($|[/\s'\";|&)<>])" % "|".join(re.escape(n) for n in DONO))
 PONTO_PONTO = re.compile(r"(^|[/\s'\"=])\.\.($|[/\s'\";|&)<>])")
@@ -72,6 +74,8 @@ FIM_LIB = "/\\ \t\n'\""  # depois do liberado: separador, espaço, aspas ou fim 
 # grava lá (o Bash do hyperframes grava). `.hyperframes.` e `.hyperframes ` são a mesma pasta no Windows.
 # Pelo gancho, não por regra: `Write(**/.hyperframes/**)` não barrou o Write numa sessão real; `Edit(...)`
 # barra, mas o Claude Code soma regra Edit de deny ao denyWrite do sandbox e calaria o próprio hyperframes.
+SCRIPTS_ESTUDIO = ("qa_video", "qa_imagem", "reserva_slides", "video_ou_reserva", "fontes", "anuncio", "fotos",
+                   "montar")  # os da regra do python3 de tune-up-studio/regras/bash-estudio.json
 RE_HF = re.compile(r"(^|/)\.hyperframes[. ]*(/|$)")
 MOTIVO_HF = "relatório do hyperframes (.hyperframes/) só o próprio hyperframes grava"
 
@@ -93,6 +97,11 @@ def config_gancho(acao, protegidos=(), liberados=(), perguntas_dir=None):
             "leve": leve, "bash": bash, "sb": bool(acao.get("sandbox")),
             "prot": [p for p in protegidos if p], "lib": [p for p in liberados if p],
             "n": trv.get("regras_negar") or [], "p": trv.get("regras_permitir") or []}
+    est = acao.get("_estudio") or {}  # trabalho.resolver_travas: o binário exato e a pasta dos scripts do Estúdio
+    if est.get("exe"):
+        conf["exe"] = [x for x in est["exe"] if x]
+    if est.get("py"):
+        conf["py"] = est["py"]
     if perguntas_dir and acao.get("_perguntas_chat"):
         conf["perg"] = perguntas_dir  # pergunta de múltipla escolha vai para o chat, não para o terminal
     return conf
@@ -141,7 +150,9 @@ def argv_travas(acao, cfg=None):
     protegidos = [cfg.get("painel_dir"), cfg.get("pacote_dir"), cfg.get("arquivo")]
     liberados = [os.path.join(cfg["pacote_dir"], "dados")] if cfg.get("pacote_dir") else []
     dados = cfg.get("dados_dir") or ""  # estes saem da exceção `dados`: só o servidor grava
+    import embutidos  # aqui dentro, como o sandbox: o gancho roda com -I e não importa nada do painel
     import sandbox
+    protegidos += embutidos.pastas_codigo()  # o código dos embutidos, ligados ou não: o painel importa e roda
     protegidos += [os.path.join(dados, x) for x in sandbox.DONO] if dados else []
     perguntas = os.path.join(dados, "perguntas") if dados else None
     return ["--settings", settings_da_sessao(acao, protegidos, liberados, workspace=cfg.get("workspace") or "",
@@ -300,6 +311,20 @@ def _em_hyperframes(caminho, cwd):
     return any(RE_HF.search(caminho_comparavel(_dobrado(a), True)) for a in alvos)
 
 
+def _sem_estudio(cmd, conf):
+    """Com sandbox: o comando sem a 1ª palavra quando ela é o binário exato do Estúdio (`exe`) ou, depois de
+    `python3 -I [-B] `, `<py>` + script do Estúdio. Só para a checagem de caminho protegido; o resto segue."""
+    if not conf.get("sb"):
+        return cmd
+    for exe in conf.get("exe") or []:
+        if isinstance(exe, str) and exe and cmd.startswith(exe + " "):
+            return cmd[len(exe):]
+    py = conf.get("py")
+    m = re.match(r"python3 -I (-B )?(%s(%s)\.py)(?= |\Z)" % (re.escape(py), "|".join(SCRIPTS_ESTUDIO)), cmd) \
+        if isinstance(py, str) and py else None
+    return cmd[:m.start(2)] + cmd[m.end(2):] if m else cmd
+
+
 def decidir(conf, ferramenta, entrada, cwd=""):
     """(decisão, motivo) ou None quando a trava não tem nada a dizer. `cwd`: o da sessão (entrada do gancho)."""
     entrada = entrada if isinstance(entrada, dict) else {}
@@ -315,9 +340,9 @@ def decidir(conf, ferramenta, entrada, cwd=""):
         cmd = entrada.get("command")
         if not isinstance(cmd, str):
             return forte, "comando ilegível"
-        verbos = _verbos(cmd)
+        verbos, resto = _verbos(cmd), _sem_estudio(cmd, conf)
         # leitura/rascunho: só verbo de leitura conhecido pode citar árvore protegida
-        if (_protegido(cmd, conf) or _protegido_normal(cmd, conf, True, cwd if isinstance(cwd, str) else "")) and (
+        if (_protegido(resto, conf) or _protegido_normal(resto, conf, True, cwd if isinstance(cwd, str) else "")) and (
                 _escreve(cmd, verbos) or conf.get("leve") and any(v not in VERBOS_LEITURA for _, v in verbos)):
             return forte, "mexer nas regras do Claude ou do painel"
         if conf.get("bash") and _composto_ou_script(cmd, verbos):  # antes do `permitir`: nada o cala

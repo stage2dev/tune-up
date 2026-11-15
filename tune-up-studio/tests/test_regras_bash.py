@@ -23,9 +23,9 @@ import travas_validar  # noqa: E402
 RULES = os.path.join(STUDIO, "regras", "bash-estudio.json")
 FIXTURE = os.path.join(PAINEL, "tests_reais", "acao_estudio.json")
 WORK = "/proj [1]/x y/.tune-up/painel/dados/trabalhos/abc"
-PLUGIN = "/opt/plug/tune-up-studio/2.6.0"
-HF = PLUGIN + "/node/node_modules/.bin/hyperframes"
-PY = "python3 -I " + PLUGIN + "/scripts/"
+PLUGIN = "/opt/plug/tune-up/2.11.0"  # the core plugin root (checkout or --plugin-dir: not under ~/.claude)
+HF = PLUGIN + "/tune-up-studio/node/node_modules/.bin/hyperframes"  # what the panel puts in {estudio_hf}
+PY = "python3 -I " + PLUGIN + "/tune-up-studio/scripts/"
 WL = "-protocol_whitelist file,pipe -i "
 
 ALLOWED = [
@@ -35,7 +35,6 @@ ALLOWED = [
     HF + " snapshot fonte --at 0.2,1.0,9.8",
     HF + " lint fonte",
     HF + " render fonte -o " + WORK + "/saida/video.mp4",
-    "/opt/plug/tune-up-studio/node/node_modules/.bin/hyperframes info fonte",
     "ffmpeg -filters",
     "ffmpeg -hide_banner -y -loop 1 -t 3 " + WL + "s1.png " + WL + "s2.png"
     " -filter_complex_script graph.txt -vcodec libx264 -pix_fmt yuv420p -movflags +faststart -an out.mp4",
@@ -56,6 +55,7 @@ ALLOWED = [
 ]
 
 DENIED = [
+    "/opt/plug/tune-up-studio/node/node_modules/.bin/hyperframes info fonte",  # look-alike, not {estudio_hf}
     HF + " cloud render fonte",
     HF + " lambda deploy",
     HF + " skills",
@@ -132,10 +132,11 @@ ALIASES = ["/tmp/p/.tune-up/painel/dados/trabalhos/abc",
            "/proc/self/cwd", "/proc/123/cwd", "/dev/fd/3", "/private/tmp/p/.tune-up/painel/dados/trabalhos/abc"]
 
 
-def hook_conf(work=WORK):
+def hook_conf(work=WORK, hf=HF):
     with open(FIXTURE, encoding="utf-8") as f:
         acao = catalogo.validar_acao(json.load(f)["acoes"][0])
-    return travas.config_gancho(trabalho.resolver_travas(acao, work))
+    est = {"hf": hf, "py": PLUGIN + "/tune-up-studio/scripts/"}  # embutidos.estudio_da_acao in the panel
+    return travas.config_gancho(trabalho.resolver_travas(acao, work, est))
 
 
 class RulesFile(unittest.TestCase):

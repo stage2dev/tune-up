@@ -23,20 +23,11 @@ The screen no longer shows terminal commands. To do it by hand: `servico/preparo
 
 Status: 0.1.0 is a skeleton. The screen has one tab, "Conexão", that says whether the service is running (from its heartbeat in the database) and, when it is stopped, shows the exact commands to start it and to prepare the local Evolution API. The service runs and receives webhooks, but has no WhatsApp connection flow (QR) yet.
 
-## Enable it in a project
+## Turn it on
 
-1. Install the plugin from the marketplace:
+From `tune-up` 2.11.0 Vendas is built into the core and arrives off. Open the panel's **Módulos** screen (`/modulos`) and press the button on Vendas; press it again to turn it off. No plugin install and no `painel.json` edit. An old `"modulos_de_plugins": ["tune-up-vendas@<marketplace>:vendas"]` line still counts as on until you use the button; the screen says the line can be removed. Turning it on runs this module's Python code inside the panel process.
 
-   ```
-   /plugin install tune-up-vendas
-   ```
-2. In the project's `.tune-up/painel.json`, opt in by the exact plugin and marketplace names:
-
-   ```json
-   { "modulos_de_plugins": ["tune-up-vendas@<marketplace>:vendas"] }
-   ```
-
-   Enabling it runs this plugin's Python code inside the panel process, so only enable plugins you trust.
+First version tested only on macOS; it needs Docker.
 
 ## Starting the service
 

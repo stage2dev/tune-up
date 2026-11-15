@@ -1,10 +1,10 @@
 {
-  "_about": "Positive list for Bash in studio actions (plan B of the sandbox). Copy 'negar' into every studio action; tune-up-studio/tests/test_regras_bash.py checks the fixture matches. {trabalho} is resolved by the panel core.",
+  "_about": "Positive list for Bash in studio actions (plan B of the sandbox). Copy 'negar' into every studio action; tune-up-studio/tests/test_regras_bash.py checks the fixture matches. {trabalho} and {estudio_hf} (the exact HyperFrames path the panel computes; the command must start with it) are resolved by the panel core.",
   "negar": [
     {
       "ferramenta": "Bash",
       "campo": "command",
-      "entrada": "^(?!(?:ffmpeg|ffprobe|python3)(?: |\\Z)|/)",
+      "entrada": "^(?!(?:ffmpeg|ffprobe|python3)(?: |\\Z)|/|{estudio_hf} )",
       "motivo": "Bash do estúdio: só ffmpeg, ffprobe, python3 com script do estúdio ou o hyperframes fixado"
     },
     {
@@ -16,7 +16,7 @@
     {
       "ferramenta": "Bash",
       "campo": "command",
-      "entrada": "^(?=/)(?!(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/node/node_modules/\\.bin/hyperframes +(?:render|check|lint|validate|inspect|snapshot|info|compositions)(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
+      "entrada": "^(?=/|{estudio_hf} )(?!{estudio_hf} +(?:render|check|lint|validate|inspect|snapshot|info|compositions)(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
       "motivo": "hyperframes: só render, check, lint, validate, inspect, snapshot, info e compositions, saída em {trabalho}"
     },
     {
@@ -40,7 +40,7 @@
     {
       "ferramenta": "Bash",
       "campo": "command",
-      "entrada": "^(?!(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/node/node_modules/\\.bin/hyperframes )[\\s\\S]*(?i:\\.hyperframes)",
+      "entrada": "^(?!{estudio_hf} )[\\s\\S]*(?i:\\.hyperframes)",
       "motivo": "Bash do estúdio: só o hyperframes fixado cita .hyperframes (o QA confia nos relatórios dessa pasta)"
     }
   ]
