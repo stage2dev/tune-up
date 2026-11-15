@@ -27,10 +27,13 @@ _lock = threading.Lock()
 # cópia fiel de INFO["negar"] de vendas/painel/modulos/vendas/modulo.py (test_embutidos confere as duas)
 PASTAS_DADOS_VENDAS = ("~/Library/Application Support/tune-up-vendas", "~/.local/share/tune-up-vendas",
                        "~/AppData/Local/tune-up-vendas")
-NEGAR_VENDAS = ("Bash(*127.0.0.1:8791*)", "Bash(*localhost:8791*)", "Bash(*127.0.0.1:8080*)",
-                "Bash(*localhost:8080*)", "Bash(*/api/modulos/*/acao*)", "Bash(*tune-up-vendas*)",
-                "Bash(*docker exec*)", "Bash(*docker inspect*)", "Bash(*docker compose config*)",
-                "Bash(*security find-generic-password*)") \
+PORTAS_VENDAS = tuple(range(8791, 8796))  # = PORTAS em modulo.py:64
+PORTAS_EVOLUTION = tuple(range(8080, 8085))  # = PORTAS_EVOLUTION em modulo.py:8
+NEGAR_VENDAS = tuple("Bash(*%s:%d*)" % (h, p) for p in PORTAS_VENDAS + PORTAS_EVOLUTION
+                     for h in ("127.0.0.1", "localhost")) \
+    + ("Bash(*/api/modulos/*/acao*)", "Bash(*tune-up-vendas*)",
+       "Bash(*docker exec*)", "Bash(*docker inspect*)", "Bash(*docker compose config*)",
+       "Bash(*security find-generic-password*)") \
     + tuple("%s(%s/**)" % (f, d) for d in PASTAS_DADOS_VENDAS for f in ("Read", "Edit", "Write"))
 
 EMBUTIDOS = (
