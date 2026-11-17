@@ -5,17 +5,21 @@ Só existe para ação que cita `{trabalho}` (no prompt ou nas travas), tem par�
 `entrada.json` (ação e valores) e `entrada.md` (o texto longo; o prompt recebe o caminho, assim o argv nunca leva quebra de linha). O marcador `{trabalho}`
 vira o caminho real (realpath): no prompt como está; em regra de permissão em texto com `//`
 na frente (caminho absoluto do Claude Code) e curinga escapado; em regex do gancho com
-re.escape. Python 3.9, só biblioteca padrão.
+re.escape. `{estudio_hf}` (o HyperFrames do Estúdio, `est` de embutidos.estudio_da_acao) do mesmo jeito,
+na forma que o shell lê (shlex.quote); sem `est` a ação que o cita é recusada, nunca vira caminho vazio.
+Python 3.9, só biblioteca padrão.
 """
 import json
 import os
 import re
 import secrets
+import shlex
 import shutil
 
-from catalogo import RE_CONTROLE, TRABALHO, ErroAcao, montar
+from catalogo import ESTUDIO_HF, RE_CONTROLE, TRABALHO, ErroAcao, montar
 
 MARCA = "{" + TRABALHO + "}"
+MARCA_HF = "{" + ESTUDIO_HF + "}"
 ARQ_ENTRADA, ARQ_TEXTO = "entrada.json", "entrada.md"
 RE_CURINGA = re.compile(r"([*?\[\]])")
 _SINAL = "\x00trabalho\x00"  # valor de parâmetro nunca tem \x00 (RE_CONTROLE): montar não mexe no caminho
@@ -27,7 +31,8 @@ def _longos(acao):
 
 def usa(acao):
     trv = json.dumps(acao.get("_travas") or {}, ensure_ascii=False)
-    return MARCA in acao["_prompt"] or MARCA in trv or bool(_longos(acao)) or bool(acao.get("sandbox"))
+    return (MARCA in acao["_prompt"] or MARCA in trv or MARCA_HF in acao["_prompt"] or MARCA_HF in trv
+            or bool(_longos(acao)) or bool(acao.get("sandbox")))
 
 
 def nova_pasta(dados_dir, acao):
@@ -40,12 +45,24 @@ def nova_pasta(dados_dir, acao):
     return pasta
 
 
-def montar_prompt(acao, valores, pasta):
-    """Prompt com `{trabalho}` = pasta e cada texto_longo = caminho do entrada.md."""
-    if pasta is None:
+def _hf(acao, est):
+    """O caminho do HyperFrames como o shell lê; ação que cita {estudio_hf} sem caminho calculado: recusa."""
+    if est and est.get("hf"):
+        return shlex.quote(est["hf"])
+    if MARCA_HF in acao["_prompt"] + json.dumps(acao.get("_travas") or {}, ensure_ascii=False):
+        raise ErroAcao("Prepare o Estúdio antes: abra a tela Estúdio, aba 1. Ambiente, e clique em Preparar.", 409)
+    return None
+
+
+def montar_prompt(acao, valores, pasta, est=None):
+    """Prompt com `{trabalho}` = pasta, cada texto_longo = caminho do entrada.md e `{estudio_hf}` = o HyperFrames."""
+    hf = _hf(acao, est)
+    trocas = {ESTUDIO_HF: hf} if hf else {}
+    if pasta is not None:
+        trocas[TRABALHO] = pasta
+        trocas.update({n: os.path.join(pasta, ARQ_TEXTO) for n in _longos(acao)})
+    if not trocas:
         return montar(acao["_prompt"], valores)
-    trocas = {TRABALHO: pasta}
-    trocas.update({n: os.path.join(pasta, ARQ_TEXTO) for n in _longos(acao)})
     sinais = {k: _SINAL + k + _SINAL for k in trocas}
     texto = montar(acao["_prompt"], dict(valores, **sinais))
     for k, v in trocas.items():
@@ -61,17 +78,20 @@ def caminho_de_regra(pasta):
     return "/" + RE_CURINGA.sub(r"\\\1", p)
 
 
-def resolver_travas(acao, pasta):
-    """Cópia da ação com `{trabalho}` trocado nas regras de negar/permitir (texto e regex do gancho)."""
+def resolver_travas(acao, pasta, est=None):
+    """Cópia da ação com `{trabalho}` trocado nas regras de negar/permitir (texto e regex do gancho) e
+    `{estudio_hf}` nas regex do gancho; com `est`, leva o binário exato e a pasta dos scripts do Estúdio (_estudio)."""
     trv = acao.get("_travas") or {}
+    hf = _hf(acao, est)
     regra_txt, regra_re = caminho_de_regra(pasta), re.escape(pasta)
     novo = dict(trv)
-    for campo in ("negar", "permitir"):
+    for campo in ("negar", "permitir"):  # {estudio_hf} só vale em regex do gancho
         novo[campo] = [r.replace(MARCA, regra_txt) for r in trv.get(campo) or []]
     for campo in ("regras_negar", "regras_permitir"):
-        novo[campo] = [dict(r, entrada=r["entrada"].replace(MARCA, regra_re)) if "entrada" in r else r
-                       for r in trv.get(campo) or []]
-    return dict(acao, _travas=novo)
+        novo[campo] = [dict(r, entrada=r["entrada"].replace(MARCA, regra_re).replace(MARCA_HF, re.escape(hf or "")))
+                       if "entrada" in r else r for r in trv.get(campo) or []]
+    extra = {"_estudio": {"exe": [hf], "py": est.get("py")}} if hf else {}
+    return dict(acao, _travas=novo, **extra)
 
 
 def criar(pasta, acao, valores):

@@ -22,6 +22,7 @@ import threading
 import time
 
 import dono
+import embutidos
 import modulos_plugin
 import travas_validar
 from modulos_forma import ErroModulo, conferir  # noqa: F401 - modulos.ErroModulo/conferir seguem valendo
@@ -33,7 +34,7 @@ TTL = 30.0
 _lock = threading.Lock()
 _lock_import = threading.Lock()  # um import de módulo por vez (mexe em sys.path/sys.modules)
 _carregados = {}   # caminho -> (mtime, módulo)
-_cache = {}        # id -> (quando, código, dado, pulso)
+_cache = {}        # id -> (quando, código, dado, pulso, validade em s)
 _rodando = {}      # id -> thread
 _lock_agir = threading.Lock()  # trava das ações, separada da de montar
 _agindo = {}       # id -> thread de agir()
@@ -44,6 +45,12 @@ def caminho_do_modulo(cfg, mid):
     """Caminho real de modulo.py ou levanta ErroModulo(404)."""
     if not isinstance(mid, str) or not RE_ID.match(mid):
         raise ErroModulo(404, "Essa tela não existe neste projeto.")
+    if mid not in (cfg.get("modulos") or []) and mid in embutidos.ligados(cfg):  # embutido (embutidos.py)
+        real = embutidos.caminho(mid)
+        if not real:
+            raise ErroModulo(404, "Essa tela não existe neste projeto.",
+                             ["módulo embutido %s sem modulo.py (ou ele é atalho): não carreguei" % mid])
+        return real
     if mid not in (cfg.get("modulos") or []):
         chave = modulos_plugin.ligados(cfg)[0].get(mid)
         if not chave:
@@ -146,7 +153,7 @@ def info(mod, mid):
 def contexto(cfg):
     pacote = cfg.get("pacote_dir") or ""
     return {"raiz": cfg.get("raiz") or cfg.get("workspace"), "pacote": pacote,
-            "dados": os.path.join(pacote, "dados") if pacote else "",
+            "dados": os.path.join(pacote, "dados") if pacote else "", "dados_dir": cfg.get("dados_dir") or "",
             "config": dict(cfg.get("bruto") or {}), "hoje": datetime.date.today(),
             "execucoes": cfg.get("_execucoes"), "dono_faltando": lambda requer: dono.faltando(cfg, requer)}
 
@@ -190,7 +197,7 @@ def montar(cfg, mid, usar_cache=True, tempo=TEMPO_LIMITE, pulso=None):
     if usar_cache:
         with _lock:
             item = _cache.get(mid)
-        if item and agora - item[0] < TTL and item[3] == pulso:
+        if item and agora - item[0] < item[4] and item[3] == pulso:
             return item[1], item[2]
     try:
         mod = carregar(cfg, mid)
@@ -199,9 +206,11 @@ def montar(cfg, mid, usar_cache=True, tempo=TEMPO_LIMITE, pulso=None):
     except ErroModulo as e:
         codigo, corpo = e.codigo, e.corpo()
     if codigo in (200, 500):
+        ritmo = corpo.get("atualizar_em") if codigo == 200 else None  # já preso em 2..60 por conferir
+        validade = min(TTL, ritmo) if isinstance(ritmo, (int, float)) and not isinstance(ritmo, bool) else TTL
         with _lock:
             if _geracao.get(mid, 0) == geracao:  # uma ação no meio deixou este resultado velho
-                _cache[mid] = (time.monotonic(), codigo, corpo, pulso)
+                _cache[mid] = (time.monotonic(), codigo, corpo, pulso, validade)
     return codigo, corpo
 
 
@@ -212,7 +221,8 @@ def listar(cfg, tempo=TEMPO_LIMITE):
         avisos.append("painel.json lista módulos, mas não achei o pacote do projeto")
     de_plugins, av_plugins = modulos_plugin.ligados(cfg)
     avisos.extend(av_plugins)
-    for mid in list(cfg.get("modulos") or []) + list(de_plugins):
+    projeto = list(cfg.get("modulos") or [])
+    for mid in projeto + [m for m in embutidos.ligados(cfg) if m not in projeto] + list(de_plugins):
         item = {"id": mid, "titulo": mid, "icone": "", "alertas": 0}
         try:
             item.update(info(carregar(cfg, mid), mid))
@@ -349,7 +359,7 @@ def _ler_negar(cfg, mid):
 
 def negar_dos_modulos(cfg):
     """(regras, avisos) para GET /api/acoes: módulo com problema vira aviso (o disparo recusa)."""
-    regras = []
+    regras = embutidos.negar(cfg)  # lista fixa: o módulo embutido não é importado para isso
     de_plugins, avisos = modulos_plugin.ligados(cfg)
     for mid in list(cfg.get("modulos") or []) + list(de_plugins):
         try:
@@ -378,8 +388,8 @@ def regras_de_negar(cfg, tempo=None):
     caixa = {"atual": None}
 
     def alvo():
-        regras = []
         try:
+            regras = embutidos.negar(cfg)  # lista fixa: o módulo embutido não é importado para isso
             for mid in ids:
                 caixa["atual"] = mid
                 regras += [r for r in _ler_negar(cfg, mid) if r not in regras]

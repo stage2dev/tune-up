@@ -20,6 +20,7 @@ from catalogo import (ErroAcao, RE_ID_ACAO, carregar_catalogo, catalogo_do_proje
 import abrir_win
 from abrir_win import METACHAR_WIN  # noqa: F401
 from habilidades import anexar as anexar_habilidades, pedido as pedido_com_habilidades
+import embutidos
 import mascara
 import modulos
 import teto
@@ -229,8 +230,9 @@ class Lancador:
         precisa_estado = any(p["tipo"] in ("fase", "parte") for p in acao["params"])
         valores = validar_params(acao, params, self.obter_estado() if precisa_estado else {})
         mascarados = {k: mascara.mascarar(v) if isinstance(v, str) else v for k, v in valores.items()}
+        est = embutidos.estudio_da_acao(self.cfg, acao)  # {estudio_hf}: caminho do servidor; não preparado = 409
         # "trabalho" só para conferir aqui; dentro da trava o prompt é refeito com a pasta de verdade
-        base, nome = trabalho.montar_prompt(acao, valores, "trabalho"), nome_da_sessao(acao, mascarados)
+        base, nome = trabalho.montar_prompt(acao, valores, "trabalho", est), nome_da_sessao(acao, mascarados)
         prompt, nomes_hab = pedido_com_habilidades(self.cfg, acao["grupo"], base, habilidades)  # vazio: 400
         sufixo = prompt[len(base.rstrip()):] if nomes_hab else ""  # bloco das skills: volta no prompt refeito
         chave = json.dumps(valores, sort_keys=True, ensure_ascii=False)
@@ -257,7 +259,7 @@ class Lancador:
             pasta = trabalho.nova_pasta(self.cfg["dados_dir"], acao)  # None: a ação não usa {trabalho}
             cwd = pasta if acao.get("sandbox") else self.cfg["workspace"]  # sandbox: cwd = pasta de trabalho
             if pasta:  # o id do trabalho fica fora de `valores` (a checagem de duplicata acima não o vê)
-                prompt, acao = trabalho.montar_prompt(acao, valores, pasta), trabalho.resolver_travas(acao, pasta)
+                prompt, acao = trabalho.montar_prompt(acao, valores, pasta, est), trabalho.resolver_travas(acao, pasta, est)
                 prompt = prompt.rstrip() + sufixo if sufixo else prompt
             # travas de verdade (deny + gancho) no argv; o prompt vai por último, nunca começa com '-'
             # pular_permissoes: some so o pedido comum de permissao. Medido no CLI 2.1.322: regra de negar,

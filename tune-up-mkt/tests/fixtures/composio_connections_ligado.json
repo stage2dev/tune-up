@@ -1,0 +1,40 @@
+{
+  "instagram": [
+    {
+      "status": "ACTIVE",
+      "alias": null,
+      "word_id": "instagram_alpha-one",
+      "permission_group": "always_allow"
+    }
+  ],
+  "facebook": [
+    {
+      "status": "ACTIVE",
+      "alias": null,
+      "word_id": "facebook_alpha-one",
+      "permission_group": "always_allow"
+    }
+  ],
+  "metaads": [
+    {
+      "status": "ACTIVE",
+      "alias": null,
+      "word_id": "metaads_alpha-one",
+      "permission_group": "always_allow"
+    },
+    {
+      "status": "EXPIRED",
+      "alias": null,
+      "word_id": "metaads_beta-two",
+      "permission_group": "always_allow"
+    }
+  ],
+  "googleads": [
+    {
+      "status": "ACTIVE",
+      "alias": null,
+      "word_id": "googleads_alpha-one",
+      "permission_group": "always_allow"
+    }
+  ]
+}

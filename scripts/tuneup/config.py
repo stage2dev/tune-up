@@ -164,7 +164,8 @@ def regras_validas(regras, invalidas=None):
 
 LISTAS_STR = ("main_branches", "synced_roots", "free_repos", "research_free_paths")
 BOOLS = ("claude_may_merge", "commit_on_main", "supabase_guard")
-TEXTOS = ("project", "language", "plans_dir")
+TEXTOS = ("project", "language", "plans_dir", "workflow_generic")
+NIVEL_GENERICO = {"off": 0, "warn": 1, "block": 2}  # unknown value = warn
 
 
 def com_aliases(dados):
@@ -281,7 +282,9 @@ def carregar_config(cwd):
                 esperado, os.path.realpath(os.path.join(perfil, "config.json"))))
         proj = tipos_validos(proj, os.path.join(perfil, "config.json"), invalidas)
         for k, v in proj.items():
-            if not confiado and (k in AFROUXAM or k.endswith("_phrases")):
+            frouxo = k == "workflow_generic" and NIVEL_GENERICO.get(v, 1) < NIVEL_GENERICO.get(
+                cfg.get(k), 1)  # tightening is allowed untrusted; loosening is not
+            if not confiado and (k in AFROUXAM or k.endswith("_phrases") or frouxo):
                 nao_confiado = os.path.realpath(os.path.join(perfil, "config.json"))
                 continue
             if isinstance(v, list) and (k in LISTAS_SOMAM or k.endswith("_phrases")):

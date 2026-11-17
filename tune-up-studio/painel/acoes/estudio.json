@@ -29,7 +29,7 @@
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "^(?!(?:ffmpeg|ffprobe|python3)(?: |\\Z)|/)",
+          "entrada": "^(?!(?:ffmpeg|ffprobe|python3)(?: |\\Z)|/|{estudio_hf} )",
           "motivo": "Bash do estúdio: só ffmpeg, ffprobe, python3 com script do estúdio ou o hyperframes fixado"
         },
         {
@@ -41,7 +41,7 @@
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "^(?=/)(?!(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/node/node_modules/\\.bin/hyperframes +(?:render|check|lint|validate|inspect|snapshot|info|compositions)(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
+          "entrada": "^(?=/|{estudio_hf} )(?!{estudio_hf} +(?:render|check|lint|validate|inspect|snapshot|info|compositions)(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
           "motivo": "hyperframes: só render, check, lint, validate, inspect, snapshot, info e compositions, saída em {trabalho}"
         },
         {
@@ -59,13 +59,13 @@
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "^python3(?= |\\Z)(?! +-I(?: +-B)? +(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/scripts/(?:qa_video|qa_imagem|reserva_slides|video_ou_reserva|fontes|anuncio|fotos)\\.py(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
+          "entrada": "^python3(?= |\\Z)(?! +-I(?: +-B)? +(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/scripts/(?:qa_video|qa_imagem|reserva_slides|video_ou_reserva|fontes|anuncio|fotos|montar)\\.py(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
           "motivo": "python3: só os scripts do estúdio (com -I), sem '-c' nem script gravado em {trabalho} (nem por outro nome dela)"
         },
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "^(?!(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/node/node_modules/\\.bin/hyperframes )[\\s\\S]*(?i:\\.hyperframes)",
+          "entrada": "^(?!{estudio_hf} )[\\s\\S]*(?i:\\.hyperframes)",
           "motivo": "Bash do estúdio: só o hyperframes fixado cita .hyperframes (o QA confia nos relatórios dessa pasta)"
         },
         "Skill(hyperframes)",
@@ -75,7 +75,7 @@
       "permitir": [
         "Edit({trabalho}/**)"
       ],
-      "prompt": "/tune-up-studio:post Pasta de trabalho: {trabalho}. Formato: {formato}. Quadros: {quadros}. Briefing no arquivo {briefing}",
+      "prompt": "/tune-up:post Pasta de trabalho: {trabalho}. HyperFrames: {estudio_hf}. Formato: {formato}. Quadros: {quadros}. Objetivo: {objetivo}. Briefing no arquivo {briefing}",
       "nome_sessao": "Post: {formato}",
       "params": [
         {
@@ -84,7 +84,7 @@
           "tipo": "texto_longo",
           "obrigatorio": true,
           "max": 4000,
-          "ajuda": "Assunto, oferta, público e a ação que você quer (ex.: reservar pelo WhatsApp)."
+          "ajuda": "Para quem é, o que você oferece, uma prova real (número, nota, tempo de casa, frase de cliente), contato e a ação que você quer. Preço, prazo ou número só entram se estiverem aqui."
         },
         {
           "nome": "formato",
@@ -116,6 +116,21 @@
             "10"
           ],
           "ajuda": "Só conta no carrossel (2 a 10). Post tem sempre 1."
+        },
+        {
+          "nome": "objetivo",
+          "rotulo": "Para que é esta peça?",
+          "tipo": "escolha",
+          "obrigatorio": false,
+          "opcoes": [
+            "a IA escolhe",
+            "vender",
+            "receber mensagens",
+            "encher a agenda",
+            "lançar novidade",
+            "ensinar e ganhar seguidores"
+          ],
+          "ajuda": "Muda o gancho e o pedido final. Na dúvida, deixe a IA escolher pelo briefing."
         }
       ]
     },
@@ -148,7 +163,7 @@
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "^(?!(?:ffmpeg|ffprobe|python3)(?: |\\Z)|/)",
+          "entrada": "^(?!(?:ffmpeg|ffprobe|python3)(?: |\\Z)|/|{estudio_hf} )",
           "motivo": "Bash do estúdio: só ffmpeg, ffprobe, python3 com script do estúdio ou o hyperframes fixado"
         },
         {
@@ -160,7 +175,7 @@
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "^(?=/)(?!(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/node/node_modules/\\.bin/hyperframes +(?:render|check|lint|validate|inspect|snapshot|info|compositions)(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
+          "entrada": "^(?=/|{estudio_hf} )(?!{estudio_hf} +(?:render|check|lint|validate|inspect|snapshot|info|compositions)(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
           "motivo": "hyperframes: só render, check, lint, validate, inspect, snapshot, info e compositions, saída em {trabalho}"
         },
         {
@@ -178,13 +193,13 @@
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "^python3(?= |\\Z)(?! +-I(?: +-B)? +(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/scripts/(?:qa_video|qa_imagem|reserva_slides|video_ou_reserva|fontes|anuncio|fotos)\\.py(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
+          "entrada": "^python3(?= |\\Z)(?! +-I(?: +-B)? +(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/scripts/(?:qa_video|qa_imagem|reserva_slides|video_ou_reserva|fontes|anuncio|fotos|montar)\\.py(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
           "motivo": "python3: só os scripts do estúdio (com -I), sem '-c' nem script gravado em {trabalho} (nem por outro nome dela)"
         },
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "^(?!(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/node/node_modules/\\.bin/hyperframes )[\\s\\S]*(?i:\\.hyperframes)",
+          "entrada": "^(?!{estudio_hf} )[\\s\\S]*(?i:\\.hyperframes)",
           "motivo": "Bash do estúdio: só o hyperframes fixado cita .hyperframes (o QA confia nos relatórios dessa pasta)"
         },
         "Skill(hyperframes)",
@@ -194,7 +209,7 @@
       "permitir": [
         "Edit({trabalho}/**)"
       ],
-      "prompt": "/tune-up-studio:video Pasta de trabalho: {trabalho}. Motor: reserva. Duracao: {duracao}. Briefing no arquivo {briefing}",
+      "prompt": "/tune-up:video Pasta de trabalho: {trabalho}. HyperFrames: {estudio_hf}. Motor: reserva. Duracao: {duracao}. Objetivo: {objetivo}. Estilo: {estilo}. Briefing no arquivo {briefing}",
       "nome_sessao": "Vídeo: {duracao} s",
       "params": [
         {
@@ -203,7 +218,7 @@
           "tipo": "texto_longo",
           "obrigatorio": true,
           "max": 4000,
-          "ajuda": "Assunto, oferta, público e a ação que você quer (ex.: reservar pelo WhatsApp)."
+          "ajuda": "Para quem é, o que você oferece, uma prova real (número, nota, tempo de casa, frase de cliente), contato e a ação que você quer. Preço, prazo ou número só entram se estiverem aqui."
         },
         {
           "nome": "duracao",
@@ -215,6 +230,41 @@
             "15"
           ],
           "ajuda": "Segundos. Vídeo vertical 9:16, sem som."
+        },
+        {
+          "nome": "objetivo",
+          "rotulo": "Para que é esta peça?",
+          "tipo": "escolha",
+          "obrigatorio": false,
+          "opcoes": [
+            "a IA escolhe",
+            "vender",
+            "receber mensagens",
+            "encher a agenda",
+            "lançar novidade",
+            "ensinar e ganhar seguidores"
+          ],
+          "ajuda": "Muda o gancho e o pedido final. Na dúvida, deixe a IA escolher pelo briefing."
+        },
+        {
+          "nome": "estilo",
+          "rotulo": "Estilo do vídeo",
+          "tipo": "escolha",
+          "obrigatorio": false,
+          "opcoes": [
+            "a IA escolhe",
+            "produto em destaque",
+            "tipografia cinética",
+            "conversa de WhatsApp",
+            "lista que se marca sozinha",
+            "contador e gráfico",
+            "antes e depois",
+            "tela com cursor clicando",
+            "cartaz que se monta",
+            "passo a passo",
+            "mito ou verdade"
+          ],
+          "ajuda": "O jeito de contar no meio do vídeo: uma conversa, uma lista, um número que conta, uma tela com clique. Na dúvida, deixe a IA escolher pelo briefing."
         }
       ]
     },
@@ -250,7 +300,7 @@
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "^(?!(?:ffmpeg|ffprobe|python3)(?: |\\Z)|/)",
+          "entrada": "^(?!(?:ffmpeg|ffprobe|python3)(?: |\\Z)|/|{estudio_hf} )",
           "motivo": "Bash do estúdio: só ffmpeg, ffprobe, python3 com script do estúdio ou o hyperframes fixado"
         },
         {
@@ -262,7 +312,7 @@
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "^(?=/)(?!(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/node/node_modules/\\.bin/hyperframes +(?:render|check|lint|validate|inspect|snapshot|info|compositions)(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
+          "entrada": "^(?=/|{estudio_hf} )(?!{estudio_hf} +(?:render|check|lint|validate|inspect|snapshot|info|compositions)(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
           "motivo": "hyperframes: só render, check, lint, validate, inspect, snapshot, info e compositions, saída em {trabalho}"
         },
         {
@@ -280,13 +330,13 @@
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "^python3(?= |\\Z)(?! +-I(?: +-B)? +(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/scripts/(?:qa_video|qa_imagem|reserva_slides|video_ou_reserva|fontes|anuncio|fotos)\\.py(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
+          "entrada": "^python3(?= |\\Z)(?! +-I(?: +-B)? +(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/scripts/(?:qa_video|qa_imagem|reserva_slides|video_ou_reserva|fontes|anuncio|fotos|montar)\\.py(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
           "motivo": "python3: só os scripts do estúdio (com -I), sem '-c' nem script gravado em {trabalho} (nem por outro nome dela)"
         },
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "^(?!(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/node/node_modules/\\.bin/hyperframes )[\\s\\S]*(?i:\\.hyperframes)",
+          "entrada": "^(?!{estudio_hf} )[\\s\\S]*(?i:\\.hyperframes)",
           "motivo": "Bash do estúdio: só o hyperframes fixado cita .hyperframes (o QA confia nos relatórios dessa pasta)"
         },
         "Skill(hyperframes)",
@@ -296,7 +346,7 @@
       "permitir": [
         "Edit({trabalho}/**)"
       ],
-      "prompt": "/tune-up-studio:video Pasta de trabalho: {trabalho}. Motor: hyperframes. Duracao: {duracao}. Briefing no arquivo {briefing}",
+      "prompt": "/tune-up:video Pasta de trabalho: {trabalho}. HyperFrames: {estudio_hf}. Motor: hyperframes. Duracao: {duracao}. Objetivo: {objetivo}. Estilo: {estilo}. Briefing no arquivo {briefing}",
       "nome_sessao": "Vídeo: {duracao} s",
       "params": [
         {
@@ -305,7 +355,7 @@
           "tipo": "texto_longo",
           "obrigatorio": true,
           "max": 4000,
-          "ajuda": "Assunto, oferta, público e a ação que você quer (ex.: reservar pelo WhatsApp)."
+          "ajuda": "Para quem é, o que você oferece, uma prova real (número, nota, tempo de casa, frase de cliente), contato e a ação que você quer. Preço, prazo ou número só entram se estiverem aqui."
         },
         {
           "nome": "duracao",
@@ -317,6 +367,41 @@
             "15"
           ],
           "ajuda": "Segundos. Vídeo vertical 9:16, sem som."
+        },
+        {
+          "nome": "objetivo",
+          "rotulo": "Para que é esta peça?",
+          "tipo": "escolha",
+          "obrigatorio": false,
+          "opcoes": [
+            "a IA escolhe",
+            "vender",
+            "receber mensagens",
+            "encher a agenda",
+            "lançar novidade",
+            "ensinar e ganhar seguidores"
+          ],
+          "ajuda": "Muda o gancho e o pedido final. Na dúvida, deixe a IA escolher pelo briefing."
+        },
+        {
+          "nome": "estilo",
+          "rotulo": "Estilo do vídeo",
+          "tipo": "escolha",
+          "obrigatorio": false,
+          "opcoes": [
+            "a IA escolhe",
+            "produto em destaque",
+            "tipografia cinética",
+            "conversa de WhatsApp",
+            "lista que se marca sozinha",
+            "contador e gráfico",
+            "antes e depois",
+            "tela com cursor clicando",
+            "cartaz que se monta",
+            "passo a passo",
+            "mito ou verdade"
+          ],
+          "ajuda": "O jeito de contar no meio do vídeo: uma conversa, uma lista, um número que conta, uma tela com clique. Na dúvida, deixe a IA escolher pelo briefing."
         }
       ]
     },
@@ -349,7 +434,7 @@
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "^(?!python3(?: |\\Z)|/)",
+          "entrada": "^(?!python3(?: |\\Z)|/|{estudio_hf} )",
           "motivo": "Bash do anúncio: só python3 com script do estúdio ou o hyperframes fixado (sem ffmpeg: nada mexe na imagem depois do snapshot)"
         },
         {
@@ -361,19 +446,19 @@
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "^(?=/)(?!(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/node/node_modules/\\.bin/hyperframes +(?:render|check|lint|validate|inspect|snapshot|info|compositions)(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
+          "entrada": "^(?=/|{estudio_hf} )(?!{estudio_hf} +(?:render|check|lint|validate|inspect|snapshot|info|compositions)(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
           "motivo": "hyperframes: só render, check, lint, validate, inspect, snapshot, info e compositions, saída em {trabalho}"
         },
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "^python3(?= |\\Z)(?! +-I(?: +-B)? +(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/scripts/(?:qa_video|qa_imagem|reserva_slides|video_ou_reserva|fontes|anuncio|fotos)\\.py(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
+          "entrada": "^python3(?= |\\Z)(?! +-I(?: +-B)? +(?!(?i:{trabalho}))(?!(?i:/proc/|/dev/|/System/Volumes/|[^ ]*/trabalhos/))(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/scripts/(?:qa_video|qa_imagem|reserva_slides|video_ou_reserva|fontes|anuncio|fotos|montar)\\.py(?: +(?:-[\\w.,:=+%@-]*|(?![/~=,-])(?:[\\w.+%@/]|[=,](?![/~]))+|(?i:{trabalho})(?:/[\\w.,+%@/-]*)?))* *\\Z)",
           "motivo": "python3: só os scripts do estúdio (com -I), sem '-c' nem script gravado em {trabalho} (nem por outro nome dela)"
         },
         {
           "ferramenta": "Bash",
           "campo": "command",
-          "entrada": "^(?!(?:/[\\w.@+-]+)*/tune-up-studio(?:/[\\w.@+-]+)?/node/node_modules/\\.bin/hyperframes )[\\s\\S]*(?i:\\.hyperframes)",
+          "entrada": "^(?!{estudio_hf} )[\\s\\S]*(?i:\\.hyperframes)",
           "motivo": "Bash do estúdio: só o hyperframes fixado cita .hyperframes (o QA confia nos relatórios dessa pasta)"
         },
         "Skill(hyperframes)",
@@ -383,7 +468,7 @@
       "permitir": [
         "Edit({trabalho}/**)"
       ],
-      "prompt": "/tune-up-studio:anuncio Pasta de trabalho: {trabalho}. Plataforma: {plataforma}. URL: {url}. Briefing no arquivo {briefing}",
+      "prompt": "/tune-up:anuncio Pasta de trabalho: {trabalho}. HyperFrames: {estudio_hf}. Plataforma: {plataforma}. URL: {url}. Briefing no arquivo {briefing}",
       "nome_sessao": "Anúncio: {plataforma}",
       "params": [
         {
@@ -392,7 +477,7 @@
           "tipo": "texto_longo",
           "obrigatorio": true,
           "max": 4000,
-          "ajuda": "Oferta, público e a ação que você quer. Preço, prazo ou número só entram se estiverem aqui."
+          "ajuda": "Para quem é, o que você oferece, uma prova real (número, nota, tempo de casa, frase de cliente), contato e a ação que você quer. Preço, prazo ou número só entram se estiverem aqui."
         },
         {
           "nome": "plataforma",

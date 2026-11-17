@@ -1,0 +1,41 @@
+<svg viewBox="0 0 1000 1000">
+  <g id="h_corpo">
+    <!-- cão: cabeça e patas por cima da borda da banheira -->
+    <path class="t" d="M318 250 Q250 250 236 330 L224 470 Q222 520 268 520 Q318 520 330 460 L352 330 Z"/>
+    <path class="t" d="M682 250 Q750 250 764 330 L776 470 Q778 520 732 520 Q682 520 670 460 L648 330 Z"/>
+    <path class="a" d="M500 170 Q690 170 700 350 L700 470 Q700 590 500 590 Q300 590 300 470 L300 350 Q310 170 500 170 Z"/>
+    <path class="s" d="M500 360 Q610 360 620 450 Q626 560 500 560 Q374 560 380 450 Q390 360 500 360 Z"/>
+    <ellipse class="t" cx="500" cy="424" rx="46" ry="32"/><ellipse class="b" cx="486" cy="414" rx="12" ry="7"/>
+    <path class="lt" stroke-width="12" d="M500 456 L500 486 M444 492 Q472 524 500 486 Q528 524 556 492"/>
+    <circle class="t" cx="408" cy="318" r="22"/><circle class="t" cx="592" cy="318" r="22"/>
+    <circle class="b" cx="415" cy="310" r="7"/><circle class="b" cx="599" cy="310" r="7"/>
+    <path class="lt" stroke-width="10" d="M376 272 Q404 252 434 266 M566 266 Q596 252 624 272"/>
+    <!-- banheira com pés, em dois tons -->
+    <path class="p" d="M120 600 L880 600 Q872 800 760 846 L240 846 Q128 800 120 600 Z"/>
+    <path class="t" d="M150 720 Q170 800 240 846 L760 846 Q830 800 850 720 Q800 790 730 800 L270 800 Q200 790 150 720 Z"/>
+    <path class="ls" stroke-width="16" d="M196 660 Q204 720 232 752"/>
+    <path class="t" d="M250 840 L310 840 L286 900 L226 900 Z"/><path class="t" d="M690 840 L750 840 L774 900 L714 900 Z"/>
+    <rect class="b" x="84" y="560" width="832" height="60" rx="30"/><rect class="s" x="84" y="596" width="832" height="24" rx="12"/>
+    <!-- patas e espuma na borda -->
+    <rect class="a" x="336" y="528" width="92" height="74" rx="36"/><rect class="a" x="572" y="528" width="92" height="74" rx="36"/>
+    <path class="lt" stroke-width="8" d="M366 568 L366 598 M396 568 L396 598 M602 568 L602 598 M632 568 L632 598"/>
+    <circle class="b" cx="170" cy="548" r="52"/><circle class="b" cx="244" cy="528" r="40"/><circle class="s" cx="214" cy="566" r="30"/>
+    <circle class="b" cx="770" cy="536" r="48"/><circle class="b" cx="838" cy="556" r="38"/><circle class="s" cx="806" cy="572" r="26"/>
+    <circle class="b" cx="500" cy="176" r="46"/><circle class="b" cx="548" cy="196" r="30"/><circle class="s" cx="462" cy="200" r="24"/>
+  </g>
+  <!-- bolhas que sobem e descem -->
+  <g id="h_balanca">
+    <circle class="lp" stroke-width="10" cx="160" cy="330" r="46"/><path class="lp" stroke-width="8" d="M136 318 Q142 300 160 296"/>
+    <circle class="lp" stroke-width="10" cx="860" cy="250" r="60"/><path class="lp" stroke-width="8" d="M830 234 Q838 210 862 204"/>
+    <circle class="lp" stroke-width="8" cx="812" cy="400" r="28"/><circle class="lp" stroke-width="8" cx="224" cy="196" r="24"/>
+  </g>
+  <!-- antes: manchas de lama; depois: brilhos e gravata -->
+  <g id="h_antes">
+    <ellipse class="t" cx="352" cy="400" rx="34" ry="24"/><ellipse class="t" cx="640" cy="250" rx="30" ry="20"/><circle class="t" cx="330" cy="352" r="12"/>
+    <path class="lt" stroke-width="10" d="M90 250 Q110 220 90 190 Q70 160 90 130 M920 420 Q940 390 920 360"/>
+  </g>
+  <g transform="translate(500 590)"><g id="h_depois1"><path class="p" d="M0 0 L-74 -44 L-74 44 Z"/><path class="p" d="M0 0 L74 -44 L74 44 Z"/><circle class="b" r="20"/></g></g>
+  <g transform="translate(150 150)"><g id="h_depois2"><path class="a" d="M0 -70 L18 -18 L70 0 L18 18 L0 70 L-18 18 L-70 0 L-18 -18 Z"/></g></g>
+  <g transform="translate(880 470)"><g id="h_depois3"><path class="a" d="M0 -54 L14 -14 L54 0 L14 14 L0 54 L-14 14 L-54 0 L-14 -14 Z"/></g></g>
+  <g transform="translate(720 130)"><g id="h_depois4"><path class="p" d="M0 -40 L10 -10 L40 0 L10 10 L0 40 L-10 10 L-40 0 L-10 -10 Z"/></g></g>
+</svg>

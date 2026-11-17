@@ -2,55 +2,78 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <title>Forno Miúdo - post 4:5</title>
   <style>
-    @font-face { font-family: "Forno Serif"; src: local("Georgia"), local("Times New Roman"); }
-    @font-face { font-family: "Forno Sans"; src: local("Helvetica Neue"), local("Arial"); }
-    html, body { margin: 0; background: #FFF8EC; }
-    #root {
-      position: relative; width: 1080px; height: 1350px; overflow: hidden; box-sizing: border-box;
-      display: flex; flex-direction: column; align-items: flex-start; padding: 88px 96px 0;
-      background: #FFF8EC; color: #3B2417; font-family: "Forno Sans", sans-serif;
-    }
-    .topo { display: flex; align-items: center; gap: 28px; }
-    .topo img { width: 120px; height: 120px; }
-    .marca { font-family: "Forno Serif", serif; font-size: 52px; font-weight: 700; color: #5A3320; }
-    .selo {
-      margin-top: auto; padding: 12px 28px; border-radius: 999px;
-      background: #5A3320; color: #FFF8EC; font-size: 30px; font-weight: 700; letter-spacing: 2px;
-    }
-    h1 {
-      margin: 36px 0 0; max-width: 888px;
-      font-family: "Forno Serif", serif; font-size: 100px; line-height: 1.04; color: #3B2417;
-    }
-    h1 em { font-style: normal; color: #A85A1F; }
-    .apoio { margin: 36px 0 auto; max-width: 820px; font-size: 40px; line-height: 1.35; }
-    .base {
-      align-self: stretch; margin-left: -96px; margin-right: -96px;
-      padding: 64px 96px 72px; background: #F4E4C8;
-      display: flex; flex-direction: column; align-items: flex-start; gap: 36px;
-    }
-    .cta {
-      padding: 30px 52px; border-radius: 24px;
-      background: #5A3320; color: #FFF8EC; font-size: 46px; font-weight: 700;
-    }
-    .rodape { margin: 0; font-size: 34px; font-weight: 700; color: #5A3320; }
+    @font-face { font-family: "Brand Heading"; src: local("Georgia"), local("Times New Roman"), local("Liberation Serif"), local("DejaVu Serif"); }
+    @font-face { font-family: "Brand Body"; src: local("Segoe UI"), local("Helvetica Neue"), local("Arial"), local("Liberation Sans"), local("DejaVu Sans"); }
+    /* fonte da marca heading: com generica (serif), pilha local fixa */
+    /* fonte da marca body: com generica (system-ui, -apple-system, sans-serif), pilha local fixa */
+    :root { --bg: #FFF8EC; --surface: #F4E4C8; --primary: #C9702B; --text: #3B2417; --accent: #5A3320; }
+    html, body { margin: 0; background: var(--bg); }
+    #root { position: relative; width: 1080px; height: 1350px; overflow: hidden; box-sizing: border-box;
+            padding: 80px; background: var(--bg); color: var(--text); font-family: "Brand Body", sans-serif;
+            font-size: 40px; text-wrap: balance; }
+    #root p, #root h1 { position: absolute; margin: 0; }
+    .arte { position: absolute; left: 0; top: 0; width: 1080px; height: 1350px; }
+    .p { fill: var(--primary); } .a { fill: var(--accent); } .t { fill: var(--text); } .b { fill: var(--bg); } .s { fill: var(--surface); } .lp, .la, .lt, .lb, .ls { fill: none; stroke-linecap: round; stroke-linejoin: round; } .lp { stroke: var(--primary); } .la { stroke: var(--accent); } .lt { stroke: var(--text); } .lb { stroke: var(--bg); } .ls { stroke: var(--surface); }
+    #root { background: var(--text); }
+    .prato { position: absolute; left: 72px; top: 56px; width: 100px; height: 100px; border-radius: 50%; background: var(--bg); }
+    .logo { position: absolute; left: 80px; top: 64px; width: 84px; height: 84px; }
+    .nome { left: 196px; top: 84px; font-family: "Brand Heading", sans-serif; font-size: 34px; line-height: 1.3; letter-spacing: .01em; color: var(--bg); white-space: nowrap; }
+    h1 { left: 80px; top: 176px; width: 920px; text-align: center; font-family: "Brand Heading", sans-serif; font-size: 151px; line-height: 1.0; letter-spacing: -0.02em; color: var(--bg); white-space: nowrap; }
+    h1 .r { color: var(--primary); }
+    h1, .nome, #oferta, #cta { font-weight: 700; }
+    #h_antes { display: none; } 
+    .pilha { position: absolute; left: 40px; top: 572px; width: 448px; height: 478px; transform: rotate(-5deg); }
+    .rotulo { left: 44px; width: 360px; text-align: center; white-space: nowrap; top: 104px; font-size: 34px; font-weight: 700; line-height: 1.15; letter-spacing: .05em; color: var(--bg); }
+    #oferta { left: 44px; width: 360px; text-align: center; white-space: nowrap; top: 155px; font-family: "Brand Heading", sans-serif; font-size: 218px; line-height: .98; letter-spacing: -0.02em; color: var(--primary); }
+    #oferta .rs, #oferta .ct { font-size: 83px; letter-spacing: 0; vertical-align: top; position: relative; top: .16em; } #oferta .rs { margin-right: .1em; }
+    .prova { left: 44px; width: 360px; text-align: center; white-space: nowrap; top: 382px; font-size: 40px; font-weight: 700; line-height: 1.25; color: var(--bg); }
+    .canal { position: absolute; left: 80px; top: 1163px; width: 124px; height: 124px; } .canal .ic { fill: var(--text); } .canal .ic2 { fill: var(--bg); }
+    #cta { left: 240px; top: 1157px; font-family: "Brand Heading", sans-serif; font-size: 67px; line-height: 1.1; color: var(--text); white-space: nowrap; }
+    #cta .cond { display: block; margin-top: 8px; font-family: "Brand Body", sans-serif; font-size: 44px; font-weight: 700; line-height: 1.25; }
   </style>
 </head>
 <body>
-  <div id="root" data-composition-id="post" data-start="0" data-duration="5"
+  <div id="root" class="l-titulo" data-composition-id="post" data-start="0" data-duration="5"
        data-width="1080" data-height="1350" data-no-timeline>
-    <div class="topo">
-      <img src="assets/logo.svg" alt="Forno Miúdo">
-      <span class="marca">Forno Miúdo</span>
-    </div>
-    <span class="selo">FORNADA DAS 6H</span>
-    <h1>Pão de fermentação <em>natural</em></h1>
-    <p class="apoio">Feito de véspera, assado de manhã cedo. Você reserva hoje e busca quentinho.</p>
-    <div class="base">
-      <span class="cta">Reserve seu pão de amanhã</span>
-      <p class="rodape">Peça pelo WhatsApp · fornadas pequenas</p>
-    </div>
+    <svg class="arte" viewBox="0 0 1080 1350" aria-hidden="true"><path class="p" d="M289 1100 L289 853 A371 371 0 0 1 1031 853 L1031 1100 Z"/><path class="b" d="M315 1100 L315 879 A345 345 0 0 1 1005 879 L1005 1100 Z"/><circle class="s" cx="96" cy="546" r="7"/><circle class="s" cx="142" cy="546" r="7"/><circle class="s" cx="188" cy="546" r="7"/><circle class="s" cx="234" cy="546" r="7"/><circle class="s" cx="280" cy="546" r="7"/><circle class="s" cx="326" cy="546" r="7"/><circle class="s" cx="96" cy="592" r="7"/><circle class="s" cx="142" cy="592" r="7"/><circle class="s" cx="188" cy="592" r="7"/><circle class="s" cx="234" cy="592" r="7"/><circle class="s" cx="280" cy="592" r="7"/><circle class="s" cx="326" cy="592" r="7"/><circle class="s" cx="96" cy="638" r="7"/><circle class="s" cx="142" cy="638" r="7"/><circle class="s" cx="188" cy="638" r="7"/><circle class="s" cx="234" cy="638" r="7"/><circle class="s" cx="280" cy="638" r="7"/><circle class="s" cx="326" cy="638" r="7"/><circle class="s" cx="96" cy="684" r="7"/><circle class="s" cx="142" cy="684" r="7"/><circle class="s" cx="188" cy="684" r="7"/><circle class="s" cx="234" cy="684" r="7"/><circle class="s" cx="280" cy="684" r="7"/><circle class="s" cx="326" cy="684" r="7"/><rect class="p" x="0" y="1004" width="1080" height="98"/><g transform="translate(340 458) scale(0.64)"><g transform="translate(330 470)"><g id="h_depois1">
+    <path class="a" d="M-150 60 Q-170 -70 0 -90 Q170 -70 150 60 Z"/>
+    <path class="ls" stroke-width="12" d="M-70 -44 L-40 6 M-10 -56 L20 -6 M50 -44 L80 6"/>
+  </g></g>
+  <g transform="translate(640 470)"><g id="h_depois2">
+    <path class="p" d="M-130 70 Q-150 -50 0 -70 Q150 -50 130 70 Z"/><path class="t" d="M-130 70 Q-136 20 -110 -10 Q-60 30 0 34 Q60 30 110 -10 Q136 20 130 70 Z"/>
+    <path class="ls" stroke-width="12" d="M-50 -30 L-20 10 M10 -38 L40 2"/>
+  </g></g>
+  <g transform="translate(500 380)"><g id="h_depois3">
+    <rect class="a" x="-60" y="-250" width="120" height="420" rx="60" transform="rotate(24)"/>
+    <path class="ls" stroke-width="12" d="M-70 -150 L-10 -170 M-36 -70 L24 -90 M0 10 L60 -10"/>
+  </g></g>
+  <g id="h_corpo">
+    
+    <path class="lt" stroke-width="26" d="M250 520 Q500 150 750 520"/>
+    <path class="p" d="M150 540 L850 540 L770 880 Q764 900 744 900 L256 900 Q236 900 230 880 Z"/>
+    <path class="t" d="M196 760 L804 760 L776 880 Q770 900 750 900 L250 900 Q230 900 224 880 Z"/>
+    <path class="ls" stroke-width="10" d="M300 600 L330 860 M400 600 L416 860 M500 600 L500 860 M600 600 L584 860 M700 600 L670 860"/>
+    <path class="la" stroke-width="12" d="M184 660 L816 660 M204 760 L796 760"/>
+    <rect class="t" x="120" y="510" width="760" height="70" rx="35"/><rect class="p" x="120" y="510" width="760" height="34" rx="17"/>
+    <path class="b" d="M640 544 L860 544 L880 700 L800 660 L740 720 L680 650 Z"/>
+    <path class="la" stroke-width="10" d="M700 544 L716 668 M780 544 L790 652 M664 600 L868 600"/>
+  </g>
+  
+  <g id="h_antes">
+    <circle class="a" cx="300" cy="496" r="12"/><circle class="a" cx="352" cy="488" r="8"/><circle class="a" cx="560" cy="492" r="10"/><circle class="a" cx="436" cy="498" r="7"/>
+  </g>
+  
+  <path id="h_traco1" class="lp" stroke-width="16" pathLength="1" d="M250 300 Q210 250 250 200 Q290 150 250 100"/>
+  <path id="h_traco2" class="lp" stroke-width="16" pathLength="1" d="M760 320 Q720 270 760 220 Q800 170 760 120"/></g></svg>
+    <svg class="arte" viewBox="0 0 1080 1350" aria-hidden="true"><g transform="translate(40 572) rotate(-5 224 239)"><path class="p" transform="translate(14 16)" d="M70 0 L378 0 L448 70 L448 478 L0 478 L0 70 Z"/><path class="a" d="M70 0 L378 0 L448 70 L448 478 L0 478 L0 70 Z"/><circle class="b" cx="224" cy="52" r="20"/><path class="lb" stroke-width="6" d="M224 52 Q254 -40 214 -90"/></g><rect class="b" x="0" y="1100" width="1080" height="250"/></svg>
+    <div class="prato"></div>
+    <img class="logo" src="assets/logo.svg" alt="">
+    <p class="nome">Forno Miúdo</p>
+    <h1>O&nbsp;pão acabou<br><span class="r">antes de&nbsp;você?</span></h1>
+    <div class="pilha"><p class="rotulo">PRIMEIRA FORNADA</p><p id="oferta">6h</p><p class="prova">massa de&nbsp;24 horas</p></div>
+    <svg class="canal" viewBox="0 0 100 100" aria-hidden="true"><path class="ic" d="M50 10 C74 10 90 26 90 46 C90 66 74 80 50 80 L28 92 L32 74 C18 68 10 58 10 46 C10 26 26 10 50 10 Z"/><circle class="ic2" cx="34" cy="46" r="6"/><circle class="ic2" cx="50" cy="46" r="6"/><circle class="ic2" cx="66" cy="46" r="6"/></svg>
+    <p id="cta">Reserve o&nbsp;pão de&nbsp;amanhã<span class="cond">pelo WhatsApp, link na&nbsp;bio</span></p>
   </div>
 </body>
 </html>

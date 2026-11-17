@@ -71,7 +71,7 @@ def principal():
         cod, d = modulos.agir(cfg, "estudio", "marca.aprovar", {"confirmar": True})
         print("marca.aprovar ->", cod, json.dumps(d.get("resultado"), ensure_ascii=False)[:160])
         original = lancador.argv_travas
-        lancador.argv_travas = lambda a, c: original(a, c) + ["--plugin-dir", STUDIO]
+        lancador.argv_travas = lambda a, c: original(a, c) + ["--plugin-dir", os.path.dirname(STUDIO)]
         lc = lancador.Lancador(cfg, lambda: {})
         t0 = time.time()
         try:

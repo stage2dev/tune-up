@@ -1,0 +1,13 @@
+Checking MCP server health…
+
+claude.ai Docs: https://example.test/mcp - ✔ Connected
+claude.ai ElevenLabs: https://api.elevenlabs.io/v1/mcp - ✔ Connected
+claude.ai Higgsfield mcp: https://mcp.higgsfield.ai/mcp - ✔ Connected
+claude.ai Notes: https://example.test/mcp - ! Needs authentication
+plugin:notes:search: node -e const f=require('fs');process.stdout.write(f.readFileSync(0,'utf8')) - ✔ Connected
+plugin:openseo:openseo: https://app.openseo.so/mcp (HTTP) - ✔ Connected
+plugin:marketing:slack: https://example.test/mcp (HTTP) - ! Needs authentication
+plugin:marketing:ahrefs: https://example.test/mcp (HTTP) - ! Needs authentication
+plugin:marketing:gmail:  (HTTP) - - Not configured
+composio: https://example.test/composio (HTTP) - ✔ Connected
+local-tool: npx -y example-tool@1.0.0 mcp - ✔ Connected

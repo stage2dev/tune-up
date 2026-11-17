@@ -83,6 +83,10 @@ Chave que o núcleo não conhece é ignorada, mas chega aos módulos em `ctx["co
   dados/                  arquivos gravados pelas ações; também o registro das execuções
 ```
 
+### Módulos embutidos (Estúdio e Vendas)
+
+O Estúdio e o Vendas vêm dentro do próprio tune-up (`embutidos.py`, lista fixa) e chegam desligados. A tela **Módulos** (`/modulos`) tem um botão para cada um; ligado ou desligado fica em `<dados>/embutidos-ligados.json`, que só o servidor grava. Não precisa editar `painel.json`, usar `--aceitar-extensao` nem instalar plugin separado. `GET /api/embutidos` lista os dois e `POST /api/embutidos/<id>` (`{"ligado": true|false}`) liga ou desliga. A linha antiga `"modulos_de_plugins": ["tune-up-studio@...:estudio"]` (ou `tune-up-vendas@...:vendas`) ainda conta como ligado até o dono usar o botão, e a tela avisa que a linha pode ser removida; `acoes_de_plugins: ["tune-up-studio@..."]` é ignorada com um aviso para ligar o Estúdio em Módulos. O `--aceitar-extensao` vale só para módulos e ações de plugins de terceiros.
+
 ### Módulos (telas extras)
 
 `modulo.py` expõe `INFO = {"id", "titulo", "icone"}` e `montar(ctx) -> dict`, com `ctx = {"raiz", "pacote", "dados", "config", "hoje"}`. A resposta tem `alertas` (`{nivel: info|atencao|critico, texto}`) e `abas` (`{id, titulo, blocos}`); cada bloco tem um `tipo`: `kpis`, `tabela`, `lista`, `serie`, `texto` ou `acoes` (botões das ações de um grupo). Tipos exatos em `contrato/api.d.ts`.
@@ -208,6 +212,8 @@ Tipos exatos em `contrato/api.d.ts`.
 | `POST /api/execucoes/{id}/parar` | `claude stop` |
 | `POST /api/execucoes/{id}/abrir` | Terminal em `claude attach` |
 | `GET /api/acompanhamento` | listas do claude-mem separadas por área |
+| `GET /api/embutidos` | Estúdio e Vendas: título, descrição, se estão ligados e avisos |
+| `POST /api/embutidos/{id}` | liga ou desliga um módulo embutido (`{"ligado": bool}`) |
 | `GET /api/modulos` | telas extras ligadas e quantos alertas cada uma tem |
 | `GET /api/modulos/{id}[?fresco=1]` | conteúdo de uma tela extra (`fresco=1` ignora o cache de 30 s) |
 | `POST /api/modulos/{id}/acao` | ação de uma tela extra (`agir`): 200, 400, 404, 409, 422, 500, 503 |

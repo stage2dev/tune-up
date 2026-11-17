@@ -112,11 +112,50 @@ class TestPreparar(Base):
         shutil.copytree(self.studio, dentro)
         self.studio = dentro
         r = self.preparar(home=home)
-        esperado = os.path.join(self.dados, "tune-up-studio", "0.1.0", "node")
+        esperado = os.path.join(self.dados, "estudio-node", pe.chave_do_ambiente(dentro), "node")
         self.assertEqual(r["node_dir"], esperado)
+        self.assertEqual(r["chave"], pe.chave_do_ambiente(dentro))
+        self.assertEqual(r["hyperframes"], os.path.join(esperado, "node_modules", ".bin", "hyperframes"))
         self.assertTrue(os.path.isfile(os.path.join(esperado, "package-lock.json")))
         self.assertEqual({cwd for _, cwd in self.chamadas}, {esperado})
         self.assertFalse(os.path.exists(os.path.join(dentro, "node", "node_modules")))
+
+    def test_chave_vem_do_package_lock(self):
+        chave = pe.chave_do_ambiente(self.studio)
+        self.assertRegex(chave, r"^[0-9a-f]{12}$")
+        with open(os.path.join(self.studio, "node", "package-lock.json"), "w") as f:
+            f.write('{"lockfileVersion": 3}')
+        self.assertNotEqual(pe.chave_do_ambiente(self.studio), chave)
+
+    @unittest.skipUnless(hasattr(os, "symlink") and os.name != "nt", "symlink")
+    def test_apaga_outras_chaves_e_a_pasta_antiga_sem_seguir_atalho(self):
+        home = os.path.join(self.tmp, "casa")
+        dentro = os.path.join(home, ".claude", "plugins", "cache", "tune-up", "tune-up", "2.11.0", "tune-up-studio")
+        shutil.copytree(self.studio, dentro)
+        self.studio = dentro
+        fora = os.path.join(self.tmp, "fora")
+        os.makedirs(os.path.join(fora, "x"))
+        os.makedirs(os.path.join(self.dados, "estudio-node", "velha", "node"))
+        os.makedirs(os.path.join(self.dados, "tune-up-studio", "0.1.0", "node"))
+        os.symlink(fora, os.path.join(self.dados, "estudio-node", "atalho"))
+        self.preparar(home=home)
+        self.assertEqual(os.listdir(os.path.join(self.dados, "estudio-node")), [pe.chave_do_ambiente(dentro)])
+        self.assertFalse(os.path.lexists(os.path.join(self.dados, "tune-up-studio")))
+        self.assertTrue(os.path.isdir(os.path.join(fora, "x")))  # o alvo do atalho fica
+
+    @unittest.skipUnless(hasattr(os, "symlink") and os.name != "nt", "symlink")
+    def test_pasta_antiga_que_e_atalho_nao_e_seguida(self):
+        fora = os.path.join(self.tmp, "fora")
+        os.makedirs(os.path.join(fora, "x"))
+        os.symlink(fora, os.path.join(self.dados, "tune-up-studio"))
+        os.symlink(fora, os.path.join(self.tmp, "estudio-node-alvo"))
+        self.preparar()
+        self.assertTrue(os.path.isdir(os.path.join(fora, "x")))
+        self.assertFalse(os.path.lexists(os.path.join(self.dados, "tune-up-studio")))
+        os.symlink(fora, os.path.join(self.dados, "estudio-node"))  # estudio-node atalho: recusa, não instala lá
+        with self.assertRaises(OSError):
+            self.preparar()
+        self.assertEqual(os.listdir(fora), ["x"])
 
     @unittest.skipUnless(hasattr(os, "symlink") and os.name != "nt", "symlink")
     def test_atalho_no_lugar_do_ambiente_e_recusado(self):
@@ -250,9 +289,9 @@ class TestModulo(Base):
         self.assertEqual(a["nivel"], "atencao")
         self.assertIn("npm ci --ignore-scripts falhou", a["texto"])
         self.preparar()
-        with mock.patch.object(mod, "_versao", return_value="0.1.0"):  # a do plugin de mentira do setUp
+        with mock.patch.object(mod, "_chave", return_value=pe.chave_do_ambiente(self.studio)):  # a do setUp
             self.assertIn("Estúdio pronto", mod.montar({"dados": self.dados})["alertas"][0]["texto"])
-        with mock.patch.object(mod, "_versao", return_value="0.2.0"):  # o plugin foi atualizado
+        with mock.patch.object(mod, "_chave", return_value="0123456789ab"):  # o HyperFrames fixado mudou
             a = mod.montar({"dados": self.dados})["alertas"][0]
         self.assertEqual(a["nivel"], "atencao")
         self.assertIn("outra versão", a["texto"])
@@ -260,6 +299,22 @@ class TestModulo(Base):
         texto = mod.montar({"dados": self.dados})["alertas"][0]["texto"]
         self.assertIn("Preparando o estúdio desde as 08:23", texto)  # hora legível, sem data ISO nem caminho de log
         self.assertNotIn("2026-11-11T", texto)
+
+    def test_pronto_segue_a_chave_nao_a_versao(self):
+        mod = carregar_modulo()
+        self.assertEqual(mod._chave(), pe.chave_do_ambiente())  # o módulo e o preparar calculam a mesma chave
+        pe.gravar(self.dados, {"pronto": True, "estudio": "0.0.1", "chave": pe.chave_do_ambiente()})
+        self.assertIn("Estúdio pronto", mod.montar({"dados_dir": self.dados})["alertas"][0]["texto"])
+        pe.gravar(self.dados, {"pronto": True, "estudio": pe.versao_do_estudio()})  # preparado antes da chave
+        self.assertIn("outra versão", mod.montar({"dados_dir": self.dados})["alertas"][0]["texto"])
+
+    def test_preparar_usa_dados_dir_e_nao_a_pasta_do_pacote(self):
+        mod = carregar_modulo()
+        outra = os.path.join(self.tmp, "pacote-dados")
+        with mock.patch.object(mod.subprocess, "Popen") as popen:
+            mod.agir({"dados": outra, "dados_dir": self.dados, "raiz": self.tmp}, "preparar", {"confirmar": True})
+        self.assertEqual(popen.call_args[0][0][3:5], ["--dados", self.dados])
+        self.assertFalse(os.path.exists(outra))
 
 
 if __name__ == "__main__":

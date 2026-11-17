@@ -1,0 +1,8 @@
+Checking MCP server health…
+
+srv-connected: https://example.test/mcp (HTTP) - ✔ Connected
+srv-needs-auth: https://example.test/mcp (HTTP) - ! Needs authentication
+srv-not-configured:  (HTTP) - - Not configured
+srv-failed: https://example.test/mcp (HTTP) - ✘ Failed to connect
+srv-pending: https://example.test/mcp (HTTP) - ⏸ Pending approval (run `claude` to approve)
+srv-disabled: https://example.test/mcp (HTTP) - ⊘ Disabled for this project (re-enable via /mcp)

@@ -128,8 +128,8 @@ class TestH2bVolta1Modelos(AgentBase):
 
     def test_workflow_sem_model_usa_sessao(self):
         self.assertEqual(self.wf("agent({prompt:'x'})", "claude-fable-5"), "bloquear")
-        self.assertIsNone(self.wf("agent({prompt:'x'})"))
-        self.assertIsNone(self.wf("agent({model:'sonnet', prompt:'x'})", "claude-fable-5"))
+        self.assertEqual(self.wf("agent({prompt:'x'})"), "avisar")
+        self.assertEqual(self.wf("agent({model:'sonnet', prompt:'x'})", "claude-fable-5"), "avisar")
 
     def test_inherit_e_default_sao_sem_model(self):
         for m in ["inherit", "default", "Inherit"]:
@@ -188,9 +188,9 @@ class TestWorkflowEFrontmatter(AgentBase):
     def test_prosa_passa(self):
         sc = ("// fable is forbidden here, don't use Fable\n/* fable\n prose */\n"
               "agent({model: 'sonnet', prompt: 'do not run on affable rules'})")
-        self.assertIsNone(self.wf({"script": sc}))
+        self.assertEqual(self.wf({"script": sc}), "avisar")
         # prose (3+ words) inside a string passes; short strings and the value of model: do not
-        self.assertIsNone(self.wf({"script": "agent({model: 'sonnet', prompt: 'never run on fable here'})"}))
+        self.assertEqual(self.wf({"script": "agent({model: 'sonnet', prompt: 'never run on fable here'})"}), "avisar")
         self.assertEqual(self.wf({"script": "agent({model: 'sonnet', label: 'fable'})"}), "bloquear")
         self.assertEqual(self.wf({"script": "agent({model: 'a b fable c', prompt: 'x'})"}), "bloquear")
         self.assertEqual(self.wf({"script": "agent({model : `a b fable c`})"}), "bloquear")
@@ -219,10 +219,10 @@ class TestWorkflowEFrontmatter(AgentBase):
         self.assertEqual(self.wf({"scriptPath": self.script_em_arquivo("agent({model: 'fable'})")}), "bloquear")
         self.assertEqual(self.wf({"scriptPath": os.path.join(self.cwd, "wf.js")}), "bloquear")
         p = self.script_em_arquivo("// fable prose\nagent({model: 'sonnet', prompt: 'x'})", "b.js")
-        self.assertIsNone(self.wf({"scriptPath": p}, "claude-fable-5"))
+        self.assertEqual(self.wf({"scriptPath": p}, "claude-fable-5"), "avisar")
         p = self.script_em_arquivo("agent({prompt: 'x'})", "c.js")
         self.assertEqual(self.wf({"scriptPath": p}, "claude-fable-5"), "bloquear")
-        self.assertIsNone(self.wf({"scriptPath": p}))
+        self.assertEqual(self.wf({"scriptPath": p}), "avisar")
 
     def test_script_path_ilegivel(self):
         self.assertEqual(self.wf({"scriptPath": "nao-existe.js"}, "claude-fable-5"), "bloquear")
@@ -277,6 +277,173 @@ class TestWorkflowEFrontmatter(AgentBase):
         self.user_json({"language": "pt-BR", "models": {"meu-agente": {"model": "haiku"}}})
         s = self.sessao_fable("meu-agente")
         self.assertEqual(s["hookSpecificOutput"]["updatedInput"]["model"], "haiku")
+
+
+
+class TestWorkflowGenerico(AgentBase):
+    """A2: agent() without an explicit agentType warns (or blocks, by config)."""
+    def wf(self, ti, modelo="claude-opus-5-5"):
+        if isinstance(ti, str):
+            ti = {"script": ti}
+        return self.rodar("agent", {"tool_name": "Workflow", "tool_input": ti,
+                                    "transcript_path": self.transcript(modelo)})
+
+    def config(self, valor, confiar=False):
+        perfil = os.path.join(self.cwd, ".tune-up")
+        os.makedirs(perfil, exist_ok=True)
+        with open(os.path.join(perfil, "config.json"), "w", encoding="utf-8") as f:
+            json.dump({"workflow_generic": valor}, f)
+        if confiar:
+            self.confiar(os.path.join(perfil, "config.json"))
+
+    def test_generico_avisa_com_linhas(self):
+        s = self.wf("const a = 1\nawait agent('x', {model: 'sonnet'})\nagent('y')")
+        self.assertEqual(self.decisao(s), "avisar")
+        texto = s["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("2", texto)
+        self.assertIn("2, 3", texto)
+
+    def test_tipado_passa(self):
+        for sc in ["agent('x', {agentType: 'tune-up:mapper', model: 'haiku'})",
+                   "agent('x', {\"agentType\": \"tune-up:checker\"})",
+                   "agent('x', {agentType: it.agentType})", "agent('x', {agentType: rv})",
+                   "agent('x', {agentType})", "agent('x', {agentType: `tune-up:reviewer-${r}`})",
+                   "agent('x', {agentType: 'general-purpose' + suf})",
+                   # options from a call, a variable or a spread: cannot know, no false positive
+                   "agent(p(it, 'a, b'), execOpts('opus', `x:${i}`))", "agent('x', opts)",
+                   "agent('x', { ...execOpts('opus'), phase: 'P' })"]:
+            with self.subTest(sc=sc):
+                self.assertIsNone(self.decisao(self.wf(sc)))
+
+    def test_generico_literal_conta(self):
+        for sc in ["agent('x', {agentType: 'general-purpose'})", "agent(`a ... b`, {label: 'l'})", 'agent("x", {agentType: "claude"})',
+                   "agent('x', {agentType: 'workflow-subagent'})", "agent('x', {agentType: ''})",
+                   "agent('x', {agentType: `general-purpose`})"]:
+            with self.subTest(sc=sc):
+                self.assertEqual(self.decisao(self.wf(sc)), "avisar")
+
+    def test_block_nega_e_off_cala(self):
+        self.config("block")  # tightening needs no trust
+        self.assertEqual(self.decisao(self.wf("agent('x')")), "bloquear")
+        self.assertIsNone(self.decisao(self.wf("agent('x', {agentType: 'tune-up:mapper'})")))
+        self.config("off", confiar=True)
+        self.assertIsNone(self.decisao(self.wf("agent('x')")))
+
+    def test_valor_desconhecido_avisa(self):
+        self.config("loud", confiar=True)
+        self.assertEqual(self.decisao(self.wf("agent('x')")), "avisar")
+
+    def test_nao_confiado_nao_afrouxa(self):
+        self.config("off")
+        self.assertEqual(self.decisao(self.wf("agent('x')")), "avisar")
+
+    def test_allow_generic(self):
+        for sc in ["agent('x') // tune-up: allow-generic needs every tool",
+                   "// tune-up: allow-generic needs MCP tools\nagent('x')",
+                   "/* tune-up: allow-generic one-off probe */\nagent('x')"]:
+            with self.subTest(sc=sc):
+                self.assertIsNone(self.decisao(self.wf(sc)))
+        for sc in ["agent('x') // tune-up: allow-generic", "// tune-up: allow-generic   \nagent('x')",
+                   "/* tune-up: allow-generic */ agent('x')",
+                   "// tune-up: allow-generic reason\n\nagent('x')"]:  # two lines above: not forgiven
+            with self.subTest(sc=sc):
+                self.assertEqual(self.decisao(self.wf(sc)), "avisar")
+
+    def test_comentario_string_e_nomes_parecidos(self):
+        for sc in ["// agent('x')\nconst p = 'agent(1)'", "/* agent(\n'x') */", "const t = `call agent(x)`",
+                   "subagent('x')", "obj.agent('x')", "function agent(p) { return p }",
+                   "async function agent (p) {}"]:
+            with self.subTest(sc=sc):
+                self.assertIsNone(self.decisao(self.wf(sc)))
+
+    def test_multilinha_aninhado_e_schema(self):
+        sc = ("const r = await agent(`do ${x}\n(see)`, {\n  label: 'a', phase: 'P',\n"
+              "  schema: {type: 'object', properties: {a: {type: 'string'}}, required: ['a']},\n"
+              "  agentType: 'tune-up:executor-sonnet',\n})\n"
+              "const g = await agent(prompt(it, {k: [1, 2]}), {\n  schema: {properties: {b: {}}},\n"
+              "  model: 'opus' })\n")
+        s = self.wf(sc)
+        self.assertEqual(self.decisao(s), "avisar")
+        self.assertIn("(lines 7)", s["hookSpecificOutput"]["additionalContext"].replace("linhas", "lines"))
+
+    def test_regra_antiga_nao_e_mascarada(self):
+        self.config("off", confiar=True)
+        self.assertEqual(self.decisao(self.wf("agent('x', {model: 'fable'})")), "bloquear")
+        self.assertEqual(self.decisao(self.wf("agent('x')", "claude-fable-5")), "bloquear")
+        self.config("block", confiar=True)
+        s = self.wf("agent('x', {model: 'fable', agentType: 'tune-up:mapper'})")
+        self.assertEqual(self.decisao(s), "bloquear")
+        self.assertIn("fable", s["hookSpecificOutput"]["permissionDecisionReason"])
+
+    def test_script_path(self):
+        p = os.path.join(self.cwd, "wf.js")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write("agent('x')\n")
+        self.assertEqual(self.decisao(self.wf({"scriptPath": "wf.js"})), "avisar")
+        self.assertIsNone(self.decisao(self.wf({"scriptPath": "nao-existe.js"})))  # unreadable: as before
+        self.assertEqual(self.decisao(self.wf({"scriptPath": "nao-existe.js"}, "claude-fable-5")), "bloquear")
+
+    def test_f1_linear_em_scripts_grandes(self):
+        import time
+        from tuneup.workflow import workflow_generico
+        for sc in ["agent(" * 80000, "/*" + "agent('x')\n" * 45000]:  # ~480-500 KB each
+            t = time.time()
+            workflow_generico(sc)
+            self.assertLess(time.time() - t, 3)
+
+    def test_f1_scanner_igual_a_regex(self):
+        import random
+        import re
+        from tuneup.workflow import tokens
+        rx = re.compile(r"//[^\n]*|/\*.*?\*/|'(?:\\.|[^'\\\n])*'|\"(?:\\.|[^\"\\\n])*\"|`(?:\\.|[^`\\])*`", re.S)
+        rnd = random.Random(7)
+        for _ in range(20000):
+            sc = "".join(rnd.choice("/*'\"`\\\nab ${}") for _ in range(rnd.randint(0, 20)))
+            self.assertEqual([(m.start(), m.end(), m.group(0)) for m in rx.finditer(sc)], tokens(sc))
+
+    def test_f2_agent_type_so_no_primeiro_nivel_e_o_ultimo(self):
+        for sc in ["agent('x', {schema: {properties: {agentType: {type: 'string'}}}})",
+                   "agent('x', {agentType: 'tune-up:m', agentType: 'general-purpose'})",
+                   "agent({prompt: 'x', meta: {agentType: 'tune-up:m'}})"]:
+            with self.subTest(sc=sc):
+                self.assertEqual(self.decisao(self.wf(sc)), "avisar")
+        self.assertIsNone(self.decisao(self.wf("agent('x', {agentType: 'general-purpose', agentType: 'tune-up:m'})")))
+
+    def test_f3_definicao_parametro_local_e_chave_computada(self):
+        for sc in ["const o = { agent(p) { return p } }", "class A { async agent(p) { return p } }",
+                   "const f = agent => agent(1)", "function run(a, agent) { return agent('x') }",
+                   "agent('x', {['agentType']: 'tune-up:mapper'})", "agent('x', {[k]: 'v'})"]:
+            with self.subTest(sc=sc):
+                self.assertIsNone(self.decisao(self.wf(sc)))
+        self.assertEqual(self.decisao(self.wf("agent('x', {['agentType']: 'general-purpose'})")), "avisar")
+
+    H1 = "const a = entrada.replace(/`/g, '')\nconst r = await agent({prompt: a})\nreturn r.replace(/`/g, '')"
+    M2 = "const r = await agent({prompt:'x'})\n{\n  log(r)\n}"
+    M3 = "const r = `${await agent({prompt:'p', model:'sonnet'})}`"  # old rule: raw text, as in 9187006
+
+    def test_regra_antiga_nao_regride(self, fable="claude-fable-5"):
+        for sc, esperado in [(self.H1, "bloquear"), ("const r = /'/g; agent({prompt:'x'})", "bloquear"),
+                             (self.M2, "bloquear"), (self.M3, None)]:
+            self.assertEqual(self.decisao(self.wf(sc, fable)), esperado, sc)
+
+    def test_regra_antiga_equivale_a_9187006(self):
+        import random, re, sys, unittest.mock  # noqa: E401
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+        from tuneup.agent import ev_agent
+        frag = ["agent(", "agent ({prompt:'x'})", "model:", "'model': ", "model = ", "'", '"', "`", "/*", "*/", "//",
+                "${", "}", "{", ")", "/`/g", "\n", "\n{\n", " x ", "obj.agent(", "'opus'"]
+        rnd, tr, e = random.Random(1234), self.transcript("claude-fable-5"), self.env
+        with unittest.mock.patch.dict(os.environ, {k: e[k] for k in ("HOME", "CLAUDE_PLUGIN_DATA", "TUNEUP_USER_JSON")}):
+            for _ in range(5000):
+                sc = "".join(rnd.choice(frag) for _ in range(rnd.randint(1, 14)))
+                antes = len(re.findall(r"\bagent\s*\(", sc)) > len(re.findall(r"\bmodel[\"']?\s*[:=]", sc))
+                s = ev_agent({"tool_name": "Workflow", "tool_input": {"script": sc}, "transcript_path": tr}, {})
+                self.assertEqual(antes, bool(s) and s["hookSpecificOutput"].get("permissionDecision") == "deny", sc)
+
+    def test_m2_bloco_em_outra_linha_e_chamada(self):
+        for sc in [self.M2, "const r = await agent({prompt:'x'})\n\n  {\n}"]:
+            self.assertEqual(self.decisao(self.wf(sc)), "avisar", sc)
+        self.assertIsNone(self.decisao(self.wf("class A { agent(p)  { return p } }")))
 
 
 if __name__ == "__main__":

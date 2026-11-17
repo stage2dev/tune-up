@@ -1,0 +1,61 @@
+tune-up-studio
+MIT, Copyright (c) 2026 tune-up contributors
+
+Third-party sources
+-------------------
+
+The guidance in `referencias/` adapts ideas from these sources in our own
+words; no file or passage was copied. Both repositories are MIT-licensed; the
+video-prompt collection gathers prompts written by many authors, who keep
+their own rights, and only general techniques were taken from it. The
+repositories' copyright and permission notices are reproduced here as a
+courtesy.
+
+1. marketingskills
+   https://github.com/coreyhaines31/marketingskills
+   Copyright (c) 2025 Corey Haines
+   License: MIT
+   Read at commit 1f837447b20bb6f0e72d87b80ece1c221c362c7d
+   Ideas taken: hooks and opening families, ad angles, caption structure,
+   calls to action by awareness stage, post archetypes.
+
+2. awesome-opus5-5-videos
+   https://github.com/yihui-dev/awesome-opus5-5-videos
+   Copyright (c) 2026 yihui-dev (the collection; each prompt belongs to its author)
+   License: MIT (the collection)
+   Read at commit 92aee2f586ac0715cb3cbcb6384834f98a33383d
+   Ideas taken: scene pacing, the cover frame, accent words, persistent shapes
+   across cuts, transitions centred on the cut, end cards.
+   Video styles (referencias/estilos-video/, round 7): each style file distils,
+   in our own words and rebuilt for the studio's engine, techniques described
+   in prompts of the collection. No prompt text was copied. Prompts read for
+   them, by the author names their files carry in the collection: 0xnicc0,
+   flxrnc, annacher, demonugc, dzhohola, diamai (one shape, a cursor that
+   clicks, a counter); jake11moran (a list that lands, checklist ticks, an
+   oversized cursor); notdwd (a typed request, nothing ever freezes);
+   techhalla and twoclipping (kinetic type, the loud poster, a counter with a
+   line); thegrootdev, okapi-fukugyo (a cursor operating an interface);
+   brainextends, daniel-haida (the product film, one idea per shot);
+   aschapmann, alex-prompter, archiveexplorer (how-it-works and objection
+   beats); gdgtify (locked on-screen copy). Each prompt belongs to its author.
+
+MIT permission notice (the same text for this plugin and for both sources,
+each under its own copyright line above):
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

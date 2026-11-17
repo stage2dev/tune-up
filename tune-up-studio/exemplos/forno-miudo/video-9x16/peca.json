@@ -1,0 +1,9 @@
+{
+  "variante": {"tema": "tinta", "lado": "direita", "palco": "disco", "textura": "pontos"},
+  "gancho": {"titulo": "O pão acabou", "destaque": "antes de você?"},
+  "rampa": {"titulo": "Fornadas pequenas", "apoio": "acabam cedo"},
+  "oferta": {"nome": "Primeira fornada", "valor": "6h", "prova": "massa de 24 horas"},
+  "final": {"titulo": "Reserve o pão de amanhã", "contato": "link na bio", "canal": "whatsapp"},
+  "heroi_topo": 90,
+  "heroi_topo_antes": 320
+}

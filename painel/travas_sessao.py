@@ -29,6 +29,11 @@ def config_gancho(acao, protegidos=(), liberados=(), perguntas_dir=None):
             "leve": leve, "bash": bash, "sb": bool(acao.get("sandbox")),
             "prot": [p for p in protegidos if p], "lib": [p for p in liberados if p],
             "n": trv.get("regras_negar") or [], "p": trv.get("regras_permitir") or []}
+    est = acao.get("_estudio") or {}  # trabalho.resolver_travas: o binário exato e a pasta dos scripts do Estúdio
+    if est.get("exe"):
+        conf["exe"] = [x for x in est["exe"] if x]
+    if est.get("py"):
+        conf["py"] = est["py"]
     if perguntas_dir and acao.get("_perguntas_chat"):
         conf["perg"] = perguntas_dir  # pergunta de múltipla escolha vai para o chat, não para o terminal
     return conf
@@ -74,7 +79,9 @@ def argv_travas(acao, cfg=None):
     os = _os()
     liberados = [os.path.join(cfg["pacote_dir"], "dados")] if cfg.get("pacote_dir") else []
     dados = cfg.get("dados_dir") or ""  # estes saem da exceção `dados`: só o servidor grava
+    import embutidos  # aqui dentro, como o sandbox: o gancho roda com -I e não importa nada do painel
     import sandbox
+    protegidos += embutidos.pastas_codigo()  # o código dos embutidos, ligados ou não: o painel importa e roda
     protegidos += [os.path.join(dados, x) for x in sandbox.DONO] if dados else []
     perguntas = os.path.join(dados, "perguntas") if dados else None
     return ["--settings", settings_da_sessao(acao, protegidos, liberados, workspace=cfg.get("workspace") or "",

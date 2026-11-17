@@ -49,7 +49,9 @@ SEP_BASH = re.compile(r"&&|\|\||\$\(|[;&|\n(){}`]")
 META_BASH = re.compile(r";|&&|\|\||\||\$\(|`|<<|[<>]\(|\n|(?<![<>])&(?!>)")
 CURINGA = re.compile(r"[*?\[{$`]")
 NOMES_CONFIG = (".claude", ".tune-up", "claude.md", "claude.local.md", ".mcp.json")
-DONO = ("estudio-dono.json", "aprovados", "extensoes.json")  # em <dados>: só o servidor grava (sandbox.DONO)
+DONO = ("estudio-dono.json", "aprovados", "extensoes.json",  # em <dados>: só o servidor grava (sandbox.DONO)
+        "embutidos-ligados.json", "embutidos-ligados.json.gravando",  # o temporário também: nada plantado
+        "estudio-node")  # o HyperFrames do Estúdio instalado do marketplace ({estudio_hf})
 # escrita que cita esses nomes em qualquer caminho: `cd <dados> && echo > estudio-dono.json` não passa
 RE_DONO = re.compile(r"(?i)(^|[/\s'\"=<>;|&()])(%s)($|[/\s'\";|&)<>])" % "|".join(re.escape(n) for n in DONO))
 PONTO_PONTO = re.compile(r"(^|[/\s'\"=])\.\.($|[/\s'\";|&)<>])")
@@ -75,6 +77,7 @@ RE_REDE_RUIM = re.compile(r"(?i)^//([?.]/(?!unc/|[a-z]:(/|$))|([?.]/unc/)?(local
 FIM_LIB = "/\\ \t\n'\""  # depois do liberado: separador, espaço, aspas ou fim (dadosx/ não é dados/)
 # com sandbox o QA confia nos relatórios em <fonte>/.hyperframes/ (com `.` ou ` ` no fim, no Windows): só o Bash do
 # hyperframes grava lá. Pelo gancho, não por regra: `Write(**/.hyperframes/**)` não barrou; `Edit(...)` cala o sandbox.
+SCRIPTS_ESTUDIO = "qa_video qa_imagem reserva_slides video_ou_reserva fontes anuncio fotos montar".split()  # bash-estudio.json
 RE_HF = re.compile(r"(^|/)\.hyperframes[. ]*(/|$)")
 MOTIVO_HF = "relatório do hyperframes (.hyperframes/) só o próprio hyperframes grava"
 
@@ -307,6 +310,18 @@ def _shell_win(cmd, verbos):
         re.search(r"(?i)\.(bat|cmd)$", w) for w, _ in verbos)
 
 
+def _sem_estudio(cmd, conf):
+    """Com sandbox: sem o binário exato do Estúdio (`exe`) ou, depois de `python3 -I [-B] `, `<py>` + script do
+    Estúdio. Só para a checagem de caminho protegido; o resto segue."""
+    for exe in (conf.get("exe") or []) if conf.get("sb") else []:
+        if isinstance(exe, str) and exe and cmd.startswith(exe + " "):
+            return cmd[len(exe):]
+    py = conf.get("py") if conf.get("sb") else None
+    m = re.match(r"python3 -I (-B )?(%s(%s)\.py)(?= |\Z)" % (re.escape(py), "|".join(SCRIPTS_ESTUDIO)), cmd) \
+        if isinstance(py, str) and py else None
+    return cmd[:m.start(2)] + cmd[m.end(2):] if m else cmd
+
+
 def decidir(conf, ferramenta, entrada, cwd="", nt=None, realpath=None):
     """(decisão, motivo) ou None. `cwd`: o da sessão (entrada do gancho). `nt`/`realpath` (testes): Windows ou não e o
     realpath do nome curto 8.3. PowerShell: nega sempre. O _escondido só sobe a decisão e vale antes do `permitir`."""
@@ -333,9 +348,9 @@ def _decidir(conf, ferramenta, entrada, cwd, nt, realpath, forte):
         cmd = entrada.get("command")
         if not isinstance(cmd, str):
             return forte, "comando ilegível"
-        verbos = _verbos(cmd)
+        verbos, resto = _verbos(cmd), _sem_estudio(cmd, conf)
         # leitura/rascunho: só verbo de leitura conhecido pode citar árvore protegida
-        if (_protegido(cmd, conf) or _protegido_normal(cmd, conf, True, cwd, nt, realpath)) and (
+        if (_protegido(resto, conf) or _protegido_normal(resto, conf, True, cwd, nt, realpath)) and (
                 _escreve(cmd, verbos) or conf.get("leve") and any(v not in VERBOS_LEITURA for _, v in verbos)):
             return forte, "mexer nas regras do Claude ou do painel"
         if nt and _shell_win(cmd, verbos):  # antes do permitir: o que o outro shell roda a trava não lê

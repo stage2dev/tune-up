@@ -1,0 +1,104 @@
+#!/bin/sh
+# tune-up: run a plugin script with Python 3.9 or newer (macOS, Linux, Windows Git Bash).
+#
+# Usage: sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" <script> [args]
+#   <script>: relative to the plugin root (scripts/guarda.py) or absolute; `-m x`/`-c x` pass as is.
+# Picks the first of python3, python, `py -3` that really runs Python >= 3.9 (the Windows Store
+# `python3` alias is a fake that fails) and remembers it (probed again on SessionStart) in
+# "${CLAUDE_PLUGIN_DATA:-$HOME/.config/tune-up}/python". The cache holds only one of those three
+# names, never a path; anything else in it is ignored and probed again. Then exec: stdin, stdout
+# and the exit code are the script's.
+# No Python: one line on stderr; guarda.py (the hooks) exits 0 = fail-open, and on `inicio` also
+# prints a systemMessage; other scripts exit 127.
+# PYTHONUTF8=1 (unless set): Claude sends UTF-8 JSON, and Windows Python would read stdin and
+# write stdout in the ANSI code page.
+
+: "${PYTHONUTF8:=1}"
+export PYTHONUTF8
+
+me=$0
+case "$me" in
+  *\\*) me=$(printf '%s' "$me" | tr '\\' '/') ;; # `D:\x\scripts\py`: only then a subprocess
+esac
+case "$me" in
+  */*) dir=${me%/*} ;;
+  *) dir=. ;;
+esac
+case "$dir" in
+  */scripts) raiz=${dir%/scripts} ;;
+  scripts) raiz=. ;;
+  *) raiz=$dir/.. ;;
+esac
+
+script=${1-}
+case "$script" in
+  *\\*) script=$(printf '%s' "$script" | tr '\\' '/') ;;
+esac
+case "$script" in
+  "" | -* | /* | [A-Za-z]:*) ;;
+  *) script=$raiz/$script ;;
+esac
+
+dados=${CLAUDE_PLUGIN_DATA:-$HOME/.config/tune-up}
+case "$dados" in
+  *\\*) dados=$(printf '%s' "$dados" | tr '\\' '/') ;;
+esac
+cache=$dados/python
+
+testa() {
+  "$@" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' </dev/null >/dev/null 2>&1
+}
+
+roda() {
+  if [ $# -eq 0 ]; then
+    case "$escolha" in "py -3") exec py -3 ;; *) exec "$escolha" ;; esac
+  fi
+  shift
+  case "$escolha" in
+    "py -3") exec py -3 "$script" "$@" ;;
+    *) exec "$escolha" "$script" "$@" ;;
+  esac
+}
+
+escolha=
+case "$script:${2-}" in
+  */guarda.py:inicio) novo=1 ;; # once per session: probe again (a cached python3 may be the Store fake now)
+  *) novo= ;;
+esac
+if [ -z "$novo" ] && [ -r "$cache" ]; then
+  IFS= read -r escolha <"$cache" || :
+  case "$escolha" in
+    python3 | python) command -v "$escolha" >/dev/null 2>&1 || escolha= ;;
+    "py -3") command -v py >/dev/null 2>&1 || escolha= ;;
+    *) escolha= ;;
+  esac
+fi
+
+if [ -z "$escolha" ]; then
+  for c in python3 python "py -3"; do
+    # shellcheck disable=SC2086  # "py -3" is two words on purpose
+    if command -v ${c%% *} >/dev/null 2>&1 && testa $c; then
+      escolha=$c
+      break
+    fi
+  done
+  if [ -n "$escolha" ]; then
+    (umask 077 && mkdir -p "$dados" && printf '%s\n' "$escolha" >"$cache.$$" &&
+      mv -f "$cache.$$" "$cache") 2>/dev/null || rm -f "$cache.$$" 2>/dev/null
+  fi
+fi
+
+if [ -n "$escolha" ]; then
+  roda "$@"
+fi
+
+echo "tune-up: Python 3.9 or newer not found (tried python3, python, py -3); install it and reopen Claude Code." >&2
+case "$script" in
+  */guarda.py)
+    if [ "${2-}" = inicio ]; then
+      printf '%s\n' '{"systemMessage": "tune-up: hooks off: Python 3.9 or newer not found (tried python3, python, py -3). Install it and reopen Claude Code."}'
+    fi
+    exit 0
+    ;;
+esac
+exit 127

@@ -39,7 +39,8 @@ class StudioDeniesPowerShell(unittest.TestCase):
 
     def test_session_settings_deny_powershell(self):
         for a in self.raw:
-            acao = trabalho.resolver_travas(catalogo.validar_acao(a), WORK)
+            est = {"hf": "/plugin/tune-up-studio/node/node_modules/.bin/hyperframes"}  # Estúdio preparado (main 0.4.0)
+            acao = trabalho.resolver_travas(catalogo.validar_acao(a), WORK, est)
             deny = json.loads(travas.argv_travas(acao, CFG)[1])["permissions"]["deny"]
             self.assertIn("PowerShell", deny, a["id"])
             self.assertEqual(deny.count("PowerShell"), 1, a["id"])

@@ -8,7 +8,9 @@ fail, node_modules is removed so nothing unverified stays usable.
 
 Install folder: <studio>/node, except when the studio lives under ~/.claude (the plugin
 cache, which the Claude Code sandbox protects): then package.json + package-lock.json are
-copied to <dados>/tune-up-studio/<version>/node and the install goes there.
+copied to <dados>/estudio-node/<key>/node and the install goes there (key = chave_do_ambiente(),
+from package-lock.json; the panel computes the same path for {estudio_hf}). Other key folders
+and the old <dados>/tune-up-studio/ folder are removed (never through a symlink).
 
 Usage: python3 -I scripts/preparar_estudio.py --dados <pasta> [--projeto <pasta>] [--sim]
 Exit code: 0 ready, 1 not ready (ambiente.json says why), 2 refused or already running.
@@ -16,6 +18,7 @@ Python 3.9+, standard library only. Report in Brazilian Portuguese.
 """
 import argparse
 import datetime
+import hashlib
 import json
 import os
 import shutil
@@ -40,6 +43,7 @@ import saida_utf8  # noqa: E402
 
 STUDIO = va.STUDIO
 ARQUIVO, TRAVA = "ambiente.json", "ambiente.lock"
+PASTA_NODE, PASTA_ANTIGA = "estudio-node", "tune-up-studio"  # em <dados>; estudio-node é do dono (travas.DONO)
 ENV_HF = {"HYPERFRAMES_NO_TELEMETRY": "1", "DO_NOT_TRACK": "1", "HYPERFRAMES_NO_UPDATE_CHECK": "1",
           "HYPERFRAMES_NO_AUTO_INSTALL": "1", "HYPERFRAMES_SKIP_SKILLS": "1",
           "npm_config_update_notifier": "false", "npm_config_fund": "false"}
@@ -57,12 +61,35 @@ def _dentro(caminho, pasta):
     return c == p or c.startswith(p.rstrip(os.sep) + os.sep)
 
 
+def chave_do_ambiente(studio=STUDIO):
+    """12 hex of the sha256 of node/package-lock.json: a new pinned HyperFrames = a new key (painel/embutidos.py too)."""
+    with open(os.path.join(studio, "node", "package-lock.json"), "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()[:12]
+
+
+def _limpar(dados, manter=None):
+    """Remove <dados>/estudio-node/<other key> and the old <dados>/tune-up-studio/. A symlink is unlinked, never followed."""
+    raiz = os.path.join(dados, PASTA_NODE)
+    if os.path.islink(raiz):
+        raise OSError("%s é um atalho; não instalei" % raiz)
+    alvos = [os.path.join(dados, PASTA_ANTIGA)]
+    alvos += [os.path.join(raiz, n) for n in (os.listdir(raiz) if os.path.isdir(raiz) else []) if n != manter]
+    for alvo in alvos:
+        if os.path.islink(alvo):
+            os.unlink(alvo)
+        elif os.path.isdir(alvo):
+            shutil.rmtree(alvo, ignore_errors=True)
+
+
 def pasta_node(dados, studio=STUDIO, home=None):
-    """Where node_modules goes: in place, or under <dados> when the studio is under ~/.claude."""
+    """Where node_modules goes: in place, or <dados>/estudio-node/<key>/node when the studio is under ~/.claude."""
     home = home or os.path.expanduser("~")
     if not _dentro(studio, os.path.join(home, ".claude")):
+        _limpar(dados)
         return os.path.join(studio, "node")
-    destino = os.path.join(dados, "tune-up-studio", versao_do_estudio(studio), "node")
+    chave = chave_do_ambiente(studio)
+    _limpar(dados, chave)
+    destino = os.path.join(dados, PASTA_NODE, chave, "node")
     os.makedirs(destino, exist_ok=True)
     for nome in ("package.json", "package-lock.json"):
         shutil.copyfile(os.path.join(studio, "node", nome), os.path.join(destino, nome))
@@ -138,7 +165,8 @@ def preparar(dados, projeto, studio=STUDIO, rodar=_rodar, which=shutil.which, ve
     if any(n == va.ERRO for n, _ in itens):
         pronto = False
     bin_hf = os.path.join(node_dir, "node_modules", ".bin", "hyperframes") if node_dir else None
-    conteudo = {"versao": 1, "estudio": versao_do_estudio(studio), "gravado_em": _agora(), "pronto": pronto,
+    conteudo = {"versao": 1, "estudio": versao_do_estudio(studio), "chave": chave_do_ambiente(studio),
+                "gravado_em": _agora(), "pronto": pronto,
                 "node_dir": node_dir, "hyperframes": bin_hf if bin_hf and os.path.isfile(bin_hf) else None,
                 "postinstall": [], "passos": passos,
                 "verificacao": [{"nivel": n, "texto": t} for n, t in itens]}

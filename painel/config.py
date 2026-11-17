@@ -19,6 +19,7 @@ PAINEL = os.path.dirname(os.path.abspath(__file__))
 VERSAO = "2.4.0"
 ENV_PROJETO = "TUNEUP_PAINEL_PROJETO"
 PACOTE_PADRAO = "painel-projeto"
+HOSTS_OK = {"127.0.0.1", "localhost"}
 
 RE_ORIGEM = re.compile(r"^http://(127\.0\.0\.1|localhost):\d{2,5}$")
 RE_NOME_PROJETO = re.compile(r"^[^\x00-\x1f\x7f]{1,60}$")
@@ -407,3 +408,14 @@ def carregar(raiz=None, arquivo=None, home=None):
         versao=VERSAO,
         avisos=avisos,
     )
+
+
+def host_permitido(valor):
+    """Cabeçalho Host do pedido aponta para este computador (127.0.0.1 ou localhost; IPv6 não é servido)."""
+    if not valor:
+        return False
+    host = valor.strip().lower()
+    if host.startswith("["):
+        return False
+    host = host.rsplit(":", 1)[0] if ":" in host else host
+    return host in HOSTS_OK

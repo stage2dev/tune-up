@@ -1,5 +1,7 @@
 """Unit tests for scripts/qa_imagem.py. No Chrome, no network."""
 import atexit
+import contextlib
+import io
 import json
 import os
 import shutil
@@ -13,19 +15,24 @@ import zlib
 HERE = os.path.dirname(os.path.abspath(__file__))
 STUDIO = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(STUDIO, "scripts"))
+sys.path.insert(0, HERE)
 
 import qa_imagem  # noqa: E402
+from test_qa_atencao import COPY, escrever, post_html, projeto  # noqa: E402
 
 FIXTURES = os.path.join(HERE, "fixtures")
 POST_SOURCE = os.path.join(STUDIO, "exemplos", "forno-miudo", "post-4x5", "fonte")
 
 
-def write_png(path, width, height):
+def write_png(path, width, height, cheio=False):
+    """A white PNG; `cheio` stripes it every third pixel, so no part of it is empty (qa_vazio)."""
     def chunk(kind, data):
         body = kind + data
         return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body))
     ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
-    rows = (b"\0" + b"\xff" * (3 * width)) * height
+    pixels = (b"\xff" * 6 + b"\x00" * 3) * (width // 3 + 1) if cheio else b"\xff" * (3 * width)
+    pixels = pixels[:3 * width]
+    rows = (b"\0" + pixels) * height
     with open(path, "wb") as f:
         f.write(qa_imagem.PNG_SIGNATURE + chunk(b"IHDR", ihdr)
                 + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
@@ -318,6 +325,27 @@ class QaImagemTest(unittest.TestCase):
         os.utime(newer, (time.time() + 5, time.time() + 5))
         self.assertFalse(qa_imagem.check_strict_json(None, folder)["ok"])
 
+    def test_achados_lists_only_the_findings_of_the_saved_report(self):
+        folder = self.source("<p>ok</p>")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.assertEqual(qa_imagem.main(["--achados", folder]), 1)  # check never ran: said, not hidden
+        self.assertIn("no check report", buf.getvalue())
+        bound(clean_check(), folder)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.assertEqual(qa_imagem.main(["--achados", folder]), 0)
+        self.assertEqual(buf.getvalue().strip(), "nenhum achado acima de info")
+        newer = os.path.join(folder, ".hyperframes", "artifacts", "checks", "z-newer.json")
+        with open(newer, "w", encoding="utf-8") as f:
+            json.dump(OVERFLOW_CHECK, f)
+        os.utime(newer, (time.time() + 5, time.time() + 5))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.assertEqual(qa_imagem.main(["--achados", folder]), 1)
+        self.assertIn("error", buf.getvalue())
+        self.assertLess(len(buf.getvalue().splitlines()), 21)  # short: never the whole JSON
+
     def test_format_size_comes_from_formatos_json(self):
         self.assertEqual(qa_imagem.format_size("post 4:5"), (1080, 1350))
         self.assertEqual(qa_imagem.format_size("carrossel 1:1"), (1080, 1080))
@@ -341,14 +369,14 @@ class QaImagemTest(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("Fonts failed", result["details"][0])
 
-    def frame(self, work, n, size=(1080, 1350), warnings=()):
+    def frame(self, work, n, size=(1080, 1350), warnings=(), html=None):
         source = os.path.join(work, "q%d" % n, "fonte")
         os.makedirs(source)
         with open(os.path.join(source, "index.html"), "w", encoding="utf-8") as f:
-            f.write("<p>quadro %d</p>" % n)
+            f.write(html or "<p>quadro %d</p>" % n)
         png = os.path.join(work, "q%d" % n, "snap", qa_imagem.STILL)
         os.makedirs(os.path.dirname(png))
-        write_png(png, *size)
+        write_png(png, *size, cheio=True)
         bound(clean_check(), source)
         record_snapshot(source, png, warnings)
         return png
@@ -372,6 +400,37 @@ class QaImagemTest(unittest.TestCase):
         self.assertEqual(self.main_quiet(["--final", work, "--formato=1:1", "--out", out]), 1)
         with open(out, encoding="utf-8") as f:
             self.assertTrue(json.load(f)["linha"].startswith("PRECISA DO SEU OLHO: 0 de 3"))
+
+
+    def test_atencao_is_opt_in(self):
+        folder = self.source("<p>quadro 1</p>")
+        check = self.check_file(clean_check(), folder)
+        self.assertEqual(self.failed(qa_imagem.run(folder, self.png, check, 1080, 1350)), [])
+        self.assertIn("titulo", self.failed(qa_imagem.run(folder, self.png, check, 1080, 1350, atencao=True)))
+
+    def test_final_atencao_adds_the_piece_outside_k_of_n(self):
+        work = projeto(self.tmp)
+        self.frame(work, 1, html=post_html())
+        self.frame(work, 2, html=post_html(h1="Reserve o&nbsp;seu", layout="l-cheia", corpo='<p id="cta">Peça já</p>'))
+        self.assertEqual(qa_imagem.run_final(work, 1080, 1350)["linha"], "PRONTO: 2 de 2 quadros verdes")
+        rep = qa_imagem.run_final(work, 1080, 1350, atencao=True)  # no copy.md
+        self.assertFalse(rep["ok"])
+        self.assertEqual(rep["linha"], "PRECISA DO SEU OLHO: 2 de 2 verdes, peca: legenda")
+        self.assertEqual([f["frame"] for f in rep["frames"]], ["q1", "q2", "peca"])
+        escrever(os.path.join(work, "copy.md"), COPY)
+        out = os.path.join(self.tmp, "final.json")
+        self.assertEqual(self.main_quiet(["--final", work, "--formato=4:5", "--atencao", "--out", out]), 0)
+        with open(out, encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["linha"], "PRONTO: 2 de 2 quadros verdes")
+
+    def test_pares_prints_and_exits(self):
+        work = projeto(self.tmp)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.assertEqual(qa_imagem.main(["--pares", work]), 0)
+        self.assertIn("texto cores.text #3B2417 sobre cores.bg #FFF8EC: ", buf.getvalue())
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(qa_imagem.main(["--pares", os.path.join(self.tmp, "fora")]), 2)
 
 
 if __name__ == "__main__":

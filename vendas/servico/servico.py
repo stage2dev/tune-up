@@ -219,8 +219,8 @@ def conector(pasta_dados, porta, segredo, avisar=print):
                                                                    or type(e).__name__), file=sys.stderr)
     else:
         if not ambiente and os.path.exists(env):
-            avisar("vendas: %s está incompleto (falta SERVER_URL ou AUTHENTICATION_API_KEY); rode de novo "
-                   "evolution_local.py preparar --refazer" % env, file=sys.stderr)
+            avisar("vendas: %s está incompleto (falta SERVER_URL ou AUTHENTICATION_API_KEY); não mexi nele "
+                   "(README, \"Fazer à mão\")" % env, file=sys.stderr)
     ambiente.update({k: os.environ[k] for k in (evolution.VAR_URL, evolution.VAR_CHAVE) if os.environ.get(k)})
     try:
         return evolution.Evolution.do_ambiente("http://%s:%d" % (rotas.HOST_DOCKER, porta), segredo, ambiente)

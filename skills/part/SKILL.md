@@ -35,6 +35,14 @@ You (main session, highest effort) coordinate and judge; you do not write the it
 - Never `git stash -u`. `git add` by file name only. Preserve existing changes and untracked files.
 - Read the project profile (`profile_path`): definition of done, production, pitfalls.
 
+## Workflow scripts
+
+- If you orchestrate with the Workflow tool, start from `${CLAUDE_PLUGIN_ROOT}/templates/workflow-template.js`.
+- Every `agent()` carries a literal `agentType` from the table above, plus `model` and `effort`. Never let an agent inherit the session model.
+- A generic agent (no `agentType`, or `general-purpose`) starts with about three times the context of a `tune-up:*` agent. Use one only for work that needs MCP tools, a browser or images, and mark the line above with `// tune-up: allow-generic <reason>`. The guard warns (or blocks, with `"workflow_generic": "block"` in the profile config) otherwise.
+- Review loop in a script: at most 2 fix rounds per item; after each fix only the reviewers that rejected run again; CRITICAL/HIGH left after the review that follows the second fix -> `names.need_you`, never a third fix.
+- A `null` result or a "hit your ... limit" reply is an interrupted item: do not relaunch it and do not count it as done; check git before resuming.
+
 ## Step 1 - Understand and check prerequisites
 
 1. Read ONLY the Part's sections, the criteria C and the Execution section of the goal document, plus progress. Research is spot consultation.
