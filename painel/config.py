@@ -8,6 +8,7 @@ Raiz do projeto: --projeto, senão a variável TUNEUP_PAINEL_PROJETO, senão a
 primeira pasta com .tune-up/ subindo a partir do cwd, senão dois níveis acima
 da pasta do painel. Python 3.9, só biblioteca padrão.
 """
+import aviso_sh
 import json
 import ntpath
 import os
@@ -320,6 +321,7 @@ def resolver_claude_bin(claude_bin, avisos, nt=None, which=shutil.which, home=No
 def carregar(raiz=None, arquivo=None, home=None):
     """Monta a configuração. Nunca levanta exceção por causa do arquivo."""
     avisos = []
+    aviso_sh.somar(avisos)
     raiz = os.path.realpath(os.path.expanduser(raiz or achar_raiz()[0]))
     tune_up = os.path.join(raiz, ".tune-up")
     arquivo = arquivo or os.path.join(tune_up, "painel.json")

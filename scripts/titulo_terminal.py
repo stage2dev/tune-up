@@ -171,13 +171,14 @@ def inserir(texto):
     if fecha < 0 or ultimo < 0:
         raise ValueError("root object does not close")
     linha = '%s"%s": "%s"' % (_recuo(texto), CHAVE, VALOR)
+    nl = "\r\n" if "\r\n" in texto else "\n"
     corte = fecha
     while corte > 0 and texto[corte - 1] in " \t":
         corte -= 1
     if corte > 0 and texto[corte - 1] == "\n":
-        novo = texto[:corte] + linha + "\n" + texto[corte:]
+        novo = texto[:corte] + linha + nl + texto[corte:]
     else:
-        novo = texto[:fecha] + "\n" + linha + "\n" + texto[fecha:]
+        novo = texto[:fecha] + nl + linha + nl + texto[fecha:]
     if texto[ultimo] not in "{,":
         novo = novo[:ultimo + 1] + "," + novo[ultimo + 1:]
     return novo
@@ -205,9 +206,12 @@ def estado(d):
 
 def tratar(arquivo, acao):
     item = {"arquivo": arquivo}
+    bom = False
     try:
-        with open(arquivo, encoding="utf-8") as f:
-            texto = f.read()
+        with open(arquivo, "rb") as f:
+            bruto = f.read()
+        bom = bruto.startswith(b"\xef\xbb\xbf")  # kept on write
+        texto = bruto.decode("utf-8-sig")  # CRLF stays as is: no newline translation either way
     except FileNotFoundError:
         texto = None
     except OSError as e:
@@ -243,7 +247,7 @@ def tratar(arquivo, acao):
     try:
         if texto is not None:
             shutil.copy2(arquivo, arquivo + SUFIXO_BACKUP)
-        with open(arquivo, "w", encoding="utf-8") as f:
+        with open(arquivo, "w", encoding="utf-8-sig" if bom else "utf-8", newline="") as f:
             f.write(novo)
     except OSError as e:
         item.update(depois="ilegivel", erro=str(e))

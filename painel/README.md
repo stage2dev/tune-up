@@ -18,6 +18,8 @@ sh <plugin>/scripts/py -B <painel>/painel.py --projeto /meu/projeto --port 8790 
 
 Raiz do projeto, nesta ordem: `--projeto`, a variável `TUNEUP_PAINEL_PROJETO`, a primeira pasta com `.tune-up/` subindo a partir do cwd, ou dois níveis acima da pasta do painel (quando ele mora em `<raiz>/.tune-up/painel`).
 
+No Windows o Git Bash é obrigatório: sem ele o Claude Code roda os hooks no PowerShell e todas as travas do tune-up ficam desligadas, sem erro nenhum. O painel avisa no topo da tela e no stderr. Correção: instale o Git for Windows ou defina `CLAUDE_CODE_GIT_BASH_PATH` com o `bash.exe` dele.
+
 Testes: `python3 -B -m unittest` (nesta pasta; no Windows, `python` ou `py -3`). Python 3.9, só biblioteca padrão.
 
 A tela em React mora em `web/` (`npm run build` gera `web/dist`). Sem `web/dist`, a raiz mostra só um aviso pedindo a build.

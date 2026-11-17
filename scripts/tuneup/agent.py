@@ -58,7 +58,7 @@ RAIZ_PLUGIN = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__
 
 def modelo_frontmatter(caminho):
     try:
-        with open(caminho, encoding="utf-8", errors="ignore") as f:
+        with open(caminho, encoding="utf-8-sig", errors="ignore") as f:
             linhas = f.read(8192).splitlines()
     except OSError:
         return None

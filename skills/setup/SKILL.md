@@ -28,6 +28,7 @@ Per tool facts (source, check, install, interactive, privacy, undo) live in `${C
 
 One Bash call, read only: `uname -s; command -v git; sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" -c "import sys; print(sys.version)"` (the launcher prints the Python it chose; it needs 3.9 or newer). `uname -s` starting with `MINGW`, `MSYS` or `CYGWIN` means Windows (Git Bash). No Bash tool at all (Windows without Git Bash) or no `git` means Git for Windows is missing: use the PowerShell tool (`Get-Command git`) only to confirm it.
 
+- No Bash tool at all on Windows (Git Bash missing): STOP here. Tell the user Git Bash is required, that without it every tune-up guard is silently off, and to install Git for Windows (or set `CLAUDE_CODE_GIT_BASH_PATH` to its `bash.exe`) and reopen Claude Code before going on.
 - Git missing: the user types `! winget install --id Git.Git -e`, then reopens Claude Code. Without it, the hooks of this plugin cannot run.
 - Launcher error "Python 3.9 or newer not found" (or a version below 3.9): the user types `! winget install -e --id Python.Python.3.12`, then reopens Claude Code. The Microsoft Store `python3` alias does not count and is skipped.
 - Everything ok, or not Windows: say nothing about it and go on. If prerequisites are missing, continue with the questions and do not install anything else until the user has them.

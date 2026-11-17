@@ -14,7 +14,7 @@ Issues / source: https://github.com/stage2dev/tune-up
 
 - Claude Code.
 - macOS / Linux: Python 3.9 or newer.
-- Windows: [Git for Windows](https://git-scm.com/download/win) (needed for `claude plugin marketplace add` and for the hooks, which run in Git Bash) and Python 3.9 or newer from python.org or `winget install Python.Python.3.12`. The Microsoft Store `python3` alias is skipped automatically.
+- Windows: [Git for Windows](https://git-scm.com/download/win), with Git Bash, is required (needed for `claude plugin marketplace add` and for the hooks, which run in Git Bash) and Python 3.9 or newer from python.org or `winget install Python.Python.3.12`. The Microsoft Store `python3` alias is skipped automatically.
 
 ## Install
 
@@ -180,7 +180,7 @@ Some guards only warn or ask, they do not block: research mode, self-protection,
 
 ### Windows notes
 
-- The hooks need Git Bash. Without it Claude Code runs hooks in PowerShell and they fail. Fix: install Git for Windows, or set `CLAUDE_CODE_GIT_BASH_PATH` to its `bash.exe`.
+- Git Bash is REQUIRED. Without it Claude Code runs hooks in PowerShell, `sh` does not exist there, and every tune-up guard is silently OFF, with no error shown. The panel warns about it. Fix: install Git for Windows, or set `CLAUDE_CODE_GIT_BASH_PATH` to its `bash.exe`.
 - If no Python 3.9+ is found, the hooks switch themselves off (fail-open) and the session start says so. Install Python and reopen Claude Code.
 - The `PowerShell` tool goes through the same guard as `Bash` (git/gh/psql checks, protected files, `bash_rules`). In talk and research modes only obviously read-only PowerShell passes (`Get-ChildItem`, `Get-Content`, `Select-String`, `Test-Path`, `git status/log/diff/show`...); everything else asks.
 - Wrappers are opened one level, like `bash -c` and `eval`: `cmd /c`, `powershell "..."` / `pwsh -Command`, `iex`, and a string piped into `sh`, `bash` or `iex`. `$env:NAME` and `(Join-Path ...)` with literal parts are understood. `.cmd`, `.bat`, `.ps1` and `.com` shims count as the command they wrap.
