@@ -4,7 +4,9 @@
 code.claude.com/docs, settings-reference): sem rede nenhuma, sem rodar fora do sandbox, falha
 se o sandbox não subir. O Write/Edit fica preso às pastas de trabalho e a sessão dispara com
 cwd = pasta de trabalho (lancador). Como o sandbox não cobre ferramenta do próprio Claude,
-nega também WebFetch, WebSearch e todo MCP, e a leitura de arquivo de segredo do projeto.
+nega também WebFetch, WebSearch e todo MCP, e a leitura de arquivo de segredo do projeto. Nega ainda a
+ferramenta PowerShell (Windows): o sandbox só cobre o Bash, e o PowerShell rodaria fora dele, com rede e
+disco livres. No macOS e no Linux essa ferramenta não existe e a regra não muda nada.
 `"sandbox": {"rede_local": true}` faz o mesmo e liga `network.allowLocalBinding` (só macOS; no
 Linux não muda nada): o comando pode escutar e falar com QUALQUER porta de localhost desta máquina,
 não só a dele (o render do hyperframes sobe um servidor local). A rede de fora continua fechada.
@@ -15,7 +17,7 @@ import re
 
 from travas import DONO  # noqa: F401  (em <dados>: só o servidor grava; o gancho confere pelo nome)
 
-NEGAR = ["WebFetch", "WebSearch", "mcp__*"]
+NEGAR = ["WebFetch", "WebSearch", "mcp__*", "PowerShell"]
 SEGREDOS = (".env*", "*.pem", "*.key")
 RE_ENV = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 ENV_PROIBIDO = re.compile(r"^(CLAUDE|ANTHROPIC|LD_|DYLD_)|^(PATH|HOME|TMPDIR|SHELL|NODE_OPTIONS|BASH_ENV|ENV)$")

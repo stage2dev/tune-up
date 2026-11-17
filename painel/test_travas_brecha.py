@@ -70,7 +70,6 @@ class TesteCaminhoRelativo(unittest.TestCase):
         self.assertEqual((rc, out["permissionDecision"]), (0, "deny"))
 
 
-@unittest.skipIf(os.name == "nt", "barra invertida como escape é do shell POSIX")
 class TesteBarraInvertida(unittest.TestCase):
     def test_escape_nao_disfarca_caminho(self):
         for acao, esperado in ((ACAO_LEITURA, "deny"), (ACAO_CODIGO, "ask")):

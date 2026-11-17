@@ -21,6 +21,7 @@ import zlib
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import cores  # noqa: E402
+import saida_utf8  # noqa: E402
 
 MAX_BYTES = 8 * 1024 * 1024
 MAX_PIXELS = 2500 * 1000  # Paeth in pure Python: ~4 s at this size on a laptop
@@ -232,6 +233,7 @@ def ler(caminho):
 
 
 def main(argv=None):
+    saida_utf8.utf8()
     argv = sys.argv[1:] if argv is None else argv
     if len(argv) != 1:
         print("uso: cores_da_logo.py <logo.png|logo.svg>", file=sys.stderr)

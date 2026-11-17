@@ -29,6 +29,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import marca_leitores as ml  # noqa: E402
+import saida_utf8  # noqa: E402
 
 CAMPOS = ml.CAMPOS
 IGNORAR = {"node_modules", "dist", "vendor", "build", "out", "coverage", "target", "__pycache__",
@@ -218,6 +219,7 @@ def rodar(raiz, saida=None):
 
 
 def main(argv=None):
+    saida_utf8.utf8()
     ap = argparse.ArgumentParser(description="Descobre a marca do projeto (sem rede, sem IA).")
     ap.add_argument("--projeto", required=True)
     ap.add_argument("--saida")

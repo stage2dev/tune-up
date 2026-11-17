@@ -16,11 +16,13 @@ import os
 import re
 import threading
 
+import registro
 import sandbox
 
 RE_REQUER = re.compile(r"^([a-z0-9_-]{1,40})\.([a-z0-9_-]{1,40})$")
 MAX_REQUER = 8
 MAX_BYTES = 64 * 1024
+RE_UNIDADE = re.compile(r"^[A-Za-z]:")  # C:\\x, C:/x e C:x (relativo à unidade) no Windows
 _lock = threading.Lock()
 
 
@@ -38,7 +40,7 @@ def ler(cfg, mid):
     if os.path.islink(caminho):
         return None
     try:
-        with open(caminho, encoding="utf-8") as f:
+        with open(caminho, encoding="utf-8-sig") as f:  # o Bloco de Notas do Windows grava com BOM
             dado = json.load(f)
     except FileNotFoundError:
         return {}
@@ -68,7 +70,8 @@ def gravar(cfg, mid, chave, valor):
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0), 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(texto)
-        os.replace(tmp, caminho)  # troca o nome: um atalho plantado no lugar some, não é seguido
+        # troca o nome: um atalho plantado no lugar some, não é seguido; no Windows insiste se outro lê o arquivo
+        registro._insistir(lambda: os.replace(tmp, caminho))
     return atual[chave]
 
 
@@ -83,14 +86,27 @@ def validar_requer(bruto):
     return list(dict.fromkeys(lista))
 
 
+def _caminho_aprovado(raiz, rel, nt=None):
+    """Caminho de `rel` ("a/b", só barra normal) dentro de `raiz`, ou None se `rel` é ruim ou sai da raiz
+    (barra invertida, letra de unidade, absoluto, UNC, '..', atalho que leva para fora; no Windows, ':' = fluxo)."""
+    nt = os.name == "nt" if nt is None else nt
+    if not (isinstance(rel, str) and rel and raiz) or rel.startswith("/") or "\\" in rel or "\x00" in rel \
+            or RE_UNIDADE.match(rel) or ".." in rel.split("/") or (nt and ":" in rel):
+        return None
+    caminho = os.path.join(raiz, *rel.split("/"))
+    real, base = os.path.realpath(caminho), os.path.realpath(raiz)
+    if nt:
+        real, base = os.path.normcase(real), os.path.normcase(base)
+    return caminho if real.startswith(base.rstrip(os.sep) + os.sep) else None
+
+
 def _mesmo_conteudo(cfg, v):
     """True se a aprovação não prende arquivo, ou se o arquivo aprovado ainda tem o mesmo sha256."""
     if "sha256" not in v and "arquivo" not in v:
         return True
-    rel, raiz = v.get("arquivo"), cfg.get("raiz") or cfg.get("workspace")
-    if not (isinstance(rel, str) and rel and raiz) or rel.startswith("/") or ".." in rel.split("/"):
+    caminho = _caminho_aprovado(cfg.get("raiz") or cfg.get("workspace"), v.get("arquivo"))
+    if caminho is None:
         return False
-    caminho = os.path.join(raiz, *rel.split("/"))
     try:
         if os.path.islink(caminho):
             return False

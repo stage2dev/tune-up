@@ -8,6 +8,7 @@ import glob
 import json
 import os
 import re
+import sys
 
 import dono
 import sandbox
@@ -194,7 +195,7 @@ def carregar_catalogo(pastas):
             if os.path.islink(arq) or not real.startswith(os.path.realpath(pasta).rstrip(os.sep) + os.sep) \
                     or os.path.getsize(arq) > LIMITE_ACOES:
                 raise ValueError("atalho ou grande demais")
-            with open(arq, encoding="utf-8") as f:
+            with open(arq, encoding="utf-8-sig") as f:  # -sig: o PowerShell 5.1 grava BOM
                 dado = json.load(f)
         except (OSError, ValueError) as e:
             avisos.append("%s ilegível: %s" % (nome, str(e)[:120]))
@@ -239,12 +240,14 @@ def chave_ligada(bruto, chave):
     return no is True
 
 
-def catalogo_do_projeto(cfg):
+def catalogo_do_projeto(cfg, plataforma=None):
     """Núcleo, pacote do projeto e, por último, as ações de plugins aceitos (extensoes.py).
 
     Ação com `so_com` (ex.: a do vídeo com render local, que precisa de `rede_local`) só entra
     quando o painel.json do projeto liga essa chave: fora dela não aparece nem dispara.
+    No Windows (win32) a ação com `sandbox` também sai (o sandbox do Claude Code não existe lá), com um aviso.
     """
+    plataforma = sys.platform if plataforma is None else plataforma
     import embutidos
     import extensoes
     pastas, avisos = extensoes.pastas_de_acoes(cfg)
@@ -252,6 +255,11 @@ def catalogo_do_projeto(cfg):
     acoes, av = carregar_catalogo([cfg["acoes_dir"], cfg.get("acoes_pacote_dir")] + embutidos.pastas_de_acoes(cfg)
                                   + pastas)
     acoes = [a for a in acoes if not a.get("_so_com") or chave_ligada(cfg.get("bruto"), a["_so_com"])]
+    if plataforma == "win32":
+        sem = [a for a in acoes if not a.get("sandbox")]
+        if len(sem) != len(acoes):
+            acoes = sem
+            av = av + ["No Windows, as ações que pedem sandbox (como as do estúdio) ficam escondidas. Use o WSL2."]
     return acoes, avisos + av
 
 

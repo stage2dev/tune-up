@@ -202,7 +202,9 @@ class TesteLancadorSandbox(test_chat.Base):
         self.addCleanup(p.stop)
 
     def lanc(self, **extra):  # a fixture tem rede_local, então so_com: o projeto liga a chave
-        return test_chat.Base.lanc(self, bruto={"estudio": {"video_rede_local": True}}, **extra)
+        lc = test_chat.Base.lanc(self, bruto={"estudio": {"video_rede_local": True}}, **extra)
+        lc.plataforma = "linux"  # no win32 a ação com sandbox some do catálogo (test_so_windows.py)
+        return lc
 
     def test_dispara_com_cwd_na_pasta_e_grava(self):
         lc = self.lanc()

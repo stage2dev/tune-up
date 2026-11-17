@@ -20,9 +20,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kit_base as kb  # noqa: E402
 import kit_post  # noqa: E402
 import kit_video  # noqa: E402
+import saida_utf8  # noqa: E402
 
 
 def main(argv=None):
+    saida_utf8.utf8()
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--tipo", required=True, choices=("post", "video"))
     ap.add_argument("--peca", required=True)

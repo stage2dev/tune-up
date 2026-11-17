@@ -51,7 +51,7 @@ If a profile already exists: read it, show what changed and update only that.
 
 ## Step 4 - Check
 
-- `python3 -c "import json; json.load(open('.tune-up/config.json'))"` must pass (`python` where `python3` is missing).
+- `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" -c "import json; json.load(open('.tune-up/config.json', encoding='utf-8'))"` must pass.
 - Every command under "Definition of done" must really exist: run `--help` or check the script; mark "not tested" if you did not run it.
 - Do not commit unless asked. Say whether `.tune-up/` goes into git or stays local.
 

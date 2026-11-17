@@ -8,9 +8,12 @@ Raiz do projeto: --projeto, senão a variável TUNEUP_PAINEL_PROJETO, senão a
 primeira pasta com .tune-up/ subindo a partir do cwd, senão dois níveis acima
 da pasta do painel. Python 3.9, só biblioteca padrão.
 """
+import aviso_sh
 import json
+import ntpath
 import os
 import re
+import shutil
 
 PAINEL = os.path.dirname(os.path.abspath(__file__))
 VERSAO = "2.4.0"
@@ -160,7 +163,7 @@ def _ler_arquivo(caminho, avisos):
         if len(bruto) > LIMITE_JSON:
             avisos.append("painel.json passou de 64 KB; ignorei")
             return {}
-        dado = json.loads(bruto.decode("utf-8"))
+        dado = json.loads(bruto.decode("utf-8-sig"))  # -sig: o PowerShell 5.1 grava BOM
     except (OSError, ValueError, UnicodeDecodeError) as e:
         avisos.append("painel.json ilegível (%s); usei os padrões" % type(e).__name__)
         return {}
@@ -284,9 +287,42 @@ def migrar_registro_antigo(cfg, antiga=None):
     return aviso
 
 
+def resolver_claude_bin(claude_bin, avisos, nt=None, which=shutil.which, home=None):
+    """No Windows, troca o nome pelo claude.exe; fora dele devolve o valor como veio.
+
+    O painel abre o claude sem shell, e no Windows um claude.cmd (instalação via npm)
+    não roda assim. Então recusa .cmd/.bat e procura o claude.exe no PATH e na pasta
+    do instalador nativo (~/.local/bin). Sem .exe, deixa um aviso e nunca devolve .cmd/.bat.
+    """
+    if nt is None:
+        nt = os.name == "nt"
+    if not nt:
+        return claude_bin
+    achado = which(claude_bin)
+    if achado and achado.lower().endswith(".exe"):
+        return achado
+    candidatos = [which("claude.exe"),
+                  os.path.join(home or os.path.expanduser("~"), ".local", "bin", "claude.exe")]
+    for c in candidatos:
+        if c and c.lower().endswith(".exe") and os.path.isfile(c):
+            return c
+    if achado and achado.lower().endswith((".cmd", ".bat")):
+        avisos.append("painel.json: só achei %s; o painel precisa do claude.exe (instalador nativo "
+                      "do Claude Code). Sem ele, as ações não abrem." % os.path.basename(achado))
+    else:
+        avisos.append("painel.json: não achei o claude.exe; instale o Claude Code pelo instalador "
+                      "nativo. Sem ele, as ações não abrem.")
+    # .cmd/.bat configurado roda pelo cmd.exe, que relê o pedido (injeção). O Windows ignora
+    # pontos e espaços no fim do nome. 'claude' puro só vira claude.exe: falha sem abrir nada.
+    if ntpath.splitext(claude_bin.rstrip(" ."))[1].lower() in (".cmd", ".bat"):
+        return "claude"
+    return claude_bin
+
+
 def carregar(raiz=None, arquivo=None, home=None):
     """Monta a configuração. Nunca levanta exceção por causa do arquivo."""
     avisos = []
+    aviso_sh.somar(avisos)
     raiz = os.path.realpath(os.path.expanduser(raiz or achar_raiz()[0]))
     tune_up = os.path.join(raiz, ".tune-up")
     arquivo = arquivo or os.path.join(tune_up, "painel.json")
@@ -306,7 +342,7 @@ def carregar(raiz=None, arquivo=None, home=None):
     if not isinstance(claude_bin, str) or not claude_bin.strip() or claude_bin.strip().startswith("-") \
             or re.search(r"[\x00-\x1f\x7f]", claude_bin):
         claude_bin = "claude"
-    claude_bin = os.path.expanduser(claude_bin.strip())
+    claude_bin = resolver_claude_bin(os.path.expanduser(claude_bin.strip()), avisos, home=home)
 
     nome = bruto.get("nome")
     if not isinstance(nome, str) or not RE_NOME_PROJETO.match(nome.strip() or ""):

@@ -6,7 +6,7 @@ do plugin instalado (installed_plugins.json, nome@marketplace exato). Os módulo
 
 Trava: na primeira vez que um plugin é usado, a versão do registro e um sha256 da pasta instalada
 (sem node_modules, .git e __pycache__) ficam em <dados>/extensoes.json. Se um dos dois mudar, nada
-desse plugin carrega até a pessoa confirmar: python3 painel.py --aceitar-extensao plugin@marketplace.
+desse plugin carrega até a pessoa confirmar: <python> painel/painel.py --aceitar-extensao plugin@marketplace.
 Plugin com __pycache__, .pyc/.pyo ou .py atalho dentro de painel/ é recusado (a soma não cobre isso).
 Python 3.9, só biblioteca padrão.
 """
@@ -15,9 +15,12 @@ import hashlib
 import json
 import os
 import re
+import shlex
+import sys
 import threading
 
 import config
+import registro
 
 RE_NOME = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
 ARQUIVO = "extensoes.json"
@@ -25,6 +28,22 @@ PULAR = ("node_modules", ".git", "__pycache__")
 MAX_ARQUIVOS, MAX_BYTES = 5000, 200 * 1024 * 1024
 _lock = threading.Lock()
 _somas = {}  # pasta -> (assinatura de nomes, tamanhos e mtimes, sha256)
+
+
+def _citar(caminho, nome):
+    """Caminho citado para o terminal. Windows: `/` e aspas duplas sempre (o Bash do Claude lá é o
+    Git Bash, que come `\\` fora de aspas; o cmd.exe aceita o mesmo texto)."""
+    if nome == "nt":
+        return '"%s"' % caminho.replace("\\", "/")
+    return shlex.quote(caminho)
+
+
+def _python(nome=None):
+    """`<python> <painel.py>` com caminhos absolutos: o python que roda o painel (no Windows
+    'python3' é a ficha da Store) e este painel, de qualquer pasta."""
+    nome = os.name if nome is None else nome
+    painel = os.path.join(os.path.dirname(os.path.abspath(__file__)), "painel.py")
+    return "%s %s" % (_citar(sys.executable, nome), _citar(painel, nome))
 
 
 def chave_ok(chave):
@@ -46,8 +65,11 @@ def _arquivos(base):
     return sorted(saida)
 
 
-def soma(base):
-    """sha256 da pasta instalada (nomes e conteúdo). Levanta ValueError se passa dos limites."""
+def soma(base, nt=None):
+    """sha256 da pasta instalada (nomes e conteúdo). Levanta ValueError se passa dos limites.
+    No Windows não usa o cache: lá st_ctime é a hora de criação, e trocar o conteúdo mantendo
+    tamanho e mtime deixaria a assinatura igual."""
+    nt = os.name == "nt" if nt is None else nt
     lista = _arquivos(base)
     assin = []
     for rel, cam in lista:
@@ -55,7 +77,7 @@ def soma(base):
         assin.append((rel, st.st_size, st.st_mtime_ns, st.st_ctime_ns, st.st_ino, os.path.islink(cam)))
     assin = tuple(assin)
     with _lock:
-        if _somas.get(base, (None,))[0] == assin:
+        if not nt and _somas.get(base, (None,))[0] == assin:
             return _somas[base][1]
     if sum(a[1] for a in assin) > MAX_BYTES:
         raise ValueError("mais de %d MB" % (MAX_BYTES // (1024 * 1024)))
@@ -95,7 +117,7 @@ def _registro(cfg):
 def _ler(cfg):
     """{chave: {...}} aceitas; {} se o arquivo não existe; None se existe e não lê."""
     try:
-        with open(_registro(cfg), encoding="utf-8") as f:
+        with open(_registro(cfg), encoding="utf-8-sig") as f:  # -sig: o PowerShell 5.1 grava BOM
             dado = json.load(f)
     except FileNotFoundError:
         return {}
@@ -111,7 +133,7 @@ def _gravar(cfg, dado):
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0), 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump(dado, f, ensure_ascii=False, indent=1, sort_keys=True)
-    os.replace(tmp, _registro(cfg))
+    registro._insistir(lambda: os.replace(tmp, _registro(cfg)))  # Windows: arquivo aberto por outro
 
 
 def _atual(cfg, chave):
@@ -153,7 +175,7 @@ def conferir(cfg, chave):
             o_que = ("versão %s -> %s" % (velha, atual["versao"] or "?") if velha != (atual["versao"] or "?")
                      else "mesma versão %s, conteúdo diferente" % velha)
             return None, ("plugin %s mudou desde que foi aceito (%s); não carreguei. Confira e "
-                          "confirme com: python3 painel.py --aceitar-extensao %s" % (chave, o_que, chave))
+                          "confirme com: %s --aceitar-extensao %s" % (chave, o_que, _python(), chave))
         aceitas[chave] = dict(atual, aceito_em=_agora())
         try:
             _gravar(cfg, aceitas)
