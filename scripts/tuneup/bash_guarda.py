@@ -72,12 +72,12 @@ def expandido(texto):
 
 
 def _nt(t):
-    """Windows: text and roots compared alike: `/` for `\\`, no `//?/` prefix, Git Bash `/c/` as
+    """Windows: text and roots compared alike: `/` for `\\`, no `//?/` prefix, Git Bash `/c/` and WSL `/mnt/c/` as
     `c:/`, and no trailing dot after a name (`settings.json.` opens settings.json). Elsewhere: t."""
     if not NT:
         return t
     t = t.replace("\\", "/").replace("//?/", "").replace("//./", "")
-    t = re.sub(r"(?<![\w/:.~$-])/([a-z])(?=/)", r"\1:", t)
+    t = re.sub(r"(?<![\w/:.~$-])(?:/mnt)?/([a-z])(?=/)", r"\1:", t)  # also WSL's `/mnt/c/`
     return re.sub(r"(?<=\w)\.+(?=[/'\"\s:]|$)", "", t)
 
 

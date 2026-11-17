@@ -162,8 +162,7 @@ def achados_bash(cmd, d, cfg, regras_em=None):
     conversa = bool(sess.get("modo_conversa"))
     pesquisa = bool(sess.get("modo_pesquisa")) or conversa  # talk = research engine + no code
     scratch = d.get("scratchpad_dir")
-    limpo = sem_heredoc(cmd)
-    limpo = re.sub(r"\\\r?\n", " ", limpo)
+    limpo = sem_heredoc(cmd)  # also joins `\\<newline>`
     achados = []  # (acao, msg)
 
     def add(acao, msg):
