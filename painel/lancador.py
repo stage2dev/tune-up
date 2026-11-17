@@ -17,7 +17,10 @@ import time
 
 from catalogo import (ErroAcao, RE_ID_ACAO, carregar_catalogo, catalogo_do_projeto, montar, nome_da_sessao,  # noqa: F401
                       publica, texto_livre, validar_params)
+import abrir_win
+from abrir_win import METACHAR_WIN  # noqa: F401
 from habilidades import anexar as anexar_habilidades, pedido as pedido_com_habilidades
+import embutidos
 import mascara
 import modulos
 import teto
@@ -43,8 +46,8 @@ SCRIPT_TERMINAL = ["on run argv", 'tell application "Terminal"', "activate",
 def rodar_padrao(cmd, cwd, timeout):
     """subprocess com lista, sem shell. Devolve (codigo, stdout, stderr)."""
     try:
-        r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout,
-                           stdin=subprocess.DEVNULL, shell=False)
+        r = subprocess.run(cmd, cwd=cwd, capture_output=True, encoding="utf-8", errors="replace",
+                           timeout=timeout, stdin=subprocess.DEVNULL, shell=False)
     except FileNotFoundError:
         return 127, "", "comando não encontrado"
     except subprocess.TimeoutExpired:
@@ -59,6 +62,7 @@ class Lancador:
         self.cfg, self.obter_estado, self.rodar, self.relogio = cfg, obter_estado, rodar, relogio
         self.plataforma = plataforma or sys.platform
         self.dormir = time.sleep  # trocado nos testes
+        self.abrir_janela = abrir_win.abrir_janela_padrao  # idem (Windows)
         self.registro = Registro(cfg["dados_dir"])
         self._trava = threading.Lock()
         self._trava_agentes = threading.Lock()
@@ -71,7 +75,7 @@ class Lancador:
         return self.modelos.resumo(self.catalogo()[0])
 
     def catalogo(self):
-        return catalogo_do_projeto(self.cfg)
+        return catalogo_do_projeto(self.cfg, self.plataforma)
 
     def acoes(self):
         acoes, avisos = self.catalogo()
@@ -100,6 +104,8 @@ class Lancador:
             self._agentes = (0.0, None)
 
     def comando_attach(self, exec_id):
+        if self.plataforma == "win32":
+            return subprocess.list2cmdline([self.cfg["claude_bin"], "attach", exec_id])
         return "%s attach %s" % (shlex.quote(self.cfg["claude_bin"]), exec_id)
 
     def _estado(self, reg, agente, agora):
@@ -224,8 +230,9 @@ class Lancador:
         precisa_estado = any(p["tipo"] in ("fase", "parte") for p in acao["params"])
         valores = validar_params(acao, params, self.obter_estado() if precisa_estado else {})
         mascarados = {k: mascara.mascarar(v) if isinstance(v, str) else v for k, v in valores.items()}
+        est = embutidos.estudio_da_acao(self.cfg, acao)  # {estudio_hf}: caminho do servidor; não preparado = 409
         # "trabalho" só para conferir aqui; dentro da trava o prompt é refeito com a pasta de verdade
-        base, nome = trabalho.montar_prompt(acao, valores, "trabalho"), nome_da_sessao(acao, mascarados)
+        base, nome = trabalho.montar_prompt(acao, valores, "trabalho", est), nome_da_sessao(acao, mascarados)
         prompt, nomes_hab = pedido_com_habilidades(self.cfg, acao["grupo"], base, habilidades)  # vazio: 400
         sufixo = prompt[len(base.rstrip()):] if nomes_hab else ""  # bloco das skills: volta no prompt refeito
         chave = json.dumps(valores, sort_keys=True, ensure_ascii=False)
@@ -252,7 +259,7 @@ class Lancador:
             pasta = trabalho.nova_pasta(self.cfg["dados_dir"], acao)  # None: a ação não usa {trabalho}
             cwd = pasta if acao.get("sandbox") else self.cfg["workspace"]  # sandbox: cwd = pasta de trabalho
             if pasta:  # o id do trabalho fica fora de `valores` (a checagem de duplicata acima não o vê)
-                prompt, acao = trabalho.montar_prompt(acao, valores, pasta), trabalho.resolver_travas(acao, pasta)
+                prompt, acao = trabalho.montar_prompt(acao, valores, pasta, est), trabalho.resolver_travas(acao, pasta, est)
                 prompt = prompt.rstrip() + sufixo if sufixo else prompt
             # travas de verdade (deny + gancho) no argv; o prompt vai por último, nunca começa com '-'
             # pular_permissoes: some so o pedido comum de permissao. Medido no CLI 2.1.322: regra de negar,
@@ -403,6 +410,8 @@ class Lancador:
         if self.achar(exec_id) is None:
             raise ErroAcao("Não achei essa execução.", 404)
         comando = self.comando_attach(exec_id)
+        if self.plataforma == "win32":
+            return self._abrir_windows(exec_id, comando)
         if self.plataforma != "darwin":
             return {"ok": False, "comando": comando}
         args = ["osascript"]
@@ -410,3 +419,8 @@ class Lancador:
             args += ["-e", linha]
         cod, _out, _err = self.rodar(args + [comando], self.cfg["workspace"], 15)
         return {"ok": cod == 0, "comando": comando}
+
+    def _abrir_windows(self, exec_id, comando):
+        """Aba do Windows Terminal (ou janela do cmd) em `claude attach <id>`; argv, sem pipes."""
+        ok = abrir_win.abrir(self.cfg["claude_bin"], exec_id, self.cfg["workspace"], self.abrir_janela)
+        return {"ok": bool(ok), "comando": comando}

@@ -101,7 +101,7 @@ def ler_usuario():
     bruto, existe, invalido = {}, os.path.isfile(caminho), False
     if existe:
         try:
-            with open(caminho, encoding="utf-8") as f:
+            with open(caminho, encoding="utf-8-sig") as f:  # PowerShell 5.1 saves a BOM
                 bruto = json.load(f)
             if not isinstance(bruto, dict):
                 raise ValueError("not a JSON object")

@@ -15,29 +15,42 @@ Text check: statements that are not read-only, cd, git or gh count as script cod
 
 Talk and research modes: only obviously read-only commands pass without a question
 (Get-ChildItem/ls/dir/gci, Get-Content/cat/type/gc, Select-String/sls, Test-Path,
-Get-Location/pwd/gl, git status/log/diff/show without global options or --output), without
-redirection, `$(`/`@(` or any other statement. Everything else asks.
+Get-Location/pwd/gl, Select/Where/Sort/Measure-Object, Format-*, Out-Null, git
+status/log/diff/show without global options or --output; bare names only, `sort.exe` is a
+program; a sort with /o or -o is not), a `Where-Object { $_.x -gt 1 }` body that only compares,
+without redirection (one to unquoted $null/NUL is none), `$(`/`@(`, -OutFile/-Destination/
+-OutVariable, `& x`/`. x` or any other statement. Everything else asks.
+
+Pipes: a write or copy cmdlet fed by a pipe without a path of its own (`gci x | Remove-Item`),
+or one using `$_`, also writes the paths of the statements feeding it; any other consumer that
+is not read-only (`gci x | % Delete`) hands them to the text check.
 
 Opened one level, like `eval`/`bash -c`: `iex "<x>"`, `powershell|pwsh [-Command] <x>`,
-`cmd /c <x>` (read as Bash, `%X%` as `$X`), a string piped into iex/sh/bash/cmd/powershell, and
-`& x` / `. x`.
-Unparseable (open quote, here-string or block comment, `--%`, `<`, -EncodedCommand) always asks.
+`cmd /c <x>` (read as Bash: powershell_cmd), a string piped into iex/sh/bash/cmd/powershell,
+and `& x` / `. x`. `pwsh -WorkingDirectory d` runs its text after `Set-Location d`.
+Unparseable (open quote, here-string or block comment, `--%`, `<`, -EncodedCommand, an unknown
+`--x`/`/x` pwsh switch, a NUL, over 300 statements or 50 paths fed into one consumer) always asks.
 
 Limits: no variable, alias or function resolution (`$c = "rm"; & $c x` asks only through
 the modes and the text check); a redefined alias (`Set-Alias ls Remove-Item`) is not
 tracked; .NET calls (`[IO.File]::WriteAllText(...)`) are seen only by the text check;
-`$(...)` inside double quotes is not analysed as a statement.
+`$(...)` inside double quotes is not analysed as a statement. A write whose target is built by a
+variable or an expression asks instead (powershell_alvo).
 """
 import os
 import re
 import shlex
 from .bash_guarda import nivel_do_texto
+from .powershell_alvo import avisos, revisa
+from .powershell_cmd import comando_cmd
+from .powershell_parse import CHAMA, FILTRO, REDIR, instrucoes, param, previo
 from .mensagens import msg
 from .sessao import ler_sessao
 
-REDIR = "\x00>"  # marker: `>`/`>>` redirection (the next token is the target)
 LEITURA = {"get-childitem", "gci", "ls", "dir", "get-content", "gc", "cat", "type",
-           "select-string", "sls", "test-path", "get-location", "gl", "pwd"}
+           "select-string", "sls", "test-path", "get-location", "gl", "pwd", "select-object", "select",
+           "where-object", "where", "?", "sort-object", "sort", "measure-object", "measure", "out-null",
+           "format-table", "ft", "format-list", "fl", "format-wide", "fw", "format-custom", "fc"}
 GIT_LEITURA = {"status", "log", "diff", "show"}
 CD = {"cd", "chdir", "sl", "set-location", "pushd", "push-location"}
 ESCREVE = {"set-content", "sc", "add-content", "ac", "out-file", "tee-object", "tee", "new-item", "ni",
@@ -54,6 +67,11 @@ EXTENSOES = (".exe", ".cmd", ".bat", ".ps1", ".com")
 BASH_CRU = "\x00bash"  # marker statement [BASH_CRU, text]: text goes to achados_bash as it is
 VALOR_PS_EXE = ("executionpolicy", "ep", "windowstyle", "outputformat", "inputformat", "configurationname",
                 "workingdirectory", "wd", "version", "psconsolefile", "settingsfile", "custompipename")
+CHAVES_PS_EXE = VALOR_PS_EXE + ("command", "file", "encodedcommand", "ec", "noprofile", "nop", "noninteractive",
+                                "noni", "nologo", "noexit", "sta", "mta", "login", "interactive", "help",
+                                "commandwithargs", "cwa", "encodedarguments", "ea", "removeworkingdirectorytrailingcharacter")
+MAX_FONTES = 50  # paths fed into one pipe consumer; more cannot be read
+MAX_INSTRUCOES = 300  # statements or pipe stages (also cmd pieces); more cannot be read in time
 SO_PRIMEIRO = {"set-content", "sc", "add-content", "ac"}  # 2nd positional is -Value, not a path
 P_CAMINHO = ("path", "literalpath", "pspath", "lp", "filepath", "destination", "newname",
              "outfile", "destinationpath", "outputfile")
@@ -61,131 +79,14 @@ P_DESTINO = ("outfile", "destination", "destinationpath", "outputfile")  # write
 P_VALOR = ("value", "encoding", "filter", "include", "exclude", "itemtype", "type", "credential",
            "stream", "delimiter", "inputobject", "width", "name", "propertytype", "uri", "method",
            "body", "headers", "message", "pattern", "first", "last", "tail", "totalcount", "depth")
-ASPAS_S = "'‘’‚‛"
-ASPAS_D = '"“”„'
-RE_HOME = re.compile(r"\$\{?env:(userprofile|home)\}?|\$\{home\}|\$home(?![\w:])", re.I)
+P_COMUM = ("erroraction", "ea", "warningaction", "wa", "informationaction", "infa", "errorvariable", "ev",
+           "warningvariable", "wv", "informationvariable", "iv", "outvariable", "ov", "outbuffer", "ob",
+           "pipelinevariable", "pv", "progressaction", "proga")  # common parameters: a value, never a path
+RE_SORT_SAIDA = re.compile(r"(?i:/o(?:utput)?(?::.*)?)|--o[\w-]*(?:=.*)?|-[bcCdfghiMmnRrsuVz]*[oO].*")
+RE_HOME = re.compile(r"\$\{?env:homedrive\}?\$\{?env:homepath\}?|\$\{?env:(?:userprofile|home)(?!\w)\}?|"
+                     r"\$\{home\}|\$home(?![\w:])", re.I)
 RE_ENV = re.compile(r"\$\{?env:([A-Za-z_]\w*)\}?", re.I)
 RE_ENV_ATRIB = re.compile(r"\$\{?env:([A-Za-z_]\w*)\}?(?:=(.*))?", re.I | re.S)
-
-
-def previo(texto):
-    """`$($env:X)` -> `$env:X`; `(Join-Path a b c)` with literal parts -> 'a/b/c'."""
-    texto = re.sub(r"\$\(\s*(\$\{?env:\w+\}?|\$home)\s*\)", r"\1", texto, flags=re.I)
-
-    def junta(m):
-        try:
-            st = instrucoes(m.group(1))
-        except ValueError:
-            return m.group(0)
-        partes = [t.replace("\\", "/") for t in (st[0] if len(st) == 1 else []) if not param(t)]
-        if not partes:
-            return m.group(0)
-        p = "/".join([partes[0].rstrip("/")] + [x.strip("/") for x in partes[1:]])
-        return "'" + p.replace("'", "''") + "'"
-    return re.sub(r"\(\s*Join-Path\b([^()|;&{}`]*)\)", junta, texto, flags=re.I)
-
-
-def instrucoes(texto):
-    """Statements of a PowerShell command, each a list of tokens. ValueError when unreadable."""
-    stmts, atual, tem, i, n = [[]], "", False, 0, len(texto)
-
-    def fecha():
-        nonlocal atual, tem
-        if tem:
-            stmts[-1].append(atual)
-        atual, tem = "", False
-
-    def separa():
-        fecha()
-        if stmts[-1]:
-            stmts.append([])
-
-    while i < n:
-        c = texto[i]
-        if c in " \t\r":
-            fecha()
-            i += 1
-        elif c == "`":
-            if i + 1 >= n:
-                raise ValueError("backtick at the end")
-            if texto[i + 1] != "\n":
-                atual, tem = atual + texto[i + 1], True
-            i += 2
-        elif texto.startswith("<#", i) and not tem:
-            j = texto.find("#>", i + 2)
-            if j < 0:
-                raise ValueError("open block comment")
-            i = j + 2
-        elif c == "#" and not tem:
-            j = texto.find("\n", i)
-            i = n if j < 0 else j
-        elif c == "@" and texto[i + 1:i + 2] and texto[i + 1] in ASPAS_S + ASPAS_D and \
-                re.match(r"[ \t]*\r?\n", texto[i + 2:]):
-            q = texto[i + 1]
-            m = re.compile(r"\n[ \t]*[%s]@" % re.escape(q)).search(texto, i + 2)
-            if not m:
-                raise ValueError("open here-string")
-            atual, tem = atual + texto[texto.index("\n", i) + 1:m.start()], True
-            i = m.end()
-        elif c in ASPAS_S:
-            j, buf = i + 1, ""
-            while True:
-                if j >= n:
-                    raise ValueError("open quote")
-                if texto[j] in ASPAS_S:
-                    if texto[j + 1:j + 2] and texto[j + 1] in ASPAS_S:
-                        buf, j = buf + "'", j + 2
-                        continue
-                    break
-                buf, j = buf + texto[j], j + 1
-            atual, tem, i = atual + buf, True, j + 1
-        elif c in ASPAS_D:
-            j, buf = i + 1, ""
-            while True:
-                if j >= n:
-                    raise ValueError("open quote")
-                if texto[j] == "`" and j + 1 < n:
-                    buf, j = buf + texto[j + 1], j + 2
-                    continue
-                if texto[j] in ASPAS_D:
-                    if texto[j + 1:j + 2] and texto[j + 1] in ASPAS_D:
-                        buf, j = buf + '"', j + 2
-                        continue
-                    break
-                buf, j = buf + texto[j], j + 1
-            atual, tem, i = atual + buf, True, j + 1
-        elif c in ";|{}()\n" or texto.startswith("&&", i):
-            separa()
-            i += 2 if texto.startswith(("&&", "||"), i) else 1
-        elif c == "$" and texto[i + 1:i + 2] == "{":  # ${env:X}: one variable, not a block
-            j = texto.find("}", i)
-            if j < 0:
-                raise ValueError("open ${")
-            atual, tem, i = atual + texto[i:j + 1], True, j + 1
-        elif c == "&":  # call operator: what follows is a statement of its own
-            separa()
-            i += 1
-        elif c in "$@" and texto[i + 1:i + 2] in ("(", "{") and not tem:
-            fecha()  # $( @( @{: the bracket splits next
-            i += 1
-        elif c == "<":
-            raise ValueError("'<' is reserved")
-        elif c == ">" or (c in "123456*" and texto[i + 1:i + 2] == ">" and not tem):
-            m = re.compile(r"[1-6*]?>>?(&[1-6])?").match(texto, i)
-            fecha()
-            if not m.group(1):
-                stmts[-1].append(REDIR)
-            i = m.end()
-        elif c == ",":  # `Remove-Item a,b`: two paths
-            fecha()
-            i += 1
-        else:
-            atual, tem = atual + c, True
-            i += 1
-    fecha()
-    if any(t == "--%" for s in stmts for t in s):
-        raise ValueError("--% stop-parsing")
-    return [s for s in stmts if s]
 
 
 def abre(stmts):
@@ -193,9 +94,8 @@ def abre(stmts):
     `powershell|pwsh [-Command] <x>`, `cmd /c <x>`, a string piped into iex/sh/bash/cmd/powershell,
     `. x` (dot-source). `-EncodedCommand` cannot be read: ValueError."""
     out = []
-    for k, s in enumerate(stmts):
-        if s[0] == "." and len(s) > 1:
-            s = s[1:]
+    for k, orig in enumerate(stmts):
+        s = _sem_chamada(orig)
         c, interno, cru = nome_cmd(s[0]), None, None
         if c in INTERPRETA and len(s) > 1:
             interno = valor_ps(s, "command") or s[-1]
@@ -203,7 +103,7 @@ def abre(stmts):
             interno = comando_ps(s)
         elif c == "cmd":
             cru = comando_cmd(s[1:])
-        ant = stmts[k - 1] if k else []
+        ant = _sem_chamada(stmts[k - 1]) if k else []
         if len(s) == 1 and ant and c in INTERPRETA | SHELLS_SH | {"cmd", "powershell", "pwsh"}:
             texto = ant[0] if len(ant) == 1 else (" ".join(ant[1:]) if nome_cmd(ant[0]) in (
                 "echo", "write-output", "write") else None)  # `"x" | iex`, `echo x | bash`
@@ -216,10 +116,17 @@ def abre(stmts):
         if cru is not None:
             out.append([BASH_CRU, cru])
         elif interno:
-            out.extend(instrucoes(previo(interno)))
+            out.extend(le(previo(interno)))
         else:
-            out.append(s)
+            out.append(orig)
+    if len(out) > MAX_INSTRUCOES:
+        raise ValueError("too many statements")
     return out
+
+
+def _sem_chamada(s):
+    """The statement without its `&`/`.` (call operator, dot-source) or FILTRO marker."""
+    return s[1:] if s[0] in CHAMA + (FILTRO,) and len(s) > 1 else s
 
 
 def _ps_q(t):
@@ -232,46 +139,36 @@ def _resto(toks):
 
 
 def comando_ps(s):
-    """Command text of `powershell|pwsh [options] [-Command] <x>`; None for -File or none."""
-    j = 1
-    while j < len(s):
-        pr = param(s[j])
+    """Command text of `powershell|pwsh [options] [-Command] <x>` (`-WorkingDirectory d`: led by
+    `Set-Location d;`); None for -File or none. A switch may be written `--x` or `/x` too (an unknown
+    one cannot be read: ValueError)."""
+    j, wd, texto = 1, None, None
+    while j < len(s) and texto is None:
+        m = re.fullmatch(r"(?:--|/)([A-Za-z][\w-]*)((?::.*)?)", s[j], re.S)
+        if m and not _e(m.group(1).casefold(), CHAVES_PS_EXE):
+            raise ValueError("unknown powershell switch")
+        pr = param("-" + m.group(1) + m.group(2) if m else s[j])
         if not pr:
-            return _resto(s[j:])
+            texto = _resto(s[j:])
+            break
         p, v = pr
         if "encodedcommand".startswith(p) or p == "ec":
             raise ValueError("-EncodedCommand")
         if "command".startswith(p):
-            return v if v is not None else _resto(s[j + 1:])
+            texto = v if v is not None else _resto(s[j + 1:])
         if "file".startswith(p):
             return None
+        if p == "wd" or len(p) > 1 and "workingdirectory".startswith(p):
+            wd = v if v is not None else (s[j + 1] if j + 1 < len(s) else None)
         if v is None and _e(p, VALOR_PS_EXE):
             j += 1
         j += 1
-    return None
-
-
-def comando_cmd(args):
-    """Bash text of `cmd /c|/k <x>` (`%X%` -> `$X`, `^` escapes dropped), or None."""
-    for j, t in enumerate(args):
-        if re.fullmatch(r"/{1,2}[cCkK]", t):
-            resto = args[j + 1:]
-            if not resto:
-                return None
-            x = resto[0] if len(resto) == 1 else " ".join(shlex.quote(r) if re.search(r"\s", r) else r for r in resto)
-            return re.sub(r"\^(.)", r"\1", re.sub(r"%(\w+)%", r"$\1", x))
-    return None
+    return texto if texto is None or wd is None else "Set-Location %s; %s" % (_ps_q(wd), texto)
 
 
 def nome_cmd(t):
     b = re.split(r"[\\/]", t)[-1].casefold()
     return b[:-4] if b.endswith(EXTENSOES) else b
-
-
-def param(t):
-    """(parameter name, inline value or None) of `-Name` / `-Name:value`; None when not one."""
-    m = re.fullmatch(r"-([A-Za-z][\w-]*)(?::(.*))?", t, re.S)
-    return (m.group(1).casefold(), m.group(2)) if m else None
 
 
 def _e(p, nomes):  # PowerShell accepts any unique prefix of a parameter name
@@ -286,7 +183,7 @@ def caminhos(toks, so_primeiro=False):
         pr = param(t) if t != REDIR else None
         if pr:
             nome, valor = pr
-            leva = _e(nome, P_CAMINHO) or _e(nome, P_VALOR)
+            leva = _e(nome, P_CAMINHO) or _e(nome, P_VALOR) or _e(nome, P_COMUM)
             if valor is None and leva and j + 1 < len(toks):
                 valor, j = toks[j + 1], j + 1
             if valor is not None and _e(nome, P_CAMINHO):  # ambiguous (-f, -d): a path too
@@ -302,13 +199,18 @@ def caminhos(toks, so_primeiro=False):
 
 
 def leitura(toks):
-    """Obviously read-only statement (no redirection)."""
-    if REDIR in toks:
+    """Obviously read-only statement (no redirection, -OutFile/-Destination/-OutVariable)."""
+    if REDIR in toks or any(pr and (len(pr[0]) > 2 and _e(pr[0], P_DESTINO + ("outvariable",)) or pr[0] == "ov")
+                            for pr in map(param, toks[1:])):
         return False
-    c = nome_cmd(toks[0])
+    if toks[0] == FILTRO:  # a comparing Where-Object body
+        return True
+    c = toks[0].casefold()  # bare names only: `sort.exe`, `C:/x/sort` are programs
+    if c in ("sort", "sort-object") and any(RE_SORT_SAIDA.fullmatch(t) for t in toks[1:]):
+        return False
     if c in LEITURA:
         return True
-    return c == "git" and len(toks) > 1 and toks[1] in GIT_LEITURA and \
+    return nome_cmd(c) == "git" and len(toks) > 1 and toks[1] in GIT_LEITURA and \
         not any(t.startswith(("--output", "--ext-diff", "--textconv")) or t == "-o" for t in toks)
 
 
@@ -323,8 +225,12 @@ def valor_ps(toks, nome, prefixo=False):
 
 def como_bash(toks):
     """Bash spelling of one statement for achados_bash."""
+    while toks and toks[0] in CHAMA + (FILTRO,):  # a loop: `. . . x` must not recurse per token
+        toks = toks[1:]
+    if not toks:
+        return ""
     if toks[0] == BASH_CRU:
-        return toks[1]
+        return " ".join(toks[1:])
     m = RE_ENV_ATRIB.fullmatch(toks[0])
     if m and (m.group(2) is not None or toks[1:2] == ["="] or toks[1:2] and toks[1].startswith("=")):
         valor = m.group(2) if m.group(2) is not None else (
@@ -351,6 +257,12 @@ def como_bash(toks):
         fonte = valor_ps(toks, "path", True) or valor_ps(toks, "literalpath", True) or (pos[:1] or ["x.zip"])[0]
         dest = valor_ps(toks, "destinationpath", True) or (pos[1] if len(pos) > 1 else ".")
         return " ".join(map(_q, ["unzip", fonte, "-d", dest])) + " ; rm -r -- " + _q(dest)
+    elif c in ("new-item", "ni") and link(toks):
+        alvo = valor_ps(toks, "value", True) or valor_ps(toks, "target", True)  # junction/symlink: `ln -s`
+        links = [x for x in todos + extras(toks, todos) if x != alvo]
+        if not links:
+            return " ".join(map(_q, ["tee", alvo or "."]))
+        return " ".join(map(_q, ["ln", "-s", "--", alvo or "."] + links)) + " ; " + " ".join(map(_q, ["tee"] + links))
     elif c in ESCREVE:
         alvos = todos + extras(toks, todos) + redir[1::2]
         out = ["tee"] + alvos if alvos else []
@@ -362,6 +274,113 @@ def como_bash(toks):
     if not out:
         return " ".join(map(_q, ["true"] + redir)) if redir else ""
     return " ".join(map(_q, out + redir))
+
+
+CONHECIDOS = LEITURA | ESCREVE | COPIA | CD | INTERPRETA | {"echo", "write-output", "write", "git", "get-item",
+                                                       "gi", "%", "foreach", "foreach-object"}
+LISTA = {"get-childitem", "gci", "ls", "dir"}
+ALIMENTADO = (ESCREVE | COPIA) - {"out-file", "tee-object", "tee", "md", "mkdir"}  # take paths from the pipe
+NAO_ALIMENTA = INTERPRETA | SHELLS_SH | CD | {"cmd", "powershell", "pwsh", "git", "gh"}
+
+
+def alimenta(stmts, tipos):
+    """A write cmdlet fed by a pipe with no path of its own, or using `$_`, also gets as `-Path` the
+    paths of the statements feeding it (`gci ~/.claude -Recurse | Remove-Item`; with `$_`: all the
+    statements before it). Any other consumer that is not read-only gets them too, so the text
+    check sees them (`gci ~/.claude -Filter settings.json | % Delete`)."""
+    out, valores = [list(s) for s in stmts], {}
+
+    def vals_de(u):  # a statement's own paths, computed once
+        if u not in valores:
+            valores[u] = fontes_de(stmts[u])
+        return valores[u]
+    for k, s in enumerate(map(_sem_chamada, stmts)):
+        c = nome_cmd(s[0])
+        outro = c not in ALIMENTADO and tipos[k] == "|" and c not in NAO_ALIMENTA and not leitura(stmts[k])
+        if c not in ALIMENTADO and not outro:
+            continue
+        if any(re.search(r"\$(_|psitem)(?!\w)", t, re.I) for t in s[1:]) and not outro:
+            fontes = range(k)
+        elif tipos[k] == "|" and (outro or not caminhos(s)[2] and not any(
+                pr and (_e(pr[0], ("path", "literalpath", "pspath")) or pr[0] == "lp") for pr in map(param, s[1:]))):
+            j = k - 1
+            while j > 0 and tipos[j] != ";":
+                j -= 1
+            fontes = range(j, k)
+        else:
+            continue
+        vals = list(dict.fromkeys(v for u in fontes for v in vals_de(u)))
+        if len(vals) > MAX_FONTES:
+            raise ValueError("too many paths fed into a pipe")
+        out[k] += [x for v in vals for x in ("-Path", v)]
+    return out
+
+
+def fontes_de(s):
+    """The paths a statement hands down a pipe: its own, and for a listing the items below the folder
+    (`gci ~/.claude -Filter *.json` -> ~/.claude/*.json)."""
+    t = _sem_chamada(s)
+    v = ([] if nome_cmd(t[0]) in CONHECIDOS else [t[0]]) + caminhos(t)[0]
+    if nome_cmd(t[0]) in LISTA:
+        filtro = valor_ps(t, "filter", True) or "*"
+        v += [x.replace("\\", "/").rstrip("/") + "/" + filtro for x in (caminhos(t)[2] or ["."])]
+    return v
+
+
+def le(texto):
+    """Statements of a PowerShell command, pipes fed into write cmdlets (alimenta), deletes hidden in
+    a method call or a ForEach-Object and targets built by a variable (powershell_alvo.revisa)."""
+    tipos, metodos = [], []
+    stmts = instrucoes(texto, tipos, metodos)
+    if len(stmts) > MAX_INSTRUCOES:
+        raise ValueError("too many statements")
+    return revisa(stmts, tipos, metodos, alimenta(stmts, tipos))
+
+
+def traduz(stmts):
+    """(Bash text for achados_bash, words of the text check: the statements that are not
+    read-only, cd, git or gh) of the statements."""
+    bash = " ; ".join(x for x in map(como_bash, stmts) if x)
+    codigo = [s for s in stmts if not leitura(s) and nome_cmd(s[0]) not in CD | {"git", "gh"}]
+    return bash, [RE_HOME.sub("$HOME", t) for s in codigo for t in s if t != REDIR]
+
+
+def modos(stmts, texto, curto, sess):
+    """Talk and research modes: anything not obviously read-only asks (both tools)."""
+    conversa = bool(sess.get("modo_conversa"))
+    escreve = [s for s in stmts if not leitura(s)]
+    if not (sess.get("modo_pesquisa") or conversa) or not (escreve or "$(" in texto or "@(" in texto):
+        return []
+    s = _sem_chamada(escreve[0]) if escreve else None
+    rotulo = "PowerShell: " + (("cmd" if s[0] == BASH_CRU else s[0]) if s else curto)
+    return [("perguntar", msg("talk_pergunta", rotulo) if conversa else msg("pesquisa", rotulo))]
+
+
+def no_bash(toks, sess):
+    """Bash tool: what `powershell|pwsh|cmd` asks as the PowerShell tool would (unreadable: ps_ilegivel;
+    talk/research modes: modos)."""
+    if not toks or nome_cmd(toks[0]) not in ("powershell", "pwsh", "cmd"):
+        return []
+    curto = " ".join(" ".join(toks).split())[:60]
+    try:
+        stmts, perguntas = avisos(abre([list(toks)]), curto)
+    except ValueError:
+        return [("perguntar", msg("ps_ilegivel", curto))]
+    return perguntas + modos(stmts, " ".join(toks[1:]), curto, sess)
+
+
+def do_bash(toks):
+    """`powershell|pwsh <x>` / `cmd /c <x>` run from the Bash tool, read as the PowerShell tool
+    reads them: (Bash text, text-check words); None for any other command. ValueError: unreadable."""
+    if not toks or nome_cmd(toks[0]) not in ("powershell", "pwsh", "cmd"):
+        return None
+    return traduz(avisos(abre([list(toks)]), "")[0])
+
+
+def link(toks):
+    """New-Item -ItemType|-Type SymbolicLink|Junction|HardLink."""
+    tipo = valor_ps(toks, "itemtype", True) or valor_ps(toks, "type", True) or ""
+    return bool(re.search(r"link|junc", tipo.casefold()))
 
 
 def extras(toks, todos):
@@ -383,17 +402,16 @@ def _q(t):
 def ev_powershell(cmd, d, cfg):
     from .bash import achados_bash, decidir
     sess = ler_sessao(d.get("session_id"))
-    conversa = bool(sess.get("modo_conversa"))
-    pesquisa = bool(sess.get("modo_pesquisa")) or conversa
-    curto = " ".join(cmd.split())[:60]
+    curto = " ".join(cmd.replace("\x00", " ").split())[:60]
     try:
+        if "\x00" in cmd:  # a NUL could forge the parser's internal markers
+            raise ValueError("NUL")
         texto = previo(cmd.replace("\r\n", "\n"))
-        stmts = abre(instrucoes(texto))
+        stmts, perguntas = avisos(abre(le(texto)), curto)
     except ValueError:
         return decidir([("perguntar", msg("ps_ilegivel", curto))])
-    achados = achados_bash(" ; ".join(x for x in map(como_bash, stmts) if x), d, cfg, regras_em=cmd)
-    codigo = [s for s in stmts if not leitura(s) and nome_cmd(s[0]) not in CD | {"git", "gh"}]
-    palavras = [RE_HOME.sub("$HOME", t) for s in codigo for t in s if t != REDIR]
+    bash, palavras = traduz(stmts)
+    achados = achados_bash(bash, d, cfg, regras_em=cmd)
     nivel = nivel_do_texto(palavras, [], d.get("cwd") or os.getcwd(), " ".join(palavras))
     if nivel == "sempre":
         achados.append(("perguntar", msg("prot_settings_bash")))
@@ -401,8 +419,4 @@ def ev_powershell(cmd, d, cfg):
         pid = d.get("prompt_id")
         if not pid or sess.get("aprender_prompt_id") != pid:
             achados.append(("perguntar", msg("prot_perfil_bash")))
-    escreve = [s for s in stmts if not leitura(s)]
-    if pesquisa and (escreve or "$(" in texto or "@(" in texto):
-        rotulo = "PowerShell: " + (escreve[0][0] if escreve else curto)
-        achados.append(("perguntar", msg("talk_pergunta", rotulo) if conversa else msg("pesquisa", rotulo)))
-    return decidir(achados)
+    return decidir(achados + perguntas + modos(stmts, texto, curto, sess))

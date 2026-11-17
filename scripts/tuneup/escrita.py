@@ -19,7 +19,8 @@ ESCREVE_DESTINO = {"cp", "ln", "install", "rsync", "ditto"}
 VALOR_CURTO = {"install": "mogtSB", "truncate": "sr", "touch": "trd", "rsync": "eT",
                "cp": "t", "mv": "t", "ln": "t"}  # short flags that take a value
 RE_OPEN_ESCRITA = re.compile(
-    r"""open\(\s*(['"])([^'"]+)\1\s*,\s*(?:mode\s*=\s*)?(['"])[^'"]*[wax+][^'"]*\3""")
+    r"""open\(\s*(?:[rRbBfFuU]|[rR][bBfF]|[bBfF][rR])?(['"])([^'"]+)\1"""  # r'C:\x': raw-string prefix
+    r"""\s*,\s*(?:mode\s*=\s*)?(['"])[^'"]*[wax+][^'"]*\3""")
 
 
 def destino_t(args):
@@ -97,6 +98,12 @@ def com_glob(caminhos):
     return out
 
 
+def nulo(alvo):
+    """Redirection to the null device: `/dev/null`, `NUL`/`NUL:` (Windows only). `$null` is a
+    Bash variable that may be bound; the PowerShell rewrite drops its own null targets."""
+    return alvo == "/dev/null" or (NT and alvo.casefold() in ("nul", "nul:"))
+
+
 def alvos_de_escrita(seg, toks, diretorio):
     """Caminhos que o comando simples grava: alvo de `>`/`>>` e argumentos de tee, sed -i,
     perl -i, cp, mv, rm, chmod, ln, install, rsync, ditto, truncate, touch, dd of=, curl -o
@@ -107,6 +114,8 @@ def alvos_de_escrita(seg, toks, diretorio):
             alvo = seg[j + 1]
             if t.endswith("&") and (alvo == "-" or alvo.isdigit()):
                 continue  # >&N, N>&M, >&-: duplicação de descritor, não arquivo
+            if nulo(alvo):
+                continue
             brutos.append(alvo)
     if toks:
         exe = os.path.basename(toks[0])
@@ -262,7 +271,7 @@ def caminhos_protegidos(registrar=False):
     if p not in _PROTEGIDOS:
         lst = None
         try:
-            with open(p, encoding="utf-8") as f:
+            with open(p, encoding="utf-8-sig") as f:  # PowerShell 5.1 saves a BOM
                 bruto = json.load(f)
             lst = bruto.get("protected_paths") if isinstance(bruto, dict) else None
         except Exception:

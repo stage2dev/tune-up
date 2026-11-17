@@ -66,7 +66,14 @@ def gravar_sessao(session_id, estado):
     tmp = "%s.%d.tmp" % (caminho, os.getpid())
     with abrir_privado(tmp, "w") as f:
         json.dump(estado, f)
-    os.replace(tmp, caminho)
+    for tentativa in range(5):
+        try:
+            os.replace(tmp, caminho)
+            return
+        except PermissionError:  # Windows: another hook holds the destination open
+            if tentativa == 4:
+                raise
+            time.sleep(0.03)
 
 
 def limpar_sessoes_velhas():
@@ -140,6 +147,12 @@ def ev_inicio(d, cfg):
     if ler_usuario()[0].get("invalid"):
         from .usuario import caminho_user_json
         sistema.append(msg("user_json_invalido", caminho_user_json()))
+    # On real Windows this line is effectively unreachable while hooks are launched through `sh`
+    # (inside it PATH already has Git's usr\bin, so the check passes). The user-facing warning is
+    # the panel one and the setup skill; the line stays for the day hooks get a launcher without `sh`.
+    from .gitbash import sem_git_bash
+    if sem_git_bash():
+        sistema.append(msg("sem_git_bash"))
     if cfg.get("_perfil_mudou"):
         sistema.append(msg("perfil_mudou", cfg["_perfil_mudou"]))
     elif cfg.get("_nao_confiado"):

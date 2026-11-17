@@ -28,6 +28,7 @@ Per tool facts (source, check, install, interactive, privacy, undo) live in `${C
 
 One Bash call, read only: `uname -s; command -v git; sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" -c "import sys; print(sys.version)"` (the launcher prints the Python it chose; it needs 3.9 or newer). `uname -s` starting with `MINGW`, `MSYS` or `CYGWIN` means Windows (Git Bash). No Bash tool at all (Windows without Git Bash) or no `git` means Git for Windows is missing: use the PowerShell tool (`Get-Command git`) only to confirm it.
 
+- No Bash tool at all on Windows (Git Bash missing): STOP here. Tell the user Git Bash is required, that without it every tune-up guard is silently off, and to install Git for Windows (or set `CLAUDE_CODE_GIT_BASH_PATH` to its `bash.exe`) and reopen Claude Code before going on.
 - Git missing: the user types `! winget install --id Git.Git -e`, then reopens Claude Code. Without it, the hooks of this plugin cannot run.
 - Launcher error "Python 3.9 or newer not found" (or a version below 3.9): the user types `! winget install -e --id Python.Python.3.12`, then reopens Claude Code. The Microsoft Store `python3` alias does not count and is skipped.
 - Everything ok, or not Windows: say nothing about it and go on. If prerequisites are missing, continue with the questions and do not install anything else until the user has them.
@@ -85,7 +86,7 @@ Show the exact JSON, ask "Save?" (yes / change something). On yes, create `~/.co
 2. Show a short table: tool | present | enabled.
 3. AskUserQuestion ONCE for the missing tools only (multiSelect; split into two questions if more than 4). Each option's description is its privacy line from `reference.md` (what leaves the machine). Nothing marked = nothing installed.
 4. For each marked tool, in the order gh, Graphify, Caveman, Ponytail, claude-mem, fast-jev, ECC, use the install row of `reference.md`:
-   - Bash (auto): `claude plugin marketplace add <source>` then `claude plugin install <id> --scope user`; `uv tool install graphifyy` then `graphify install` (its consent line says it also adds a short graphify section to `~/.claude/CLAUDE.md`).
+   - Bash (auto): `claude plugin marketplace add <source>` then `claude plugin install <id> --scope user` (on Windows, `EPERM ... rename`: see the README section "Windows: `marketplace add` fails with `EPERM ... rename`"); `uv tool install graphifyy` then `graphify install` (its consent line says it also adds a short graphify section to `~/.claude/CLAUDE.md`).
    - User types it (`!`): installing `gh` or `uv` (the Windows `winget` commands are in `reference.md`), `gh auth login` (also offer it when `gh` exists but is not logged in).
    - Check right after with the check command and record `tools.<name>` = true/false.
 5. A failure stops only that tool: report the error line and move on.

@@ -2,16 +2,24 @@
 the commands that talk mode denies inside the project."""
 import os
 import re
-from .bash_parse import analisar_git, junta_dir, posicionais
+from .bash_parse import TEXTO_PS, analisar_git, junta_dir, posicionais
 from .caminhos import NT, nome
 from .config import achar_perfil, home_real
 from .escrita import RAIZ_PLUGIN, alvos_de_escrita, contem_protegida, raizes_protegidas, tar_extrai, valor_de
 
-RE_EXECUTOR = re.compile(r"(?<![\w.-])(python[\d.]*|py|exec|xargs|node|nodejs|perl|ruby|deno|bun|osascript)(?![\w-])")
+RE_EXECUTOR = re.compile(
+    r"(?<![\w.-])(python[\d.]*|py|exec|xargs|node|nodejs|perl|ruby|deno|bun|osascript)(?![\w-])")
+# Windows only: wsl runs any Linux command on these files; setx writes persistent env vars
+RE_EXECUTOR_NT = re.compile(r"(?<![\w.-])(wsl|setx)(?![\w-])")
 RE_CAMINHO = re.compile(r"\S*[/.]\S*")  # a path-like word: its name is not a trust word
 RE_ATRIBUI = re.compile(r"[A-Za-z_]\w*=")
 RE_CONFIAR = re.compile(r"guarda\.py|perfis_confiaveis|(?<![\w-])(tuneup|confiar|trust)(?![\w-])")
 SAIDAS_NULAS = {"/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty"}
+
+
+def executor(texto):
+    """The (casefolded) command text runs an interpreter on its arguments."""
+    return bool(RE_EXECUTOR.search(texto) or NT and RE_EXECUTOR_NT.search(texto))
 
 
 def resolvidos(toks, diretorio):
@@ -30,7 +38,9 @@ def resolvidos(toks, diretorio):
 
 
 def grava_algo(seg, toks, diretorio):
-    """The simple command writes some file (a redirection or a write verb)."""
+    """The simple command writes some file (a redirection or a write verb; PowerShell code)."""
+    if toks[:1] == [TEXTO_PS]:
+        return True
     return any(a not in SAIDAS_NULAS for a in alvos_de_escrita(seg, toks, diretorio))
 
 
@@ -56,7 +66,8 @@ def expandido(texto):
         texto = texto.replace("${HOME}", h).replace("$HOME", h)
         if NT:
             texto = texto.replace("${USERPROFILE}", h).replace("$USERPROFILE", h)
-        texto = re.sub(r"(?<![\w/~])~(?=/|\s|$|['\"])", lambda _m, h=h: h, texto)  # h is a path, not a template
+        texto = re.sub(r"(?<![\w/~])~(?=/|\s|$|['\"]%s)" % (r"|\\" if NT else ""),  # Windows: also `~\`
+                       lambda _m, h=h: h, texto)  # h is a path, not a template
     return _nt(texto.casefold())
 
 
@@ -74,8 +85,10 @@ def citacoes(seg, toks, diretorio, alvos):
     """(executor words, their symlink arguments, write text) of a simple command. A root or a
     trust word counts only as an executor's argument (python, node, xargs...) or in the write
     text: the write targets and the VAR=value words (`D=~/.config/tune-up; cp a $D/user.json`)."""
+    if toks[:1] == [TEXTO_PS]:  # PowerShell code: its words are executor words and write text
+        return toks[1:], [], " ".join(toks[1:])
     escrita = " ".join(alvos + [t for t in seg if RE_ATRIBUI.match(t)])
-    if not RE_EXECUTOR.search(" ".join(seg).casefold()):
+    if not executor(" ".join(seg).casefold()):
         return [], [], escrita
     return list(seg), resolvidos(toks, diretorio), escrita
 

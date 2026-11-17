@@ -175,8 +175,9 @@ class TesteRefazer(Base):
 
 class TesteRegrasDeNegar(unittest.TestCase):
     def test_lista_completa(self):
-        esperado = [
-            "Bash(*127.0.0.1:8791*)", "Bash(*localhost:8791*)", "Bash(*127.0.0.1:8080*)", "Bash(*localhost:8080*)",
+        portas = ["Bash(*%s:%d*)" % (h, p) for p in list(range(8791, 8796)) + list(range(8080, 8085))
+                  for h in ("127.0.0.1", "localhost")]   # toda porta que o preparo pode escolher
+        esperado = portas + [
             "Bash(*/api/modulos/*/acao*)", "Bash(*tune-up-vendas*)", "Bash(*docker exec*)", "Bash(*docker inspect*)",
             "Bash(*docker compose config*)", "Bash(*security find-generic-password*)",
             "Read(~/Library/Application Support/tune-up-vendas/**)",
@@ -189,8 +190,10 @@ class TesteRegrasDeNegar(unittest.TestCase):
         self.assertEqual(carregar_modulo().INFO["negar"], esperado)
         with open(os.path.join(VENDAS, "README.md"), encoding="utf-8") as f:
             leia = f.read()
-        for regra in esperado[:10]:
+        for regra in esperado[20:26] + ["Bash(*127.0.0.1:8791*)", "Bash(*localhost:8080*)"]:
             self.assertIn(regra, leia)
+        self.assertIn("8791` to `8795", leia)
+        self.assertIn("8080` to `8084", leia)
 
 
 class TesteTelefone(unittest.TestCase):

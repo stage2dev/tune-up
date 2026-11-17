@@ -65,7 +65,7 @@ def servir(projeto, porta):
     config.entrada_do_plugin = lambda chave, home=None: (
         {"installPath": STUDIO, "version": versao} if chave == CHAVE else original(chave, home))
     argv = lancador.argv_travas
-    lancador.argv_travas = lambda a, c=None: argv(a, c) + ["--plugin-dir", STUDIO]
+    lancador.argv_travas = lambda a, c=None: argv(a, c) + ["--plugin-dir", os.path.dirname(STUDIO)]
     painel.main(["--projeto", projeto, "--port", str(porta)])
 
 

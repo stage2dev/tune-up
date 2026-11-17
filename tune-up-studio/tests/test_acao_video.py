@@ -82,7 +82,7 @@ class VideoActions(unittest.TestCase):
             with self.subTest(k):
                 self.assertEqual(a["_requer"], ["estudio.marca"])
                 self.assertEqual((a["modelos"], a["esforco"]), (["opus"], "medium"))
-                self.assertTrue(a["_prompt"].startswith("/tune-up-studio:video "))
+                self.assertTrue(a["_prompt"].startswith("/tune-up:video "))
                 for marker in ("{trabalho}", "{briefing}", "{duracao}", "{objetivo}", "{estilo}"):
                     self.assertIn(marker, a["_prompt"])
                 self.assertIn("Objetivo: {objetivo}. Estilo: {estilo}. Briefing no arquivo {briefing}", a["_prompt"])
@@ -138,7 +138,7 @@ class VideoActions(unittest.TestCase):
         self.assertNotIn("same length", text)  # the reserve follows the scene lengths now
         frontmatter = text.split("---", 2)[1]
         allowed = [ln for ln in frontmatter.splitlines() if ln.startswith("allowed-tools:")][0]
-        self.assertIn("Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/qa_imagem.py *)", allowed)
+        self.assertIn("Bash(python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/qa_imagem.py *)", allowed)
         # numbers of the motion recipes live only in referencias/padroes-cena.md
         for antigo in ("scale(.3)", "rotate(-10deg)", "scale(1.07)", "circle(80%"):
             self.assertNotIn(antigo, text)

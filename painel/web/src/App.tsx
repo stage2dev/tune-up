@@ -10,6 +10,7 @@ import ExecucaoDetalhe from './paginas/dev/ExecucaoDetalhe';
 import Agentes from './paginas/agentes/Agentes';
 import Modulo from './paginas/modulo/Modulo';
 import Acompanhamento from './paginas/acompanhamento/Acompanhamento';
+import Modulos from './paginas/modulos/Modulos';
 
 export function App() {
   return (
@@ -25,6 +26,7 @@ export function App() {
           <Route path="agentes" element={<Agentes />} />
           <Route path="m/:id" element={<Modulo />} />
           <Route path="acompanhamento" element={<Acompanhamento />} />
+          <Route path="modulos" element={<Modulos />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

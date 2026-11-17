@@ -9,6 +9,7 @@ Python 3.9, só biblioteca padrão.
 import os
 import re
 
+import embutidos
 import extensoes
 
 RE_NOME = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
@@ -23,8 +24,10 @@ def ligados(cfg):
         return {}, []
     if not isinstance(lista, list):
         return {}, ["painel.json: modulos_de_plugins precisa ser uma lista; ignorei"]
-    mapa, avisos = {}, []
+    mapa, avisos, de_dentro = {}, [], embutidos.ligados(cfg)
     for entrada in lista:
+        if embutidos.antiga(entrada):  # Estúdio/Vendas do plugin separado: agora vêm do núcleo (embutidos.py)
+            continue
         txt = str(entrada)[:80]
         chave, _, mid = entrada.rpartition(":") if isinstance(entrada, str) else ("", "", "")
         plugin, _, mkt = chave.partition("@")
@@ -32,6 +35,8 @@ def ligados(cfg):
             avisos.append("painel.json: módulo de plugin %r ignorado (use plugin@marketplace:modulo)" % txt)
         elif mid in (cfg.get("modulos") or []):
             avisos.append("módulo de plugin %r recusado: o id %s já é um módulo do projeto" % (txt, mid))
+        elif mid in de_dentro:
+            avisos.append("módulo de plugin %r recusado: o id %s é de um módulo embutido do tune-up" % (txt, mid))
         elif mid in mapa:
             avisos.append("módulo de plugin %r recusado: o id %s já veio de %s" % (txt, mid, mapa[mid]))
         else:

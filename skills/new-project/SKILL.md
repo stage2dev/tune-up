@@ -64,7 +64,7 @@ Do not create `LICENSE`, `CONTRIBUTING` or any file not listed.
 ## Step 3 - Check
 
 - `grep -rn "\[STACK\]\|{{" .` finds nothing (git internals excluded). Fix every hit.
-- `python3 -c "import json; json.load(open('.tune-up/config.json'))"` passes (`python` where `python3` is missing).
+- `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" -c "import json; json.load(open('.tune-up/config.json', encoding='utf-8'))"` passes.
 - `.env.example` has no value that looks like a secret.
 - Each code file is at or under 450 lines.
 - Do not run the install, lint or test commands: nothing is installed yet.

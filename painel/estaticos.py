@@ -30,8 +30,10 @@ SEM_BUILD = ("<!doctype html><html lang=\"pt-BR\"><meta charset=\"utf-8\"><title
 
 
 def _dentro(caminho, raiz):
-    real, base = os.path.realpath(caminho), os.path.realpath(raiz)
-    return real.startswith(base.rstrip(os.sep) + os.sep)
+    """O caminho real fica dentro da pasta e nenhum pedaço dele começa com ponto (no Windows um nome
+    curto 8.3, como SEGRED~1.JS, abre .segredo.js: só o realpath mostra o nome longo)."""
+    real, base = os.path.realpath(caminho), os.path.realpath(raiz).rstrip(os.sep) + os.sep
+    return real.startswith(base) and not any(p.startswith(".") for p in real[len(base):].split(os.sep))
 
 
 def _ler(caminho):

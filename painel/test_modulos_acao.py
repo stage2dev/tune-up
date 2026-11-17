@@ -132,6 +132,32 @@ class TesteConcorrencia(Base):
         self.mod.agir = lambda ctx, acao, dados: {"ok": True, "mensagem": "Feito."}
         self.assertEqual(modulos.agir(self.cfg, "loja", "salvar", {})[0], 200)
 
+    def test_cache_dura_o_menor_entre_30_s_e_o_atualizar_em(self):
+        n, ritmo, agora = [0], [3], [1000.0]
+
+        def montar(ctx):
+            n[0] += 1
+            return {"atualizar_em": ritmo[0], "abas": [{"id": "a", "titulo": "A", "blocos": []}]}
+        self.mod.montar = montar
+        with mock.patch.object(modulos.time, "monotonic", lambda: agora[0]):
+            modulos.montar(self.cfg, "loja")
+            agora[0] += 2.5
+            modulos.montar(self.cfg, "loja")
+            self.assertEqual(n[0], 1)   # dentro dos 3 s pedidos
+            agora[0] += 1
+            modulos.montar(self.cfg, "loja")
+            self.assertEqual(n[0], 2)   # passou de 3 s: monta de novo (antes, só depois de 30 s)
+            ritmo[0] = 60
+            agora[0] += 3.5
+            modulos.montar(self.cfg, "loja")
+            self.assertEqual(n[0], 3)
+            agora[0] += 29
+            modulos.montar(self.cfg, "loja")
+            self.assertEqual(n[0], 3)   # 60 s pedidos: o teto continua 30 s
+            agora[0] += 1.5
+            modulos.montar(self.cfg, "loja")
+            self.assertEqual(n[0], 4)
+
 
 class TesteNegarFechado(Base):
     """Achados 3 e 4: módulo ligado com problema barra o disparo, com o id dele no texto."""
