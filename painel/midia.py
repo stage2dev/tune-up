@@ -89,6 +89,12 @@ def _dentro(real, base):
     return real.startswith(base.rstrip(os.sep) + os.sep)
 
 
+def _sem_oculto(real, base):
+    """True se nenhum pedaço do caminho real depois de `base` começa com ponto. O nome pedido já foi
+    conferido, mas no Windows um nome curto 8.3 (SEGRED~1.PNG) abre .segredo.png, e o realpath o mostra."""
+    return not any(p.startswith(".") for p in real[len(base.rstrip(os.sep)) + 1:].split(os.sep))
+
+
 def pasta_do_modulo(cfg, mid, c=None):
     """(caminho real da pasta de mídia, partes de `c` dentro dela) ou ErroModulo(404). INFO["midia"] é uma
     pasta (`c` relativo a ela) ou uma lista de pastas (`c` começa pelo nome de uma delas). Partes None: `c` ruim."""
@@ -109,7 +115,7 @@ def pasta_do_modulo(cfg, mid, c=None):
         raise modulos.ErroModulo(404, "Esta tela não mostra arquivos.")
     base_dados = os.path.realpath(dados)
     pasta = os.path.realpath(os.path.join(base_dados, *partes))
-    if not _dentro(pasta, base_dados) or not os.path.isdir(pasta):
+    if not _dentro(pasta, base_dados) or not _sem_oculto(pasta, base_dados) or not os.path.isdir(pasta):
         raise modulos.ErroModulo(404, "Esta tela não mostra arquivos.")
     return pasta, partes_c
 
@@ -159,7 +165,7 @@ def abrir(cfg, mid, c, cab_range):
         return 404, {"erro": "Arquivo não encontrado."}, {}
     anexo = (partes[-1] if RE_NOME_ANEXO.match(partes[-1]) else "arquivo" + ext) if ext in BAIXAR else None
     real = os.path.realpath(os.path.join(pasta, *partes))
-    if not _dentro(real, pasta):
+    if not _dentro(real, pasta) or not _sem_oculto(real, pasta):
         return 404, {"erro": "Arquivo não encontrado."}, {}
     try:  # O_NOFOLLOW fecha a troca do último nome por atalho entre o realpath e o open;
         # O_NONBLOCK: FIFO com nome de mídia não prende a thread no open (o fstat abaixo recusa)

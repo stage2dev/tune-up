@@ -20,6 +20,9 @@ import shutil
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import saida_utf8  # noqa: E402
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 STUDIO = os.path.dirname(HERE)
 NODE_DIR = os.path.join(STUDIO, "node")
@@ -115,17 +118,13 @@ def chrome(env=None, home=None):
                    % (CHROME_VERSION, outra))]
 
 
+FILTRO = re.compile(r"^\s*[A-Z.]{2,3}\s+(\S+)\s+\S+->\S+(?:\s|$)")
+
+
 def nomes_de_filtros(saida):
-    """Filter names from `ffmpeg -filters` (lines after the ------ separator)."""
-    nomes, depois = set(), False
-    for linha in saida.splitlines():
-        if linha.strip().startswith("------"):
-            depois = True
-            continue
-        partes = linha.split()
-        if depois and len(partes) >= 2:
-            nomes.add(partes[1])
-    return nomes
+    """Filter names from `ffmpeg -filters`: flags, name, then an in->out column like V->V or |->A.
+    Read by columns: FFmpeg 8.0.1 on Windows prints no ------ separator."""
+    return {m.group(1) for m in map(FILTRO.match, saida.splitlines()) if m}
 
 
 def ffmpeg(which=shutil.which, rodar=_rodar):
@@ -211,6 +210,7 @@ def relatorio(itens):
 
 
 def main(argv=None):
+    saida_utf8.utf8()
     p = argparse.ArgumentParser(description="Confere se esta máquina roda o estúdio.")
     p.add_argument("--projeto", default=os.getcwd(), help="pasta do projeto (lê .claude/settings*.json)")
     args = p.parse_args(argv)

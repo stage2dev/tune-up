@@ -6,11 +6,17 @@ import re
 import shutil
 import subprocess
 
+from .caminhos import NT
 from .config import AQUI, carregar_config, plans_relativo
 from .sessao import arquivo_perfil, log_erro
 from .usuario import caminho_user_json, idioma_efetivo, ler_usuario, modelo_proibido
 
 FERRAMENTAS = ("gh", "graphify", "uv", "node")
+
+
+def _fwd(p):
+    """Windows: forward slashes, since skills paste these paths into Bash where `\\` escapes."""
+    return p.replace("\\", "/") if NT and isinstance(p, str) else p
 
 
 def toplevel(cwd):
@@ -133,7 +139,7 @@ def pitfall_skills():
             if not isinstance(fm.get("paths"), list) or not fm["paths"] or nome in achadas or \
                     not RE_ARMADILHA.search("%s %s" % (fm.get("name") or "", fm.get("description") or "")):
                 continue
-            achadas[nome] = {"name": nome, "path": _real(arq, base, real_base), "paths": fm["paths"]}
+            achadas[nome] = {"name": nome, "path": _fwd(_real(arq, base, real_base)), "paths": fm["paths"]}
     return [achadas[n] for n in sorted(achadas)]
 
 
@@ -156,12 +162,12 @@ def montar_info(cwd=None):
         "names": nomes(language, usuario["names_override"]),
         "models": models,
         "forbidden_subagent_models": usuario["forbidden_subagent_models"],
-        "profile_path": arquivo_perfil(cfg.get("_perfil")),
-        "plans_dir": os.path.normpath(os.path.join(toplevel(cwd), plans)),
+        "profile_path": _fwd(arquivo_perfil(cfg.get("_perfil"))),
+        "plans_dir": _fwd(os.path.normpath(os.path.join(toplevel(cwd), plans))),
         "setup_done": existe,
         "tools": tools,
-        "plugin_source": repo_git(usuario["plugin_source"]),
-        "catalog_path": os.path.realpath(catalogo) if os.path.isfile(catalogo) else None,
+        "plugin_source": _fwd(repo_git(usuario["plugin_source"])),
+        "catalog_path": _fwd(os.path.realpath(catalogo)) if os.path.isfile(catalogo) else None,
         "pitfall_skills": pitfall_skills(),
         **globs_efetivos(cfg),
     }

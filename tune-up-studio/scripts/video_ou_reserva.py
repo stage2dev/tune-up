@@ -18,16 +18,32 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import reserva_slides  # noqa: E402
+import saida_utf8  # noqa: E402
 
 DEFAULT_BIN = os.path.join(os.path.dirname(HERE), "node", "node_modules", ".bin", "hyperframes")
 QUIET_ENV = {"HYPERFRAMES_NO_TELEMETRY": "1", "DO_NOT_TRACK": "1", "HYPERFRAMES_NO_UPDATE_CHECK": "1",
              "HYPERFRAMES_NO_AUTO_INSTALL": "1", "HYPERFRAMES_SKIP_SKILLS": "1"}
 
 
+def resolve(binary, nt=None):
+    """The file to run for binary, or None. On Windows npm's .bin/hyperframes is a sh shim (WinError 193):
+    the one to run is hyperframes.cmd, looked up in the binary's own folder only. shutil.which is
+    not used: there it also searches the current folder, where a session writes."""
+    if not (os.name == "nt" if nt is None else nt):
+        return binary if os.path.isfile(binary) and os.access(binary, os.X_OK) else None
+    base = os.path.abspath(binary)
+    exts = (".com", ".exe", ".bat", ".cmd")  # what CreateProcess can start; PATHEXT also lists .js, maybe .ps1
+    for achado in ([base] if os.path.splitext(base)[1].lower() in exts else [base + e for e in exts]):
+        if os.path.isfile(achado):
+            return achado
+    return None
+
+
 def try_hyperframes(binary, source, out, fps, timeout):
     """(ok, reason). ok only if the binary ran, exited 0 and the MP4 exists."""
-    if not (os.path.isfile(binary) and os.access(binary, os.X_OK)):
-        return False, "hyperframes not available: %s" % binary
+    configured, binary = binary, resolve(binary)
+    if not binary:
+        return False, "hyperframes not available: %s" % configured
     if os.path.exists(out):
         os.remove(out)  # a stale MP4 must not pass as this render
     env = dict(os.environ, **QUIET_ENV)
@@ -65,6 +81,7 @@ def run(source, slides, out, binary, duration=10.0, fps=30, ffmpeg="ffmpeg", tim
 
 
 def main(argv=None):
+    saida_utf8.utf8()
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--source", required=True, help="HyperFrames composition folder (fonte/)")
     p.add_argument("--slides", required=True, help="folder with slide PNGs for the reserve")

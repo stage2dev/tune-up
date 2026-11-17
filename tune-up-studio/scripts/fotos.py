@@ -18,6 +18,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import saida_utf8  # noqa: E402
+
 ENVIADO = re.compile(r"^fotos/([0-9a-f]{16})\.(png|jpg|webp)\Z")
 LOGO = re.compile(r"^assets/logo\.(png|jpg|jpeg|webp)\Z")
 PARA = re.compile(r"^[A-Za-z0-9_.]+(?:/[A-Za-z0-9_.]+)*\Z")
@@ -94,6 +97,7 @@ def gravar(pasta, nome, dados):
 
 
 def main(argv=None):
+    saida_utf8.utf8()
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--trabalho", required=True, help="absolute working folder")
     p.add_argument("--para", required=True, help="composition folder inside it, e.g. q1/fonte")

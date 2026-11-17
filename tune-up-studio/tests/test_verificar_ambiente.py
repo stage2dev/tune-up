@@ -28,6 +28,28 @@ FILTERS_OUT = """Filters:
  .S xfade             VV->V      Cross fade.
  .. zoompan           V->V       Apply Zoom & Pan effect.
 """
+# FFmpeg 8.0.1 on Windows: three flag columns, a ..C legend line and no ------ separator
+FILTERS_801 = """Filters:
+  T.. = Timeline support
+  .S. = Slice threading
+  ..C = Command support
+  A = Audio input/output
+  V = Video input/output
+  N = Dynamic number and/or type of input/output
+  | = Source or sink filter
+ ... blackdetect       V->V       Detect video intervals that are (almost) black.
+ ..C crop              V->V       Crop the input video.
+ ... format            V->V       Convert the input video to one of the specified pixel formats.
+ ... freezedetect      V->V       Detects frozen video input.
+ TSC scale             V->V       Scale the input video size and/or convert the image format.
+ ... setpts            V->V       Set PTS for the output video frame.
+ ... setsar            V->V       Set the pixel sample aspect ratio.
+ ... trim              V->V       Pick one continuous section from the input, drop the rest.
+ .S. xfade             VV->V      Cross fade one video with another video.
+ ... zoompan           V->V       Apply Zoom & Pan effect.
+ ... color             |->V       Provide an uniformly colored input.
+ ... amix              N->A       Audio mixing.
+"""
 ENCODERS_OUT = " V....D libx264              libx264 H.264 / AVC / MPEG-4 AVC\n"
 
 
@@ -77,6 +99,14 @@ class Ffmpeg(unittest.TestCase):
     def test_header_lines_are_not_filters(self):
         self.assertNotIn("=", va.nomes_de_filtros(FILTERS_OUT))
         self.assertIn("xfade", va.nomes_de_filtros(FILTERS_OUT))
+
+    def test_ffmpeg_801_without_separator(self):
+        self.assertEqual(va.nomes_de_filtros(FILTERS_801), set(va.FILTROS) | {"color", "amix"})
+        self.assertEqual(levels(va.ffmpeg(fake_which({"ffmpeg", "ffprobe"}), fake_run(filters=FILTERS_801))),
+                         [va.OK] * 3)
+
+    def test_old_format_names_exactly_the_filters(self):
+        self.assertEqual(va.nomes_de_filtros(FILTERS_OUT), set(va.FILTROS))
 
 
 class SystemAndNode(unittest.TestCase):

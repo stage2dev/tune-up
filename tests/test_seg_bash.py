@@ -4,7 +4,30 @@ import json
 import os
 import subprocess
 import unittest
+from unittest import mock
+
 from base import IS_WIN, SCRIPT, PromptBase, sh_path
+
+
+def comandos_verbos(raiz, script):
+    """The commands of test_verbos_e_globs_perguntam, with the paths spelled for Bash."""
+    raiz, script = sh_path(raiz), sh_path(script)
+    return ["patch %s x.diff" % script, "patch -d %s -p1 < x.diff" % raiz, "git -C %s apply x.diff" % raiz,
+            "tar -xf t.tar -C %s/scripts" % raiz, "unzip -o x.zip -d %s" % raiz,
+            "cat ~/l.txt >> ~/.cl*/plu*/data/*/p*.txt", "cp x ~/.conf?g/tune-up/user.json",
+            "cp x ~/.config/tune-*/novo.json"]
+
+
+class TestSpellingParaBash(unittest.TestCase):
+    def test_sh_path_troca_barra_invertida_no_windows(self):
+        with mock.patch("base.IS_WIN", True):
+            self.assertEqual(sh_path(r"C:\a\b"), "C:/a/b")
+
+    def test_comandos_sem_barra_invertida_no_windows(self):
+        with mock.patch("base.IS_WIN", True):
+            for cmd in comandos_verbos(r"C:\r\tune-up", r"C:\r\tune-up\scripts\guarda.py"):
+                with self.subTest(cmd=cmd):
+                    self.assertNotIn("\\", cmd)
 
 
 class TestSegVerbosDeEscrita(PromptBase):
@@ -108,10 +131,7 @@ class TestSegExecutoresEVerbos(PromptBase):
 
     def test_verbos_e_globs_perguntam(self):
         raiz = os.path.dirname(os.path.dirname(SCRIPT))
-        for cmd in ["patch %s x.diff" % SCRIPT, "patch -d %s -p1 < x.diff" % raiz, "git -C %s apply x.diff" % raiz,
-                    "tar -xf t.tar -C %s/scripts" % raiz, "unzip -o x.zip -d %s" % raiz,
-                    "cat ~/l.txt >> ~/.cl*/plu*/data/*/p*.txt", "cp x ~/.conf?g/tune-up/user.json",
-                    "cp x ~/.config/tune-*/novo.json"]:
+        for cmd in comandos_verbos(raiz, SCRIPT):
             with self.subTest(cmd=cmd):
                 self.assertEqual(self.bash(cmd), "perguntar")
 
@@ -140,8 +160,9 @@ class TestSegExecutoresEVerbos(PromptBase):
         self.assertEqual(self.bash(cmd), "perguntar")
         # was ~3 s (B2); measured ~0.33 s on macOS. Wall time failed under load (2.5-3.7 s with 3 suites
         # in parallel), so POSIX measures CPU. Windows: realpath opens every path part
-        # (CreateFile per component) and the CI runner measured ~2-3 s wall; the hook has 15 s.
-        self.assertLess(gasto() - t, 5.0 if IS_WIN else 1.5)
+        # (CreateFile per component); wall time passed alone at ~2-3 s but exceeded 5 s in the full run,
+        # so the Windows budget is 10 s (the hook timeout is 15 s).
+        self.assertLess(gasto() - t, 10.0 if IS_WIN else 1.5)
 
 
 class TestSegConversaArvore(PromptBase):

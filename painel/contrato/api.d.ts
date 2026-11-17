@@ -420,6 +420,35 @@ export interface RespModulos {
   avisos: string[];
 }
 
+// ---------------------------------------------------------------- GET /api/embutidos
+// Módulos que vêm dentro do tune-up (lista fixa: estudio, vendas). Chegam desligados; ligado mora em
+// <dados>/embutidos-ligados.json (só o servidor grava). Ligado, o módulo entra em /api/modulos e as ações
+// dele em /api/acoes. disponivel=false (ex.: Estúdio no Windows) traz o motivo e conta como desligado.
+export interface Embutido {
+  id: string;
+  titulo: string;
+  descricao: string;
+  ligado: boolean;
+  disponivel: boolean;
+  motivo: string | null;
+  avisos: string[];
+}
+
+export interface RespEmbutidos {
+  embutidos: Embutido[];
+}
+
+/** POST /api/embutidos/<id> (mesmas defesas dos outros POST). 404 id desconhecido; 400 se ligado não é
+ * booleano; 409 ao ligar um indisponível; 500 se não gravou (nada mudou). Erro = { erro }. */
+export interface ReqEmbutido {
+  ligado: boolean;
+}
+
+export interface RespMudarEmbutido {
+  ok: true;
+  embutidos: Embutido[];
+}
+
 import type { Bloco } from './blocos';
 export type { Tom, Bloco, CampoFormulario, BlocoFormulario, MensagemConversa, BlocoConversa, BlocoCaixa, BlocoImagem, BlocoGaleria, BlocoMidia, BlocoCores, BlocoEnvio, BlocoPrevia, BlocoOpcoes, ReqAcaoModulo, RespAcaoModulo } from './blocos';
 

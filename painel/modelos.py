@@ -19,6 +19,8 @@ import tempfile
 import threading
 import time
 
+import registro
+
 VALE_SIM = 7 * 24 * 3600
 VALE_NAO = 24 * 3600
 VALE_NAO_SEI = 600
@@ -89,7 +91,7 @@ class Modelos:
             fd, tmp = tempfile.mkstemp(prefix=".modelos-", dir=pasta)  # nasce 0600
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump(dado, f, ensure_ascii=False, indent=1)
-            os.replace(tmp, self.arquivo)
+            registro._insistir(lambda: os.replace(tmp, self.arquivo))  # Windows: arquivo aberto por outro
         except OSError:
             pass  # sem disco a sonda só vale até o painel reiniciar
 

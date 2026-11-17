@@ -33,6 +33,7 @@ import qa_cenas  # noqa: E402
 import qa_css  # noqa: E402
 import qa_quadros  # noqa: E402
 import qa_vazio  # noqa: E402
+import saida_utf8  # noqa: E402
 
 BLACK_FILTER = "blackdetect=d=0.5:pix_th=0.10"
 FREEZE_FILTER = "freezedetect=n=-70dB:d=1.0"  # nothing still for 1 s (ritmo.md)
@@ -347,6 +348,7 @@ def run(source, video, check_json, width, height, duration, fps, ffmpeg, ffprobe
 
 
 def main(argv=None):
+    saida_utf8.utf8()
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--source", required=True, help="composition folder (fonte/)")
     p.add_argument("--video", required=True, help="rendered MP4")

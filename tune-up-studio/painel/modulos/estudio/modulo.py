@@ -6,7 +6,7 @@ Comandos: `preparar`; para a marca, `marca.aprovar` (exige o sha256 curto que va
 `marca.redescobrir` e os da tela de marca (marca_acoes.py; `envio.recebido` só o servidor chama, depois de
 gravar um envio de INFO["envios"]); para as peças, `peca.aprovar` / `peca.recusar`. A aprovação da marca é gravada
 aqui (ctx["gravar_dono"] -> estudio-dono.json); as skills de marca só leem. `preparar`: roda scripts/preparar_estudio.py em segundo plano (npm ci
-leva mais que os 20 s de agir) e a tela mostra o <dados>/ambiente.json. O comando exige
+leva mais que os 20 s de agir) e a tela mostra o <dados_dir>/ambiente.json (pronto = mesma chave do package-lock). O comando exige
 {"confirmar": true}: é o único passo do estúdio com rede (risco `codigo`).
 Python 3.9, só biblioteca padrão.
 """
@@ -50,12 +50,18 @@ INFO = {"id": "estudio", "titulo": "Estúdio", "icone": "clapperboard",
                      "marca.tom": dict(CAMPO, ligado="booleano"),
                      "marca.remover_foto": {"destino": "texto", "arquivo": "texto"},
                      "peca.aprovar": PECA, "peca.recusar": PECA}}
+# o estúdio pede o sandbox do Claude Code, que não existe no Windows nativo (o catálogo já esconde as ações)
+SO_WSL2 = "O estúdio não roda no Windows. Use o WSL2 (o Linux dentro do Windows)."
 REL_MARCA = marca_acoes.REL_MARCA
 SCRIPT = os.path.join(marca_acoes.SCRIPTS, "preparar_estudio.py")
 COMANDOS = {"envio.recebido": marca_acoes.recebido, "marca.editar": marca_acoes.editar,
             "marca.sem_logo": marca_acoes.sem_logo, "marca.cores_da_logo": marca_acoes.cores_da_logo,
             "marca.letras": marca_acoes.letras, "marca.tom": marca_acoes.tom,
             "marca.remover_foto": marca_acoes.remover_foto}
+
+
+def _windows():
+    return os.name == "nt"
 
 
 def _ambiente(dados):
@@ -67,13 +73,23 @@ def _ambiente(dados):
         return None
 
 
-def _versao():
+def _chave():
+    """A do preparar_estudio.chave_do_ambiente(): 12 hex do sha256 do package-lock.json do estúdio."""
     try:
-        with open(os.path.join(os.path.dirname(os.path.dirname(SCRIPT)), ".claude-plugin", "plugin.json"),
-                  encoding="utf-8") as f:
-            return json.load(f).get("version")
-    except (OSError, ValueError, AttributeError):
+        with open(os.path.join(os.path.dirname(os.path.dirname(SCRIPT)), "node", "package-lock.json"), "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()[:12]
+    except OSError:
         return None
+
+
+def _mesma_chave(amb):
+    chave = _chave()
+    return chave is not None and amb.get("chave") == chave
+
+
+def _pasta(ctx):
+    """A pasta de dados do painel (cfg["dados_dir"]); ctx sem ela (chamada direta) usa ctx["dados"]."""
+    return ctx.get("dados_dir") or ctx.get("dados")
 
 
 def montar(ctx):
@@ -83,8 +99,8 @@ def montar(ctx):
     falta = ctx.get("dono_faltando")
     aprovada = m is not None and callable(falta) and not falta(["estudio.marca"])
     lista = pecas.pecas(ctx)
-    amb = _ambiente(ctx["dados"]) if ctx.get("dados") else None
-    pronto = bool(amb) and amb.get("pronto") is True and amb.get("estudio") == _versao()
+    amb = _ambiente(_pasta(ctx)) if _pasta(ctx) else None
+    pronto = bool(amb) and amb.get("pronto") is True and _mesma_chave(amb)
     texto = r["alertas"][0]["texto"] if amb else ("Clique em Preparar. O estúdio baixa as ferramentas dele "
                                                   "(cerca de 100 MB), uma vez só.")
     ambiente = [{"tipo": "texto", "titulo": "Passo 1 de 3: preparar o estúdio", "texto": texto}
@@ -101,20 +117,24 @@ def montar(ctx):
                  {"id": "fila", "titulo": "Fila", "blocos": pecas.aba_fila(lista)},
                  {"id": "galeria", "titulo": "Galeria", "blocos": pecas.aba_galeria(lista)},
                  {"id": "aprovacao", "titulo": "Aprovação", "blocos": pecas.aba_aprovacao(lista, ctx)}]
+    if _windows():  # nada de Preparar nem de pedir peça: uma linha só
+        r["alertas"] = [{"nivel": "atencao", "texto": SO_WSL2}]
+        for aba in (r["abas"][0], r["abas"][2]):
+            aba["blocos"] = [{"tipo": "texto", "titulo": "Estúdio", "texto": SO_WSL2}]
     return r
 
 
 def _montar_ambiente(ctx):
-    amb = _ambiente(ctx["dados"]) if ctx.get("dados") else None
+    amb = _ambiente(_pasta(ctx)) if _pasta(ctx) else None
     if amb is None:
         return {"alertas": [{"nivel": "info", "texto": "O estúdio ainda não foi preparado. "
                                          "Abra a aba 1. Ambiente e use Preparar."}]}
     if amb.get("estado") == "preparando":
         return {"alertas": [{"nivel": "info", "texto": "Preparando o estúdio%s. Leva alguns minutos; a tela se "
                              "atualiza sozinha. Se nada mudar em 20 min, use Preparar de novo." % _desde(amb)}]}
-    if amb.get("pronto") is True and amb.get("estudio") != _versao():
-        return {"alertas": [{"nivel": "atencao", "texto": "O estúdio foi preparado para outra versão do plugin. "
-                             "Use Preparar de novo."}]}
+    if amb.get("pronto") is True and not _mesma_chave(amb):
+        return {"alertas": [{"nivel": "atencao", "texto": "O estúdio foi preparado para outra versão das ferramentas "
+                             "dele. Use Preparar de novo."}]}
     if amb.get("pronto") is True:
         return {"alertas": [{"nivel": "info", "texto": "Estúdio pronto. Próximo passo: aprovar a marca."}]}
     faltas = [i.get("texto", "") for i in amb.get("verificacao") or [] if isinstance(i, dict) and i.get("nivel") == "erro"]
@@ -187,9 +207,11 @@ def agir(ctx, acao, dados):
         return COMANDOS[acao](ctx, dados)
     if acao != "preparar":
         return {"feito": False, "mensagem": "Ação desconhecida."}
+    if _windows():  # Popen(pass_fds=...) quebra no Windows; nada é gravado em disco
+        return {"feito": False, "mensagem": SO_WSL2}
     if dados.get("confirmar") is not True:
         return {"feito": False, "mensagem": "Confirme: isto baixa o HyperFrames pela internet (cerca de 100 MB)."}
-    pasta = ctx.get("dados")
+    pasta = _pasta(ctx)
     if not pasta:
         return {"feito": False, "mensagem": "Este projeto não tem pasta de dados do painel."}
     os.makedirs(pasta, exist_ok=True)

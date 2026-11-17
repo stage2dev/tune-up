@@ -3,6 +3,7 @@ review H2b, 21/10). Run: python3 -m unittest discover -s tests -q"""
 import json
 import os
 import unittest
+from unittest import mock
 from base import PromptBase
 
 
@@ -113,6 +114,26 @@ class TestSegLnDePerfil(SegBase):
             with self.subTest(cmd=cmd):
                 self.assertEqual(self.decisao(self.rodar("bash", {"cwd": b, "tool_name": "Bash",
                                                                   "tool_input": {"command": cmd}})), "perguntar")
+
+    def test_junction_e_mklink_do_windows_perguntam(self):  # Part 3: `mklink /J` and New-Item -ItemType Junction
+        a = os.path.join(self.tmp, "A", ".tune-up")
+        os.makedirs(a)
+        b = os.path.join(self.tmp, "B")
+        os.makedirs(b)
+        casos = [("Bash", "cmd //c mklink //J .tune-up ~/A/.tune-up"),
+                 ("Bash", 'cmd /c "mklink /D .tune-up %USERPROFILE%\\A\\.tune-up"'),
+                 ("Bash", "pwsh -c 'New-Item -ItemType Junction -Path .tune-up -Target ~/A/.tune-up'"),
+                 ("PowerShell", "New-Item -ItemType Junction -Path .tune-up -Target ~/A/.tune-up"),
+                 ("PowerShell", "ni .tune-up -it SymbolicLink -Value ../A/.tune-up"),
+                 ("PowerShell", 'cmd /c "mklink /J .tune-up ..\\A\\.tune-up"')]
+        for tool, cmd in casos:
+            with self.subTest(tool=tool, cmd=cmd), mock.patch.dict(os.environ, {"USERPROFILE": self.tmp}):
+                self.assertEqual(self.decisao(self.rodar("bash", {"cwd": b, "tool_name": tool,
+                                                                  "tool_input": {"command": cmd}})), "perguntar")
+        for tool, cmd in (("Bash", "cmd /c mklink /J y x"), ("PowerShell", "New-Item -ItemType Junction -Path y -Target x")):
+            with self.subTest(tool=tool, cmd=cmd):  # an unrelated link stays free
+                self.assertIsNone(self.decisao(self.rodar("bash", {"cwd": b, "tool_name": tool,
+                                                                   "tool_input": {"command": cmd}})))
 
 
 if __name__ == "__main__":

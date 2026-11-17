@@ -14,7 +14,7 @@ Issues / source: https://github.com/stage2dev/tune-up
 
 - Claude Code.
 - macOS / Linux: Python 3.9 or newer.
-- Windows: [Git for Windows](https://git-scm.com/download/win) (needed for `claude plugin marketplace add` and for the hooks, which run in Git Bash) and Python 3.9 or newer from python.org or `winget install Python.Python.3.12`. The Microsoft Store `python3` alias is skipped automatically.
+- Windows: [Git for Windows](https://git-scm.com/download/win), with Git Bash, is required (needed for `claude plugin marketplace add` and for the hooks, which run in Git Bash) and Python 3.9 or newer from python.org or `winget install Python.Python.3.12`. The Microsoft Store `python3` alias is skipped automatically.
 
 ## Install
 
@@ -154,9 +154,18 @@ You can override models and effort per role in the `models` key of `user.json`.
 - **Follow-up**: open work lists.
 - **Project modules**: a project can add its own screens (declarative blocks) and actions in `.tune-up/painel-projeto/`, without touching the panel code.
 
-Buttons only launch actions from a closed list; each action carries its own tool rules. Details, configuration (`.tune-up/painel.json`) and the module contract: [`painel/README.md`](painel/README.md) (Portuguese). macOS and Linux; Python 3.9+; no install step.
+Buttons only launch actions from a closed list; each action carries its own tool rules. Details, configuration (`.tune-up/painel.json`) and the module contract: [`painel/README.md`](painel/README.md) (Portuguese). Works on macOS, Linux and Windows (Git Bash); Python 3.9+; no install step.
 
-Optional modules: `tune-up-studio` (posts and short videos), `tune-up-vendas` (WhatsApp sales screen) and `tune-up-mkt` (marketing accounts, skills and a guard for ad-account and public-post writes; 0.1.0 is a skeleton, see [`tune-up-mkt/README.md`](tune-up-mkt/README.md)). Install with `/plugin install <name>@tune-up`.
+Other optional plugin: `tune-up-mkt` (marketing accounts, skills and a guard for ad-account and public-post writes; 0.1.0 is a skeleton, see [`tune-up-mkt/README.md`](tune-up-mkt/README.md)). Install with `/plugin install tune-up-mkt@tune-up`. Studio and Vendas come inside tune-up: see the next section.
+
+## Built-in modules
+
+Studio and Vendas come inside tune-up and arrive off. Open the panel's **Módulos** screen (`/modulos`) and press the button on the one you want; press it again to turn it off. No `painel.json` edit and no separate plugin install.
+
+- **Studio** (posts, short videos and ads with your brand): five commands, typed by you, Claude does not start them on its own: `/tune-up:post`, `/tune-up:video`, `/tune-up:anuncio`, `/tune-up:marca`, `/tune-up:marca-ler`. Works on macOS, Linux and WSL2; not on native Windows. Details: [`tune-up-studio/README.md`](tune-up-studio/README.md).
+- **Vendas** (WhatsApp sales screen): first version tested only on macOS; needs Docker. Details: [`vendas/README.md`](vendas/README.md).
+
+Do NOT install the separate `tune-up-studio` 0.4.0 plugin together with tune-up 2.11.0 or later: its commands now live in the core and would show twice. Whoever already prepared the Studio must prepare it again, once (Estúdio screen, Ambiente, Preparar).
 
 ## Guards (hooks)
 
@@ -182,7 +191,7 @@ Some guards only warn or ask, they do not block: research mode, self-protection,
 
 ### Windows notes
 
-- The hooks need Git Bash. Without it Claude Code runs hooks in PowerShell and they fail. Fix: install Git for Windows, or set `CLAUDE_CODE_GIT_BASH_PATH` to its `bash.exe`.
+- Git Bash is REQUIRED. Without it Claude Code runs hooks in PowerShell, `sh` does not exist there, and every tune-up guard is silently OFF, with no error shown. The panel warns about it. Fix: install Git for Windows, or set `CLAUDE_CODE_GIT_BASH_PATH` to its `bash.exe`.
 - If no Python 3.9+ is found, the hooks switch themselves off (fail-open) and the session start says so. Install Python and reopen Claude Code.
 - The `PowerShell` tool goes through the same guard as `Bash` (git/gh/psql checks, protected files, `bash_rules`). In talk and research modes only obviously read-only PowerShell passes (`Get-ChildItem`, `Get-Content`, `Select-String`, `Test-Path`, `git status/log/diff/show`...); everything else asks.
 - Wrappers are opened one level, like `bash -c` and `eval`: `cmd /c`, `powershell "..."` / `pwsh -Command`, `iex`, and a string piped into `sh`, `bash` or `iex`. `$env:NAME` and `(Join-Path ...)` with literal parts are understood. `.cmd`, `.bat`, `.ps1` and `.com` shims count as the command they wrap.

@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import qa_atencao  # noqa: E402
 import qa_quadros  # noqa: E402
 import qa_vazio  # noqa: E402
+import saida_utf8  # noqa: E402
 
 STUDIO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SIZE_IDS = {"4:5": "instagram-feed-organico-tamanho", "1:1": "instagram-feed-quadrado-tamanho"}
@@ -403,11 +404,11 @@ def run_final(folder, width, height, atencao=False):
 
 
 def main(argv=None):
+    saida_utf8.utf8()
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--source", help="composition folder (fonte/)")
     p.add_argument("--png", help="rendered still")
-    p.add_argument("--check-json", help="optional: output of check --json --strict; only its saved.report "
-                                         "path is used (default: newest report HyperFrames saved)")
+    p.add_argument("--check-json", help="optional check --json --strict output; uses only saved.report (default: newest)")
     p.add_argument("--formato", help="4:5 or 1:1: size from formatos.json (overrides --width/--height)")
     p.add_argument("--final", metavar="FOLDER", help="re-check every q<N>/ frame in FOLDER (needs --formato)")
     p.add_argument("--width", type=int, default=1080)

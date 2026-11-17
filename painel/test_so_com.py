@@ -36,7 +36,7 @@ class TesteSoCom(unittest.TestCase):
         return c
 
     def ids(self, bruto):
-        return [a["id"] for a in catalogo.catalogo_do_projeto(self.cfg(bruto))[0]]
+        return [a["id"] for a in catalogo.catalogo_do_projeto(self.cfg(bruto), "linux")[0]]  # no win32 o sandbox some
 
     def test_desligada_por_padrao(self):
         for bruto in ({}, {"estudio": {"video_rede_local": False}}, {"estudio": {"video_rede_local": "true"}},

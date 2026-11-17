@@ -23,6 +23,7 @@ import importlib.util
 _s = importlib.util.spec_from_file_location("estudio_real", %r)
 _m = importlib.util.module_from_spec(_s)
 _s.loader.exec_module(_m)
+_m._windows = lambda: False  # estes testes valem para macOS/Linux; o Windows está em test_modulo_windows.py
 INFO = _m.INFO
 montar = _m.montar
 agir = _m.agir
@@ -120,10 +121,10 @@ class TesteMarca(Base):
         self.assertIn("Passo 1 de 3", json.dumps(abas["novo"], ensure_ascii=False))  # sem estúdio preparado, o 1º passo
 
     def test_novo_mostra_o_passo_que_falta_e_depois_os_formularios(self):
-        with open(os.path.join(os.path.dirname(os.path.dirname(REAL)), os.pardir, os.pardir, ".claude-plugin",
-                               "plugin.json"), encoding="utf-8") as f:
-            versao = json.load(f)["version"]
-        escrever(os.path.join(self.cfg["dados_dir"], "ambiente.json"), json.dumps({"pronto": True, "estudio": versao}))
+        with open(os.path.join(os.path.dirname(os.path.dirname(REAL)), os.pardir, os.pardir, "node",
+                               "package-lock.json"), "rb") as f:
+            chave = hashlib.sha256(f.read()).hexdigest()[:12]  # preparar_estudio.chave_do_ambiente
+        escrever(os.path.join(self.cfg["dados_dir"], "ambiente.json"), json.dumps({"pronto": True, "chave": chave}))
 
         def novo():
             abas = modulos.montar(self.cfg, "estudio", usar_cache=False)[1]["abas"]

@@ -21,6 +21,9 @@ import painel  # noqa: E402
 import transcricao  # noqa: E402
 from test_chat import NIVEL, CLIChat  # noqa: E402
 from test_lancador import cfg_teste  # noqa: E402
+import importlib.util  # noqa: E402
+_spec = importlib.util.spec_from_file_location("atalho", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tests", "atalho.py"))
+_atalho = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_atalho)
 
 
 def escrever(caminho, texto):
@@ -199,20 +202,22 @@ class TesteDescoberta(Base):
         self.assertEqual((hs["do-repo"]["origem"], hs["do-repo"]["listada"]), ("Projeto", False))
         self.assertFalse(hs["desligado:video-curto"]["listada"])  # settings do repo não vale
         atalho = os.path.join(self.tmp, "atalho-proj")
-        os.symlink(self.proj, atalho)
+        _atalho.link_dir(self.proj, atalho)
         self.assertTrue(self.por_nome(self.cfg(repo=atalho))["do-projeto"]["listada"])
 
     def test_nome_da_pasta_e_atalhos(self):
         pasta = os.path.join(self.home, ".claude", "skills")
         skill(pasta, "tem espaço", cabeca="---\nname: bonito\n---\n")
         skill(os.path.join(self.tmp, "fora"), "segredo")
-        os.makedirs(os.path.join(pasta, "atalho-arquivo"))
-        os.symlink(os.path.join(self.tmp, "fora", "segredo", "SKILL.md"), os.path.join(pasta, "atalho-arquivo", "SKILL.md"))
-        os.symlink(os.path.join(self.tmp, "fora", "segredo"), os.path.join(pasta, "atalho-pasta"))
-        hs = self.por_nome()
+        _atalho.link_dir(os.path.join(self.tmp, "fora", "segredo"), os.path.join(pasta, "atalho-pasta"))
+        hs = self.por_nome()  # antes do atalho de arquivo: a junction não pede privilégio no Windows
         self.assertNotIn("bonito", hs)
-        self.assertNotIn("atalho-arquivo", hs)
         self.assertEqual(hs["segredo"]["_pasta"], os.path.join(pasta, "atalho-pasta"))  # pasta-atalho vale
+        os.makedirs(os.path.join(pasta, "atalho-arquivo"))
+        _atalho.symlink(os.path.join(self.tmp, "fora", "segredo", "SKILL.md"), os.path.join(pasta, "atalho-arquivo", "SKILL.md"))
+        hs = self.por_nome()
+        self.assertNotIn("atalho-arquivo", hs)
+        self.assertEqual(hs["segredo"]["_pasta"], os.path.join(pasta, "atalho-pasta"))
 
     def test_config_pastas(self):
         escrever(os.path.join(self.proj, ".tune-up", "painel.json"), json.dumps({"habilidades_pastas": [

@@ -3,11 +3,12 @@ import json
 import os
 import re
 import time
-from .bash_parse import analisar_git, comandos, flags_curtas, junta_dir, posicionais, sem_heredoc
+from .bash_parse import ESCOPO, TEXTO_PS, analisar_git, comandos, flags_curtas, junta_dir, posicionais, sem_heredoc
 from .config import SEVERIDADE, TESTE
 from .bash_guarda import chamada_info, chamada_rota, citacoes, grava_algo, ln_da_guarda, nega_em_conversa, nivel_do_texto
 from .escrita import alvos_de_escrita, alvos_que_contem, contem_protegida, protecao_da_guarda
 from .mensagens import msg
+from .powershell import no_bash
 from .sessao import decisao_pre, dentro, ler_sessao, log_erro
 from .sql_prod import pg_remoto, pg_remoto_no_texto, supabase_remoto
 
@@ -138,6 +139,8 @@ def ev_bash(d, cfg):
     if d.get("tool_name") == "PowerShell":  # same hook (matcher Bash|PowerShell)
         from .powershell import ev_powershell
         return ev_powershell(cmd, d, cfg)
+    if "\x00" in cmd:  # a NUL could forge the parser's internal markers
+        return decisao_pre("perguntar", "tune-up: malformed hook input (tool_input/cwd); confirm the command.")
     if chamada_info(cmd.strip()) or chamada_rota(cmd.strip()):  # read-only guarda.py calls
         return None
     return decidir(achados_bash(cmd, d, cfg))
@@ -172,7 +175,12 @@ def achados_bash(cmd, d, cfg, regras_em=None):
     diretorio = cwd
     aprender = d.get("prompt_id") and sess.get("aprender_prompt_id") == d.get("prompt_id")
     executor, links, escrita, escreve = [], [], [], False  # for nivel_do_texto
+    voltas = []  # a powershell/pwsh/cmd wrapper's own `cd` stays inside it
     for seg, toks in comandos(limpo):
+        if toks[:1] == [ESCOPO]:
+            diretorio = voltas.pop() if toks[1:] == ["-"] and voltas else diretorio
+            voltas += [diretorio] if toks[1:] == ["+"] else []
+            continue
         if not toks:  # `D=~/.config/tune-up` alone still feeds the write text
             escrita.append(citacoes(seg, toks, diretorio, [])[2])
             continue
@@ -183,9 +191,10 @@ def achados_bash(cmd, d, cfg, regras_em=None):
         e, l, w = citacoes(seg, toks, diretorio, alvos)
         executor, links, escrita = executor + e, links + l, escrita + [w]
         escreve = escreve or grava_algo(seg, toks, diretorio)
+        achados.extend(no_bash(toks, sess))  # powershell/pwsh/cmd: unreadable or talk/research mode asks
         if conversa and (codigo_em_conversa(alvos, toks, diretorio, d, cfg) or
                          nega_em_conversa(seg, toks, diretorio)):
-            add("bloquear", msg("talk_codigo", os.path.basename(toks[0])))
+            add("bloquear", msg("talk_codigo", "PowerShell" if toks[0] == TEXTO_PS else os.path.basename(toks[0])))
         if roda_confiar(toks, diretorio):
             niveis.add("turno")
         if "sempre" in niveis:
@@ -216,7 +225,8 @@ def achados_bash(cmd, d, cfg, regras_em=None):
             elif sub == "add":
                 letras, longas = flags_curtas(args, "")
                 pos = posicionais(args, (), ("--chmod", "--pathspec-from-file"))
-                alvos_amplos = {".", "./", ":/", "*", ":/*"}
+                # `.\*` as PowerShell or quotes hand it over; unquoted, Bash turns it into `.*`
+                alvos_amplos = {".", "./", "./*", ".*", ":/", "*", ":/*", ".\\", ".\\*"}
                 if letras & {"A", "u"} or longas & {"--all", "--update"} or \
                         any(p in alvos_amplos for p in pos):
                     add("bloquear", msg("add"))

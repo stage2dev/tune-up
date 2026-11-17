@@ -28,6 +28,7 @@ CATALOG = {
         "prod_cli": "command touches a remote database/project (%s); confirm first — an authorization phrase does not unlock it.",
         "pesquisa": "research mode on (%s); confirm or say \"go ahead\" to leave it.",
         "ps_ilegivel": "could not read this PowerShell command (%s); confirm it.",
+        "ps_alvo_variavel": "PowerShell: the write path comes from a variable or expression the guard does not read (%s); confirm it.",
         "prot_settings_bash": "the command writes to Claude's permissions and hooks (settings*.json); confirm.",
         "prot_perfil_bash": "the command writes to the tune-up profile/plugin/trust list; "
                             "confirm, or say \"new rule\" or run /tune-up:profile this turn.",
@@ -79,6 +80,8 @@ CATALOG = {
         "protected_paths_ignorados": "tune-up: user.json protected_paths ignored (not absolute or not "
                                      "text): %s",
         "erros_hooks": "tune-up: %d hook errors since the last session; see %s",
+        "sem_git_bash": "tune-up: Git Bash was not found, so the tune-up guards are OFF in this session. "
+                        "Install Git for Windows or set CLAUDE_CODE_GIT_BASH_PATH to its bash.exe, then reopen Claude Code.",
         # confiar / main
         "confiar_falhou": "tune-up: could not trust the profile (%s)",
         "confiar_nao_existe": "tune-up: %s does not exist",
@@ -124,6 +127,7 @@ CATALOG = {
         "prod_cli": "comando que mexe em banco/projeto remoto (%s); confirme antes — frase de autorização não libera.",
         "pesquisa": "modo pesquisa ativo (%s); confirme ou diga \"pode fazer\" para sair.",
         "ps_ilegivel": "não consegui ler este comando do PowerShell (%s); confirme.",
+        "ps_alvo_variavel": "PowerShell: o caminho de escrita vem de uma variável ou expressão que a trava não lê (%s); confirme.",
         "prot_settings_bash": "o comando grava nas permissões e hooks do Claude (settings*.json); confirme.",
         "prot_perfil_bash": "o comando grava no perfil/plugin/lista de confiança do tune-up; "
                             "confirme ou diga \"regra nova\"/\"perfil\" neste turno.",
@@ -169,6 +173,8 @@ CATALOG = {
         "protected_paths_ignorados": "tune-up: protected_paths do user.json ignorado (não absoluto ou "
                                      "não é texto): %s",
         "erros_hooks": "tune-up: %d erros nos hooks desde a última sessão; veja %s",
+        "sem_git_bash": "tune-up: Git Bash não foi encontrado, então as travas do tune-up estão DESLIGADAS nesta sessão. "
+                        "Instale o Git for Windows ou defina CLAUDE_CODE_GIT_BASH_PATH com o bash.exe dele e reabra o Claude Code.",
         "confiar_falhou": "tune-up: não consegui confiar o perfil (%s)",
         "confiar_nao_existe": "tune-up: %s não existe",
         "confiar_ok": "tune-up: perfil confiado: %s",

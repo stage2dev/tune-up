@@ -49,7 +49,7 @@ Mold (a language school, invented): `{"composicao": "palco", "titulo": "Trava no
 Change `composicao` and `variante.campo` from one frame to the next (cover on the light field, payoff on the dark one), keep `lado`; one `heroi.svg` serves every frame.
 
 ## Run it
-`python3 -I ${CLAUDE_PLUGIN_ROOT}/scripts/montar.py --tipo post --peca q<N>/peca.json --heroi heroi.svg --out q<N>/fonte --formato=<R>` (add `--quadro capa|ponto|fecho` in a carousel). It prints the sizes it chose (`titulo: 133 px em 2 linha(s)`, `heroi: 61% da largura`, `oferta: 226 px`) or, with exit 1, the one thing to fix.
+`python3 -I ${CLAUDE_PLUGIN_ROOT}/tune-up-studio/scripts/montar.py --tipo post --peca q<N>/peca.json --heroi heroi.svg --out q<N>/fonte --formato=<R>` (add `--quadro capa|ponto|fecho` in a carousel). It prints the sizes it chose (`titulo: 133 px em 2 linha(s)`, `heroi: 61% da largura`, `oferta: 226 px`) or, with exit 1, the one thing to fix.
 
 ## When the look or the QA asks for a change
 | what you see | change |

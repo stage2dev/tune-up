@@ -106,7 +106,7 @@ def perfis_confiaveis():
         if not arquivo_seguro(p):
             log_erro("config", "perfis_confiaveis.txt has wrong owner or permissions: %s" % p)
             return out
-        with open(p, encoding="utf-8") as f:
+        with open(p, encoding="utf-8-sig") as f:
             for linha in f:
                 linha = linha.rstrip("\r\n")
                 if not linha.strip():
@@ -267,7 +267,7 @@ def ler_config_projeto(perfil):
     try:
         with open(real, "rb") as f:
             dados = f.read()  # one read: the hash and the parsed JSON are the same bytes
-        proj = json.loads(dados.decode("utf-8"))
+        proj = json.loads(dados.decode("utf-8-sig"))  # hash stays on the raw bytes
         if not isinstance(proj, dict):
             raise ValueError("not a JSON object")
     except Exception as e:

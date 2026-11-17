@@ -60,7 +60,7 @@ Check: `grep -c "http" docs/prototype/index.html` must print 0. Regenerating ove
 
 ## Step 4 - Approval
 
-Tell the user to open it: `open docs/prototype/index.html` (macOS), `xdg-open ...` (Linux) or double-click it. Ask what to change; apply changes to the tokens first, then regenerate. Do not start implementing the real UI before the user approves.
+Tell the user to open it: `open docs/prototype/index.html` (macOS), `xdg-open ...` (Linux), `start "" docs\prototype\index.html` (Windows cmd) or double-click it. Ask what to change; apply changes to the tokens first, then regenerate. Do not start implementing the real UI before the user approves.
 
 ## Step 5 - Finish
 

@@ -11,6 +11,8 @@ PREFIXO_VALOR = {"nice": "n", "timeout": "sk", "xargs": "aEdILnPs"}  # flags cur
 SEP_CHARS = set("();|&\n")
 PALAVRAS_SHELL = {"then", "do", "else", "elif", "if", "while", "until", "!", "{", "}", "(", ")"}
 SHELLS = {"bash", "sh", "zsh"}
+TEXTO_PS = "\x00ps"  # marker segment [TEXTO_PS, words...]: PowerShell text-check words (see comandos)
+ESCOPO = "\x00escopo"  # marker segments [ESCOPO, "+"] / [ESCOPO, "-"] around a wrapper's own segments
 RE_ATRIB = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 # heredoc de verdade, ou trecho entre aspas / $((…)) onde `<<` não abre heredoc
 RE_HEREDOC_OU_ASPAS = re.compile(
@@ -63,18 +65,12 @@ def segmentos(cmd):
 
 
 def comando_interno(toks):
-    """String de `bash|sh|zsh -c "<x>"`, `eval "<x>"` ou `cmd /c|/k <x>` (Windows; `%X%` vira
-    `$X`); senão None."""
+    """String de `bash|sh|zsh -c "<x>"` ou `eval "<x>"`; senão None."""
     if not toks:
         return None
     exe = os.path.basename(toks[0])
     if exe == "eval":
         return " ".join(toks[1:])
-    if exe == "cmd":
-        for j, t in enumerate(toks[1:], 1):
-            if re.fullmatch(r"/{1,2}[cCkK]", t):  # Git Bash needs `//c`
-                return re.sub(r"%(\w+)%", r"$\1", " ".join(toks[j + 1:])) if toks[j + 1:] else None
-        return None
     if exe in SHELLS:
         for j, t in enumerate(toks[1:], 1):
             if t.startswith("-") and not t.startswith("--") and "c" in t[1:]:
@@ -85,10 +81,26 @@ def comando_interno(toks):
 
 
 def comandos(limpo):
-    """Comandos simples do texto, abrindo `bash -c`/`eval` um nível."""
-    out = []
+    """Comandos simples do texto, abrindo `bash -c`/`eval` um nível. `powershell|pwsh <x>` and
+    `cmd /c|//c <x>` are read as the PowerShell tool reads them (powershell.do_bash): the command
+    itself, its Bash rewrite between ESCOPO markers (a `cd` inside does not reach the segments after
+    the wrapper), and a TEXTO_PS segment with the words of its text check (unreadable: all its words).
+    With `$'` in the text (shlex does not read it) no ESCOPO markers: a `cd` may really be outside."""
+    from .powershell import do_bash
+    out, escopo = [], "$'" not in limpo
     for seg in segmentos(limpo):
         toks = comando_simples(seg)
+        try:
+            ps = do_bash(toks)
+        except ValueError:
+            ps = ("", toks)
+        if ps is not None:
+            out += [(seg, toks)] + [([ESCOPO, "+"], [ESCOPO, "+"])] * escopo
+            out.extend((s2, comando_simples(s2)) for s2 in segmentos(sem_heredoc(ps[0])))
+            out += [([ESCOPO, "-"], [ESCOPO, "-"])] * escopo
+            if ps[1]:
+                out.append(([TEXTO_PS] + ps[1], [TEXTO_PS] + ps[1]))
+            continue
         interno = comando_interno(toks)
         if interno is None:
             out.append((seg, toks))

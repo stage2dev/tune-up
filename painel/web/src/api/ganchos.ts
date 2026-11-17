@@ -2,7 +2,7 @@
 // (nunca isLoading) para mostrar esqueleto; so mostre "vazio" quando !isPending && !isError.
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, ErroApi } from './cliente';
-import type { Acao, Acompanhamento, DadosModulo, EstadoPainel, Eventos, Execucao, ListaModulos, ReqAcaoModulo, RespAcaoModulo, RespHabilidades, RespModelos, Sessao } from './tipos';
+import type { Acao, Acompanhamento, DadosModulo, EstadoPainel, Eventos, Execucao, ListaEmbutidos, ListaModulos, ReqAcaoModulo, RespAcaoModulo, RespHabilidades, RespModelos, Sessao } from './tipos';
 import { obterSessao } from './cliente';
 import { buscarEventos, intervaloEventos, type EventosCache } from './eventos';
 
@@ -17,6 +17,7 @@ export const chaves = {
   modelos: ['modelos'] as const,
   habilidades: ['habilidades'] as const,
   modulos: ['modulos'] as const,
+  embutidos: ['embutidos'] as const,
   modulo: (id: string) => ['modulo', id] as const,
   acompanhamento: ['acompanhamento'] as const,
 };
@@ -40,6 +41,24 @@ export const useExecucoes = () =>
 /** Modulos habilitados no pacote do projeto (menu lateral). Sem modulos, a lista vem vazia. */
 export const useModulos = () =>
   useQuery({ queryKey: chaves.modulos, queryFn: () => apiGet<ListaModulos>('/api/modulos'), refetchInterval: 30_000 });
+
+/** Partes extras embutidas (tela Modulos), com o estado ligado/desligado. */
+export const useEmbutidos = () =>
+  useQuery({ queryKey: chaves.embutidos, queryFn: () => apiGet<ListaEmbutidos>('/api/embutidos').then((r) => r.embutidos) });
+
+/** Liga/desliga uma parte extra. Usa a lista devolvida pelo servidor (sem otimismo) e renova menu e botoes. */
+export function useLigarEmbutido() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ligado }: { id: string; ligado: boolean }) =>
+      apiPost<ListaEmbutidos & { ok: boolean }>(`/api/embutidos/${encodeURIComponent(id)}`, { ligado }),
+    onSuccess: (r) => {
+      qc.setQueryData(chaves.embutidos, r.embutidos);
+      void qc.invalidateQueries({ queryKey: chaves.modulos });
+      void qc.invalidateQueries({ queryKey: chaves.acoes });
+    },
+  });
+}
 
 /** Intervalo de releitura do modulo em ms: atualizar_em (s) preso em 2..60; sem numero, 15 s. */
 export function intervaloDeAtualizacao(v: unknown): number {
