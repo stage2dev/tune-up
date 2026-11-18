@@ -10,6 +10,7 @@ import os  # noqa: E402
 import shutil  # noqa: E402
 import tempfile  # noqa: E402
 import threading  # noqa: E402
+import time  # noqa: E402
 import types  # noqa: E402
 import unittest  # noqa: E402
 from unittest import mock  # noqa: E402
@@ -82,7 +83,7 @@ class TesteHTTPEmbutidos(unittest.TestCase):
         st, r = self.get("/api/embutidos")
         self.assertEqual(st, 200)
         lista = por_id(r["embutidos"])
-        self.assertEqual(set(lista), {"estudio", "vendas"})
+        self.assertEqual(set(lista), {"estudio", "vendas", "mkt"})
         for e in lista.values():
             self.assertIs(e["ligado"], False)
             self.assertIs(e["disponivel"], True)
@@ -122,6 +123,35 @@ class TesteHTTPEmbutidos(unittest.TestCase):
             self.assertIsInstance(r["erro"], str)
         self.assertFalse(os.path.exists(arq))
 
+    def test_mkt_aba_contas_e_conferir_sem_rodar_o_contas(self):
+        """C10: ligado, GET /api/modulos/mkt dá 200 com a aba contas; desligado, o mesmo 404 dos outros embutidos.
+        O lançador do módulo é trocado por um falso: nenhum contas.py roda aqui."""
+        acao = {"acao": "conferir", "dados": {}}
+        for mid in ("mkt", "vendas"):
+            self.assertEqual(self.get("/api/modulos/" + mid)[0], 404, mid)
+        self.assertEqual(self.post("/api/modulos/mkt/acao", acao)[0], 404)
+        self.assertEqual(self.post("/api/embutidos/mkt", {"ligado": True})[0], 200)
+        st, r = self.get("/api/modulos/mkt")
+        self.assertEqual(st, 200, r)
+        self.assertEqual([a["id"] for a in r["abas"]], ["contas"])
+        mod = modulos.carregar(self.cfg, "mkt")
+        chamadas = []
+        mod.lancar = lambda argv, fd, cwd: chamadas.append(argv) or os.getpid()  # pid vivo: este processo
+        self.addCleanup(modulos.esquecer)
+        inicio = time.monotonic()
+        st, r = self.post("/api/modulos/mkt/acao", acao)
+        self.assertLess(time.monotonic() - inicio, 2.0)
+        self.assertEqual(st, 200, r)
+        self.assertEqual(self.get("/api/modulos/mkt")[1]["abas"][0].get("atualizar_em"), 3)
+        st, r = self.post("/api/modulos/mkt/acao", acao)
+        self.assertEqual(st, 409, r)
+        self.assertIn("Já está conferindo", r["erro"])
+        self.assertEqual(self.post("/api/modulos/mkt/acao", {"acao": "conferir", "dados": {"raiz": "/x"}})[0], 400)
+        self.assertEqual(len(chamadas), 1)
+        self.assertEqual(chamadas[0][-3], os.path.realpath(self.cfg.get("raiz") or self.cfg["workspace"]))
+        self.assertEqual(self.post("/api/embutidos/mkt", {"ligado": False})[0], 200)
+        self.assertEqual(self.get("/api/modulos/mkt")[0], 404)
+
     def test_c11_windows_estudio_indisponivel(self):
         with mock.patch.object(embutidos.sys, "platform", "win32"):
             lista = por_id(self.get("/api/embutidos")[1]["embutidos"])
@@ -155,7 +185,7 @@ class TesteEmbutidosProjeto(unittest.TestCase):
     def plugin_velho(self, nome):
         """installed_plugins.json com o plugin separado de antes; o código dele quebra se for importado."""
         inst = os.path.join(self.tmp, "cache", nome, "9")
-        for mid in ("estudio", "vendas"):
+        for mid in ("estudio", "vendas", "mkt"):
             escrever(os.path.join(inst, "painel", "modulos", mid, "modulo.py"), "raise RuntimeError('velho')\n")
         escrever(os.path.join(inst, "painel", "acoes", "velho.json"), json.dumps(
             {"acoes": [{"id": "estudio.velho", "area": "dev", "risco": "leitura", "prompt": "/velho"}]}))
@@ -164,7 +194,7 @@ class TesteEmbutidosProjeto(unittest.TestCase):
 
     def test_c8_modulos_reais_importam_e_montam(self):
         cfg = self.cfg()
-        for mid in ("estudio", "vendas"):
+        for mid in ("estudio", "vendas", "mkt"):
             self.assertEqual(embutidos.mudar(cfg, mid, {"ligado": True})[0], 200)
             caminho = modulos.caminho_do_modulo(cfg, mid)
             self.assertEqual(caminho, os.path.realpath(embutidos.caminho(mid)))
@@ -173,7 +203,7 @@ class TesteEmbutidosProjeto(unittest.TestCase):
             codigo, corpo = modulos.montar(cfg, mid, usar_cache=False)
             self.assertEqual(codigo, 200, corpo)  # monta num projeto vazio (tela com alertas de "prepare")
         lista = modulos.listar(cfg)
-        self.assertEqual([m["id"] for m in lista["modulos"]], ["estudio", "vendas"], lista["avisos"])
+        self.assertEqual([m["id"] for m in lista["modulos"]], ["estudio", "vendas", "mkt"], lista["avisos"])
 
     def test_c8_acao_do_pacote_nao_tira_as_travas_do_embutido(self):
         with open(ESTUDIO_JSON, encoding="utf-8") as f:
@@ -204,7 +234,7 @@ class TesteEmbutidosProjeto(unittest.TestCase):
         self.assertEqual([a["titulo"] for a in acoes if a["id"] == "estudio.post"], ["Post do pacote"])
 
     def test_c10_linha_antiga_carrega_do_nucleo(self):
-        for plugin, mid in (("tune-up-studio", "estudio"), ("tune-up-vendas", "vendas")):
+        for plugin, mid in (("tune-up-studio", "estudio"), ("tune-up-vendas", "vendas"), ("tune-up-mkt", "mkt")):
             self.plugin_velho(plugin)
             cfg = self.cfg(modulos_de_plugins=["%s@qualquer:%s" % (plugin, mid)])
             self.assertEqual(modulos.caminho_do_modulo(cfg, mid), embutidos.caminho(mid))
@@ -275,13 +305,13 @@ class TesteEmbutidosProjeto(unittest.TestCase):
         for ruim in ("{nao json", '{"estudio": "sim"}', "[]", "x" * 5000):
             escrever(arq, ruim)
             lista = embutidos.listar(cfg)[1]["embutidos"]
-            self.assertEqual([e["ligado"] for e in lista], [False, False], ruim)
+            self.assertEqual([e["ligado"] for e in lista], [False, False, False], ruim)
             self.assertTrue(all(any("não abre" in a for a in e["avisos"]) for e in lista))
             self.assertEqual(embutidos.ligados(cfg), [])
             self.assertEqual(modulos.regras_de_negar(cfg), list(embutidos.NEGAR_VENDAS))
         self.assertEqual(embutidos.mudar(cfg, "estudio", {"ligado": True})[0], 200)  # regrava: o resto false
         with open(arq, encoding="utf-8") as f:
-            self.assertEqual(json.load(f), {"estudio": True, "vendas": False})
+            self.assertEqual(json.load(f), {"estudio": True, "vendas": False, "mkt": False})
         os.remove(arq)
         if os.name != "nt":  # atalho pede privilégio no Windows (como em test_embutidos_trava)
             alvo = os.path.join(self.tmp, "alvo.json")
