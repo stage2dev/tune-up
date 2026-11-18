@@ -449,6 +449,50 @@ export interface RespMudarEmbutido {
   embutidos: Embutido[];
 }
 
+// ---------------------------------------------------------------- GET /api/plugins
+// Plugins do Claude Code: as chaves booleanas de `enabledPlugins` do settings do usuário (~/.claude), do projeto
+// (<raiz>/.claude/settings.json) e do local (settings.local.json); o último que tem a chave vence (`origem`).
+// skills/agentes/peso vêm da pasta de instalação (peso = caracteres das descrições das skills; 0 se desconhecida).
+// aviso: algum settings existe e não abre (esses valores ficam de fora).
+export interface Plugin {
+  id: string;
+  ligado: boolean;
+  origem: 'usuario' | 'projeto' | 'local';
+  valores: { usuario?: boolean; projeto?: boolean; local?: boolean };
+  sobreposto: boolean; // projeto/local troca o valor do usuário
+  fixo: boolean; // o próprio tune-up: não se desliga por aqui
+  skills: number;
+  agentes: number;
+  peso: number;
+}
+
+export interface RespPlugins {
+  plugins: Plugin[];
+  aviso: string | null;
+}
+
+/** POST /api/plugins (mesmas defesas dos outros POST). Troca só o booleano de uma chave que já existe no settings
+ * do USUÁRIO (gravação atômica, backup datado, até 3). 400 corpo diferente de {id, enabled: boolean}; 404 id fora
+ * do settings do usuário (ou arquivo ausente); 409 (nada gravado) = ErroPlugin409; 500 se não gravou (nada mudou).
+ * Erro = { erro }. */
+export interface ReqPlugin {
+  id: string;
+  enabled: boolean;
+}
+
+/** 409 de POST /api/plugins. codigo: mudou = arquivo mudou durante a gravação; fixo = plugin tune-up;
+ * ilegivel = não lê / JSON inválido / caractere que não regrava; numero = número que JSON estrito não aceita (1e999, NaN). */
+export interface ErroPlugin409 {
+  erro: string;
+  codigo: 'mudou' | 'fixo' | 'ilegivel' | 'numero';
+}
+
+export interface RespMudarPlugin {
+  ok: true;
+  plugins: Plugin[];
+  aviso: string; // "vale na próxima sessão"; se o projeto/local ainda decide: "salvo no seu settings…, mas neste projeto quem decide ainda é o <settings do projeto | settings.local do projeto>"
+}
+
 import type { Bloco } from './blocos';
 export type { Tom, Bloco, CampoFormulario, BlocoFormulario, MensagemConversa, BlocoConversa, BlocoCaixa, BlocoImagem, BlocoGaleria, BlocoMidia, BlocoCores, BlocoEnvio, BlocoPrevia, BlocoOpcoes, ReqAcaoModulo, RespAcaoModulo } from './blocos';
 

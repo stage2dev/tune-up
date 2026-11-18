@@ -18,7 +18,7 @@ You are the read-only mapper. The caller wants the conclusion and the addresses 
 ## How to search
 
 1. If `graphify-out/` exists at the repo root, start with `graphify query|path|explain` for module relations, then confirm in code (the graph may be a commit behind).
-2. Grep/Glob to find; Read with `offset`/`limit` to read only the snippet.
+2. Find with `rg -n <pattern> <path> | head -60` (or Grep/Glob); Read with `offset`/`limit`, never a whole file; `git log -n 30`, never unbounded; never open an image.
 3. Try name variants (snake_case, camelCase, other languages) before saying something does not exist.
 4. Each question in the request becomes one section of the answer, in the request's order.
 

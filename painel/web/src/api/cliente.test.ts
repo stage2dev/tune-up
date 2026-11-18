@@ -59,6 +59,13 @@ describe('cliente de API', () => {
     expect((e as ErroApi).message).toBe('Já está rodando.');
     expect((e as ErroApi).status).toBe(409);
     expect((e as ErroApi).execucaoId).toBe('e9');
+    expect((e as ErroApi).codigo).toBeUndefined();
+  });
+
+  it('erro com {codigo} leva o codigo no ErroApi', async () => {
+    fila.push(sessao('abc'), resposta(409, { erro: 'Mudou.', codigo: 'mudou' }));
+    const e = await apiPost('/api/plugins', {}).catch((x: unknown) => x);
+    expect((e as ErroApi).codigo).toBe('mudou');
   });
 
   it('403 renova o token e tenta uma vez', async () => {
