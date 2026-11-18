@@ -5,7 +5,7 @@ import type { Plugin } from '../../api/tipos';
 import { Botao, Cartao, Erro, EsqueletoPagina, EstadoVazio, useAvisos } from '../../componentes';
 import {
   TEXTO_CONFLITO, TEXTO_FIXO, TEXTO_SUCESSO, TEXTO_VAZIO, TIPO_ARRASTE,
-  avisoSobreposto, botaoDoPlugin, criarMovedor, dividirColunas, origemDoValor, pesoEstimado,
+  avisoSobreposto, botaoDoPlugin, criarMovedor, dividirColunas, origemDoValor, pesoEstimado, podeArrastar, detalheSucesso,
 } from './plugins-logica';
 
 export default function Plugins() {
@@ -21,7 +21,7 @@ export default function Plugins() {
     criarMovedor({
       enviar: (id, enabled) => vivo.current.mudar.mutateAsync({ id, enabled }),
       aoOcupar: setPendente,
-      aoSucesso: () => vivo.current.avisar({ tipo: 'sucesso', titulo: TEXTO_SUCESSO }),
+      aoSucesso: (r, id) => vivo.current.avisar({ tipo: 'sucesso', titulo: TEXTO_SUCESSO, texto: detalheSucesso(r, id) }),
       aoConflito: (m) => {
         vivo.current.avisar({ tipo: 'atencao', titulo: TEXTO_CONFLITO, texto: m });
         void vivo.current.refazer();
@@ -51,7 +51,7 @@ export default function Plugins() {
         setSobre(null);
         const id = e.dataTransfer.getData(TIPO_ARRASTE);
         const p = plugins.find((x) => x.id === id);
-        if (p && !p.fixo && p.ligado !== ligar) void movedor(p.id, ligar);
+        if (p && podeArrastar(p) && p.ligado !== ligar) void movedor(p.id, ligar);
       }}
     >
       <h4 className="text-xs font-semibold uppercase">{titulo} ({lista.length})</h4>
@@ -62,7 +62,7 @@ export default function Plugins() {
         return (
           <div
             key={p.id}
-            draggable={!p.fixo && pendente === null}
+            draggable={podeArrastar(p) && pendente === null}
             onDragStart={(e) => {
               e.dataTransfer.setData(TIPO_ARRASTE, p.id);
               e.dataTransfer.effectAllowed = 'move';

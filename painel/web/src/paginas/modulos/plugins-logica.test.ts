@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiPost, esquecerSessao } from '../../api/cliente';
 import type { Plugin, RespMudarPlugin } from '../../api/tipos';
-import { avisoSobreposto, botaoDoPlugin, criarMovedor, dividirColunas, origemDoValor, pesoEstimado } from './plugins-logica';
+import { avisoSobreposto, botaoDoPlugin, detalheSucesso, podeArrastar, criarMovedor, dividirColunas, origemDoValor, pesoEstimado } from './plugins-logica';
 
 const base: Plugin = { id: 'a@m', ligado: true, origem: 'usuario', valores: { usuario: true }, sobreposto: false, fixo: false, skills: 2, agentes: 1, peso: 300 };
 const plugin = (o: Partial<Plugin>): Plugin => ({ ...base, ...o });
@@ -24,7 +24,20 @@ describe('logica de plugins', () => {
   });
   it('botao pede o estado oposto', () => {
     expect(botaoDoPlugin(base)).toMatchObject({ texto: 'Desligar', pedir: false });
-    expect(botaoDoPlugin(plugin({ ligado: false }))).toMatchObject({ texto: 'Ligar', pedir: true });
+    expect(botaoDoPlugin(plugin({ ligado: false, valores: { usuario: false } }))).toMatchObject({ texto: 'Ligar', pedir: true });
+  });
+  it('sobreposto: o botao muda o valor do usuario, nao o que vale', () => {
+    // usuario=false, projeto=true: vale true, mas o pedido tem que ser true no settings do usuario
+    const a = plugin({ ligado: true, origem: 'projeto', sobreposto: true, valores: { usuario: false, projeto: true } });
+    expect(botaoDoPlugin(a)).toMatchObject({ texto: 'Ligar nos seus ajustes', pedir: true });
+    const b = plugin({ ligado: false, origem: 'local', sobreposto: true, valores: { usuario: true, local: false } });
+    expect(botaoDoPlugin(b)).toMatchObject({ texto: 'Desligar nos seus ajustes', pedir: false });
+    expect(podeArrastar(a)).toBe(false); // arrastar = mudar de coluna, e isso o usuario nao consegue aqui
+    expect(podeArrastar(base)).toBe(true);
+    expect(podeArrastar(plugin({ fixo: true }))).toBe(false);
+    const r: RespMudarPlugin = { ok: true, plugins: [{ ...a, valores: { usuario: true, projeto: true } }], aviso: '' };
+    expect(detalheSucesso(r, 'a@m')).toContain('continua valendo');
+    expect(detalheSucesso({ ...r, plugins: [base] }, 'a@m')).toBeUndefined();
   });
 });
 
@@ -34,7 +47,7 @@ describe('movedor de plugins (fetch simulado)', () => {
   let lista: Plugin[];
   let eventos: string[];
   const json = (status: number, corpo: unknown) => new Response(JSON.stringify(corpo), { status });
-  const ok = (ligado: boolean): RespMudarPlugin => ({ ok: true, plugins: [plugin({ ligado })], aviso: 'vale na próxima sessão' });
+  const ok = (ligado: boolean): RespMudarPlugin => ({ ok: true, plugins: [plugin({ ligado, valores: { usuario: ligado } })], aviso: 'vale na próxima sessão' });
   const novo = () =>
     criarMovedor({
       enviar: (id, enabled) => apiPost<RespMudarPlugin>('/api/plugins', { id, enabled }),
@@ -94,5 +107,10 @@ describe('movedor de plugins (fetch simulado)', () => {
     expect(await novo()('a@m', false)).toBe('conflito');
     expect(eventos).toContain('refetch');
     expect(lista[0].ligado).toBe(true);
+  });
+  it('200 sem mudar o valor do usuario nao vira sucesso', async () => {
+    fila.push(async () => json(200, ok(true))); // pediu false, o servidor devolve usuario ainda true
+    expect(await novo()('a@m', false)).toBe('erro');
+    expect(eventos.some((e) => e.startsWith('erro:') && e.includes('não mudou'))).toBe(true);
   });
 });
