@@ -299,7 +299,11 @@ function Invoke-Instalador {
         Write-Log ('parou: {0}' -f $_.Exception.Message)
         if ($Retomar) {
             Write-Mensagem 'A continuação automática falhou. Depois de resolver o problema acima, rode à mão no PowerShell:'
-            Write-Mensagem (Get-ComandoRetomar)
+            $manual = Get-ComandoRetomar
+            Write-Mensagem $manual
+            Write-Log ('comando manual: {0}' -f $manual)
+            # RunOnce opens a console that closes when powershell.exe exits: hold it so the text is read.
+            $null = Read-Resposta 'Aperte Enter para fechar'
         }
         return $codigo
     }
