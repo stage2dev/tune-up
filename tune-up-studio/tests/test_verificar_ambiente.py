@@ -109,6 +109,37 @@ class Ffmpeg(unittest.TestCase):
         self.assertEqual(va.nomes_de_filtros(FILTERS_OUT), set(va.FILTROS))
 
 
+class Wsl(unittest.TestCase):
+    WSL1 = "4.4.0-19041-Microsoft"
+    WSL2 = "6.6.87.2-microsoft-standard-WSL2"
+
+    def test_wsl1_is_refused(self):
+        itens = va.sistema("linux", self.WSL1)
+        self.assertEqual(levels(itens), [va.ERRO])
+        self.assertIn("WSL1", itens[0][1])
+        self.assertIn("[falta]", va.relatorio(itens))
+
+    def test_wsl2_and_plain_linux_are_ok(self):
+        self.assertEqual(levels(va.sistema("linux", self.WSL2)), [va.OK])
+        self.assertIn("WSL2", va.sistema("linux", self.WSL2)[0][1])
+        self.assertEqual(levels(va.sistema("linux", "6.8.0-45-generic")), [va.OK])
+        self.assertEqual(va.wsl("linux", self.WSL1), 1)
+        self.assertEqual(va.wsl("linux", self.WSL2), 2)
+        self.assertIsNone(va.wsl("linux", "6.8.0-45-generic"))
+        self.assertIsNone(va.wsl("darwin", self.WSL2))
+
+    def test_unreadable_osrelease_is_plain_linux(self):
+        def falha():
+            raise OSError("sem /proc")
+        self.assertEqual(va.osrelease(falha), "")
+        self.assertEqual(va.osrelease(lambda: self.WSL2), self.WSL2)
+        self.assertEqual(levels(va.sistema("linux", "")), [va.OK])
+
+    def test_darwin_and_windows_unchanged(self):
+        self.assertEqual(va.sistema("darwin", self.WSL1), [(va.OK, "sistema: macOS")])
+        self.assertEqual(levels(va.sistema("win32", self.WSL2)), [va.ERRO])
+
+
 class SystemAndNode(unittest.TestCase):
     def test_windows_is_refused(self):
         self.assertEqual(levels(va.sistema("win32")), [va.ERRO])

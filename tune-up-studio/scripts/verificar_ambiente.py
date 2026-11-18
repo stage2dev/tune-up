@@ -49,12 +49,36 @@ def _rodar(cmd, timeout=20):
     return p.returncode, p.stdout.decode("utf-8", "replace")
 
 
-def sistema(plataforma=None):
+def osrelease(ler=None):
+    """Text of /proc/sys/kernel/osrelease, or "" when unreadable (never raises)."""
+    try:
+        if ler:
+            return str(ler())
+        with open("/proc/sys/kernel/osrelease", encoding="utf-8", errors="replace") as f:
+            return f.read().strip()
+    except Exception:  # noqa: BLE001 - a failed read just means "not WSL"
+        return ""
+
+
+def wsl(plataforma=None, texto=None):
+    """None (not WSL), 1 or 2. Only the kernel release text decides: `microsoft` = WSL, `WSL2` in it = 2."""
+    if not (plataforma or sys.platform).startswith("linux"):
+        return None
+    texto = (osrelease() if texto is None else texto).lower()
+    if "microsoft" not in texto:
+        return None
+    return 2 if "wsl2" in texto else 1
+
+
+def sistema(plataforma=None, osrelease=None):
     plataforma = plataforma or sys.platform
     if plataforma == "darwin":
         return [(OK, "sistema: macOS")]
     if plataforma.startswith("linux"):
-        return [(OK, "sistema: Linux (WSL2 conta como Linux)")]
+        versao = wsl(plataforma, osrelease)
+        if versao == 1:
+            return [(ERRO, "sistema: WSL1 não serve; converta com wsl --set-version <distro> 2")]
+        return [(OK, "sistema: Linux (WSL2)" if versao == 2 else "sistema: Linux")]
     return [(ERRO, "sistema: o estúdio roda só em macOS, Linux e WSL2; no Windows, use o WSL2")]
 
 
