@@ -7,6 +7,7 @@ import json
 import os
 import re
 
+from . import roteador
 from .config import TESTE, carregar_config
 from .info import toplevel
 from .sessao import log_erro
@@ -174,7 +175,7 @@ def palavras_no_diff(texto):
 
 
 def ler_args(argv):
-    files, diff, failed = [], None, None
+    files, diff, failed, texto = [], None, None, None
     i = 0
     while i < len(argv):
         a = argv[i]
@@ -184,31 +185,33 @@ def ler_args(argv):
                 files.append(argv[i])
                 i += 1
             continue
-        if a in ("--diff-file", "--failed") and i + 1 < len(argv):
+        if a in ("--diff-file", "--failed", "--text-file") and i + 1 < len(argv):
             if a == "--diff-file":
                 diff = argv[i + 1]
+            elif a == "--text-file":
+                texto = argv[i + 1]
             else:
                 failed = argv[i + 1]
             i += 2
             continue
         raise ValueError("unknown or incomplete argument: %s" % a[:40])
-    return files, diff, failed
+    return files, diff, failed, texto
 
 
-def rota(files, diff_file, failed, cfg, raiz):
+def rota(files, diff_file, failed, cfg, raiz, text_file=None):
     gl = globs_efetivos(cfg)
     risco, seg, banco = gl["risk_globs"], gl["security_globs"], gl["database_globs"]
     files = limpar(files)
     raizes = {_barra(raiz).lower().rstrip("/"), _barra(os.path.realpath(raiz)).lower().rstrip("/")}
     rels = [(f, [relativo(x, raizes) for x in candidatos(f)]) for f in files]
-    why, executor, rev = [], SONNET, {"failures"}
+    why, executor, rev, risco_glob = [], SONNET, {"failures"}, None
     if not files:
         executor = OPUS
         rev.add("security")
         why.append("no files: no information, route up")
     m = _primeiro(rels, risco)
     if m:
-        executor = OPUS
+        executor = risco_glob = OPUS
         why.append("risk_globs: %s matches %s" % m)
     if failed == "sonnet":
         executor = OPUS
@@ -246,12 +249,22 @@ def rota(files, diff_file, failed, cfg, raiz):
                 why.append("diff keyword in %s line: %s" % (tipo, k))
     if not why:
         why.append("no rule fired: sonnet, failures only")
-    return {"executor": executor, "reviewers": [r for r in ORDEM if r in rev], "why": why}
+    scores, fonte = {}, "globs" if risco_glob else "fixed"
+    try:  # the router can only keep or raise `executor`; any error keeps the fixed rule
+        executor, scores, fonte, extra = roteador.decidir(executor, bool(risco_glob), failed,
+                                                          text_file, cfg)
+        why.extend(extra)
+    except Exception as e:
+        log_erro("rota", "router: %s" % type(e).__name__)
+        why.append("router error (%s): fixed rule" % type(e).__name__)
+    return {"executor": executor, "reviewers": [r for r in ORDEM if r in rev], "why": why,
+            "model": roteador.modelo(executor), "scores": scores, "source": fonte}
 
 
 def rota_erro(e):
     return {"executor": OPUS, "reviewers": ["failures", "security", "database"],
-            "why": ["error (%s): route up" % type(e).__name__]}
+            "why": ["error (%s): route up" % type(e).__name__],
+            "model": "opus", "scores": {}, "source": "fixed"}
 
 
 def roda_rota(argv):
@@ -259,9 +272,9 @@ def roda_rota(argv):
     try:
         if TESTE and os.environ.get("TUNEUP_FAKE_EXCECAO") == "1":
             raise RuntimeError("simulated exception")
-        files, diff, failed = ler_args(argv)
+        files, diff, failed, texto = ler_args(argv)
         cwd = os.getcwd()
-        saida = rota(files, diff, failed, carregar_config(cwd), toplevel(cwd))
+        saida = rota(files, diff, failed, carregar_config(cwd), toplevel(cwd), texto)
     except Exception as e:
         log_erro("rota", "%s: %s" % (type(e).__name__, e))
         saida = rota_erro(e)
