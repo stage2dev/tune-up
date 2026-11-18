@@ -180,6 +180,44 @@ class TestH2aContratos(PromptBase):
         self.assertEqual(self.bash("gh pr merge 12"), "bloquear")
         self.assertIs(self.dump(self.cwd)["supabase_guard"], True)
 
+    def test_globs_somam_ao_padrao_e_texto_nao_muda(self):
+        padrao = self.dump(self.cwd)
+        for k in ("risk_globs", "security_globs", "database_globs"):
+            self.assertTrue(padrao[k], k)
+        for confiar in (True, False):  # adding a glob only tightens: an untrusted profile may add
+            c = self.dump(self.projeto("add-%s" % confiar, {"risk_globs": ["**/infra/**"],
+                                                           "database_globs": ["**/*.prisma"]}, confiar))
+            self.assertEqual(c["risk_globs"], padrao["risk_globs"] + ["**/infra/**"])
+            self.assertEqual(c["database_globs"], padrao["database_globs"] + ["**/*.prisma"])
+            self.assertEqual(c["security_globs"], padrao["security_globs"])
+        for valor in ("**/x", [1], {"a": 1}, None):
+            c = self.dump(self.projeto("txt-%s" % type(valor).__name__,
+                                       {k: valor for k in ("risk_globs", "security_globs",
+                                                           "database_globs")}, confiar=False))
+            for k in ("risk_globs", "security_globs", "database_globs"):
+                self.assertEqual(c[k], padrao[k], (k, valor))
+
+    def test_router_nao_confiado_ignorado_e_invalido_rejeitado_inteiro(self):
+        padrao = self.dump(self.cwd)["router"]
+        self.assertIs(padrao["enabled"], False)
+        c = self.dump(self.projeto("nc", {"router": {"enabled": True}}, confiar=False))
+        self.assertEqual(c["router"], padrao)
+        ruins = [{"enabled": "yes"}, {"max_chars": 0}, {"max_chars": 6001}, {"max_chars": True},
+                 {"max_chars": 10.5}, {"thresholds": {"risk": 1.5}}, {"thresholds": {"risk": True}},
+                 {"thresholds": {"novo": 0.1}}, {"thresholds": [0.1]}, {"visual_agent": "Tune Up"},
+                 {"hard_agent": 3}, {"outra": 1}, {"enabled": True, "max_chars": -1}, "liga"]
+        for i, r in enumerate(ruins):
+            c = self.dump(self.projeto("ruim%d" % i, {"router": r}))
+            self.assertEqual(c["router"], padrao, r)
+            self.assertIn("router", c["_invalidas"], r)
+        c = self.dump(self.projeto("ok", {"router": {"enabled": True, "thresholds": {"risk": 0.9},
+                                                     "visual_agent": "tune-up:visual"}}))
+        self.assertIs(c["router"]["enabled"], True)
+        self.assertEqual(c["router"]["thresholds"], dict(padrao["thresholds"], risk=0.9))
+        self.assertEqual((c["router"]["visual_agent"], c["router"]["max_chars"]),
+                         ("tune-up:visual", padrao["max_chars"]))
+        self.assertNotIn("router", c["_invalidas"])
+
     def test_repos_livres_padrao_vazio(self):
         self.assertEqual(self.bash("git -C ~/plugins-x commit -m x", {"TUNEUP_FAKE_BRANCH": "main"}),
                          "bloquear")

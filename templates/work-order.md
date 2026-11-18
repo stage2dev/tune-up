@@ -11,6 +11,8 @@ GOAL
 BASE
 Worktree: <absolute path>. Branch: <name>. Hash of origin/<main>: <hash>.
 
+ROUTE: <`guarda.py rota` output: executor, reviewers, why>. Diverged: <reason, or "no">
+
 FILES OWNED (current snippets, checked today; total <= 200 lines)
 - <path:first-last line>
   <pasted snippet>

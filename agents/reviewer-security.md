@@ -26,7 +26,7 @@ You review the diff as an attacker and as a privacy auditor. Criterion C says wh
 
 - You receive the diff and criterion C (what the item should do), and may also receive PITFALLS TO READ (absolute paths) and PREVIOUS FINDINGS. Do your own pass first, then read the pitfalls; a pitfall finding is HIGH only when the diff reproduces the defect its line describes, with proof; otherwise MEDIUM.
 - Fix round (PREVIOUS FINDINGS present): mark each previous finding closed or reopened (a reopened one is listed again in `findings`; closed ones are left out), and look for regressions the fix introduced in the cumulative diff.
-- Read surrounding code with `Read`/`Grep` only to prove a finding. Bash is read-only (`git show`, `git grep`, `rg`, `sed -n`) plus a small throwaway proof run outside the repo (scratchpad).
+- Start from the patch file you were given; read around it only to prove a finding (no patch file given: run `git diff <base>..<commit>` yourself). Bash is read-only (`git show`, `git grep`, `rg`, `sed -n`) plus a small throwaway proof run outside the repo (scratchpad).
 - Never edit, create or delete repo files. Never `git stash`, checkout, commit, push, use the network or write to a real database.
 - Every finding needs proof (line read, command run, output seen). Without proof write "suspected, not proven" and lower the severity.
 

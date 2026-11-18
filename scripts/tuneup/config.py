@@ -9,7 +9,7 @@ from .sessao import abrir_privado, criar_dir, dentro, dir_dados, log_erro
 AQUI = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # scripts/, onde fica o padrao.json
 TESTE = os.environ.get("TUNEUP_TESTE") == "1"
 SEVERIDADE = {"bloquear": 3, "perguntar": 2, "avisar": 1}
-LISTAS_SOMAM = ("bash_rules", "free_repos")
+LISTAS_SOMAM = ("bash_rules", "free_repos", "risk_globs", "security_globs", "database_globs")
 # old Portuguese keys accepted as aliases of the English ones (applied before the trust filter)
 ALIASES = {"branch_principal": "main_branches", "merge_pelo_claude": "claude_may_merge",
            "commit_na_principal": "commit_on_main", "raizes_sincronizadas": "synced_roots",
@@ -23,7 +23,7 @@ ALIASES = {"branch_principal": "main_branches", "merge_pelo_claude": "claude_may
 
 AFROUXAM = ("claude_may_merge", "commit_on_main", "main_branches", "synced_roots",
             "free_repos", "research_free_paths", "supabase_guard", "line_limit",
-            "line_limit_exclude")
+            "line_limit_exclude", "router")
 RE_QUANT_ANINHADO = re.compile(r"\([^)]*[+*][^)]*\)[+*{]")
 LIMITE_TEXTO = 120
 
@@ -162,7 +162,8 @@ def regras_validas(regras, invalidas=None):
     return out
 
 
-LISTAS_STR = ("main_branches", "synced_roots", "free_repos", "research_free_paths")
+LISTAS_STR = ("main_branches", "synced_roots", "free_repos", "research_free_paths",
+              "risk_globs", "security_globs", "database_globs")
 BOOLS = ("claude_may_merge", "commit_on_main", "supabase_guard")
 TEXTOS = ("project", "language", "plans_dir", "workflow_generic")
 NIVEL_GENERICO = {"off": 0, "warn": 1, "block": 2}  # unknown value = warn
@@ -201,6 +202,8 @@ def tipos_validos(dados, origem, invalidas):
             ok = isinstance(v, int) and not isinstance(v, bool)
         elif k == "line_limit_exclude":
             ok = isinstance(v, list) and all(isinstance(x, str) for x in v)
+        elif k == "router":
+            ok = isinstance(v, dict)
         if not ok:
             log_erro("config", "key %s discarded in %s (wrong type: %s)"
                      % (k, origem, type(v).__name__))
@@ -208,6 +211,44 @@ def tipos_validos(dados, origem, invalidas):
             continue
         out[k] = v
     return out
+
+
+RE_AGENTE = re.compile(r"(?:[a-z0-9-]+:)?[a-z0-9-]+")
+ROUTER_CHAVES = {"enabled", "max_chars", "thresholds", "visual_agent", "hard_agent"}
+ROUTER_LIMIARES = {"mechanical", "risk", "hard", "visual"}
+
+
+def router_valido(r):
+    """`router` block: known keys only, with the right types and ranges."""
+    if not isinstance(r, dict) or set(r) - ROUTER_CHAVES:
+        return False
+    if "enabled" in r and not isinstance(r["enabled"], bool):
+        return False
+    m = r.get("max_chars", 1)
+    if isinstance(m, bool) or not isinstance(m, int) or not 1 <= m <= 6000:
+        return False
+    t = r.get("thresholds", {})
+    if not isinstance(t, dict) or set(t) - ROUTER_LIMIARES:
+        return False
+    if any(isinstance(x, bool) or not isinstance(x, (int, float)) or not 0 <= x <= 1
+           for x in t.values()):
+        return False
+    return all(isinstance(r.get(k, ""), str) and (r.get(k, "") == "" or RE_AGENTE.fullmatch(r[k]))
+               for k in ("visual_agent", "hard_agent"))
+
+
+def router_mesclado(base, novo):
+    """Partial block over the default (thresholds per sub-key); None when the result is invalid."""
+    if not isinstance(novo, dict):
+        return None
+    out = dict(base) if isinstance(base, dict) else {}
+    for k, v in novo.items():
+        if k == "thresholds" and isinstance(v, dict) and isinstance(out.get(k), dict):
+            t = dict(out[k])
+            t.update(v)
+            v = t
+        out[k] = v
+    return out if router_valido(out) else None
 
 
 def ler_config_projeto(perfil):
@@ -287,6 +328,12 @@ def carregar_config(cwd):
             if not confiado and (k in AFROUXAM or k.endswith("_phrases") or frouxo):
                 nao_confiado = os.path.realpath(os.path.join(perfil, "config.json"))
                 continue
+            if k == "router":
+                v = router_mesclado(cfg.get(k), v)
+                if v is None:  # rejected whole: the default stays
+                    log_erro("config", "router block invalid, using the default")
+                    invalidas.add(k)
+                    continue
             if isinstance(v, list) and (k in LISTAS_SOMAM or k.endswith("_phrases")):
                 cfg[k] = list(cfg.get(k) or []) + v
             else:

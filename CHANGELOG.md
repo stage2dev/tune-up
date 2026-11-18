@@ -4,6 +4,14 @@ Every new rule goes in through `/tune-up:learn`: memory + a change here + a test
 
 ## Unreleased
 
+## 2.17.0
+
+Executor and reviewers picked per item. Nothing changes until a skill calls `guarda.py rota`.
+
+- `guarda.py rota`: picks the executor (opus/sonnet) and reviewers (failures, security, database) from the file paths and the diff; any doubt or error routes up. New config keys `risk_globs`, `security_globs`, `database_globs` (add to the defaults, also exposed by `guarda.py info`) and `router` (trusted profile only, validated, off by default).
+- The Bash guard lets the exact read-only `guarda.py rota` call through, like `guarda.py info`.
+- Executors: Sonnet gets the two risky-code rules; three new self-check items (refusal treated as success, state saved before the external call, repeat without idempotency).
+
 ## 2.16.0
 
 Native Windows, Part 5: the test suites and CI. Tests, CI and five skill docs only; no product code changes. `tune-up-studio` 0.4.3 (one studio test changed). Nothing changes on macOS and Linux unless stated.

@@ -16,7 +16,7 @@ export const meta = {
 //    Fixes: max MAX_FIXES, re-review only who rejected.
 // 4. A null, commit-less or usage-limit reply is "interrupted", never "approved" and never "done".
 // args: { base, worktree, items: [{ id, order, risky, reviewers: ['failures'|'security'|'database'] }] }
-// Empty or missing reviewers default to DEFAULT_LENSES (when in doubt, security runs).
+// reviewers comes from `guarda.py rota`. Empty or missing reviewers default to DEFAULT_LENSES (when in doubt, security runs).
 
 // Do not raise this: a third round only repeats noise (measured). Leftovers go to need_you.
 const MAX_FIXES = 2
