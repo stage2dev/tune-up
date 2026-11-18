@@ -45,7 +45,7 @@ def agora():
 
 def pid_vivo(pid):
     """True while process `pid` exists. POSIX: signal 0. Windows: OpenProcess + exit code STILL_ACTIVE."""
-    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+    if not isinstance(pid, int) or isinstance(pid, bool) or not 0 < pid <= 0x7FFFFFFF:  # file content: any int
         return False
     if os.name != "nt":
         try:
@@ -81,14 +81,22 @@ def lancar(argv, log_fd, cwd):
     return p.pid
 
 
+def ler_json(arquivo):
+    """A.ler_json that also treats JSON nested too deep (RecursionError) as unreadable: file content never raises."""
+    try:
+        return A.ler_json(arquivo)
+    except RecursionError:
+        return None, True
+
+
 def ler_marcador(raiz):
     """dict or None (no marker). Unreadable content -> {} (stale)."""
-    d, ruim = A.ler_json(A.caminho(raiz, MARCADOR))
+    d, ruim = ler_json(A.caminho(raiz, MARCADOR))
     return {} if ruim else d
 
 
 def ler_resultado(raiz):
-    d, _ = A.ler_json(A.caminho(raiz, RESULTADO))
+    d, _ = ler_json(A.caminho(raiz, RESULTADO))
     return d if d and isinstance(d.get("codigo"), int) and R.ler_iso(d.get("fim")) else None
 
 
@@ -133,8 +141,11 @@ def iniciar(raiz, quando=None, lancar_fn=lancar, vivo_pid=pid_vivo):
         except BaseException:
             os.remove(marcador)  # nothing runs: free the next click
             raise
-        if A.ler_json(marcador)[0] == dados:  # the runner may already have ended and removed it
-            A.gravar_json(marcador, dict(dados, pid=pid))
+        try:  # the process runs: whatever happens to this pid update, the answer is "started"
+            if ler_json(marcador)[0] == dados:  # the runner may already have ended and removed it
+                A.gravar_json(marcador, dict(dados, pid=pid))
+        except Exception:  # noqa: BLE001 - the marker keeps our own pid; it goes stale after VELHO at most
+            pass
     return True, "Conferindo as contas. Leva até um minuto; a tela se atualiza sozinha."
 
 

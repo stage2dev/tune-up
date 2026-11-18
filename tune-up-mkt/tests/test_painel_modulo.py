@@ -104,8 +104,9 @@ class TesteEstados(Base):
     def test_mais_de_24h_usa_o_conferido_em_do_topo(self):
         self.contas(quando=AGORA - timedelta(hours=25))
         self.assertTrue([t for t in self.textos(self.montar()) if "mais de 24 h" in t])
-        self.contas(quando=None)  # only `marcar` ran: falta also refuses
-        self.assertTrue([t for t in self.textos(self.montar()) if "mais de 24 h" in t])
+        self.contas(quando=None)  # only `marcar` ran: falta also refuses, but nothing is "old"
+        self.assertEqual(self.textos(self.montar()), ["Nenhuma conferência automática rodou ainda. "
+                                                      "Clique em Conferir contas."])
         self.contas(quando=AGORA - timedelta(hours=23))
         self.assertEqual(self.montar()["alertas"], [])
 
@@ -137,11 +138,50 @@ class TesteEstados(Base):
         catalogo = {s["id"]: s for s in self.mod._catalogo()}
         self.assertEqual(self.linhas(self.montar())[catalogo["chrome"]["nome"]]["estado"], "não sei")
 
+    def test_itens_ruins_nunca_derrubam_a_tela(self):
+        catalogo = {s["id"]: s for s in self.mod._catalogo()}
+        nome = catalogo["chrome"]["nome"]
+        ok = {"estado": "ligado", "checagens": []}
+        casos = [
+            ("servico nao objeto", {"chrome": "ligado"}, "nunca conferido"),
+            ("estado lista", {"chrome": dict(ok, estado=["ligado"])}, "não sei"),
+            ("estado palavra nova", {"chrome": dict(ok, estado="talvez")}, "não sei"),
+            ("checagens texto", {"chrome": dict(ok, checagens=5)}, "ligado"),
+            ("conferido_em numero", {"chrome": dict(ok, checagens=[{"conferido_em": 12}, "x"])}, "ligado"),
+        ]
+        for caso, servicos, estado in casos:
+            with self.subTest(caso=caso):
+                self.gravar("contas.json", {"conferido_em": iso(AGORA), "servicos": servicos})
+                r = self.montar()
+                self.assertEqual(r["abas"][0]["blocos"][0]["botao"], "Conferir contas")
+                self.assertEqual(self.linhas(r)[nome]["estado"], estado)
+                ruins = [t for t in self.textos(r) if "não conseguiu ler" in t]
+                self.assertEqual(len(ruins), 1, self.textos(r))
+                self.assertIn("Conferir contas", ruins[0])
+        self.gravar("contas.json", {"conferido_em": 7, "servicos": {}})  # top-level date of the wrong type
+        self.assertTrue([t for t in self.textos(self.montar()) if "não conseguiu ler" in t])
+        self.contas()
+        self.assertEqual([t for t in self.textos(self.montar()) if "não conseguiu ler" in t], [])
+
+    def test_conteudo_qualquer_nao_levanta(self):
+        datas = ["0001-01-01T00:00:00+05:00", "9999-12-31T23:59:59-05:00", "x", 1e308, None]
+        for d in datas:
+            with self.subTest(d=d):
+                self.gravar("contas.json", {"conferido_em": d, "servicos": {"chrome": {
+                    "estado": {}, "checagens": [{"conferido_em": d}]}, "openseo": None, "composio": []}})
+                self.gravar("conferindo.json", {"inicio": d, "pid": 10 ** 30, "id": []})
+                self.gravar("conferencia.json", {"id": {}, "fim": d, "codigo": 0})
+                self.assertEqual(self.montar()["abas"][0]["blocos"][0]["acao"], "conferir")
+        for nome in ("contas.json", "conferindo.json", "conferencia.json"):
+            self.gravar(nome, "[" * 100000 + "]" * 100000)  # nested too deep for json
+        self.assertEqual(self.montar()["abas"][0]["blocos"][0]["acao"], "conferir")
+        self.assertFalse(self.C.pid_vivo(10 ** 30))
+
     def test_conferindo(self):
         self.gravar("conferindo.json", {"inicio": iso(AGORA - timedelta(seconds=20)), "pid": 77, "id": "a"})
         r = self.montar()
         self.assertIn("Conferindo as contas... a tela se atualiza sozinha.", self.textos(r))
-        self.assertEqual(r["atualizar_em"], 3)
+        self.assertEqual(r["atualizar_em"], 2)  # C10: result on screen at most ~5 s after the end
 
     def test_terminada_aparece_por_pouco_tempo(self):
         self.contas()
@@ -150,7 +190,7 @@ class TesteEstados(Base):
         r = self.montar()
         self.assertEqual(self.textos(r), ["Conferência terminada."])
         self.assertEqual(r["atualizar_em"], 15)  # re-read so the notice goes away
-        self.mod.agora = lambda: AGORA + timedelta(minutes=2)
+        self.mod.agora = lambda: AGORA + timedelta(seconds=6)  # 16 s after the end: past the 15 s window
         r = self.montar()
         self.assertEqual(self.textos(r), [])
         self.assertNotIn("atualizar_em", r)
@@ -204,7 +244,7 @@ class TesteConferir(Base):
         if os.name != "nt":
             for nome in ("conferindo.json", "conferencia.log"):
                 self.assertEqual(stat.S_IMODE(os.stat(os.path.join(self.mkt, nome)).st_mode), 0o600, nome)
-        self.assertEqual(self.montar()["atualizar_em"], 3)
+        self.assertEqual(self.montar()["atualizar_em"], 2)
 
     def test_segundo_clique_recusa(self):
         self.agir()
@@ -260,6 +300,15 @@ class TesteConferir(Base):
         self.assertFalse(os.path.exists(os.path.join(self.mkt, "conferindo.json")))
         self.mod.lancar = self.lancar
         self.assertIs(self.agir()["ok"], True)
+
+    def test_lancou_mesmo_sem_gravar_o_pid(self):
+        def quebra(*a, **k):
+            raise OSError("disco cheio")
+        self.mod.C.A.gravar_json = quebra
+        r = self.agir()
+        self.assertIs(r["ok"], True, r)
+        self.assertEqual(len(self.chamadas), 1)
+        self.assertIn("Conferindo as contas", r["mensagem"])
 
     def test_pid_vivo_real(self):
         self.assertTrue(self.C.pid_vivo(os.getpid()))

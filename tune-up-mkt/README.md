@@ -2,7 +2,7 @@
 
 Marketing module for [tune-up](../README.md): guided connection of your own marketing accounts, campaign, content, SEO and preflight skills, and a guard that blocks or asks before writes to ad accounts and public posts.
 
-Status: 0.3.0: guard + guided account connection + campaign, content, SEO and preflight skills; the panel tab arrives next.
+Status: 0.3.0: guard + guided account connection + campaign, content, SEO and preflight skills + the panel tab "Contas" (Marketing module).
 
 ## Install
 

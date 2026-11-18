@@ -18,7 +18,8 @@ A, R = C.A, C.R
 
 CATALOGO = os.path.join(os.path.dirname(C.SCRIPTS), "servicos.json")
 IDADE = timedelta(hours=24)       # = contas.IDADE_FALTA (o mesmo campo: conferido_em do topo)
-AVISO_FIM = timedelta(seconds=60)  # quanto tempo o aviso "conferência terminada" fica na tela
+AVISO_FIM = timedelta(seconds=15)  # janela do aviso "conferência terminada": some em até 15 s (sem estado em memória)
+RITMO = 2                          # atualizar_em enquanto confere: resultado na tela até ~5 s depois do fim
 PALAVRAS = {"ligado": "ligado", "falta_autenticar": "falta autenticar", "nao_instalado": "não instalado",
             "nao_sei": "não sei", "desligado": "desligado", "falhou": "falhou"}
 NUNCA = "nunca conferido"
@@ -42,8 +43,14 @@ def _catalogo():
 
 
 def _quando(texto):
-    t = R.ler_iso(texto)
-    return t.astimezone().strftime("%d/%m %H:%M") if t else ""
+    return _hora(R.ler_iso(texto))
+
+
+def _hora(t):
+    try:
+        return t.astimezone().strftime("%d/%m %H:%M") if t else ""
+    except (OverflowError, ValueError, OSError):  # data no limite do calendário (ano 1 ou 9999)
+        return ""
 
 
 def _passo(s, estado):
@@ -61,22 +68,45 @@ def _passo(s, estado):
 
 
 def _ler_contas(raiz):
-    """(servicos dict or None, conferido_em datetime or None, aviso or None)."""
-    dados, ruim = A.ler_json(A.caminho(raiz, "contas.json"))
+    """(servicos dict or None, conferido_em datetime or None, aviso or None, topo ilegível)."""
+    dados, ruim = C.ler_json(A.caminho(raiz, "contas.json"))
     if ruim or (dados is not None and not isinstance(dados.get("servicos"), dict)):
-        return None, None, "O arquivo de contas não abre. Clique em Conferir contas para refazer."
+        return None, None, "O arquivo de contas não abre. Clique em Conferir contas para refazer.", False
     if dados is None:
-        return None, None, None
-    return dados["servicos"], R.ler_iso(dados.get("conferido_em")), None
+        return None, None, None, False
+    topo = dados.get("conferido_em")
+    conferido = R.ler_iso(topo)
+    return dados["servicos"], conferido, None, topo is not None and conferido is None
+
+
+def _data_ruim(texto):
+    return texto is not None and R.ler_iso(texto) is None
+
+
+def _item(item):
+    """(estado, datas, legível) de um item do contas.json. Qualquer forma ruim vira não sei / nunca conferido."""
+    if item is None:
+        return NUNCA, [], True
+    if not isinstance(item, dict):
+        return NUNCA, [], False
+    estado = item.get("estado")
+    ok = isinstance(estado, str) and estado in PALAVRAS
+    checagens = item.get("checagens", [])
+    if not isinstance(checagens, list):
+        checagens, ok = [], False
+    datas = []
+    for c in checagens:
+        if not isinstance(c, dict) or _data_ruim(c.get("conferido_em")):
+            ok = False
+        elif c.get("conferido_em") is not None:
+            datas.append(R.ler_iso(c["conferido_em"]))
+    return (estado if isinstance(estado, str) and estado in PALAVRAS else "nao_sei"), datas, ok
 
 
 def _linha(s, item):
-    estado = item.get("estado") if isinstance(item, dict) else None
-    estado = estado if estado in PALAVRAS else ("nao_sei" if isinstance(item, dict) else NUNCA)
-    datas = [R.ler_iso(c.get("conferido_em")) for c in (item or {}).get("checagens") or [] if isinstance(c, dict)]
-    datas = [d for d in datas if d]
-    return estado, {"servico": s["nome"], "para_que": s["para_que"]["pt"], "estado": PALAVRAS.get(estado, NUNCA),
-                    "conferido_em": _quando(R.iso(max(datas))) if datas else "", "passo": _passo(s, estado)}
+    estado, datas, ok = _item(item)
+    return estado, ok, {"servico": s["nome"], "para_que": s["para_que"]["pt"], "estado": PALAVRAS.get(estado, NUNCA),
+                    "conferido_em": _hora(max(datas)) if datas else "", "passo": _passo(s, estado)}
 
 
 def _estado_conferencia(raiz, quando, alertas):
@@ -84,7 +114,7 @@ def _estado_conferencia(raiz, quando, alertas):
     m, res = C.ler_marcador(raiz), C.ler_resultado(raiz)
     if m is not None and C.vivo(m, quando, pid_vivo):
         alertas.append({"nivel": "info", "texto": "Conferindo as contas... a tela se atualiza sozinha."})
-        return 3
+        return RITMO
     if m is not None and not (res and res.get("id") == m.get("id")):
         alertas.append({"nivel": "atencao", "texto": "A última conferência parou sem terminar. "
                                                      "Clique em Conferir contas de novo."})
@@ -105,9 +135,9 @@ def montar(ctx):
     quando = agora()
     raiz = ctx.get("raiz") or ""
     catalogo = _catalogo()
-    alertas, servicos, conferido, ritmo = [], None, None, None
+    alertas, servicos, conferido, ritmo, ruins = [], None, None, None, False
     try:
-        servicos, conferido, aviso = _ler_contas(raiz)
+        servicos, conferido, aviso, ruins = _ler_contas(raiz)
         if aviso:
             alertas.append({"nivel": "atencao", "texto": aviso})
         ritmo = _estado_conferencia(raiz, quando, alertas)
@@ -116,15 +146,21 @@ def montar(ctx):
                                                      "aponta para fora do projeto. Nada foi lido."})
     linhas = []
     for s in catalogo:
-        estado, linha = _linha(s, (servicos or {}).get(s["id"]) if servicos is not None else None)
+        estado, ok, linha = _linha(s, (servicos or {}).get(s["id"]) if servicos is not None else None)
+        ruins = ruins or not ok
         linhas.append(linha)
         if servicos is not None and s["nivel"] == "base" and estado != "ligado":
             alertas.append({"nivel": "atencao", "texto": "%s está %s. Próximo passo: %s"
                                                           % (s["nome"], linha["estado"], linha["passo"])})
+    if ruins:
+        alertas.append({"nivel": "atencao", "texto": "O arquivo de contas tem itens que o painel não conseguiu ler. "
+                                                     "Clique em Conferir contas: ele refaz o arquivo."})
     if servicos is None and not alertas:
         alertas.append({"nivel": "info", "texto": "Ainda não houve conferência. Clique em Conferir contas."})
-    elif servicos is not None and (conferido is None or quando - conferido > IDADE
-                                   or conferido > quando + R.FOLGA_FUTURO):
+    elif servicos is not None and conferido is None:  # só `marcar` rodou (ou o arquivo veio sem a data)
+        alertas.append({"nivel": "atencao", "texto": "Nenhuma conferência automática rodou ainda. "
+                                                     "Clique em Conferir contas."})
+    elif servicos is not None and (quando - conferido > IDADE or conferido > quando + R.FOLGA_FUTURO):
         alertas.append({"nivel": "atencao", "texto": "A última conferência tem mais de 24 h. "
                                                      "Clique em Conferir contas de novo."})
     aba = {"id": "contas", "titulo": "Contas", "blocos": [FORM, {
