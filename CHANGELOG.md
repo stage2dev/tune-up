@@ -4,6 +4,13 @@ Every new rule goes in through `/tune-up:learn`: memory + a change here + a test
 
 ## Unreleased
 
+## 2.23.0
+
+- Panel, Modules screen: new "Plugins" section with your Claude Code plugins in two columns ("Ligado" / "Desligado"). Drag a card to the other column or use its "Ligar"/"Desligar" button; the card moves only when the server answers, and a failure leaves it where it was with the server's message.
+- New `GET /api/plugins`: reads `enabledPlugins` from the user, project and local settings (the last one that has the key wins) and sends, per plugin, the winning value and where it came from, whether the project or local value overrides the user's (`sobreposto`), skills, agents and the characters of the skill descriptions (`peso`, from the install folder; 0 when unknown). A settings file that does not open is left out and reported in `aviso`.
+- New `POST /api/plugins` `{id, enabled}`: flips only that boolean in the user's `~/.claude/settings.json` (atomic write, dated backup, last 3 kept); it never creates a key, never writes the project or local file, and refuses tune-up itself (409). The change takes effect in the next Claude session; when the project or local settings still decide that plugin, the answer says so instead.
+- The screen shows a notice when the project or local settings override the user's value (changing it here does not change what applies in that project); on such a card the button flips the user's own value ("Ligar/Desligar nos seus ajustes") and dragging is off, and a 200 that leaves the user's value unchanged is reported as an error, not as success; a 409 because the file changed during the write shows "the settings changed outside; list reloaded" and re-reads the list, and any other 409 (tune-up itself, a settings file that cannot be read or rewritten safely) shows the server's message. A plugin that exists only in the project or local settings has no button and cannot be dragged.
+
 ## 2.22.0
 
 - Leaner agent texts: search with `rg -n ... | head -60`, Read with `limit`, `git log -n 30`, no images unless the order asks for one UI state.
