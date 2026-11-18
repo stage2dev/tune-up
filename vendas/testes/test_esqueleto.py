@@ -31,6 +31,13 @@ class TesteEsqueleto(unittest.TestCase):
         self.assertIn("./vendas/skills", p["skills"])
         self.assertFalse(os.path.exists(os.path.join(VENDAS, ".claude-plugin")))  # Vendas não é mais plugin próprio
 
+    def test_caminhos_da_skill_instalar_existem(self):   # ${CLAUDE_PLUGIN_ROOT} agora é a raiz do tune-up
+        with open(os.path.join(VENDAS, "skills", "instalar", "SKILL.md"), encoding="utf-8") as f:
+            caminhos = re.findall(r"\$\{CLAUDE_PLUGIN_ROOT\}/([^\s\"'`)]+)", f.read())
+        self.assertTrue(caminhos)
+        for c in caminhos:
+            self.assertTrue(os.path.exists(os.path.join(RAIZ, c)), c)
+
     def test_marketplace_lista_os_plugins(self):
         with open(os.path.join(RAIZ, ".claude-plugin", "marketplace.json"), encoding="utf-8") as f:
             m = json.load(f)

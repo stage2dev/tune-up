@@ -247,6 +247,18 @@ class TesteEmbutidosProjeto(unittest.TestCase):
         self.assertEqual(list(embutidos.NEGAR_VENDAS), mod.INFO["negar"])
         self.assertNotIn("negar", modulos._importar(embutidos.caminho("estudio"), "estudio").INFO)
 
+    def test_negar_pega_o_preparo_no_plugin_unico(self):  # o Claude Code casa `*` com qualquer texto; fnmatch imita
+        import fnmatch
+        raiz = "/Users/x/.claude/plugins/cache/loja/tune-up/2.19.0"
+        negado = [raiz + '/vendas/servico/preparo.py" rodar --projeto "/p" --painel http://127.0.0.1:8787',
+                  raiz + "/vendas/servico/servico.py --porta 8791",
+                  "C:\\Users\\x\\.claude\\plugins\\cache\\loja\\tune-up\\2.19.0\\vendas\\servico\\preparo.py rodar"]
+        regras = [r[5:-1] for r in embutidos.NEGAR_VENDAS if r.startswith("Bash(")]
+        for cmd in negado:
+            self.assertTrue(any(fnmatch.fnmatchcase('python3 -B "' + cmd, r) for r in regras), cmd)
+        for cmd in ("git status", "ls vendas", "python3 -m unittest testes.test_preparo_textos"):
+            self.assertFalse(any(fnmatch.fnmatchcase(cmd, r) for r in regras), cmd)
+
     def test_arquivo_ilegivel_desliga_tudo_e_mantem_as_regras(self):
         cfg = self.cfg(modulos_de_plugins=["tune-up-studio@x:estudio"])
         arq = os.path.join(cfg["dados_dir"], embutidos.ARQUIVO)
