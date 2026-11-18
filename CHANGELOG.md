@@ -4,7 +4,7 @@ Every new rule goes in through `/tune-up:learn`: memory + a change here + a test
 
 ## Unreleased
 
-- CI: the Windows jobs failed 33 test expectations since 2.12.0 (paths compared with `\`, while `info` prints `/`; a `cdC:/x` case that is no command in cmd; a `wsl` word in a commit message, which asks on Windows like `node` does everywhere). Tests only, no product change. Python 3.9 on Linux now runs on `ubuntu-24.04`: `ubuntu-latest` (26.04) has no 3.9 build.
+- CI: the Windows jobs failed 33 test expectations since 2.12.0 (paths compared with `\`, while `info` prints `/`; a `cdC:/x` case that is no command in cmd; a `wsl` word in a commit message, which asks on Windows like `node` does everywhere); those were test fixes only. Python 3.9 on Linux now runs on `ubuntu-24.04`: `ubuntu-latest` (26.04) has no 3.9 build. The panel, studio and sales suites now run to the end on Windows too, and found three product bugs there: the built-in Vendas module never loaded on Windows (its folder was compared with `/` against a path the system writes with `\`, so the panel answered 404); the `--settings` of a sandboxed action listed `PowerShell` twice in `deny`; and `leitor.da_raiz(..., nt=False)` used the Windows separator. The other Windows failures were tests that assumed macOS or Linux; they now pin the platform the way their neighbors do, compare paths the way the product prints them, or skip the Studio cases (the Studio does not run on native Windows).
 
 ## 2.18.0
 

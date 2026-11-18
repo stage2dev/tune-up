@@ -24,7 +24,7 @@ CP1252 = ("import io, runpy, sys; script = sys.argv[1]; sys.argv = sys.argv[1:];
 
 
 def cp1252():
-    return io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+    return io.TextIOWrapper(io.BytesIO(), encoding="cp1252", newline="\n")  # no Windows o padrão grava \r\n
 
 
 class Helper(unittest.TestCase):

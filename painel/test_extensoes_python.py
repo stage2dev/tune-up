@@ -16,7 +16,7 @@ class TestComandoAceitar(unittest.TestCase):
         with mock.patch.object(sys, "executable", "/opt/meu python/bin/python"):
             cmd = extensoes._python("posix")
         self.assertTrue(cmd.startswith("'/opt/meu python/bin/python' "), cmd)
-        self.assertTrue(cmd.endswith("painel.py"), cmd)
+        self.assertTrue(shlex.split(cmd)[1].endswith("painel.py"), cmd)  # no Windows o caminho tem \: vem entre aspas
         self.assertTrue(os.path.isfile(shlex.split(cmd)[1]))  # absoluto: vale de qualquer pasta
 
     def test_nt_barras_normais_e_aspas_sempre(self):
