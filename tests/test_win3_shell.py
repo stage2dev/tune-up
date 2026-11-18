@@ -168,7 +168,9 @@ class TestGuarda(Base):
     def test_23_wsl_setx(self):
         if os.name == "nt":
             self.todos(self.bash, ["wsl tuneup trust", "wsl.exe -e confiar x", "setx TUNEUP trust"])
-        self.nada(self.bash, ["wsl ls", "setx PATH x", 'git commit -m "wsl support for tuneup"'])
+        self.nada(self.bash, ["wsl ls", "setx PATH x"])
+        if os.name != "nt":  # on Windows `wsl` is an executor word, so the text rule asks (same as `node`)
+            self.nada(self.bash, ['git commit -m "wsl support for tuneup"'])
 
     def modo(self, f, cmds, campos=({"modo_conversa": True}, {"modo_pesquisa": True})):
         for c in campos:
@@ -294,12 +296,14 @@ class TestGuarda(Base):
                 'cmd /c "cd %s/.claude & start /b del settings.json"' % h,
                 'cmd /c "cd %s/.claude & start \\"t\\" del settings.json"' % h,
                 'cmd /c "cd %s/.claude & %%COMSPEC%% /c del settings.json"' % h,
-                'cmd /c "cd %s/.claude & cmd /c del settings.json"' % h, 'cmd /c "cd%s/.claude & del settings.json"' % h,
+                'cmd /c "cd %s/.claude & cmd /c del settings.json"' % h,
                 'cmd /c "cd %s & cd.claude & del settings.json"' % h, 'cmd /c "cd %s/.claude/sub & cd.. & del settings.json"' % h,
                 'cmd /c "xcopy evil\\settings.json %USERPROFILE%\\.claude"', 'cmd /c "xcopy /y evil\\settings.json %s/.claude"' % h,
                 'cmd /c "robocopy evil %USERPROFILE%\\.claude settings.json /mir"', 'cmd /c "robocopy evil %s/.claude"' % h,
                 'cmd /c "xcopy /e evil %USERPROFILE%\\.claude"',
                 'cmd /c "replace evil\\settings.json %USERPROFILE%\\.claude"']
+        if h.startswith("/"):  # `cd/x` is a cd in cmd; `cdC:/x` (a drive letter) is no command at all
+            cmds.append('cmd /c "cd%s/.claude & del settings.json"' % h)
         self.todos(self.bash, cmds)
         self.todos(self.ps, cmds)
         self.nada(self.bash, ['cmd /c "echo hi"', "cmd /c dir", "cmd /c ver", 'cmd /c "echo del x"', 'cmd /c "xcopy a b /y"'])

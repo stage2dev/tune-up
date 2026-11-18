@@ -6,7 +6,9 @@ O Claude Code no Windows tem a ferramenta `PowerShell` (campo `command`) além d
 import json
 import os
 import sys
+import types
 import unittest
+from unittest import mock
 
 sys.dont_write_bytecode = True
 
@@ -58,8 +60,9 @@ class TesteSandboxPowerShell(unittest.TestCase):
                                                  "dados_dir": "/w/.tune-up/painel/dados"})[1])
         self.assertIn("PowerShell", conf["permissions"]["deny"])
 
-    def test_sem_sandbox_nao_nega(self):
-        conf = json.loads(travas.argv_travas(catalogo.validar_acao(SIMPLES), {"workspace": "/w"})[1])
+    def test_sem_sandbox_nao_nega(self):  # fora do Windows (no Windows o PowerShell é negado sempre)
+        with mock.patch.object(travas, "os", types.SimpleNamespace(name="posix", path=os.path, sep=os.sep)):
+            conf = json.loads(travas.argv_travas(catalogo.validar_acao(SIMPLES), {"workspace": "/w"})[1])
         self.assertNotIn("PowerShell", conf["permissions"]["deny"])
 
 

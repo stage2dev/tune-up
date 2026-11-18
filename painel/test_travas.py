@@ -11,7 +11,9 @@ import shlex  # noqa: E402
 import shutil  # noqa: E402
 import subprocess  # noqa: E402
 import tempfile  # noqa: E402
+import types  # noqa: E402
 import unittest  # noqa: E402
+from unittest import mock  # noqa: E402
 
 import catalogo  # noqa: E402
 import lancador  # noqa: E402
@@ -218,7 +220,8 @@ class TesteArgv(unittest.TestCase):
         self.assertNotIn("revogadas", cmd[5])
 
     def test_codigo_sem_regras_fica_so_com_gancho(self):
-        cfg = json.loads(self._argv("x.codigo", {})[5])
+        with mock.patch.object(travas, "os", types.SimpleNamespace(name="posix", path=os.path, sep=os.sep)):  # no Windows entra o PowerShell
+            cfg = json.loads(self._argv("x.codigo", {})[5])
         self.assertNotIn("permissions", cfg)
         self.assertIn("travas.py", cfg["hooks"]["PreToolUse"][0]["hooks"][0]["command"])
 
