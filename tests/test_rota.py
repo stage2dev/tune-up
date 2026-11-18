@@ -4,10 +4,12 @@ import os
 import subprocess
 import sys
 import unittest
+from unittest import mock
 
 from base import SCRIPT, Base
 
 sys.path.insert(0, os.path.dirname(SCRIPT))
+from tuneup import jev  # noqa: E402
 from tuneup import rota as R  # noqa: E402
 
 with open(os.path.join(os.path.dirname(SCRIPT), "padrao.json"), encoding="utf-8") as _f:
@@ -185,10 +187,154 @@ class TestRotaUnidade(Base):
 
     def test_args(self):
         self.assertEqual(R.ler_args(["--files", "a", "b", "--failed", "opus", "--diff-file", "d"]),
-                         (["a", "b"], "d", "opus"))
-        for ruim in (["--bogus"], ["--failed"], ["--files", "a", "--diff-file"]):
+                         (["a", "b"], "d", "opus", None))
+        self.assertEqual(R.ler_args(["--files", "a", "--text-file", "t.txt"]), (["a"], None, None, "t.txt"))
+        for ruim in (["--bogus"], ["--failed"], ["--files", "a", "--diff-file"], ["--text-file"]):
             with self.assertRaises(ValueError):
                 R.ler_args(ruim)
+
+
+BAIXO = {"mechanical": 0.0, "risk": 0.0, "hard": 0.0, "visual": 0.0}
+
+
+class TestRoteador(Base):
+    """Optional router (C11): order a-f, what reaches the scorer, fallbacks. jev.perguntar is faked."""
+    USER_JSON = None
+
+    def setUp(self):
+        super().setUp()
+        p = mock.patch.dict(os.environ, {"CLAUDE_PLUGIN_DATA": self.dados})  # erros.log in tmp
+        p.start()
+        self.addCleanup(p.stop)
+        self.chamadas = []
+        self.txt = self.texto("Add a tooltip to the save button.\nfiles: Button.tsx\n")
+
+    def texto(self, conteudo, nome="item.txt"):
+        p = os.path.join(self.tmp, nome)
+        if isinstance(conteudo, str):
+            conteudo = conteudo.encode("utf-8")
+        with open(p, "wb") as f:
+            f.write(conteudo)
+        return p
+
+    def cfg(self, **router):
+        return dict(PADRAO, router=dict(PADRAO["router"], enabled=True, **router))
+
+    def rota(self, files=("src/Button.tsx",), failed=None, cfg=None, txt="", resp=None, fake=None):
+        def f(texto, perguntas):
+            self.chamadas.append((texto, dict(perguntas)))
+            return dict(BAIXO) if resp is None else resp
+        d = os.path.join(self.tmp, "ok.patch")
+        with open(d, "w", encoding="utf-8") as fh:
+            fh.write("+x = 1\n")
+        with mock.patch.object(jev, "perguntar", fake or f):
+            return R.rota(list(files), d, failed, cfg or self.cfg(), "/repo",
+                          self.txt if txt == "" else txt)
+
+    def test_a_risk_glob_opus_sem_chamar_jev(self):
+        for failed in (None, "sonnet"):
+            r = self.rota(["migrations/001.sql"], failed=failed, resp=dict(BAIXO))
+            self.assertEqual((r["executor"], r["model"], r["source"], r["scores"]),
+                             (OPUS, "opus", "globs", {}))
+        self.assertEqual(self.chamadas, [])
+        r = self.rota(["migrations/001.sql"], failed="opus", cfg=self.cfg(hard_agent="x:hard"))
+        self.assertEqual((r["executor"], r["model"], r["source"]), ("x:hard", None, "globs"))
+        self.assertEqual(self.chamadas, [])
+
+    def test_b_regra_fixa(self):
+        r = self.rota(cfg=PADRAO)  # router disabled
+        self.assertEqual(self.chamadas, [])
+        self.assertEqual((r["executor"], r["model"], r["scores"], r["source"]), (SONNET, "sonnet", {}, "fixed"))
+        self.assertEqual(r["why"], ["no rule fired: sonnet, failures only"])
+        for txt in (None, os.path.join(self.tmp, "nao-existe.txt"),
+                    self.texto(b"x" * (64 * 1024 + 1), "grande.txt"), self.texto(b"\xff\xfe", "bin.txt"),
+                    self.texto("REAL DATA: only this\n", "so-dados.txt")):
+            r = self.rota(txt=txt)
+            self.assertEqual((r["executor"], r["scores"], r["source"]), (SONNET, {}, "fixed"), txt)
+        self.assertEqual(self.chamadas, [])
+        r = self.rota(files=[], txt=None)
+        self.assertEqual((r["executor"], r["source"]), (OPUS, "fixed"))
+
+    def test_b_jev_none_sem_chave_ou_excecao_fica_na_regra_fixa(self):
+        real = jev.perguntar
+        casos = (lambda t, p: None,
+                 lambda t, p: real(t, p, ambiente={}, settings=os.path.join(self.tmp, "nao.json")),
+                 mock.Mock(side_effect=RuntimeError("x")), lambda t, p: {"risk": "alto"},
+                 lambda t, p: dict(BAIXO, risk=None))
+        for fake in casos:
+            for failed, exe in ((None, SONNET), ("sonnet", OPUS)):
+                r = self.rota(failed=failed, fake=fake)
+                self.assertEqual((r["executor"], r["scores"], r["source"]), (exe, {}, "fixed"), fake)
+        with open(os.path.join(self.dados, "erros.log"), encoding="utf-8") as f:
+            log = f.read()
+        self.assertIn("no key", log)
+        self.assertIn("router: RuntimeError", log)
+
+    def test_c_risco_ou_dificil_sobe(self):
+        for resp in (dict(BAIXO, risk=0.5), dict(BAIXO, hard=0.6), dict(BAIXO, risk=0.9, visual=1.0)):
+            r = self.rota(resp=resp, cfg=self.cfg(visual_agent="x:ui"))
+            self.assertEqual((r["executor"], r["model"], r["scores"], r["source"]), (OPUS, "opus", resp, "jev"))
+        self.assertEqual(len(self.chamadas), 3)
+        self.assertEqual(set(self.chamadas[0][1]), {"mechanical", "risk", "hard", "visual"})
+        r = self.rota(resp=dict(BAIXO, risk=0.49, hard=0.59))
+        self.assertEqual((r["executor"], r["model"], r["source"]), (SONNET, "sonnet", "jev"))
+
+    def test_d_failed_opus_com_hard_agent(self):
+        c = self.cfg(hard_agent="x:hard")
+        for fake in (None, lambda t, p: None):
+            r = self.rota(failed="opus", cfg=c, fake=fake)
+            self.assertEqual((r["executor"], r["model"]), ("x:hard", None))
+        self.assertEqual(self.rota(failed="opus")["executor"], OPUS)  # no hard_agent
+        self.assertEqual(self.rota(failed="opus", cfg=dict(c, router=dict(c["router"], enabled=False)))
+                         ["executor"], OPUS)  # router off: fixed rule
+
+    def test_e_visual_agent(self):
+        c = self.cfg(visual_agent="x:ui")
+        r = self.rota(cfg=c, resp=dict(BAIXO, visual=0.5))
+        self.assertEqual((r["executor"], r["model"], r["source"]), ("x:ui", None, "jev"))
+        self.assertEqual(self.rota(cfg=c, resp=dict(BAIXO, visual=0.4))["executor"], SONNET)
+        self.assertEqual(self.rota(cfg=c, resp=dict(BAIXO, visual=0.9, risk=0.5))["executor"], OPUS)
+        self.assertEqual(self.rota(["src/AuthForm.tsx"], cfg=c, resp=dict(BAIXO, visual=1.0))["executor"], OPUS)
+        self.assertEqual(self.rota(cfg=c, failed="sonnet", resp=dict(BAIXO, visual=1.0))["executor"], OPUS)
+        self.assertEqual(self.rota(files=[], cfg=c, resp=dict(BAIXO, visual=1.0))["executor"], OPUS)
+
+    def test_f_nunca_desce_nem_haiku(self):
+        tudo = {"mechanical": 1.0, "risk": 0.0, "hard": 0.0, "visual": 1.0}
+        self.assertEqual(self.rota(resp=tudo)["executor"], SONNET)
+        for failed in ("sonnet", "opus", "haiku"):
+            r = self.rota(failed=failed, resp=tudo, cfg=self.cfg(visual_agent="x:ui"))
+            self.assertEqual((r["executor"], r["source"]), (OPUS, "jev"), failed)
+
+    def test_max_chars_e_corte_defensivo(self):
+        self.rota(cfg=self.cfg(max_chars=50), txt=self.texto("abcdefghij" * 100))
+        self.assertEqual(self.chamadas[-1][0], "abcdefghij" * 5)
+        for marca in ("REAL DATA: row 1", "PITFALLS", "diff --git a/x b/x", "@@ -1 +1 @@", "  PITFALLS:"):
+            self.rota(txt=self.texto("Fix the label.\nfiles: a.tsx\n%s\nSEGREDO linha\n" % marca))
+            self.assertEqual(self.chamadas[-1][0], "Fix the label.\nfiles: a.tsx", marca)
+
+    def test_mascara_e_nada_alem_do_texto_chega_ao_transporte(self):
+        corpos, real = [], jev.perguntar
+
+        def transporte(url, cab, corpo, timeout):
+            corpos.append(corpo.decode("utf-8"))
+            return json.dumps({"answers": {k: {"noul": 0.1} for k in BAIXO}}).encode()
+
+        def fake(t, p):
+            return real(t, p, transporte=transporte, ambiente={"TYPESAFE_API_KEY": "k-teste"},
+                        settings=os.path.join(self.tmp, "nao.json"))
+        txt = self.texto("Mail ana.souza@example.com, call 11987654321, key sk-abcdefghijklmnopqrstuv.\n"
+                         "files: Button.tsx\n")
+        d = os.path.join(self.tmp, "seg.patch")
+        with open(d, "w", encoding="utf-8") as f:
+            f.write("+DIFF_PRIVADO = 1\n")
+        with mock.patch.object(jev, "perguntar", fake):
+            r = R.rota(["pasta-privada/Button.tsx"], d, None, self.cfg(), "/repo", txt)
+        self.assertEqual((r["source"], r["executor"]), ("jev", SONNET))
+        self.assertEqual(len(corpos), 1)
+        for nada in ("ana.souza@example.com", "11987654321", "sk-abcdefghijklmnopqrstuv",
+                     "DIFF_PRIVADO", "pasta-privada", "k-teste"):
+            self.assertNotIn(nada, corpos[0], nada)
+        self.assertIn("files: Button.tsx", corpos[0])
 
 
 class TestRotaCli(Base):
@@ -206,8 +352,8 @@ class TestRotaCli(Base):
 
     def test_ponta_a_ponta(self):
         r = self.cli("--files", "migrations/001.sql", "src/Button.tsx")
-        self.assertEqual(set(r), {"executor", "reviewers", "why"})
-        self.assertEqual(r["executor"], OPUS)
+        self.assertEqual(set(r), {"executor", "reviewers", "why", "model", "scores", "source"})
+        self.assertEqual((r["executor"], r["model"], r["scores"], r["source"]), (OPUS, "opus", {}, "globs"))
         self.assertEqual(r["reviewers"], ["failures", "security", "database"])
         d = os.path.join(self.tmp, "ok.patch")
         with open(d, "w", encoding="utf-8") as f:
@@ -220,6 +366,7 @@ class TestRotaCli(Base):
                   self.cli("--files", "migrations/001.sql", "--failed")):
             self.assertEqual((r["executor"], r["reviewers"]), (OPUS, ["failures", "security", "database"]))
             self.assertIn("route up", r["why"][0])
+            self.assertEqual((r["model"], r["scores"], r["source"]), ("opus", {}, "fixed"))
         with open(os.path.join(self.dados, "erros.log"), encoding="utf-8") as f:
             self.assertIn("rota", f.read())
 
@@ -254,6 +401,33 @@ class TestRotaCli(Base):
             self.assertEqual(r.returncode, 0, r.stderr)
             out = json.loads(r.stdout.strip())
             self.assertEqual((out["executor"], out["reviewers"]), (OPUS, rev), (arq, out))
+
+    def test_router_so_com_config_confiada(self):
+        """router.enabled in an untrusted project config changes nothing (the scorer is never
+        called); the same file trusted turns the router on. jev.perguntar is faked in the child."""
+        txt = os.path.join(self.tmp, "item.txt")
+        with open(txt, "w", encoding="utf-8") as f:
+            f.write("Restyle the header.\nfiles: Header.tsx\n")
+        codigo = ("import sys\nsys.path.insert(0, sys.argv[1])\nfrom tuneup import jev, rota\n"
+                  "def f(t, p):\n    open(sys.argv[2], 'a').write(t)\n"
+                  "    return {'mechanical': 0.0, 'risk': 0.9, 'hard': 0.0, 'visual': 0.0}\n"
+                  "jev.perguntar = f\nrota.roda_rota(sys.argv[3:])\n")
+        for nome, confiar, esperado in (("nc", False, (SONNET, "fixed")), ("ok", True, (OPUS, "jev"))):
+            proj = os.path.join(self.tmp, nome)
+            os.makedirs(os.path.join(proj, ".tune-up"))
+            c = os.path.join(proj, ".tune-up", "config.json")
+            with open(c, "w", encoding="utf-8") as f:
+                json.dump({"router": {"enabled": True}}, f)
+            if confiar:
+                self.confiar(c)
+            marca = os.path.join(self.tmp, nome + ".chamou")
+            r = subprocess.run([sys.executable, "-c", codigo, os.path.dirname(SCRIPT), marca,
+                                "--files", "src/Header.tsx", "--text-file", txt], cwd=proj, env=self.env,
+                               stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = json.loads(r.stdout.strip())
+            self.assertEqual((out["executor"], out["source"]), esperado, (nome, out))
+            self.assertEqual(os.path.exists(marca), confiar, nome)
 
 
 if __name__ == "__main__":

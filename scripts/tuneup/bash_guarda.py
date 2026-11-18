@@ -199,9 +199,9 @@ def _resto_da_guarda(toks):
 
 
 def chamada_rota(cmd):
-    """`<launcher as in chamada_info> rota` with only `--files <paths>`, `--diff-file <path>` and
-    `--failed sonnet|opus`: rota only reads and prints JSON. Same refusals as chamada_info
-    (operators, redirection, expansion, backslash)."""
+    """`<launcher as in chamada_info> rota` with only `--files <paths>`, `--diff-file <path>`,
+    `--failed sonnet|opus` and one `--text-file <path>`: rota only reads and prints JSON. Same
+    refusals as chamada_info (operators, redirection, expansion, backslash)."""
     import shlex
     if re.search(r"[;&|<>$`()\n\\]", cmd):
         return False
@@ -211,7 +211,7 @@ def chamada_rota(cmd):
         return False
     if not resto or resto[0] != "rota":
         return False
-    i, args = 1, resto
+    i, args, texto = 1, resto, 0
     while i < len(args):
         if args[i] == "--files":
             i += 1
@@ -221,6 +221,9 @@ def chamada_rota(cmd):
             i += 2
         elif args[i] == "--failed" and args[i + 1:i + 2] in (["sonnet"], ["opus"]):
             i += 2
+        elif (args[i] == "--text-file" and not texto and i + 1 < len(args)
+              and not args[i + 1].startswith("-")):
+            texto, i = 1, i + 2
         else:
             return False
     return True

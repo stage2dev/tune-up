@@ -117,6 +117,8 @@ class TestRotaSoLeitura(PromptBase):
         for ok in ("python3 %s rota --files migrations/001.sql src/Button.tsx" % g,
                    "python3 %s rota --files a.md --diff-file d.patch --failed sonnet" % g,
                    "python3 %s rota --failed opus --files 'a b.md'" % g, "python3 %s rota" % g,
+                   "python3 %s rota --files a.md --diff-file d.patch --text-file item.txt" % g,
+                   "python3 %s rota --text-file '/tmp/my item.txt' --failed opus" % g,
                    "python3 %s info" % g):
             self.assertIsNone(self.bash(ok), ok)
         for ruim in ("python3 %s rota --files a.md; touch x" % g, "python3 %s rota --files a > o" % g,
@@ -124,7 +126,10 @@ class TestRotaSoLeitura(PromptBase):
                      "python3 %s rota --x" % g, "python3 %s rota --diff-file" % g,
                      "python3 %s info --files a" % g, "python3 %s trust c.json" % g,
                      "python3 %s/../scripts/guarda.py rota" % g.rsplit("/", 2)[0],
-                     "python3 -c x %s rota" % g, "FOO=1 python3 %s rota" % g):
+                     "python3 -c x %s rota" % g, "FOO=1 python3 %s rota" % g,
+                     "python3 %s rota --text-file" % g, "python3 %s rota --text-file --files a" % g,
+                     "python3 %s rota --text-file a.txt --text-file b.txt" % g,
+                     "python3 %s rota --text-file $HOME/x" % g):
             self.assertIsNotNone(self.bash(ruim), ruim)
 
 
