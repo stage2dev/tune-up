@@ -40,7 +40,7 @@ def _esta_maquina(host):
 
 
 def nativo(p):
-    """Windows: the path as Windows opens it, with / separators. Git Bash `/c/x` -> `C:/x`,
+    """Windows: the path as Windows opens it, with / separators. Git Bash `/c/x` and WSL `/mnt/c/x` -> `C:/x`,
     `/tmp` -> temp dir, `\\\\?\\` and `\\\\.\\` dropped, `\\\\?\\UNC\\h\\s` -> `//h/s`,
     this machine's admin share (`\\\\localhost\\c$\\x`) -> `C:/x`, and in each part the
     `:stream` and the trailing dots and spaces Windows ignores (`settings.json. ` = settings.json).
@@ -55,9 +55,9 @@ def nativo(p):
     m = re.match(r"//([^/]+)/([A-Za-z])\$(?=/|$)", q)
     if m and _esta_maquina(m.group(1)):
         q = m.group(2) + ":" + q[m.end():]
-    m = re.match(r"/([A-Za-z])(?=/|$)", q)
+    m = re.match(r"(?:/mnt)?/([A-Za-z])(?=/|$)", q)  # Git Bash `/c/x`; WSL `/mnt/c/x` (wsl <cmd>)
     if m:
-        q = m.group(1).upper() + ":" + (q[2:] or "/")
+        q = m.group(1).upper() + ":" + (q[m.end():] or "/")
     elif q == "/tmp" or q.startswith("/tmp/"):
         q = temporarios()[0].replace("\\", "/") + q[4:]
     unidade, resto = ntpath.splitdrive(q)

@@ -4,6 +4,24 @@ Every new rule goes in through `/tune-up:learn`: memory + a change here + a test
 
 ## Unreleased
 
+## 2.18.0
+
+Bash guard: commands that Bash runs but the guard read as part of a string. Stricter on every system; a command that used to pass may now ask (research mode) or be denied (talk mode) because the guard now sees what it really runs.
+
+- New `scripts/tuneup/bash_texto.py` (`legivel`): the command text is rewritten before it is tokenized, following the quoting as Bash does. It replaces the line-by-line heredoc removal.
+- `$'...'` (ANSI-C quoting) is decoded into a plain quoted word. Before, `echo $'\'' ; rm x ; echo \'` hid the `rm` in all modes, including a write to `~/.claude/settings.json`; `$'\x72m' x` hid the command name. The same text inside `bash -c "..."` is read too (`\$` and `` \` `` inside double quotes lose the backslash, as in Bash).
+- Command substitutions where the tokenizer does not split are read as commands: `"$(x)"` and backticks inside double quotes, backticks outside quotes, and `$(x)` or backticks in the body of an unquoted heredoc (`cat <<EOF`). A quoted heredoc (`<<'EOF'`) and escaped `\$(` stay text.
+- Heredocs: the delimiter is read with Bash's quote removal (`<<'E-F'`, `<<"a b"`, `<<E\OF`); a `<<` inside a quoted string that spans lines is no heredoc; `<<` inside `((...))`, `${...}`, `$[...]` or `name[...]` may be a shift or a heredoc, and then both readings are checked. Before, each of these could hide the lines after it.
+- Comments are dropped (a quote inside `# it's` no longer changes how the next lines are read); `\<newline>` joins the two lines without a space (`r\<newline>m x` is `rm x`) and `\\<newline>` no longer hides the next line; a line end glued to a redirection (`echo a<newline><<<x rm y`) splits the commands.
+- An unclosed quote is closed at the end of the text, so the commands before it are still read one by one.
+- Where the reader may not pair the quotes as Bash does (something left unclosed, a quote inside `"${...}"`, a heredoc word with an expansion, a heredoc without its end line, a `#` inside `[[ x =~ (#) ]]`) the command is also read with no quoting at all, split at every separator. Each reading is checked on its own; a `cd` of one does not reach the other.
+- An unquoted `$(x)` is one word and its commands are read after the text: `rm $(x) ~/.claude/settings.json` keeps the file as `rm`'s argument (it used to pass in code mode); where a command starts, or glued to a word, it is dropped (`$(x) rm f`, `rm$(x) f`).
+- A heredoc ends only at a line equal to its word (leading tabs dropped for `<<-`); before, a line with blanks around the word ended it early. When the tokenizer cannot read the text at all, the emergency split now drops quotes and splits at redirections.
+- `bash -c`, `eval` and `wsl` are opened up to three levels (was one).
+- Windows: `wsl [options] <command>` is read as the command the Linux shell runs (`-e/--exec`, `--cd`, `-d`, `-u`; a word with blanks is read both as one word and as shell text), and `/mnt/<letter>/...` is the drive `<letter>:` in paths and in the text check. Before, `wsl rm /mnt/c/Users/u/.claude/settings.json` passed without a question.
+- New `tests/test_bash_texto.py`, with a differential test: random text is run by the real Bash with a harmless marker function, and whenever Bash runs the marker the guard must show it as a command (skipped on Windows and where there is no `bash`).
+- Still open (already so before this release): substitutions are resolved in the folder where the whole command ends, and a `cd` inside `( ... )` reaches the commands after it; `eval`/`bash -c` nested more than three times, `bash -o x -c`, `bash <<E` and `| bash` are not opened; a command word that is an expansion (`$x rm f`, `"$x"rm f`); `function`, `builtin`, `coproc`; `time -p case`; `wsl ~`, `wsl -dName` and wrappers inside `powershell`/`cmd`.
+- Not covered: the marketing guard (`tune-up-mkt/scripts/guarda_mkt.py`) and the panel guard (`painel/travas.py`) have their own readers and were not changed. Nothing here was run on a real Windows machine; the `wsl` reading is tested with the platform forced.
 ## 2.17.0
 
 Executor and reviewers picked per item. Nothing changes until a skill calls `guarda.py rota`.

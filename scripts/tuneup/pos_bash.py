@@ -26,7 +26,7 @@ def ev_pos_bash(d, cfg):
     if not isinstance(cmd, str):
         return None
     tem = False
-    limpo = re.sub(r"\\\r?\n", " ", sem_heredoc(cmd))
+    limpo = sem_heredoc(cmd)
     for seg in segmentos(limpo):
         toks = comando_simples(seg)
         if toks and os.path.basename(toks[0]) == "gh" and toks[1:3] == ["pr", "create"]:

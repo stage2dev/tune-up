@@ -1,6 +1,7 @@
 """tune-up: leitura do comando de shell (heredoc, tokens, segmentos, redireções, git, flags)."""
 import os
 import re
+from .bash_texto import legivel
 from .caminhos import NT, nativo
 
 # ---------------------------------------------------------------- parsing bash
@@ -9,27 +10,19 @@ SEPARADORES = {"&&", "||", ";", "|", "&", "\n", ";;", "|&", "(", ")", ";&", ";;&
 PREFIXOS = {"env", "sudo", "command", "time", "exec", "nohup", "nice", "xargs", "timeout"}
 PREFIXO_VALOR = {"nice": "n", "timeout": "sk", "xargs": "aEdILnPs"}  # flags curtas que levam valor
 SEP_CHARS = set("();|&\n")
+PONTUACAO = set("();<>|&\n")
+RE_FIM_GRUDADO = re.compile(r"[\n;()]+|[^\n;()]+")
 PALAVRAS_SHELL = {"then", "do", "else", "elif", "if", "while", "until", "!", "{", "}", "(", ")"}
 SHELLS = {"bash", "sh", "zsh"}
 TEXTO_PS = "\x00ps"  # marker segment [TEXTO_PS, words...]: PowerShell text-check words (see comandos)
 ESCOPO = "\x00escopo"  # marker segments [ESCOPO, "+"] / [ESCOPO, "-"] around a wrapper's own segments
 RE_ATRIB = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
-# heredoc de verdade, ou trecho entre aspas / $((…)) onde `<<` não abre heredoc
-RE_HEREDOC_OU_ASPAS = re.compile(
-    r"<<(?!<)-?\s*['\"]?(\w+)['\"]?|'[^']*'|\"(?:[^\"\\]|\\.)*\"|\$\(\([^)]*\)\)")
 
 
 def sem_heredoc(cmd):
-    saida = []
-    pendentes = []
-    for linha in cmd.split("\n"):
-        if pendentes:
-            if linha.strip() == pendentes[0]:
-                pendentes.pop(0)
-            continue
-        saida.append(linha)
-        pendentes.extend(m.group(1) for m in RE_HEREDOC_OU_ASPAS.finditer(linha) if m.group(1))
-    return "\n".join(saida)
+    """The command as the tokenizer can read it (bash_texto.legivel): no heredoc bodies or comments,
+    `$'...'` as plain quoted words, and the substitutions inside double quotes as extra lines."""
+    return legivel(cmd)
 
 
 def tokens_de(texto):
@@ -45,15 +38,18 @@ def segmentos(cmd):
     """Lista de listas de tokens, uma por comando simples."""
     try:
         toks = tokens_de(cmd)
-    except ValueError:
+    except ValueError:  # unreadable: split at every separator and redirection, quotes dropped
         segs = []
-        for parte in re.split(r"&&|\|\||[;|&\n]", cmd):
+        for parte in re.split(r"&&|\|\||[;|&\n()`<>]|\$\(", cmd):
+            parte = re.sub(r"['\"\\]", "", parte)
             if parte.strip():
                 segs.append(parte.split())
         return segs
     segs, atual = [], []
+    # shlex glues punctuation: "))\n" is one token, and so is "\n<<<" (a line end and a redirection)
+    toks = [p for t in toks for p in (RE_FIM_GRUDADO.findall(t) if t and not set(t) - PONTUACAO else [t])]
     for t in toks:
-        if t in SEPARADORES or (t and not set(t) - SEP_CHARS):  # "))\n" vem grudado
+        if t in SEPARADORES or (t and not set(t) - SEP_CHARS):
             if atual:
                 segs.append(atual)
             atual = []
@@ -80,33 +76,77 @@ def comando_interno(toks):
     return None
 
 
-def comandos(limpo):
-    """Comandos simples do texto, abrindo `bash -c`/`eval` um nível. `powershell|pwsh <x>` and
-    `cmd /c|//c <x>` are read as the PowerShell tool reads them (powershell.do_bash): the command
+WSL_VALOR = {"-d", "--distribution", "--distribution-id", "-u", "--user", "--shell-type"}
+
+
+def comando_wsl(toks):
+    """Texts the Linux shell may get from `wsl [options] [--] <words>` (`--cd D` as a leading `cd`;
+    `-e|--exec`: the words as one command, no shell); None for any other command and for wsl's
+    own management options (`--list`, `--shutdown`...)."""
+    if not toks or os.path.basename(toks[0]).lower() not in ("wsl", "wsl.exe"):
+        return None
+    import shlex
+    i, cd, exato = 1, "", False
+    while i < len(toks) and toks[i].startswith("-"):
+        t = toks[i]
+        i += 1
+        if t == "--" or t in ("-e", "--exec"):
+            exato = t != "--"
+            break
+        if t in WSL_VALOR or t == "--cd":
+            if t == "--cd" and i < len(toks):
+                cd = "cd %s ; " % shlex.quote(toks[i])
+            i += 1
+        elif t != "--system":
+            return None
+    resto = toks[i:]
+    if exato:
+        return [cd + " ".join(shlex.quote(t) for t in resto)]
+    # Windows hands wsl one command line: a word with a blank goes in double quotes, the rest bare.
+    # Both readings of such a word are given (one word, or shell text).
+    citado = " ".join('"%s"' % re.sub(r'(["\\])', r"\\\1", t) if re.search(r"\s", t) else t for t in resto)
+    return [cd + x for x in dict.fromkeys([citado, " ".join(resto)])]
+
+
+def comandos(limpo, nivel=0):
+    """Comandos simples do texto, abrindo `bash -c`/`eval`/`wsl` (até 3 níveis). `powershell|pwsh <x>`
+    and `cmd /c|//c <x>` are read as the PowerShell tool reads them (powershell.do_bash): the command
     itself, its Bash rewrite between ESCOPO markers (a `cd` inside does not reach the segments after
     the wrapper), and a TEXTO_PS segment with the words of its text check (unreadable: all its words).
-    With `$'` in the text (shlex does not read it) no ESCOPO markers: a `cd` may really be outside."""
+    `wsl <x>`: the command itself, then what the Linux shell runs, between ESCOPO markers.
+    The markers are always there."""
     from .powershell import do_bash
-    out, escopo = [], "$'" not in limpo
+    out, escopo = [], True
+
+    def dentro(texto):  # the commands of an inner command line
+        if nivel < 2:
+            return comandos(sem_heredoc(texto), nivel + 1)
+        return [(s2, comando_simples(s2)) for s2 in segmentos(sem_heredoc(texto))]
+
     for seg in segmentos(limpo):
         toks = comando_simples(seg)
         try:
             ps = do_bash(toks)
         except ValueError:
             ps = ("", toks)
-        if ps is not None:
+        wsl = comando_wsl(toks) if ps is None else None
+        if ps is not None or wsl is not None:
             out += [(seg, toks)] + [([ESCOPO, "+"], [ESCOPO, "+"])] * escopo
-            out.extend((s2, comando_simples(s2)) for s2 in segmentos(sem_heredoc(ps[0])))
+            if wsl is not None:
+                for k, texto in enumerate(wsl):
+                    out += [([ESCOPO, x], [ESCOPO, x]) for x in "-+"] * (escopo and k > 0)
+                    out.extend(dentro(texto))
+            else:
+                out.extend((s2, comando_simples(s2)) for s2 in segmentos(sem_heredoc(ps[0])))
             out += [([ESCOPO, "-"], [ESCOPO, "-"])] * escopo
-            if ps[1]:
+            if ps and ps[1]:
                 out.append(([TEXTO_PS] + ps[1], [TEXTO_PS] + ps[1]))
             continue
         interno = comando_interno(toks)
         if interno is None:
             out.append((seg, toks))
-            continue
-        for s2 in segmentos(sem_heredoc(interno)):
-            out.append((s2, comando_simples(s2)))
+        else:
+            out.extend(dentro(interno))
     return out
 
 
