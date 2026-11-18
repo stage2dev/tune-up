@@ -9,8 +9,8 @@ import stat
 import sys
 
 PLUGIN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LINHA = ("tune-up-vendas: o WhatsApp deste projeto ainda não está preparado. No painel, tela Vendas, aba Conexão, o "
-         "botão \"Preparar tudo\" faz isso (ou use /tune-up-vendas:instalar).")
+LINHA = ("tune-up: o WhatsApp deste projeto ainda não está preparado. No painel, tela Vendas, aba Conexão, o "
+         "botão \"Preparar tudo\" faz isso (ou use /tune-up:instalar).")
 PAINEL_MAX = 64 * 1024   # = config.LIMITE_JSON
 ESTADO_MAX = 4096        # = embutidos.MAX_BYTES
 EMBUTIDOS = ("estudio", "vendas")   # = ids de painel/embutidos.EMBUTIDOS (um valor não booleano desliga tudo)

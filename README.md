@@ -156,16 +156,16 @@ You can override models and effort per role in the `models` key of `user.json`.
 
 Buttons only launch actions from a closed list; each action carries its own tool rules. Details, configuration (`.tune-up/painel.json`) and the module contract: [`painel/README.md`](painel/README.md) (Portuguese). Works on macOS, Linux and Windows (Git Bash); Python 3.9+; no install step.
 
-Other optional plugin: `tune-up-mkt` (marketing accounts, skills and a guard for ad-account and public-post writes; 0.3.0: guard, account connection and campaign/content/SEO/preflight skills, see [`tune-up-mkt/README.md`](tune-up-mkt/README.md)). Install with `/plugin install tune-up-mkt@tune-up`. Studio and Vendas come inside tune-up: see the next section.
-
 ## Built-in modules
 
-Studio and Vendas come inside tune-up and arrive off. Open the panel's **Módulos** screen (`/modulos`) and press the button on the one you want; press it again to turn it off. No `painel.json` edit and no separate plugin install.
+Studio and Vendas come inside tune-up and arrive off (Marketing is also part of tune-up; see below). Open the panel's **Módulos** screen (`/modulos`) and press the button on the one you want; press it again to turn it off. No `painel.json` edit and no separate plugin install.
 
-- **Studio** (posts, short videos and ads with your brand): five commands, typed by you, Claude does not start them on its own: `/tune-up:post`, `/tune-up:video`, `/tune-up:anuncio`, `/tune-up:marca`, `/tune-up:marca-ler`. Works on macOS, Linux and WSL2; not on native Windows. Details: [`tune-up-studio/README.md`](tune-up-studio/README.md).
+- **Studio** (posts, short videos and ads with your brand): five commands, typed by you, Claude does not start them on its own: `/tune-up:post`, `/tune-up:video`, `/tune-up:anuncio`, `/tune-up:marca`, `/tune-up:marca-ler`. Post, video and anuncio are meant to be started from the panel's Estúdio screen (the panel passes the work folder, the format and the HyperFrames path); `/tune-up:marca` and `/tune-up:marca-ler` can be typed. Works on macOS, Linux and WSL2; not on native Windows. Details: [`tune-up-studio/README.md`](tune-up-studio/README.md).
 - **Vendas** (WhatsApp sales screen): first version tested only on macOS; needs Docker. Details: [`vendas/README.md`](vendas/README.md).
 
-Do NOT install the separate `tune-up-studio` 0.4.0 plugin together with tune-up 2.11.0 or later: its commands now live in the core and would show twice. Whoever already prepared the Studio must prepare it again, once (Estúdio screen, Ambiente, Preparar).
+- **Marketing** (marketing accounts, skills and a guard for ad-account and public-post writes): part of tune-up, no install. Details: [`tune-up-mkt/README.md`](tune-up-mkt/README.md).
+
+Migration (2.19.0): the marketplace lists only `tune-up`. If you installed `tune-up-studio`, `tune-up-vendas` or `tune-up-mkt`, run `/plugin marketplace update tune-up`, then `claude plugin update tune-up@tune-up`, then restart Claude Code, in this order. Then uninstall the old separate plugins (`/plugin uninstall tune-up-studio@tune-up`, the same for the other two): their old commands (the ones prefixed with the plugin name, such as the Studio ones) point at files that no longer exist. Your data stays. This order was not yet measured on a real install. Whoever already prepared the Studio must prepare it again, once (Estúdio screen, Ambiente, Preparar).
 
 ## Guards (hooks)
 

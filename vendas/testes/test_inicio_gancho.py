@@ -70,7 +70,7 @@ class TesteGancho(unittest.TestCase):
         self.assertEqual(texto, inicio.LINHA)
         self.assertNotIn("\n", texto)
         self.assertIn("Preparar tudo", texto)
-        self.assertIn("/tune-up-vendas:instalar", texto)
+        self.assertIn("/tune-up:instalar", texto)
         self.assertNotIn(self.pasta, texto)
 
     def test_sem_tela_ligada_nada(self):

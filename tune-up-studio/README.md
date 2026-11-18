@@ -1,9 +1,10 @@
 # tune-up-studio
 
-Status: work in progress. From `tune-up` 2.11.0 the Studio is built into the
-`tune-up` core: it arrives off and you turn it on with one button. Do not
-install this plugin separately together with core 2.11.0 or later: its
-commands now live in the core and would show twice.
+Status: work in progress. Part of `tune-up` since 2.11.0: it arrives off and you turn it on with one
+button. The separate `tune-up-studio` plugin was removed from the marketplace
+in 2.19.0; if you installed it, uninstall it
+(`/plugin uninstall tune-up-studio@tune-up`): its old commands (prefixed with the plugin name)
+point at files that no longer exist.
 
 Platforms: the studio runs on macOS, Linux and WSL2 only. Native Windows is not
 supported (the Claude Code sandbox it relies on does not run there); the
@@ -13,7 +14,7 @@ supported (the Claude Code sandbox it relies on does not run there); the
 
 Open the panel's **Módulos** screen (`/modulos`) and press the button on
 Estúdio. No `painel.json` edit, no `--aceitar-extensao`, no separate install.
-Press it again to turn it off. An old `painel.json` line
+Press it again to turn it off. The old way, which still works: a `painel.json` line
 (`"modulos_de_plugins": ["tune-up-studio@tune-up:estudio"]`) still counts as on
 until you use the button; the screen says the line can be removed.
 
