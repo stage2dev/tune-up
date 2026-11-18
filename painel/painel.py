@@ -34,6 +34,7 @@ import leitor  # noqa: E402
 import mascara  # noqa: E402
 import midia  # noqa: E402
 import modulos  # noqa: E402
+import plugins  # noqa: E402
 import servidor_http  # noqa: E402
 import teto  # noqa: E402
 import transcricao  # noqa: E402
@@ -270,6 +271,7 @@ def fazer_handler(app):
                 return self._json(200, modulos.listar(app.cfg))
             if caminho == "/api/embutidos":
                 return self._json(*embutidos.listar(app.cfg))
+            if caminho == "/api/plugins": return self._json(*plugins.listar(app.cfg))  # noqa: E701 - plugins.py
             if caminho == "/api/habilidades":
                 return self._json(200, habilidades.para_tela(habilidades.listar(app.cfg)))
             m = RE_ROTA_MODULO.match(caminho)
@@ -367,6 +369,7 @@ def fazer_handler(app):
                 if caminho.startswith("/api/embutidos/"):  # liga/desliga Estúdio ou Vendas (embutidos.py)
                     return self._json(*embutidos.mudar(app.cfg, caminho[len("/api/embutidos/"):], corpo,
                                                        depois=lambda: (modulos.esquecer(), app.estado.invalidar())))
+                if caminho == "/api/plugins": return self._json(*plugins.mudar(app.cfg, corpo, depois=app.estado.invalidar))  # noqa: E701,E501
                 m = RE_ROTA_MODULO_ACAO.match(caminho)
                 if m:  # `dados` vai intacto para o módulo e nunca é registrado nem ecoado
                     return self._json(*modulos.agir(app.cfg, urllib.parse.unquote(m.group(1)),
