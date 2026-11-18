@@ -175,14 +175,43 @@ class TesteLigado(unittest.TestCase):
             self.assertEqual((n, texto), (n, inicio.LINHA if esperado else ""))
 
     def test_arquivo_ruim_pelo_lancador_sai_0_calado(self):
+        env = dict(os.environ, CLAUDE_PLUGIN_DATA=os.path.join(self.tmp, "plugin-dados"))   # nunca o cache real
         for n, estado in ((0, "{lixo"), (1, GRANDE)):
             raiz = self.projeto(n, {}, estado, "painel-projeto/dados", False)
             comeco = time.monotonic()
             r = subprocess.run(["sh", os.path.join(RAIZ, "scripts", "py"), "vendas/scripts/inicio.py"],
                                input=json.dumps({"cwd": raiz}).encode(), stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE, timeout=30)
+                               stderr=subprocess.PIPE, timeout=30, env=env)
             self.assertLess(time.monotonic() - comeco, 5)
             self.assertEqual((r.returncode, r.stdout, r.stderr), (0, b"", b""))
+
+    def test_sem_painel_json_de_uma_subpasta_avisa(self):   # ligado pela tela Módulos: painel.json é opcional
+        raiz = os.path.join(self.tmp, "p")
+        os.makedirs(os.path.join(raiz, ".tune-up", "painel-projeto", "dados"))
+        os.makedirs(os.path.join(raiz, "src", "a"))
+        with open(os.path.join(raiz, ".tune-up", "painel-projeto", "dados", "embutidos-ligados.json"), "w") as f:
+            json.dump({"vendas": True}, f)
+        texto = inicio.linha(json.dumps({"cwd": os.path.join(raiz, "src", "a")}), base=os.path.join(self.tmp, "vd"))
+        self.assertEqual(texto, inicio.LINHA)
+
+    def test_raiz_igual_a_do_painel(self):
+        sem = os.path.join(self.tmp, "sem")                      # .tune-up sem painel.json
+        os.makedirs(os.path.join(sem, ".tune-up"))
+        fundo = os.path.join(sem, "a", "b", "c", "d")
+        os.makedirs(fundo)
+        de_fora = os.path.join(self.tmp, "fora")                 # .tune-up de fora com painel.json, outro dentro
+        os.makedirs(os.path.join(de_fora, ".tune-up"))
+        open(os.path.join(de_fora, ".tune-up", "painel.json"), "w").close()
+        dentro = os.path.join(de_fora, "x", "y")
+        os.makedirs(os.path.join(dentro, ".tune-up"))
+        os.makedirs(os.path.join(dentro, "z"))
+        for cwd in (sem, fundo, dentro, os.path.join(dentro, "z"), os.path.join(de_fora, "x")):
+            self.assertEqual(inicio.raiz_do_projeto(cwd), config.achar_raiz(cwd=cwd, env={})[0], cwd)
+
+    def test_constantes_iguais_as_do_painel(self):
+        self.assertEqual(inicio.EMBUTIDOS, tuple(e["id"] for e in embutidos.EMBUTIDOS))
+        self.assertEqual((inicio.PAINEL_MAX, inicio.ESTADO_MAX), (config.LIMITE_JSON, embutidos.MAX_BYTES))
+        self.assertEqual(inicio.RE_PACOTE.pattern, config.RE_PACOTE.pattern)
 
 if __name__ == "__main__":
     unittest.main()

@@ -26,10 +26,11 @@ def _carregar(nome):
 
 
 def raiz_do_projeto(cwd):
-    """Primeira pasta com .tune-up/painel.json subindo a partir do cwd, ou None."""
+    """Primeira pasta com a pasta .tune-up subindo a partir do cwd (= o passo "cwd" de config.achar_raiz;
+    painel.json é opcional), ou None."""
     atual = os.path.realpath(cwd)
     while True:
-        if os.path.isfile(os.path.join(atual, ".tune-up", "painel.json")):
+        if os.path.isdir(os.path.join(atual, ".tune-up")):
             return atual
         acima = os.path.dirname(atual)
         if acima == atual:
