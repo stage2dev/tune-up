@@ -147,7 +147,7 @@ class ExcecaoInterna(Base):
                 mock.patch("sys.stdin", io.StringIO(entrada)), contextlib.redirect_stdout(saida):
             mod.main()
         self.assertEqual(saida.getvalue(), "")
-        with open(os.path.join(self.dados, "erros.log"), encoding="utf-8") as f:
+        with open(os.path.join(self.dados, "erros-mkt.log"), encoding="utf-8") as f:
             linhas = f.read().splitlines()
         self.assertEqual(len(linhas), 1)
         self.assertIn("simulated exception", linhas[0])

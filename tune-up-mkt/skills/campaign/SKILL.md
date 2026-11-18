@@ -1,12 +1,12 @@
 ---
 name: campaign
 description: "Analyzes, plans and (only on request) changes paid campaigns on Meta Ads and Google Ads, always ending in a marketing action. Use on: analyze my campaign, plan an ad campaign, ad results, change budget or audience; analisar campanha, planejar anúncio, resultado dos anúncios, mexer em orçamento."
-allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py falta), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py falta *), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py status), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py status *)
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/contas.py falta), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/contas.py falta *), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/contas.py status), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/contas.py status *)
 ---
 
 # Campaign
 
-Reply in the `language` of `~/.config/tune-up/user.json` (English if missing) and call the user `owner`. Commands are `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py <command>`. State lives in `.tune-up/mkt/contas.json` and `.tune-up/mkt/config.json` (`site`, `canais`, `indexnow_key`, `credit_ask_above`, default 2000). Service ids are in `${CLAUDE_PLUGIN_ROOT}/servicos.json`.
+Reply in the `language` of `~/.config/tune-up/user.json` (English if missing) and call the user `owner`. Commands are `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/contas.py <command>`. State lives in `.tune-up/mkt/contas.json` and `.tune-up/mkt/config.json` (`site`, `canais`, `indexnow_key`, `credit_ask_above`, default 2000). Service ids are in `${CLAUDE_PLUGIN_ROOT}/tune-up-mkt/servicos.json`.
 
 ## Step 0 - Check what is connected
 

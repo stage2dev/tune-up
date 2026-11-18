@@ -137,8 +137,8 @@ class Lancador(unittest.TestCase):
         try:
             env = {k: v for k, v in os.environ.items() if k not in ("CLAUDE_PROJECT_DIR", "CLAUDE_PLUGIN_DATA")}
             env.update({"HOME": tmp, "USERPROFILE": tmp})
-            r = subprocess.run(["sh", "scripts/py", "scripts/contas.py", "config", "--site", "https://example.com",
-                                "--raiz", tmp], cwd=RAIZ, capture_output=True, text=True, env=env, timeout=30)
+            r = subprocess.run(["sh", "scripts/py", "tune-up-mkt/scripts/contas.py", "config", "--site", "https://example.com",
+                                "--raiz", tmp], cwd=os.path.dirname(RAIZ), capture_output=True, text=True, env=env, timeout=30)
             self.assertEqual(r.returncode, 0, r.stderr)
             with open(os.path.join(tmp, ".tune-up", "mkt", "config.json"), encoding="utf-8") as f:
                 self.assertEqual(json.load(f)["site"], "https://example.com")

@@ -229,6 +229,24 @@ def chamada_rota(cmd):
     return True
 
 
+def chamada_contas(cmd):
+    """`sh <this plugin>/scripts/py tune-up-mkt/scripts/contas.py status|falta|marcar|config ...`
+    as the marketing skills pre-approve. Same refusals as chamada_rota; `--raiz` (it picks the
+    folder whose `.tune-up/mkt/` is written) is not exempt and goes through the normal rules.
+    Braces, globs and `~` are refused too: the shell could rebuild them into `--raiz <dir>`."""
+    import shlex
+    if re.search(r"[;&|<>$`()\n\\{}*?\[~]", cmd):
+        return False
+    try:
+        toks = shlex.split(cmd)
+    except ValueError:
+        return False
+    if len(toks) < 4 or toks[0] != "sh" or not _exato(toks[1], os.path.join(RAIZ_PLUGIN, "scripts", "py")):
+        return False
+    return toks[2] == "tune-up-mkt/scripts/contas.py" and toks[3] in ("status", "falta", "marcar", "config") \
+        and not any(t == "--raiz" or t.startswith("--raiz=") for t in toks[4:])
+
+
 def _exato(tok, alvo):
     """`tok` spells `alvo` (or its realpath) itself, and resolves to it."""
     partes = re.split(r"[/\\]", tok)

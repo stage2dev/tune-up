@@ -1,6 +1,6 @@
 """tune-up-mkt: read-only check of which marketing accounts are connected, per project.
 
-Usage (from the plugin root): sh scripts/py scripts/contas.py <command> [...] [--raiz DIR]
+Usage (from the plugin root): sh scripts/py tune-up-mkt/scripts/contas.py <command> [...] [--raiz DIR]
   status [--json]   run the free local checks (claude plugin list --json, claude mcp list,
                     composio connections list), merge still-valid marks, write .tune-up/mkt/contas.json
   marcar <id> <estado> --prova {whoami_ok,connections_ok,manual} [--via {mcp,cli,manual}]

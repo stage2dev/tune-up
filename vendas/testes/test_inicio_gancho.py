@@ -1,6 +1,7 @@
 """Gancho SessionStart (scripts/inicio.py): uma linha quando a tela Vendas está ligada e o WhatsApp não está
 preparado; nada sem a tela, com tudo pronto, com um preparo vivo; nunca levanta (pasta faltando, estado corrompido,
-entrada ruim) e o processo sai 0 rápido. hooks.json do plugin aponta para o script."""
+entrada ruim) e o processo sai 0 rápido. Ligado = a mesma resposta de painel/embutidos.py (arquivo
+embutidos-ligados.json do painel ou a linha antiga do painel.json). O hooks.json do núcleo roda o script pelo lançador."""
 import sys
 
 sys.dont_write_bytecode = True
@@ -16,10 +17,15 @@ import unittest  # noqa: E402
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 VENDAS = os.path.dirname(AQUI)
+RAIZ = os.path.dirname(VENDAS)
 sys.path.insert(0, VENDAS)
 SCRIPT = os.path.join(VENDAS, "scripts", "inicio.py")
 
 from servico import pasta, travas  # noqa: E402
+
+sys.path.insert(0, os.path.join(RAIZ, "painel"))   # só no teste: o gancho não importa o painel
+import config  # noqa: E402
+import embutidos  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location("vendas_inicio_teste", SCRIPT)
 inicio = importlib.util.module_from_spec(_spec)
@@ -64,7 +70,7 @@ class TesteGancho(unittest.TestCase):
         self.assertEqual(texto, inicio.LINHA)
         self.assertNotIn("\n", texto)
         self.assertIn("Preparar tudo", texto)
-        self.assertIn("/tune-up-vendas:instalar", texto)
+        self.assertIn("/tune-up:instalar", texto)
         self.assertNotIn(self.pasta, texto)
 
     def test_sem_tela_ligada_nada(self):
@@ -108,14 +114,104 @@ class TesteGancho(unittest.TestCase):
             self.assertLess(time.monotonic() - comeco, 5)
             self.assertEqual((r.returncode, r.stdout, r.stderr), (0, b"", b""))
 
-    def test_hooks_json_aponta_para_o_script(self):
-        with open(os.path.join(VENDAS, "hooks", "hooks.json"), encoding="utf-8") as f:
-            ganchos = json.load(f)["hooks"]
-        self.assertEqual(list(ganchos), ["SessionStart"])
-        comando = ganchos["SessionStart"][0]["hooks"][0]["command"]
-        self.assertIn('"${CLAUDE_PLUGIN_ROOT}/scripts/inicio.py"', comando)
-        self.assertTrue(comando.endswith("|| true"))
+    def test_hooks_json_do_nucleo_roda_o_script(self):
+        self.assertFalse(os.path.exists(os.path.join(VENDAS, "hooks")))   # Vendas não é mais plugin próprio
+        with open(os.path.join(RAIZ, "hooks", "hooks.json"), encoding="utf-8") as f:
+            grupos = json.load(f)["hooks"]["SessionStart"]
+        achados = [(g, x) for g in grupos for x in g["hooks"] if "vendas/scripts/inicio.py" in x["command"]]
+        self.assertEqual(len(achados), 1)
+        grupo, gancho = achados[0]
+        self.assertTrue(gancho["command"].startswith('sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" vendas/scripts/inicio.py'))
+        self.assertTrue(gancho["command"].endswith(" 2>/dev/null || true"))
+        self.assertEqual((grupo["matcher"], gancho["timeout"]), ("startup|resume|clear", 5))
 
+
+ANTIGA = {"modulos_de_plugins": ["tune-up-vendas@loja:vendas"]}
+GRANDE = json.dumps({"vendas": True, "x": "a" * 5000})
+# (painel.json, embutidos-ligados.json (None = sem arquivo), pasta de dados sob .tune-up, pacote é arquivo, ligado)
+CASOS = (
+    ({}, {"vendas": True}, "painel-projeto/dados", False, True),          # ligado pela tela, sem linha antiga
+    ({}, None, "painel-projeto/dados", False, False),                     # padrão: desligado
+    (ANTIGA, None, "painel-projeto/dados", False, True),                  # linha antiga sem arquivo: ligado
+    (ANTIGA, {"vendas": False}, "painel-projeto/dados", False, False),    # o arquivo vence a linha antiga
+    (ANTIGA, {"estudio": True}, "painel-projeto/dados", False, True),     # o arquivo não fala de vendas
+    (ANTIGA, {"estudio": "sim"}, "painel-projeto/dados", False, False),   # inválido: tudo desligado
+    ({}, "{lixo", "painel-projeto/dados", False, False),                  # ilegível
+    (ANTIGA, GRANDE, "painel-projeto/dados", False, False),               # passa de 4 KB
+    ({}, {"vendas": True}, "painel-dados", True, True),                   # pacote não é pasta: .tune-up/painel-dados
+    ({"pacote": "meu"}, {"vendas": True}, "meu/dados", False, True),      # pacote com outro nome
+    ({"pacote": "../x"}, {"vendas": True}, "painel-projeto/dados", False, True),   # nome inválido: o padrão
+)
+
+
+class TesteLigado(unittest.TestCase):
+    def setUp(self):
+        self.tmp = os.path.realpath(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def projeto(self, n, conf, estado, dados, pacote_arquivo):
+        raiz = os.path.join(self.tmp, "p%d" % n)
+        os.makedirs(os.path.join(raiz, ".tune-up", dados))
+        with open(os.path.join(raiz, ".tune-up", "painel.json"), "w", encoding="utf-8") as f:
+            json.dump(conf, f)
+        if pacote_arquivo:
+            open(os.path.join(raiz, ".tune-up", "painel-projeto"), "w").close()
+        if estado is not None:
+            with open(os.path.join(raiz, ".tune-up", dados, "embutidos-ligados.json"), "w", encoding="utf-8") as f:
+                f.write(estado if isinstance(estado, str) else json.dumps(estado))
+        return raiz
+
+    def test_regra_do_gancho_igual_a_do_painel(self):
+        for n, (conf, estado, dados, pacote_arquivo, esperado) in enumerate(CASOS):
+            raiz = self.projeto(n, conf, estado, dados, pacote_arquivo)
+            painel = "vendas" in embutidos.ligados(config.carregar(raiz, home=self.tmp))
+            self.assertEqual((n, inicio.modulo_ligado(raiz), painel), (n, esperado, esperado))
+
+    def test_ligado_pelo_arquivo_avisa_e_desligado_cala(self):
+        base = os.path.join(self.tmp, "vendas-dados")
+        for n, (conf, estado, dados, pacote_arquivo, esperado) in enumerate(CASOS):
+            raiz = self.projeto(n, conf, estado, dados, pacote_arquivo)
+            texto = inicio.linha(json.dumps({"cwd": raiz}), base=base)
+            self.assertEqual((n, texto), (n, inicio.LINHA if esperado else ""))
+
+    def test_arquivo_ruim_pelo_lancador_sai_0_calado(self):
+        env = dict(os.environ, CLAUDE_PLUGIN_DATA=os.path.join(self.tmp, "plugin-dados"))   # nunca o cache real
+        for n, estado in ((0, "{lixo"), (1, GRANDE)):
+            raiz = self.projeto(n, {}, estado, "painel-projeto/dados", False)
+            comeco = time.monotonic()
+            r = subprocess.run(["sh", os.path.join(RAIZ, "scripts", "py"), "vendas/scripts/inicio.py"],
+                               input=json.dumps({"cwd": raiz}).encode(), stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, timeout=30, env=env)
+            self.assertLess(time.monotonic() - comeco, 5)
+            self.assertEqual((r.returncode, r.stdout, r.stderr), (0, b"", b""))
+
+    def test_sem_painel_json_de_uma_subpasta_avisa(self):   # ligado pela tela Módulos: painel.json é opcional
+        raiz = os.path.join(self.tmp, "p")
+        os.makedirs(os.path.join(raiz, ".tune-up", "painel-projeto", "dados"))
+        os.makedirs(os.path.join(raiz, "src", "a"))
+        with open(os.path.join(raiz, ".tune-up", "painel-projeto", "dados", "embutidos-ligados.json"), "w") as f:
+            json.dump({"vendas": True}, f)
+        texto = inicio.linha(json.dumps({"cwd": os.path.join(raiz, "src", "a")}), base=os.path.join(self.tmp, "vd"))
+        self.assertEqual(texto, inicio.LINHA)
+
+    def test_raiz_igual_a_do_painel(self):
+        sem = os.path.join(self.tmp, "sem")                      # .tune-up sem painel.json
+        os.makedirs(os.path.join(sem, ".tune-up"))
+        fundo = os.path.join(sem, "a", "b", "c", "d")
+        os.makedirs(fundo)
+        de_fora = os.path.join(self.tmp, "fora")                 # .tune-up de fora com painel.json, outro dentro
+        os.makedirs(os.path.join(de_fora, ".tune-up"))
+        open(os.path.join(de_fora, ".tune-up", "painel.json"), "w").close()
+        dentro = os.path.join(de_fora, "x", "y")
+        os.makedirs(os.path.join(dentro, ".tune-up"))
+        os.makedirs(os.path.join(dentro, "z"))
+        for cwd in (sem, fundo, dentro, os.path.join(dentro, "z"), os.path.join(de_fora, "x")):
+            self.assertEqual(inicio.raiz_do_projeto(cwd), config.achar_raiz(cwd=cwd, env={})[0], cwd)
+
+    def test_constantes_iguais_as_do_painel(self):
+        self.assertEqual(inicio.EMBUTIDOS, tuple(e["id"] for e in embutidos.EMBUTIDOS))
+        self.assertEqual((inicio.PAINEL_MAX, inicio.ESTADO_MAX), (config.LIMITE_JSON, embutidos.MAX_BYTES))
+        self.assertEqual(inicio.RE_PACOTE.pattern, config.RE_PACOTE.pattern)
 
 if __name__ == "__main__":
     unittest.main()

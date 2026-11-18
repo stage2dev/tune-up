@@ -180,6 +180,7 @@ class TesteRegrasDeNegar(unittest.TestCase):
         esperado = portas + [
             "Bash(*/api/modulos/*/acao*)", "Bash(*tune-up-vendas*)", "Bash(*docker exec*)", "Bash(*docker inspect*)",
             "Bash(*docker compose config*)", "Bash(*security find-generic-password*)",
+            "Bash(*vendas*servico*preparo.py*)", "Bash(*vendas*servico*servico.py*)",   # no plugin único
             "Read(~/Library/Application Support/tune-up-vendas/**)",
             "Edit(~/Library/Application Support/tune-up-vendas/**)",
             "Write(~/Library/Application Support/tune-up-vendas/**)",

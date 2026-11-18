@@ -35,9 +35,8 @@ class Base(unittest.TestCase):
         os.makedirs(self.dados)
         self.studio = os.path.join(self.tmp, "studio")
         os.makedirs(os.path.join(self.studio, "node"))
-        os.makedirs(os.path.join(self.studio, ".claude-plugin"))
         for nome, txt in (("node/package.json", '{"dependencies": {"hyperframes": "0.9.6"}}'),
-                          ("node/package-lock.json", "{}"), (".claude-plugin/plugin.json", '{"version": "0.1.0"}')):
+                          ("node/package-lock.json", "{}"), ("VERSION", "0.1.0\n")):
             with open(os.path.join(self.studio, *nome.split("/")), "w") as f:
                 f.write(txt)
         self.chamadas = []
@@ -299,6 +298,12 @@ class TestModulo(Base):
         texto = mod.montar({"dados": self.dados})["alertas"][0]["texto"]
         self.assertIn("Preparando o estúdio desde as 08:23", texto)  # hora legível, sem data ISO nem caminho de log
         self.assertNotIn("2026-11-11T", texto)
+
+    def test_versao_vem_do_arquivo_version(self):
+        self.assertEqual(pe.versao_do_estudio(self.studio), "0.1.0")
+        real = pe.versao_do_estudio()  # o arquivo de verdade do repo, não o fixture
+        self.assertNotEqual(real, "0")
+        self.assertRegex(real, r"^\d+\.\d+\.\d+$")
 
     def test_pronto_segue_a_chave_nao_a_versao(self):
         mod = carregar_modulo()

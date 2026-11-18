@@ -100,5 +100,6 @@ case "$script" in
     fi
     exit 0
     ;;
+  */guarda_mkt.py) exit 0 ;;  # the marketing guard hook fails open too; `guarda.py inicio` tells the user
 esac
 exit 127

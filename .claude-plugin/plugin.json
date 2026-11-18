@@ -14,7 +14,7 @@
     "agents",
     "skills"
   ],
-  "skills": ["./tune-up-studio/skills"],
+  "skills": ["./tune-up-studio/skills", "./tune-up-mkt/skills", "./vendas/skills"],
   "license": "MIT",
   "repository": "https://github.com/stage2dev/tune-up"
 }
