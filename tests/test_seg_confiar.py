@@ -117,8 +117,9 @@ class TestRotaSoLeitura(PromptBase):
         for ok in ("python3 %s rota --files migrations/001.sql src/Button.tsx" % g,
                    "python3 %s rota --files a.md --diff-file d.patch --failed sonnet" % g,
                    "python3 %s rota --failed opus --files 'a b.md'" % g, "python3 %s rota" % g,
-                   "python3 %s rota --files a.md --diff-file d.patch --text-file item.txt" % g,
-                   "python3 %s rota --text-file '/tmp/my item.txt' --failed opus" % g,
+                   "python3 %s rota --files a.md --diff-file d.patch --text-file item.rota.txt" % g,
+                   "python3 %s rota --text-file '/tmp/my item.rota.txt' --failed opus" % g,
+                   "python3 %s rota --text-file %s" % (g, sh_path(os.path.join(self.tmp, "x.rota.txt"))),
                    "python3 %s info" % g):
             self.assertIsNone(self.bash(ok), ok)
         for ruim in ("python3 %s rota --files a.md; touch x" % g, "python3 %s rota --files a > o" % g,
@@ -129,7 +130,11 @@ class TestRotaSoLeitura(PromptBase):
                      "python3 -c x %s rota" % g, "FOO=1 python3 %s rota" % g,
                      "python3 %s rota --text-file" % g, "python3 %s rota --text-file --files a" % g,
                      "python3 %s rota --text-file a.txt --text-file b.txt" % g,
-                     "python3 %s rota --text-file $HOME/x" % g):
+                     "python3 %s rota --text-file $HOME/x" % g) + tuple(
+                         "python3 %s rota --text-file %s" % (g, t) for t in (
+                             ".env", "notes.txt", "~/x.rota.txt", "../x.rota.txt", ".ssh/x.rota.txt",
+                             "{a,b}.rota.txt", "*.rota.txt", "/a/.ssh/x.rota.txt", ".rota.txt",
+                             "x.rota.txt.bak", "x.rota.tx?", "[x].rota.txt")):
             self.assertIsNotNone(self.bash(ruim), ruim)
 
 

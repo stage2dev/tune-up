@@ -9,7 +9,8 @@ Every new rule goes in through `/tune-up:learn`: memory + a change here + a test
 - Optional model router for `guarda.py rota` (`router` block, off by default, trusted profile only). With `--text-file` it asks the Jev scorer four questions about the item text and can keep or raise the executor, never lower it. Any error or missing key keeps the fixed rule; `risk_globs` always win. The output has `model`, `scores` and `source`.
 - Two new agents: `visual` (looks at a screen or image, or creates a visual asset) and `executor-hard` (item that already failed on opus). The router uses them only when `visual_agent` or `hard_agent` names them.
 - `fable_agents` in `user.json`: a forbidden model is allowed for an agent type listed there, only through the Agent tool with an explicit model, never in a Workflow script.
-- `/tune-up:part` passes the item's action line and file base names to the router when it is enabled, and records suggested vs used model.
+- `/tune-up:part` always writes the item's action line and file base names to `<scratchpad>/item-N.rota.txt` and passes it with `--text-file`; `source` says whether the router ran. Only a `--text-file` named `*.rota.txt` (no `..`, dotfile, dot-folder, `~`, brace or glob) skips the Bash guard question, and the router itself never reads another name or a symlink.
+- The text sent to the scorer is also masked for CPF and CNPJ (formatted, or a bare run of exactly 11 or 14 digits); same change in `painel/mascara.py`.
 - `evals/rota/`: 36 generic labelled cases and `rodar.py`. `--seco` checks the file offline (run by a unit test); the default mode makes one API call per case.
 - The question texts are new and the eval was not yet run against the real service, so the thresholds are untested.
 

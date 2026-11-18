@@ -98,7 +98,7 @@ class TestFableAgents(AgentBase):
         self.assertEqual(self.decisao(self.explicito()), "bloquear")
 
     def test_lista_invalida_nao_destrava_nada(self):
-        for v in [VIS, ["*"], [""], [VIS, ""], [VIS, 3], [VIS, "a/b"], [VIS, "x" * 81], {"a": VIS}, True]:
+        for v in [VIS, ["*"], [""], [VIS, ""], [VIS, 3], [VIS, "a/b"], [VIS, "x" * 81], [VIS, "Tune-Up:Visual"], [VIS, "a.b"], {"a": VIS}, True]:
             with self.subTest(v=v):
                 self.listar(v)
                 self.assertEqual(self.decisao(self.explicito()), "bloquear")

@@ -153,7 +153,29 @@ class TestJev(Base):
         self.assertIn("HTTPError 302", self.log())
 
 
+    def test_resposta_acima_de_64kb_vira_none(self):
+        class Grande(urllib.request.HTTPSHandler):
+            def https_open(self, req):
+                hdr = email.message.Message()
+                r = urllib.response.addinfourl(io.BytesIO(_resp(a=0.5, b=0.5) + b" " * 65537), hdr, req.full_url, 200)
+                r.msg = "x"
+                return r
+
+        def transporte(url, cab, corpo, timeout):
+            return J._urllib(url, cab, corpo, timeout, abridor=J._abridor(Grande()))
+        self.assertIsNone(self.perguntar(transporte))
+        self.assertIn("request failed: ValueError", self.log())
+
+
 class TestMascaraCopia(unittest.TestCase):
+    def test_cpf_cnpj_mascarados_e_numeros_comuns_nao(self):
+        for s, esperado in (("cpf 123.456.789-09.", "cpf ***cpf***."), ("cpf:12345678909", "cpf:***cpf***"),
+                            ("cnpj 12.345.678/0001-95", "cnpj ***cnpj***"), ("12345678000195", "***cnpj***")):
+            self.assertEqual(M.mascarar(s), esperado, s)
+        for s in ("v2.19.0", "2.19.0", "file.py:123", "20261118-171559", "pedido 123456",
+                  "id 1234567890", "abc12345678909", "123456789012", "1.12345678909"):
+            self.assertEqual(M.mascarar(s), s, s)
+
     def test_copy_matches_panel(self):
         raiz = os.path.dirname(os.path.dirname(SCRIPT))
         spec = importlib.util.spec_from_file_location("painel_mascara", os.path.join(raiz, "painel", "mascara.py"))
@@ -162,7 +184,9 @@ class TestMascaraCopia(unittest.TestCase):
         amostras = ["Authorization: Bearer abcdefghijklmnop123", "token=s3cr3tvalue", "sk-abcdefghijklmnopqrst",
                     "ghp_abcdefghijklmnopqrstuv", "fale com maria@example.com.br", "(19) 99999-8888",
                     "+5519999998888", "19 3456 7890", "texto comum sem nada", "",
-                    "AKIAABCDEFGHIJKLMNOP e eyJabcdefghij.klmnopqrstu.vwxyz12"]
+                    "AKIAABCDEFGHIJKLMNOP e eyJabcdefghij.klmnopqrstu.vwxyz12",
+                    "cpf 123.456.789-09", "cpf:12345678909", "cnpj 12.345.678/0001-95", "12345678000195",
+                    "v2.19.0", "file.py:123", "20261118-171559", "pedido 123456"]
         for s in amostras:
             self.assertEqual(M.mascarar(s), painel.mascarar(s), s)
             self.assertEqual(M.primeira_linha(s), painel.primeira_linha(s), s)

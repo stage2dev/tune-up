@@ -133,10 +133,6 @@ All commands are `/tune-up:<name>`.
 | Checks facts and results | `checker` | haiku | medium |
 | Plays a persona in a debate | `persona` | haiku | medium |
 | Picks the right skills | `skill-finder` | haiku | medium |
-| Looks at a screen or image, or creates a visual asset (used only when the router's `visual_agent` names it) | `visual` | opus | medium |
-| Retries an item that already failed on opus (used only when the router's `hard_agent` names it) | `executor-hard` | opus | medium |
-
-`fable_agents` in `user.json` lists agent types allowed to use a forbidden model: only through the Agent tool with an explicit `model`, never in a Workflow script.
 | Researches | `researcher` | sonnet | medium |
 | Writes documents | `writer` | sonnet | medium |
 | Executes simple items | `executor-sonnet` | sonnet | medium |
@@ -145,8 +141,12 @@ All commands are `/tune-up:<name>`.
 | Reviews for failures | `reviewer-failures` | opus | high |
 | Reviews database changes | `reviewer-database` | opus | high |
 | Reviews security | `reviewer-security` | opus | high |
+| Looks at a screen or image, or creates a visual asset (used only when the router's `visual_agent` names it) | `visual` | opus | medium |
+| Retries an item that already failed on opus (used only when the router's `hard_agent` names it) | `executor-hard` | opus | medium |
 
 You can override models and effort per role in the `models` key of `user.json`.
+
+`fable_agents` in `user.json` lists agent types allowed to use a forbidden model: only through the Agent tool with an explicit `model`, never in a Workflow script. List namespaced names only (for example `tune-up:visual`): a bare name can be taken over by a project's own `.claude/agents` file with the same name.
 
 ## Panel (local dashboard)
 
@@ -215,7 +215,7 @@ Workflow scripts: the guard also warns when a Workflow script calls `agent()` wi
 
 Trust: a project profile can only tighten the rules until you trust it. Keys that loosen a guard (for example `commit_on_main`, `claude_may_merge`, `free_repos`, `supabase_guard`, `line_limit`, every `*_phrases` list) are ignored in a profile you have not trusted. Run `/tune-up:profile`, or `sh "<plugin>/scripts/py" scripts/guarda.py trust`, to trust the current one. SessionStart tells you when a profile is ignored.
 
-Routing: `python3 scripts/guarda.py rota --files <path> [...] [--diff-file <patch>] [--failed sonnet|opus]` prints one JSON line `{"executor", "reviewers", "why"}` from the file paths: a path matching `risk_globs` sends the item to `tune-up:executor-opus`; `security_globs`, a security keyword in a changed diff line (added or removed; context lines never count), or no diff adds the `security` reviewer; `database_globs` adds `database`; `failures` always runs. No files (blank paths are dropped) routes up (opus + security); a diff file with no diff content counts as no diff; any error routes up with all three reviewers. The three glob lists ADD to the plugin defaults (even untrusted, since adding only tightens) and can never remove one. The `router` block is optional, off by default, and counts only in a trusted profile (an invalid block is rejected whole). When `router.enabled` is true and `rota` gets `--text-file`, the scorer sees only that file: the item's action line and the file base names, cut at the first `REAL DATA`, `PITFALLS` or diff line, masked for secrets, e-mail and phone, and cut to `max_chars`. It goes to the Jev scorer at TypeSafe; the key is `TYPESAFE_API_KEY`. A missing key, any error or no answer means the fixed rule. `risk_globs` always win (the scorer is not called). The scorer can only keep or raise the executor, never lower it. The output adds `model`, `scores` and `source` (`globs`, `fixed` or `jev`). To measure it: `python3 evals/rota/rodar.py --seco` checks the case file with no network; without `--seco` it makes one API call per case.
+Routing: `python3 scripts/guarda.py rota --files <path> [...] [--diff-file <patch>] [--failed sonnet|opus]` prints one JSON line `{"executor", "reviewers", "why"}` from the file paths: a path matching `risk_globs` sends the item to `tune-up:executor-opus`; `security_globs`, a security keyword in a changed diff line (added or removed; context lines never count), or no diff adds the `security` reviewer; `database_globs` adds `database`; `failures` always runs. No files (blank paths are dropped) routes up (opus + security); a diff file with no diff content counts as no diff; any error routes up with all three reviewers. The three glob lists ADD to the plugin defaults (even untrusted, since adding only tightens) and can never remove one. The `router` block is optional, off by default, and counts only in a trusted profile (an invalid block is rejected whole). When `router.enabled` is true and `rota` gets `--text-file`, the scorer sees only that file, and only when its name ends `.rota.txt` and it is not a symlink (any other name: fixed rule, nothing read): the item's action line and the file base names, cut at the first `REAL DATA`, `PITFALLS` or diff line (any case, also as a markdown heading or list item), masked for secrets, e-mail, phone, CPF and CNPJ, and cut to `max_chars`. It goes to the Jev scorer at TypeSafe; the key is `TYPESAFE_API_KEY`. A missing key, any error or no answer means the fixed rule. `risk_globs` always win (the scorer is not called). The scorer can only keep or raise the executor, never lower it. The output adds `model`, `scores` and `source` (`globs`, `fixed` or `jev`). To measure it: `python3 evals/rota/rodar.py --seco` checks the case file with no network; without `--seco` it makes one API call per case.
 
 ## Language
 

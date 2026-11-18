@@ -6,7 +6,7 @@ import sys
 import unittest
 from unittest import mock
 
-from base import SCRIPT, Base
+from base import SCRIPT, Base, symlink
 
 sys.path.insert(0, os.path.dirname(SCRIPT))
 from tuneup import jev  # noqa: E402
@@ -209,7 +209,7 @@ class TestRoteador(Base):
         self.chamadas = []
         self.txt = self.texto("Add a tooltip to the save button.\nfiles: Button.tsx\n")
 
-    def texto(self, conteudo, nome="item.txt"):
+    def texto(self, conteudo, nome="item.rota.txt"):
         p = os.path.join(self.tmp, nome)
         if isinstance(conteudo, str):
             conteudo = conteudo.encode("utf-8")
@@ -246,9 +246,9 @@ class TestRoteador(Base):
         self.assertEqual(self.chamadas, [])
         self.assertEqual((r["executor"], r["model"], r["scores"], r["source"]), (SONNET, "sonnet", {}, "fixed"))
         self.assertEqual(r["why"], ["no rule fired: sonnet, failures only"])
-        for txt in (None, os.path.join(self.tmp, "nao-existe.txt"),
-                    self.texto(b"x" * (64 * 1024 + 1), "grande.txt"), self.texto(b"\xff\xfe", "bin.txt"),
-                    self.texto("REAL DATA: only this\n", "so-dados.txt")):
+        for txt in (None, os.path.join(self.tmp, "nao-existe.rota.txt"),
+                    self.texto(b"x" * (64 * 1024 + 1), "grande.rota.txt"), self.texto(b"\xff\xfe", "bin.rota.txt"),
+                    self.texto("REAL DATA: only this\n", "so-dados.rota.txt")):
             r = self.rota(txt=txt)
             self.assertEqual((r["executor"], r["scores"], r["source"]), (SONNET, {}, "fixed"), txt)
         self.assertEqual(self.chamadas, [])
@@ -284,6 +284,7 @@ class TestRoteador(Base):
         for fake in (None, lambda t, p: None):
             r = self.rota(failed="opus", cfg=c, fake=fake)
             self.assertEqual((r["executor"], r["model"]), ("x:hard", None))
+            self.assertIn("router: failed on opus: hard_agent x:hard", r["why"])
         self.assertEqual(self.rota(failed="opus")["executor"], OPUS)  # no hard_agent
         self.assertEqual(self.rota(failed="opus", cfg=dict(c, router=dict(c["router"], enabled=False)))
                          ["executor"], OPUS)  # router off: fixed rule
@@ -292,6 +293,7 @@ class TestRoteador(Base):
         c = self.cfg(visual_agent="x:ui")
         r = self.rota(cfg=c, resp=dict(BAIXO, visual=0.5))
         self.assertEqual((r["executor"], r["model"], r["source"]), ("x:ui", None, "jev"))
+        self.assertIn("router: visual 0.50: visual_agent x:ui", r["why"])
         self.assertEqual(self.rota(cfg=c, resp=dict(BAIXO, visual=0.4))["executor"], SONNET)
         self.assertEqual(self.rota(cfg=c, resp=dict(BAIXO, visual=0.9, risk=0.5))["executor"], OPUS)
         self.assertEqual(self.rota(["src/AuthForm.tsx"], cfg=c, resp=dict(BAIXO, visual=1.0))["executor"], OPUS)
@@ -308,9 +310,23 @@ class TestRoteador(Base):
     def test_max_chars_e_corte_defensivo(self):
         self.rota(cfg=self.cfg(max_chars=50), txt=self.texto("abcdefghij" * 100))
         self.assertEqual(self.chamadas[-1][0], "abcdefghij" * 5)
-        for marca in ("REAL DATA: row 1", "PITFALLS", "diff --git a/x b/x", "@@ -1 +1 @@", "  PITFALLS:"):
+        for marca in ("REAL DATA: row 1", "PITFALLS", "diff --git a/x b/x", "@@ -1 +1 @@", "  PITFALLS:",
+                      "## Real data", "**PITFALLS TO READ**", "- REAL DATA:", "> pitfalls", "# Diff --git"):
             self.rota(txt=self.texto("Fix the label.\nfiles: a.tsx\n%s\nSEGREDO linha\n" % marca))
             self.assertEqual(self.chamadas[-1][0], "Fix the label.\nfiles: a.tsx", marca)
+
+    def test_nome_do_arquivo_de_texto_recusado_sem_ler(self):
+        segredo = self.texto("TYPESAFE_API_KEY=abc\n", "segredo.txt")
+        for txt in (self.texto("Fix the label.\n", "notes.txt"), self.texto("x\n", ".env"), segredo,
+                    os.path.join(self.tmp, "x.rota.txt.bak"), "C:\\a\\x.rota.txt\\.env"):
+            r = self.rota(txt=txt)
+            self.assertEqual((r["executor"], r["scores"], r["source"]), (SONNET, {}, "fixed"), txt)
+            self.assertIn("text file name refused", r["why"][-1], txt)
+        self.assertEqual(self.chamadas, [])
+        symlink(segredo, os.path.join(self.tmp, "link.rota.txt"))
+        r = self.rota(txt=os.path.join(self.tmp, "link.rota.txt"))
+        self.assertEqual((r["source"], len(self.chamadas)), ("fixed", 0))
+        self.assertEqual(self.rota(txt="C:\\a\\x.rota.txt")["source"], "fixed")  # missing: no score
 
     def test_mascara_e_nada_alem_do_texto_chega_ao_transporte(self):
         corpos, real = [], jev.perguntar
@@ -405,7 +421,7 @@ class TestRotaCli(Base):
     def test_router_so_com_config_confiada(self):
         """router.enabled in an untrusted project config changes nothing (the scorer is never
         called); the same file trusted turns the router on. jev.perguntar is faked in the child."""
-        txt = os.path.join(self.tmp, "item.txt")
+        txt = os.path.join(self.tmp, "item.rota.txt")
         with open(txt, "w", encoding="utf-8") as f:
             f.write("Restyle the header.\nfiles: Header.tsx\n")
         codigo = ("import sys\nsys.path.insert(0, sys.argv[1])\nfrom tuneup import jev, rota\n"

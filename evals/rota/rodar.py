@@ -2,7 +2,8 @@
 """tune-up: eval of the optional model router against evals/rota/casos.json.
 
 Default mode: outside CI, costs one API call per case (to the Jev scorer, TypeSafe) and sends
-only the case text (masked, cut to max_chars). It calls the router code (scripts/tuneup/rota.py)
+only the case text, written to a `caso.rota.txt` file (the router reads no other name;
+masked, cut to max_chars). It calls the router code (scripts/tuneup/rota.py)
 with the router enabled in an in-memory config; the router reads the key, this script never does.
 Prints accuracy, a 2x2 matrix (expected x got) and the `risk: true` cases that came out below
 opus. Exit 1 when accuracy < 0.85, any risk case is below opus, or the scorer answered no case.
@@ -82,7 +83,7 @@ def real(casos):
     baixos = []
     with tempfile.TemporaryDirectory() as pasta:
         for c in casos:
-            arq = os.path.join(pasta, "texto.txt")
+            arq = os.path.join(pasta, "caso.rota.txt")
             with open(arq, "w", encoding="utf-8") as f:
                 f.write(c["text"])
             r = rodar_caso(c, CFG_ROUTER, arq)

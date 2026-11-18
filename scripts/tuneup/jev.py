@@ -13,6 +13,7 @@ from .sessao import log_erro
 URL = "https://api.typesafe.ai/v1/systemone"
 MODELO = "jev-latest"
 TIMEOUT = 5
+LIMITE = 64 * 1024
 
 
 class _SemRedirect(urllib.request.HTTPRedirectHandler):
@@ -27,10 +28,14 @@ def _abridor(*extra):
 
 
 def _urllib(url, cabecalhos, corpo, timeout, abridor=None):
-    """Default transport: one POST attempt, no redirects. Returns the response bytes or raises."""
+    """Default transport: one POST attempt, no redirects, at most 64 KB read. Returns the
+    response bytes or raises."""
     req = urllib.request.Request(url, data=corpo, headers=cabecalhos, method="POST")
     with (abridor or _abridor()).open(req, timeout=timeout) as r:
-        return r.read()
+        bruto = r.read(LIMITE + 1)
+    if len(bruto) > LIMITE:
+        raise ValueError("response over 64 KB")
+    return bruto
 
 
 def _chave(ambiente, settings):

@@ -26,7 +26,8 @@ DEFAULTS = {"language": "en", "owner": "", "reply_style": "plain", "forbidden_su
             "fable_agents": [], "names_override": {}, "protected_paths": [], "tools": {}, "plugin_source": None}
 _CACHE = {}
 RE_MODELO = re.compile(r"[A-Za-z0-9._:-]{1,64}")
-RE_AGENTE = re.compile(r"[A-Za-z0-9_.:-]{1,80}")
+# Same pattern as config.RE_AGENTE (importing config here would be a cycle: config -> mensagens -> usuario).
+RE_AGENTE = re.compile(r"(?:[a-z0-9-]+:)?[a-z0-9-]+")
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 SEM_MODELO = ("inherit", "default")
 
@@ -131,7 +132,7 @@ def ler_usuario():
     if not u["forbidden_subagent_models"]:
         u["forbidden_subagent_models"] = list(DEFAULTS["forbidden_subagent_models"])
     fa = bruto.get("fable_agents")
-    if _lista_str(fa) and all(RE_AGENTE.fullmatch(x) for x in fa):  # all valid or nothing unlocks
+    if _lista_str(fa) and all(len(x) <= 80 and RE_AGENTE.fullmatch(x) for x in fa):  # all valid or nothing unlocks
         u["fable_agents"] = list(fa)
     elif "fable_agents" in bruto:
         log_erro("user", "user.json fable_agents invalid, using []")

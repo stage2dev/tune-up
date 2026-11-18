@@ -200,10 +200,12 @@ def _resto_da_guarda(toks):
 
 def chamada_rota(cmd):
     """`<launcher as in chamada_info> rota` with only `--files <paths>`, `--diff-file <path>`,
-    `--failed sonnet|opus` and one `--text-file <path>`: rota only reads and prints JSON. Same
-    refusals as chamada_info (operators, redirection, expansion, backslash)."""
+    `--failed sonnet|opus` and one `--text-file <path>` whose base name ends `.rota.txt` (no
+    `..`, dotfile or dot-folder): rota only reads and prints JSON, and only that file can reach
+    the router's scorer. Same refusals as chamada_contas (operators, redirection, expansion,
+    backslash, braces, globs, `~`)."""
     import shlex
-    if re.search(r"[;&|<>$`()\n\\]", cmd):
+    if re.search(r"[;&|<>$`()\n\\{}*?\[~]", cmd):
         return False
     try:
         resto = _resto_da_guarda(shlex.split(cmd))
@@ -222,11 +224,17 @@ def chamada_rota(cmd):
         elif args[i] == "--failed" and args[i + 1:i + 2] in (["sonnet"], ["opus"]):
             i += 2
         elif (args[i] == "--text-file" and not texto and i + 1 < len(args)
-              and not args[i + 1].startswith("-")):
+              and not args[i + 1].startswith("-") and _nome_rota(args[i + 1])):
             texto, i = 1, i + 2
         else:
             return False
     return True
+
+
+def _nome_rota(p):
+    """Base name ends `.rota.txt`; no path part is `..` or starts with `.` (`/` or `\\`)."""
+    partes = re.split(r"[/\\]", p)
+    return partes[-1].endswith(".rota.txt") and not any(x.startswith(".") for x in partes)
 
 
 def chamada_contas(cmd):

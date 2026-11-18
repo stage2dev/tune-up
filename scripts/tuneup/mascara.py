@@ -52,6 +52,9 @@ RE_TEL_COLADO = re.compile(r"(?<![\w.:/+\-])\+?(?<!\d)(?:55)?\d{2}9\d{8}(?![\w\-
 RE_TEL_FORMATADO = re.compile(r"(?<![\w.:/\-])(?:\+?55[\s\-]?)?0?(?:\(\d{2}\)|\d{2})[\s\-]?9?\d{4}-(\d{4})(?![\w\-])")
 # Só com espaços: "19 99999 8888", "19 3456 7890", "55 19 999998888".
 RE_TEL_ESPACO = re.compile(r"(?<![\w.:/+\-])\+?(?:55\s)?0?\d{2}\s(?:9\d{8}|9?\d{4}\s\d{4})(?![\w\-])")
+# CPF/CNPJ formatado ou colado (só 11 ou 14 dígitos seguidos; data, versão e linha não casam).
+RE_CPF = re.compile(r"(?<![\w.+/\-])(?:\d{3}\.\d{3}\.\d{3}-\d{2}|\d{11})(?![\w\-])")
+RE_CNPJ = re.compile(r"(?<![\w.+/\-])(?:\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}|\d{14})(?![\w\-])")
 RE_HEX = re.compile(r"(?<![0-9A-Za-z_])(?<!commit )[0-9a-fA-F]{32,}(?![0-9A-Za-z_])")
 # Sequência longa com letra maiúscula, minúscula e dígito: cara de chave (hash hex puro cai em RE_HEX).
 RE_LONGO = re.compile(r"[A-Za-z0-9_\-+/]{40,}")
@@ -75,6 +78,8 @@ def _uma_passada(texto):
     texto = RE_TEL_FORMATADO.sub(_tel, texto)
     texto = RE_TEL_ESPACO.sub(_tel, texto)
     texto = RE_TEL_COLADO.sub(_tel, texto)
+    texto = RE_CNPJ.sub("***cnpj***", texto)  # depois dos telefones: celular colado mantém o final
+    texto = RE_CPF.sub("***cpf***", texto)
     return RE_LONGO.sub(_longo, texto)
 
 
