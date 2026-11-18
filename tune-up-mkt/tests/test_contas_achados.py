@@ -334,7 +334,7 @@ class Skill(unittest.TestCase):  # L5
         self.assertNotIn("disable-model-invocation", topo)
         linha = [x for x in topo.splitlines() if x.startswith("allowed-tools:")][0]
         regras = [r.strip() for r in linha.split(":", 1)[1].split("),") if r.strip()]
-        prefixo = 'Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py '
+        prefixo = 'Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/contas.py '
         for r in regras:
             self.assertTrue(r.startswith(prefixo), r)
             self.assertIn(r[len(prefixo):].rstrip(")").split()[0], ("status", "marcar", "falta", "config"), r)

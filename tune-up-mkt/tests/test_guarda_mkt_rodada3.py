@@ -52,7 +52,7 @@ class EntradaPesada(Base):
         fundo = '{"a": ' * 2000 + "{}" + "}" * 2000
         bruto = '{"tool_name": "mcp__x__y", "tool_input": {"tool_slug": "METAADS_UPDATE_AD", "n": %s}}' % fundo
         self.assertEqual(self.cronometrado(bruto=bruto), "bloquear")
-        # same depth with no deny: no decision and no erros.log line (the walkers do not recurse)
+        # same depth with no deny: no decision and no erros-mkt.log line (the walkers do not recurse)
         self.assertIsNone(self.cronometrado(bruto=bruto.replace("UPDATE", "GET")))
 
     # F3

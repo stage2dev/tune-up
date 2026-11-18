@@ -74,7 +74,7 @@ Prices come from `servicos.json` (`custo_aviso`) and can change; check each prov
 
 ## Guard
 
-A `PreToolUse` hook (`scripts/guarda_mkt.py`) checks shell commands (Bash, PowerShell, Monitor), every MCP tool call and writes to the loosening file. Defaults:
+A `PreToolUse` hook (`tune-up-mkt/scripts/guarda_mkt.py`, registered in the core plugin's `hooks/hooks.json`) checks shell commands (Bash, PowerShell, Monitor), every MCP tool call and writes to the loosening file. Defaults:
 
 | Action | Default | Policy key |
 | --- | --- | --- |

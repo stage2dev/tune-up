@@ -209,8 +209,11 @@ class TestArquivos(unittest.TestCase):
         for ev, grupos in h["hooks"].items():
             for g in grupos:
                 for x in g["hooks"]:
-                    self.assertTrue(x["command"].startswith('sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py '),
-                                    x["command"])
+                    prefixo = 'sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" '
+                    self.assertTrue(x["command"].startswith(prefixo), x["command"])
+                    script = x["command"][len(prefixo):]
+                    self.assertTrue(script.startswith("scripts/guarda.py ")
+                                    or script == "tune-up-mkt/scripts/guarda_mkt.py", x["command"])
                     if " bash" in x["command"] or "pos_bash" in x["command"]:
                         self.assertEqual(g["matcher"], "Bash|PowerShell")
 

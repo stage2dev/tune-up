@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """tune-up-mkt: guard for writes to ad accounts and public posts (PreToolUse).
 
-Usage: sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda_mkt.py   (see hooks/hooks.json)
+Usage: sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/guarda_mkt.py   (see the core hooks/hooks.json)
 Reads the hook JSON on stdin; writes JSON only when there is a decision. Always exit 0.
-Internal exception = no decision; one line in <data>/erros.log.
+Internal exception = no decision; one line in <data>/erros-mkt.log.
 Per-project loosening: ~/.config/tune-up/mkt.json, keyed by CLAUDE_PROJECT_DIR (absolute paths only).
 Messages: `language` and `owner` from ~/.config/tune-up/user.json.
 """
@@ -92,9 +92,9 @@ LIMITE_JSON = 20000  # longer strings are not decoded as JSON (cost and nesting)
 
 def log_erro(texto):
     try:
-        d = os.environ.get("CLAUDE_PLUGIN_DATA") or os.path.join(os.path.expanduser("~"), ".cache", "tune-up-mkt")
+        d = os.environ.get("CLAUDE_PLUGIN_DATA") or os.path.join(os.path.expanduser("~"), ".cache", "tune-up")
         os.makedirs(d, exist_ok=True)
-        with open(os.path.join(d, "erros.log"), "a", encoding="utf-8") as f:
+        with open(os.path.join(d, "erros-mkt.log"), "a", encoding="utf-8") as f:
             f.write(("%s %s" % (time.strftime("%Y-%m-%dT%H:%M:%S"), texto)).replace("\n", " ")[:2000] + "\n")
     except Exception:
         pass
