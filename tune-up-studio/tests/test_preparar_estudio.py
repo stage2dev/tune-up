@@ -405,6 +405,15 @@ class TestWsl(Base):
         self.assertEqual(r, 1)
         self.assertFalse(os.path.exists(os.path.join(destino, "node_modules")))
 
+    def test_trava_herdada_no_wsl_ainda_respeita_a_trava_do_disco_do_linux(self):
+        trava = pe._travar_em(pe._caminho_trava(None, self.home))
+        self.addCleanup(trava.close)
+        r = pe.main(["--dados", self.dados, "--sim", "--trava-herdada"], wsl=lambda: 2, home=self.home,
+                    rodar=self.rodar([0, 0]), which=lambda n: "/bin/" + n, studio=self.studio)
+        self.assertEqual(r, 2)
+        self.assertEqual(self.chamadas, [])
+        self.assertFalse(os.path.exists(os.path.join(self.dados, "ambiente.json")))
+
     def test_sem_dados_e_sem_so_instalar_continua_erro_do_argparse(self):
         with self.assertRaises(SystemExit) as e:
             pe.main([])

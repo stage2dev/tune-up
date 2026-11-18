@@ -309,7 +309,9 @@ def main(argv=None, entrada=input, wsl=va.wsl, home=None, rodar=_rodar, which=sh
         if resposta.strip().lower() not in ("s", "sim"):
             print("Nada feito.")
             return 2
-    trava = open(os.devnull) if args.trava_herdada else _travar(dados, home, wsl)
+    # the panel's lock sits in dados; on /mnt/<letter>/ the shared Linux-disk folder needs its own lock
+    herdada = args.trava_herdada and not _no_disco_do_windows(dados, wsl)
+    trava = open(os.devnull) if herdada else _travar(dados, home, wsl)
     if trava is None:
         print("Outro Preparar estúdio já está rodando; espere ele terminar.")
         return 2
