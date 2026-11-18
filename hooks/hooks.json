@@ -21,6 +21,16 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/py\" vendas/scripts/inicio.py 2>/dev/null || true",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PreToolUse": [

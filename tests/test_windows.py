@@ -213,7 +213,8 @@ class TestArquivos(unittest.TestCase):
                     self.assertTrue(x["command"].startswith(prefixo), x["command"])
                     script = x["command"][len(prefixo):]
                     self.assertTrue(script.startswith("scripts/guarda.py ")
-                                    or script == "tune-up-mkt/scripts/guarda_mkt.py", x["command"])
+                                    or script in ("tune-up-mkt/scripts/guarda_mkt.py",
+                                                  "vendas/scripts/inicio.py 2>/dev/null || true"), x["command"])
                     if " bash" in x["command"] or "pos_bash" in x["command"]:
                         self.assertEqual(g["matcher"], "Bash|PowerShell")
 
