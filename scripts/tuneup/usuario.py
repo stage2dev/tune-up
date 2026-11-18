@@ -23,9 +23,10 @@ DEFAULT_MODELS = {
     "reviewer-security": {"model": "opus", "effort": "high"},
 }
 DEFAULTS = {"language": "en", "owner": "", "reply_style": "plain", "forbidden_subagent_models": ["fable"],
-            "names_override": {}, "protected_paths": [], "tools": {}, "plugin_source": None}
+            "fable_agents": [], "names_override": {}, "protected_paths": [], "tools": {}, "plugin_source": None}
 _CACHE = {}
 RE_MODELO = re.compile(r"[A-Za-z0-9._:-]{1,64}")
+RE_AGENTE = re.compile(r"[A-Za-z0-9_.:-]{1,80}")
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 SEM_MODELO = ("inherit", "default")
 
@@ -129,6 +130,11 @@ def ler_usuario():
     u["forbidden_subagent_models"] = [m for m in u["forbidden_subagent_models"] if len(m.strip()) >= 3]
     if not u["forbidden_subagent_models"]:
         u["forbidden_subagent_models"] = list(DEFAULTS["forbidden_subagent_models"])
+    fa = bruto.get("fable_agents")
+    if _lista_str(fa) and all(RE_AGENTE.fullmatch(x) for x in fa):  # all valid or nothing unlocks
+        u["fable_agents"] = list(fa)
+    elif "fable_agents" in bruto:
+        log_erro("user", "user.json fable_agents invalid, using []")
     if _dict_str(bruto.get("names_override")):
         u["names_override"] = {k: v for k, v in bruto["names_override"].items() if nome_simples(v)}
         if len(u["names_override"]) != len(bruto["names_override"]):
