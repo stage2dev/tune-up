@@ -6,6 +6,13 @@ Every new rule goes in through `/tune-up:learn`: memory + a change here + a test
 
 - CI: the Windows jobs failed 33 test expectations since 2.12.0 (paths compared with `\`, while `info` prints `/`; a `cdC:/x` case that is no command in cmd; a `wsl` word in a commit message, which asks on Windows like `node` does everywhere); those were test fixes only. Python 3.9 on Linux now runs on `ubuntu-24.04`: `ubuntu-latest` (26.04) has no 3.9 build. The panel, studio and sales suites now run to the end on Windows too, and found three product bugs there: the built-in Vendas module never loaded on Windows (its folder was compared with `/` against a path the system writes with `\`, so the panel answered 404); the `--settings` of a sandboxed action listed `PowerShell` twice in `deny`; and `leitor.da_raiz(..., nt=False)` used the Windows separator. The other Windows failures were tests that assumed macOS or Linux; they now pin the platform the way their neighbors do, compare paths the way the product prints them, or skip the Studio cases (the Studio does not run on native Windows).
 
+## 2.22.0
+
+- Leaner agent texts: search with `rg -n ... | head -60`, Read with `limit`, `git log -n 30`, no images unless the order asks for one UI state.
+- The work order pastes the criterion LITERALLY from the goal, lists only matching pitfall skills, and says executor and reviewer never read the whole goal or progress document.
+- Reviewers no longer report LOW; a backend HIGH proven only by reading is reproduced first, else marked "suspected" and keeps its severity. At most 3 MEDIUM per item in the consolidated report.
+- Executors hand back a partial result near ~80 steps (was ~150), in the agents, the work order, the goal template and the Part skill.
+
 ## 2.18.0
 
 Bash guard: commands that Bash runs but the guard read as part of a string. Stricter on every system; a command that used to pass may now ask (research mode) or be denied (talk mode) because the guard now sees what it really runs.
