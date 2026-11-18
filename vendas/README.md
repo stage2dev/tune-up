@@ -21,7 +21,7 @@ For the business owner, after enabling the screen (next section): open the panel
 
 The screen no longer shows terminal commands. To do it by hand: `servico/preparo.py rodar` ("One-step setup" below), or the three manual steps: `servico/evolution_local.py preparar` ("Local Evolution API"), `docker compose -f <data folder>/evolution/compose.yml up -d`, then `servico/servico.py` ("Starting the service").
 
-Status: 0.3.0 (unreleased). The Conexão tab shows whether the service is running (from its heartbeat in the database) and offers the one-button WhatsApp setup; the Conversas tab shows the inbox with media (0.2.0). What each version added: `CHANGELOG.md`.
+Status: ships inside tune-up since 2.11.0; module changes are listed in `CHANGELOG.md`. The Conexão tab shows whether the service is running (from its heartbeat in the database) and offers the one-button WhatsApp setup; the Conversas tab shows the inbox with media (0.2.0). What each version added: `CHANGELOG.md`.
 
 ## Turn it on
 
@@ -31,10 +31,12 @@ First version tested only on macOS; it needs Docker.
 
 ## Starting the service
 
+"The tune-up plugin folder" is the folder where Claude Code installed `tune-up` (`${CLAUDE_PLUGIN_ROOT}` inside the plugin); this module lives in its `vendas/` subfolder.
+
 The service starts only by an owner action: this command typed in a terminal, the one-step setup below (which starts it detached), or the owner's click on **Preparar tudo** / **Ligar o serviço** in the panel (which runs that setup). It never starts from a hook, and sessions launched by the panel cannot start it or reach it (deny rules below). `/tune-up:instalar` runs the setup from a Claude session the owner opened, by the owner's request.
 
 ```
-python3 -B <plugin folder>/servico/servico.py --projeto <project root> [--porta 8791] [--painel http://127.0.0.1:8787]
+python3 -B <tune-up plugin folder>/vendas/servico/servico.py --projeto <project root> [--porta 8791] [--painel http://127.0.0.1:8787]
 ```
 
 - Listens on `127.0.0.1` only (default port 8791). No daemon: it runs in that terminal and stops cleanly on Ctrl+C or SIGTERM.
@@ -127,9 +129,9 @@ Decision on cloned voices (plan question Q5, taken by the coordinator while the 
 Instead of the three manual steps (prepare the Evolution files, `docker compose up -d`, start the service), the owner can run one command:
 
 ```
-python3 -B <plugin folder>/servico/preparo.py rodar   --projeto <project root> [--painel http://127.0.0.1:8787] [--porta 8791] [--porta-evolution 8080]
-python3 -B <plugin folder>/servico/preparo.py iniciar --projeto <project root> [same options]   # same run, detached; returns at once
-python3 -B <plugin folder>/servico/preparo.py estado  --projeto <project root>                  # last run's state as JSON
+python3 -B <tune-up plugin folder>/vendas/servico/preparo.py rodar   --projeto <project root> [--painel http://127.0.0.1:8787] [--porta 8791] [--porta-evolution 8080]
+python3 -B <tune-up plugin folder>/vendas/servico/preparo.py iniciar --projeto <project root> [same options]   # same run, detached; returns at once
+python3 -B <tune-up plugin folder>/vendas/servico/preparo.py estado  --projeto <project root>                  # last run's state as JSON
 ```
 
 Nothing is installed when the plugin is installed: installing Docker downloads gigabytes and, on some systems, asks for a password, so running this command is the consent. It runs five steps in order. Each one checks first and does nothing when it is already satisfied, so running it again is safe and resumes at the first step that is not done:
@@ -156,7 +158,7 @@ Not verified on real machines: the Homebrew, winget and colima installs and star
 The WhatsApp connection runs in a local Evolution API v2 (Docker). Prepare its files once per project:
 
 ```
-python3 -B <plugin folder>/servico/evolution_local.py preparar --projeto <project root> [--porta 8791] [--porta-evolution 8080]
+python3 -B <tune-up plugin folder>/vendas/servico/evolution_local.py preparar --projeto <project root> [--porta 8791] [--porta-evolution 8080]
 ```
 
 - Writes `compose.yml` and `.env` into `<data folder>/evolution/` (the external data folder below, never the project root; a target inside the project or under a synced folder is refused with exit code 2).
@@ -215,7 +217,7 @@ The folder is mode 0700 and its files 0600. Keys, tokens and contact data never 
 The finder is an **example panel action**, `vendas.buscar-leads`, that you copy into your project. The panel catalogue only reads the core and the project package, so the plugin cannot register it for you:
 
 ```
-cp <plugin folder>/exemplos/acoes/vendas.json .tune-up/<package>/acoes/vendas.json
+cp <tune-up plugin folder>/vendas/exemplos/acoes/vendas.json .tune-up/<package>/acoes/vendas.json
 ```
 
 (`<package>` is the `pacote` of `.tune-up/painel.json`, default `painel-projeto`. The prompt inside the example names `.tune-up/painel-projeto/dados/vendas-candidatos/`: edit it if your package has another name; the lock accepts any package name.)

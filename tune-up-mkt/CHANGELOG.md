@@ -1,5 +1,9 @@
 # CHANGELOG - tune-up-mkt
 
+## Shipped inside tune-up 2.19.0
+
+- No separate plugin any more. The skills are `/tune-up:connect`, `/tune-up:campaign`, `/tune-up:content`, `/tune-up:seo` and `/tune-up:preflight`. The guard runs from the core hooks. The error log is `erros-mkt.log`.
+
 ## 0.3.0
 
 - S1: skills `campaign`, `content`, `seo` and `preflight` (generic, English, replying in the profile language). Each first checks `.tune-up/mkt/contas.json` and sends you to `connect` when a needed service is missing. Rules: campaign analysis ends in a marketing action; writes to an ad or public post only on the owner's explicit request in the current turn; everything created paused with a budget cap; preflight GO/NO-GO before paid media; no invented social proof, scarcity, urgency or price; brand from the tune-up-studio kit when present; credit estimate and ask above `credit_ask_above`.

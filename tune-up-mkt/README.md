@@ -6,7 +6,7 @@ Status: 0.3.0: guard + guided account connection + campaign, content, SEO and pr
 
 ## Install
 
-Nothing to install: this module comes with the `tune-up` plugin. Its skills are `/tune-up:connect`, `/tune-up:campaign`, `/tune-up:content`, `/tune-up:seo` and `/tune-up:preflight`. The separate `tune-up-mkt` plugin was removed from the marketplace in 2.19.0; if you installed it, uninstall it (`/plugin uninstall tune-up-mkt@tune-up`).
+Nothing to install: this module comes with the `tune-up` plugin. Its skills are `/tune-up:connect`, `/tune-up:campaign`, `/tune-up:content`, `/tune-up:seo` and `/tune-up:preflight`. The separate `tune-up-mkt` plugin was removed from the marketplace in 2.19.0; if you installed it, uninstall it (`claude plugin uninstall tune-up-mkt@tune-up`).
 
 ## Connect your accounts
 
@@ -92,7 +92,7 @@ Accepted values are `deny` and `ask` only: loosening goes down to "ask" at most,
 
 The guard is best effort, not a security boundary:
 
-- It runs through Python and fails open (the action goes through) when the hook times out or hits an internal error. With no Python 3.9+ found, the launcher (`scripts/py`) prints a message and exits 127 for this script: Claude Code shows a hook error and the tool call goes through.
+- It runs through Python and fails open (the action goes through) when the hook times out or hits an internal error. With no Python 3.9+ found, the guard is off, like the other tune-up hooks: the launcher (`scripts/py`) exits 0, the tool call goes through with no hook error, and the session start says the hooks are off.
 - Covered shapes include dedicated MCP servers by name (`meta-ads`, `fb-ads`, `facebook`, `instagram`, `google-ads`, also with a suffix such as `meta-ads-mcp`, ...), remote bash/workbench tools of any server, `composio.cmd`/`.exe`/quoted/path forms, and Graph API writes through PowerShell `-Method Post`/`-Body`, `requests.post`, `fetch`, `curl --json`, `wget --post-data` and httpie.
 - Bash heredoc bodies are skipped (an unterminated marker means the whole command is read); PowerShell commands are read whole.
 - Not covered: `sh -c`/`eval` indirection, a heredoc fed to an interpreter, Python/Node files on disk, a globbed name like `mk?.json`. A server that hides tool slugs inside code is only caught by keywords. A write to an existing ad addressed only by its numeric id is treated as another Graph path (ask, not block).

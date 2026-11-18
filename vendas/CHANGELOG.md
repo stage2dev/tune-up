@@ -1,6 +1,8 @@
 # CHANGELOG - tune-up-vendas
 
-## 0.3.0 (unreleased)
+## 0.3.0 (shipped with tune-up 2.19.0)
+
+- The session-start hint now runs from the core `hooks/hooks.json` of `tune-up` (the entry below cites the old Vendas `hooks/hooks.json`).
 
 - The setup skill is now `/tune-up:instalar` (the module loads from the `tune-up` core), instead of `/tune-up-vendas:instalar` below. The session-start hint follows the Módulos button; the old `painel.json` line still counts.
 - One button in the Conexão tab (`painel/modulos/vendas/abas/preparar.py`): when the setup is not complete (service stopped, or the Evolution not prepared / not answering) the tab shows first one card "Preparar o WhatsApp neste computador" with **Preparar tudo** (closed action `preparar_tudo`, starts `preparo.py iniciar` detached for the page's project with the panel's Python, an argument list and no shell, and returns at once; a second click while a run or the started process is alive starts nothing). While a run is alive the tab shows the five steps as a checklist with the current one "fazendo..." and refreshes every 3 s, reading `preparo.json` from the data folder (a dead pid = interrupted). `precisa_do_dono` shows the plain message, the command in a field to copy and **Já fiz, continuar**; `falhou` shows the reason and **Tentar de novo**. With the Evolution files ready and its port answering but the service stopped, the card is **Ligar o serviço** (closed action `ligar_servico`, new engine flag `--so-servico` = only the last step). No path, log, key or raw output reaches the blocks. The old manual commands moved from the screen to the README ("Fazer à mão").
