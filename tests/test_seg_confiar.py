@@ -128,5 +128,27 @@ class TestRotaSoLeitura(PromptBase):
             self.assertIsNotNone(self.bash(ruim), ruim)
 
 
+class TestContasMkt(PromptBase):
+    """The marketing skills' `contas.py` call cites the plugin root but is not a guard write (F1)."""
+    def test_comando_das_skills_passa_imitacao_pergunta(self):
+        r = sh_path(os.path.dirname(os.path.dirname(SCRIPT)))
+        c = 'sh "%s/scripts/py" tune-up-mkt/scripts/contas.py ' % r
+        oks = [c + "status", c + "falta --json", c + "marcar composio:instagram ok --prova sessao",
+               c + "config --site https://a.b --canais instagram"]
+        for ok in oks:
+            self.assertIsNone(self.bash(ok), ok)
+        for ruim in (c + "status; rm x", c + "status && rm x", c + "falta $(id)", c + "status `id`",
+                     c + "status > %s/scripts/x" % r, c + "rodar", c + "status --raiz /tmp",
+                     c + "status --raiz=/tmp", 'sh "%s/scripts/py" tune-up-mkt/scripts/outro.py status' % r,
+                     'sh "%s/../%s/scripts/py" tune-up-mkt/scripts/contas.py status' % (r, os.path.basename(r)),
+                     "sh /tmp/py tune-up-mkt/scripts/contas.py status %s" % r,
+                     "python3 %s/tune-up-mkt/scripts/contas.py status" % r):
+            self.assertIsNotNone(self.bash(ruim), ruim)
+        for modo in ({"modo_pesquisa": True}, {"modo_conversa": True}):  # like any other script run
+            self.sessao(**modo)
+            for ok in oks:
+                self.assertIsNone(self.bash(ok), (modo, ok))
+
+
 if __name__ == "__main__":
     unittest.main()
