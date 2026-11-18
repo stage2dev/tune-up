@@ -36,5 +36,13 @@
   "_comment_line_limit_exclude": "Extra globs exempt from the line limit, e.g. generated code.",
   "line_limit_exclude": [],
   "_comment_workflow_generic": "Workflow agent() calls without agentType: warn, block or off. Loosening it only works in a trusted project.",
-  "workflow_generic": "warn"
+  "workflow_generic": "warn",
+  "_comment_risk_globs": "Extra globs that send a work item to the opus executor (guarda.py rota). Empty here because they ADD to the plugin default (migrations, sql, auth, webhook, payment, billing, worker, queue, hooks); a default can never be removed.",
+  "risk_globs": [],
+  "_comment_security_globs": "Extra globs that make the security reviewer run. ADD to the plugin default (auth, webhook, secret, token, payment, hooks, guard, permission, upload).",
+  "security_globs": [],
+  "_comment_database_globs": "Extra globs that make the database reviewer run. ADD to the plugin default (sql, migrations).",
+  "database_globs": [],
+  "_comment_router": "Model router settings for a later version; off by default. Only works in a trusted project; an invalid block is rejected whole.",
+  "router": {"enabled": false, "max_chars": 6000, "thresholds": {"mechanical": 0.6, "risk": 0.5, "hard": 0.6, "visual": 0.5}, "visual_agent": "", "hard_agent": ""}
 }

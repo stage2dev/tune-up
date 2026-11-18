@@ -156,7 +156,7 @@ You can override models and effort per role in the `models` key of `user.json`.
 
 Buttons only launch actions from a closed list; each action carries its own tool rules. Details, configuration (`.tune-up/painel.json`) and the module contract: [`painel/README.md`](painel/README.md) (Portuguese). Works on macOS, Linux and Windows (Git Bash); Python 3.9+; no install step.
 
-Other optional plugin: `tune-up-mkt` (marketing accounts, skills and a guard for ad-account and public-post writes; 0.1.0 is a skeleton, see [`tune-up-mkt/README.md`](tune-up-mkt/README.md)). Install with `/plugin install tune-up-mkt@tune-up`. Studio and Vendas come inside tune-up: see the next section.
+Other optional plugin: `tune-up-mkt` (marketing accounts, skills and a guard for ad-account and public-post writes; 0.3.0: guard, account connection and campaign/content/SEO/preflight skills, see [`tune-up-mkt/README.md`](tune-up-mkt/README.md)). Install with `/plugin install tune-up-mkt@tune-up`. Studio and Vendas come inside tune-up: see the next section.
 
 ## Built-in modules
 
@@ -206,9 +206,11 @@ Workflow scripts: the guard also warns when a Workflow script calls `agent()` wi
 | File | What |
 |---|---|
 | `~/.config/tune-up/user.json` | Personal: `language`, `owner`, `reply_style`, `use_types`, `models`, `forbidden_subagent_models`, `names_override`, `protected_paths`, `plugin_source`, `tools`. Written by `/tune-up:setup`. Delete it to return to the defaults. |
-| `<project>/.tune-up/project.md` and `config.json` | Per project, created by `/tune-up:profile`. `config.json` holds `main_branches`, `plans_dir` (default `.planning`), `free_repos`, `research_free_paths`, `bash_rules`, `line_limit`, `supabase_guard`, `*_phrases` and more. |
+| `<project>/.tune-up/project.md` and `config.json` | Per project, created by `/tune-up:profile`. `config.json` holds `main_branches`, `plans_dir` (default `.planning`), `free_repos`, `research_free_paths`, `bash_rules`, `line_limit`, `supabase_guard`, `*_phrases`, `risk_globs`, `security_globs`, `database_globs`, `router` and more. |
 
 Trust: a project profile can only tighten the rules until you trust it. Keys that loosen a guard (for example `commit_on_main`, `claude_may_merge`, `free_repos`, `supabase_guard`, `line_limit`, every `*_phrases` list) are ignored in a profile you have not trusted. Run `/tune-up:profile`, or `sh "<plugin>/scripts/py" scripts/guarda.py trust`, to trust the current one. SessionStart tells you when a profile is ignored.
+
+Routing: `python3 scripts/guarda.py rota --files <path> [...] [--diff-file <patch>] [--failed sonnet|opus]` prints one JSON line `{"executor", "reviewers", "why"}` from the file paths: a path matching `risk_globs` sends the item to `tune-up:executor-opus`; `security_globs`, a security keyword in a changed diff line (added or removed; context lines never count), or no diff adds the `security` reviewer; `database_globs` adds `database`; `failures` always runs. No files (blank paths are dropped) routes up (opus + security); a diff file with no diff content counts as no diff; any error routes up with all three reviewers. The three glob lists ADD to the plugin defaults (even untrusted, since adding only tightens) and can never remove one. The `router` block (off by default, for a later version) counts only in a trusted profile; an invalid block is rejected whole.
 
 ## Language
 

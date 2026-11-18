@@ -78,6 +78,19 @@ class TestInfo(Base):
             json.dump({"plans_dir": "docs/plans"}, f)
         self.assertEqual(self.info()["plans_dir"], os.path.join(self.cwd, "docs", "plans"))
 
+    def test_globs_de_rota(self):
+        padrao = self.info()
+        self.assertIn("**/migrations/**", padrao["risk_globs"])
+        self.assertIn("**/*auth*", padrao["security_globs"])
+        self.assertIn("**/*.sql", padrao["database_globs"])
+        perfil = os.path.join(self.cwd, ".tune-up")
+        os.makedirs(perfil)
+        with open(os.path.join(perfil, "config.json"), "w", encoding="utf-8") as f:
+            json.dump({"security_globs": ["**/*crypto*"], "risk_globs": "**/x"}, f)
+        i = self.info()
+        self.assertEqual(i["security_globs"], padrao["security_globs"] + ["**/*crypto*"])
+        self.assertEqual(i["risk_globs"], padrao["risk_globs"])
+
     def test_project_md_e_legado(self):
         perfil = os.path.join(self.cwd, ".tune-up")
         os.makedirs(perfil)

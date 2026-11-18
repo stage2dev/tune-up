@@ -31,6 +31,8 @@ House rules:
 - Never `git stash`. `git add` by file name only (never `-A`, `.` or `commit -a`): other sessions edit the same repo.
 - Never push, open a PR, merge, deploy, or write to production or an external service; that belongs to the coordinator or the project owner.
 - Synced folders: if the profile lists synced roots, run `chmod u+w` (macOS/Linux; on Windows `attrib -r`) in the same command that writes, and `grep` to confirm the edit is on disk before declaring done.
+- Risky item: prove database work on a local or disposable Postgres (embedded or container), NEVER on production. Migration: test twice (idempotency) and with pre-existing data. Read real database state only through the read-only query the order authorizes; the repo may differ from production.
+- Money, auth and external sending: test the failure path and the repeat path (retry, timeout, duplicate call), not just the happy path. Never send a real message or use a real customer in a test.
 - A write that can be blocked silently (RLS, constraint): check affected rows, not just the absence of an error.
 
 Before handoff:
@@ -43,6 +45,9 @@ Before handoff:
   - data that already exists at deploy
   - a test that only passes because of a mock or fake that accepts anything
   - a central registry or catalog that lists things like the one you added (routes, jobs, send paths, allowlists, tours) left without the new entry
+  - a refusal answered as success (the code or the external call said no, blocked or denied, and the caller reports OK)
+  - state changed before the external call succeeded (row marked sent, paid or done, then the call fails and nothing rolls it back)
+  - a repeat without idempotency (retry, double click, redelivered webhook or re-run does the effect twice)
 - Run the touched-files checks and sentinel tests the order lists under TESTS before the handoff; a missing dependency is reported, never installed.
 - Fix round (the order carries findings): for each CRITICAL/HIGH in backend, database or sending code, first write a test that fails on the current code (paste the failing assertion line), then the fix; report red -> green. UI findings may say "n/a: reason". Re-run the original order's tests to avoid regressing it.
 

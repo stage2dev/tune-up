@@ -22,6 +22,13 @@ Bash guard: commands that Bash runs but the guard read as part of a string. Stri
 - New `tests/test_bash_texto.py`, with a differential test: random text is run by the real Bash with a harmless marker function, and whenever Bash runs the marker the guard must show it as a command (skipped on Windows and where there is no `bash`).
 - Still open (already so before this release): substitutions are resolved in the folder where the whole command ends, and a `cd` inside `( ... )` reaches the commands after it; `eval`/`bash -c` nested more than three times, `bash -o x -c`, `bash <<E` and `| bash` are not opened; a command word that is an expansion (`$x rm f`, `"$x"rm f`); `function`, `builtin`, `coproc`; `time -p case`; `wsl ~`, `wsl -dName` and wrappers inside `powershell`/`cmd`.
 - Not covered: the marketing guard (`tune-up-mkt/scripts/guarda_mkt.py`) and the panel guard (`painel/travas.py`) have their own readers and were not changed. Nothing here was run on a real Windows machine; the `wsl` reading is tested with the platform forced.
+## 2.17.0
+
+Executor and reviewers picked per item. Nothing changes until a skill calls `guarda.py rota`.
+
+- `guarda.py rota`: picks the executor (opus/sonnet) and reviewers (failures, security, database) from the file paths and the diff; any doubt or error routes up. New config keys `risk_globs`, `security_globs`, `database_globs` (add to the defaults, also exposed by `guarda.py info`) and `router` (trusted profile only, validated, off by default).
+- The Bash guard lets the exact read-only `guarda.py rota` call through, like `guarda.py info`.
+- Executors: Sonnet gets the two risky-code rules; three new self-check items (refusal treated as success, state saved before the external call, repeat without idempotency).
 
 ## 2.16.0
 
