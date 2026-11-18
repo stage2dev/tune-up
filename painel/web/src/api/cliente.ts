@@ -8,11 +8,14 @@ export class ErroApi extends Error {
   status: number;
   /** Vem no 409: id da execucao que ja esta rodando. */
   execucaoId?: string;
-  constructor(mensagem: string, status: number, execucaoId?: string) {
+  /** Campo `codigo` do corpo do erro, quando vem (ex.: 409 de /api/plugins). */
+  codigo?: string;
+  constructor(mensagem: string, status: number, execucaoId?: string, codigo?: string) {
     super(mensagem);
     this.name = 'ErroApi';
     this.status = status;
     this.execucaoId = execucaoId;
+    this.codigo = codigo;
   }
 }
 
@@ -38,7 +41,7 @@ function erroDe(resp: Response, corpo: unknown): ErroApi {
   const obj = (corpo && typeof corpo === 'object' ? corpo : {}) as Record<string, unknown>;
   const msg = typeof obj.erro === 'string' && obj.erro ? obj.erro : `Algo deu errado (código ${resp.status}).`;
   const id = typeof obj.execucao_id === 'string' ? obj.execucao_id : undefined;
-  return new ErroApi(msg, resp.status, id);
+  return new ErroApi(msg, resp.status, id, typeof obj.codigo === 'string' ? obj.codigo : undefined);
 }
 
 async function pedir(url: string, init?: RequestInit): Promise<{ resp: Response; corpo: unknown }> {

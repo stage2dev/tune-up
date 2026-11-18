@@ -141,8 +141,12 @@ All commands are `/tune-up:<name>`.
 | Reviews for failures | `reviewer-failures` | opus | high |
 | Reviews database changes | `reviewer-database` | opus | high |
 | Reviews security | `reviewer-security` | opus | high |
+| Looks at a screen or image, or creates a visual asset (used only when the router's `visual_agent` names it) | `visual` | opus | medium |
+| Retries an item that already failed on opus (used only when the router's `hard_agent` names it) | `executor-hard` | opus | medium |
 
 You can override models and effort per role in the `models` key of `user.json`.
+
+`fable_agents` in `user.json` lists agent types allowed to use a forbidden model: only through the Agent tool with an explicit `model`, never in a Workflow script. List namespaced names only (for example `tune-up:visual`): a bare name can be taken over by a project's own `.claude/agents` file with the same name.
 
 ## Panel (local dashboard)
 
@@ -152,6 +156,7 @@ You can override models and effort per role in the `models` key of `user.json`.
 - **Agents**: every Claude session of the project and, under it, its sub-agents and workflows by phase, each with model, effort, elapsed time and tool count. Refreshes every 2 s.
 - **Runs**: live view of each session launched from the panel, with "open in terminal" and "stop".
 - **Follow-up**: open work lists.
+- **Plugins** (on the Modules screen): your Claude Code plugins in two columns, "Ligado" and "Desligado"; drag a card to the other column or press its button. It changes only the true/false of a plugin already listed in your user Claude settings file (`~/.claude/settings.json`), after saving a dated backup (the last 3 are kept), and takes effect in the next Claude session. A project or local setting that overrides your value is shown on the card; such a card is not dragged, and its button switches only your own value. Tune-up itself cannot be switched off from here.
 - **Project modules**: a project can add its own screens (declarative blocks) and actions in `.tune-up/painel-projeto/`, without touching the panel code.
 
 Buttons only launch actions from a closed list; each action carries its own tool rules. Details, configuration (`.tune-up/painel.json`) and the module contract: [`painel/README.md`](painel/README.md) (Portuguese). Works on macOS, Linux and Windows (Git Bash); Python 3.9+; no install step.
@@ -211,7 +216,7 @@ Workflow scripts: the guard also warns when a Workflow script calls `agent()` wi
 
 Trust: a project profile can only tighten the rules until you trust it. Keys that loosen a guard (for example `commit_on_main`, `claude_may_merge`, `free_repos`, `supabase_guard`, `line_limit`, every `*_phrases` list) are ignored in a profile you have not trusted. Run `/tune-up:profile`, or `sh "<plugin>/scripts/py" scripts/guarda.py trust`, to trust the current one. SessionStart tells you when a profile is ignored.
 
-Routing: `python3 scripts/guarda.py rota --files <path> [...] [--diff-file <patch>] [--failed sonnet|opus]` prints one JSON line `{"executor", "reviewers", "why"}` from the file paths: a path matching `risk_globs` sends the item to `tune-up:executor-opus`; `security_globs`, a security keyword in a changed diff line (added or removed; context lines never count), or no diff adds the `security` reviewer; `database_globs` adds `database`; `failures` always runs. No files (blank paths are dropped) routes up (opus + security); a diff file with no diff content counts as no diff; any error routes up with all three reviewers. The three glob lists ADD to the plugin defaults (even untrusted, since adding only tightens) and can never remove one. The `router` block (off by default, for a later version) counts only in a trusted profile; an invalid block is rejected whole.
+Routing: `python3 scripts/guarda.py rota --files <path> [...] [--diff-file <patch>] [--failed sonnet|opus]` prints one JSON line `{"executor", "reviewers", "why"}` from the file paths: a path matching `risk_globs` sends the item to `tune-up:executor-opus`; `security_globs`, a security keyword in a changed diff line (added or removed; context lines never count), or no diff adds the `security` reviewer; `database_globs` adds `database`; `failures` always runs. No files (blank paths are dropped) routes up (opus + security); a diff file with no diff content counts as no diff; any error routes up with all three reviewers. The three glob lists ADD to the plugin defaults (even untrusted, since adding only tightens) and can never remove one. The `router` block is optional, off by default, and counts only in a trusted profile (an invalid block is rejected whole). When `router.enabled` is true and `rota` gets `--text-file`, the scorer sees only that file, and only when its name ends `.rota.txt` and it is not a symlink (any other name: fixed rule, nothing read): the item's action line and the file base names, cut at the first `REAL DATA`, `PITFALLS` or diff line (any case, also as a markdown heading or list item), masked for secrets, e-mail, phone, CPF and CNPJ, and cut to `max_chars`. It goes to the Jev scorer at TypeSafe; the key is `TYPESAFE_API_KEY`. A missing key, any error or no answer means the fixed rule. `risk_globs` always win (the scorer is not called). The scorer can only keep or raise the executor, never lower it. The output adds `model`, `scores` and `source` (`globs`, `fixed` or `jev`). To measure it: `python3 evals/rota/rodar.py --seco` checks the case file with no network; without `--seco` it makes one API call per case.
 
 ## Language
 

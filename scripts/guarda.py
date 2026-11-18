@@ -4,7 +4,7 @@
 Uso: python3 guarda.py <prompt|inicio|bash|agent|escrita|prod|pos_bash>
      python3 guarda.py info                  (JSON do perfil; não lê stdin)
      python3 guarda.py confiar|trust <arq>   (não lê stdin)
-     python3 guarda.py rota --files <caminho> [...] [--diff-file <patch>] [--failed sonnet|opus]
+     python3 guarda.py rota --files <caminho> [...] [--diff-file <patch>] [--failed sonnet|opus] [--text-file <txt>]
                                              (JSON executor/reviewers/why; erro = sobe; não lê stdin)
 Lê o JSON do hook no stdin, escreve JSON no stdout quando há decisão.
 Sempre sai com código 0. Exceção interna = não decide nada (fail-open)

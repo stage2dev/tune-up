@@ -394,3 +394,30 @@ export interface DadosModulo {
   /** Segundos entre releituras (o servidor e a tela prendem em 2..60). */
   atualizar_em?: number;
 }
+
+// GET/POST /api/plugins (espelha painel/contrato/api.d.ts)
+export interface Plugin {
+  id: string;
+  ligado: boolean;
+  origem: 'usuario' | 'projeto' | 'local';
+  valores: { usuario?: boolean; projeto?: boolean; local?: boolean };
+  sobreposto: boolean;
+  fixo: boolean;
+  skills: number;
+  agentes: number;
+  peso: number;
+}
+
+export interface RespPlugins {
+  plugins: Plugin[];
+  aviso: string | null;
+}
+
+export interface RespMudarPlugin {
+  ok: true;
+  plugins: Plugin[];
+  aviso: string;
+}
+
+/** `codigo` do 409 de POST /api/plugins (vem em ErroApi.codigo). */
+export type CodigoPlugin409 = 'mudou' | 'fixo' | 'ilegivel' | 'numero';

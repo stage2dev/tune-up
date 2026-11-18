@@ -4,6 +4,30 @@ Every new rule goes in through `/tune-up:learn`: memory + a change here + a test
 
 ## Unreleased
 
+## 2.24.0
+
+- Optional model router for `guarda.py rota` (`router` block, off by default, trusted profile only). With `--text-file` it asks the Jev scorer four questions about the item text and can keep or raise the executor, never lower it. Any error or missing key keeps the fixed rule; `risk_globs` always win. The output has `model`, `scores` and `source`.
+- Two new agents: `visual` (looks at a screen or image, or creates a visual asset) and `executor-hard` (item that already failed on opus). The router uses them only when `visual_agent` or `hard_agent` names them.
+- `fable_agents` in `user.json`: a forbidden model is allowed for an agent type listed there, only through the Agent tool with an explicit model, never in a Workflow script.
+- `/tune-up:part` always writes the item's action line and file base names to `<scratchpad>/item-N.rota.txt` and passes it with `--text-file`; `source` says whether the router ran. Only a `--text-file` named `*.rota.txt` (no `..`, dotfile, dot-folder, `~`, brace or glob) skips the Bash guard question, and the router itself never reads another name or a symlink.
+- The text sent to the scorer is also masked for CPF and CNPJ (formatted, or a bare run of exactly 11 or 14 digits); same change in `painel/mascara.py`.
+- `evals/rota/`: 36 generic labelled cases and `rodar.py`. `--seco` checks the file offline (run by a unit test); the default mode makes one API call per case.
+- The question texts are new and the eval was not yet run against the real service, so the thresholds are untested.
+
+## 2.23.0
+
+- Panel, Modules screen: new "Plugins" section with your Claude Code plugins in two columns ("Ligado" / "Desligado"). Drag a card to the other column or use its "Ligar"/"Desligar" button; the card moves only when the server answers, and a failure leaves it where it was with the server's message.
+- New `GET /api/plugins`: reads `enabledPlugins` from the user, project and local settings (the last one that has the key wins) and sends, per plugin, the winning value and where it came from, whether the project or local value overrides the user's (`sobreposto`), skills, agents and the characters of the skill descriptions (`peso`, from the install folder; 0 when unknown). A settings file that does not open is left out and reported in `aviso`.
+- New `POST /api/plugins` `{id, enabled}`: flips only that boolean in the user's `~/.claude/settings.json` (atomic write, dated backup, last 3 kept); it never creates a key, never writes the project or local file, and refuses tune-up itself (409). The change takes effect in the next Claude session; when the project or local settings still decide that plugin, the answer says so instead.
+- The screen shows a notice when the project or local settings override the user's value (changing it here does not change what applies in that project); on such a card the button flips the user's own value ("Ligar/Desligar nos seus ajustes") and dragging is off, and a 200 that leaves the user's value unchanged is reported as an error, not as success; a 409 because the file changed during the write shows "the settings changed outside; list reloaded" and re-reads the list, and any other 409 (tune-up itself, a settings file that cannot be read or rewritten safely) shows the server's message. A plugin that exists only in the project or local settings has no button and cannot be dragged.
+
+## 2.22.0
+
+- Leaner agent texts: search with `rg -n ... | head -60`, Read with `limit`, `git log -n 30`, no images unless the order asks for one UI state.
+- The work order pastes the criterion LITERALLY from the goal, lists only matching pitfall skills, and says executor and reviewer never read the whole goal or progress document.
+- Reviewers no longer report LOW; a backend HIGH proven only by reading is reproduced first, else marked "suspected" and keeps its severity. At most 3 MEDIUM per item in the consolidated report.
+- Executors hand back a partial result near ~80 steps (was ~150), in the agents, the work order, the goal template and the Part skill.
+
 ## 2.19.0
 
 One plugin. The marketplace now lists only `tune-up`. `tune-up-studio`, `tune-up-vendas` and `tune-up-mkt` are removed from it (`renames` to null); their folders stay in the repo as modules of the core.
