@@ -4,6 +4,15 @@ Every new rule goes in through `/tune-up:learn`: memory + a change here + a test
 
 ## Unreleased
 
+## 2.23.0
+
+Marketing gets a panel tab.
+
+- New built-in module Marketing (off until turned on in the Módulos screen). Its tab "Contas" lists each marketing service with its state, when it was checked and the next step; the button "Conferir contas" runs `contas.py status` for the project in the background (free local commands, no credits). It shows no keys, account names or command output.
+- Fix: `contas.py marcar` keeps the top-level `conferido_em` of the last `status`, so a manual mark no longer makes an old automatic check look fresh.
+- `tune-up-mkt/` is now protected in sessions launched by the panel (a panel session can no longer edit files there), like `tune-up-studio/` and `vendas/`.
+- An old `painel.json` line `"modulos_de_plugins": ["tune-up-mkt@...:mkt"]` counts as on, with a notice, like the Studio and Vendas lines.
+
 ## 2.19.0
 
 One plugin. The marketplace now lists only `tune-up`. `tune-up-studio`, `tune-up-vendas` and `tune-up-mkt` are removed from it (`renames` to null); their folders stay in the repo as modules of the core.

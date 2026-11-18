@@ -158,12 +158,12 @@ Buttons only launch actions from a closed list; each action carries its own tool
 
 ## Built-in modules
 
-Studio and Vendas come inside tune-up and arrive off (Marketing is also part of tune-up; see below). Open the panel's **Módulos** screen (`/modulos`) and press the button on the one you want; press it again to turn it off. No `painel.json` edit and no separate plugin install.
+Studio, Vendas and Marketing come inside tune-up and arrive off. Open the panel's **Módulos** screen (`/modulos`) and press the button on the one you want; press it again to turn it off. No `painel.json` edit and no separate plugin install.
 
 - **Studio** (posts, short videos and ads with your brand): five commands: `/tune-up:post`, `/tune-up:video`, `/tune-up:anuncio`, `/tune-up:marca`, `/tune-up:marca-ler`. Claude never starts them on its own. Post, video and anuncio are started from the panel's Estúdio screen (it passes the work folder, the format and the HyperFrames path); `/tune-up:marca` and `/tune-up:marca-ler` are typed by you. Works on macOS, Linux and WSL2; not on native Windows. Details: [`tune-up-studio/README.md`](tune-up-studio/README.md).
 - **Vendas** (WhatsApp sales screen): first version tested only on macOS; needs Docker. Details: [`vendas/README.md`](vendas/README.md).
 
-- **Marketing** (marketing accounts, skills and a guard for ad-account and public-post writes): part of tune-up, no install. Details: [`tune-up-mkt/README.md`](tune-up-mkt/README.md).
+- **Marketing** (marketing accounts, skills and a guard for ad-account and public-post writes): part of tune-up, no install. It also has a panel tab: turn on **Marketing** in the Módulos screen and the tab "Contas" lists each marketing service with its state, when it was last checked and the next step. The button "Conferir contas" runs the account check for this project in the background (`claude plugin list --json`, `claude mcp list` and `composio connections list`, all local and read-only); it spends no credits. The tab shows no keys, no account names and no command output. Details: [`tune-up-mkt/README.md`](tune-up-mkt/README.md).
 
 Migration (2.19.0): the marketplace lists only `tune-up`. If you installed `tune-up-studio`, `tune-up-vendas` or `tune-up-mkt`, run `claude plugin marketplace update tune-up`, then `claude plugin update tune-up@tune-up`, then restart Claude Code, in this order (on a local clone, `git pull` in the clone first, as in the Windows note above). Then uninstall the old plugins: `claude plugin uninstall tune-up-studio@tune-up`, and the same for `tune-up-vendas` and `tune-up-mkt`. Keeping them is not harmless: the Studio's old commands point at files that no longer exist, and the old marketing and sales plugins duplicate the core (the marketing guard runs twice, the Vendas start hint shows twice, and the `/tune-up-mkt:*` skills appear next to `/tune-up:*`). Your data stays. This order was not yet measured on a real install.
 

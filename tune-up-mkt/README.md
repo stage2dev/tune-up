@@ -34,6 +34,12 @@ State lives in your project: `.tune-up/mkt/contas.json` and `.tune-up/mkt/config
 - Checks run in the project folder, so project-scoped servers count. State files reached through a symbolic link are refused.
 - Limit: when a check command times out, only that command is stopped; programs it started may keep running.
 
+## Panel tab
+
+Turn on **Marketing** in the panel's Módulos screen (it arrives off). The tab "Contas" has a table with one row per service: what it is for, its state (for example "ligado" or "falta autenticar"), when it was checked and the next step. It reads `.tune-up/mkt/contas.json`, and warns when the last check is more than 24 hours old.
+
+The button "Conferir contas" runs `scripts/contas.py status` for the project in the background, one run at a time. It uses the same free local commands as the `connect` skill and spends no credits. The tab shows no keys, no account names and no command output; the output goes to `.tune-up/mkt/conferencia.log`, which stays on disk.
+
 ## Skills
 
 | Skill | What it does | Say, for example |
