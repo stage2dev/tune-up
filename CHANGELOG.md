@@ -4,6 +4,8 @@ Every new rule goes in through `/tune-up:learn`: memory + a change here + a test
 
 ## Unreleased
 
+- CI: the Windows jobs failed 33 test expectations since 2.12.0 (paths compared with `\`, while `info` prints `/`; a `cdC:/x` case that is no command in cmd; a `wsl` word in a commit message, which asks on Windows like `node` does everywhere). Tests only, no product change. Python 3.9 on Linux now runs on `ubuntu-24.04`: `ubuntu-latest` (26.04) has no 3.9 build.
+
 ## 2.18.0
 
 Bash guard: commands that Bash runs but the guard read as part of a string. Stricter on every system; a command that used to pass may now ask (research mode) or be denied (talk mode) because the guard now sees what it really runs.

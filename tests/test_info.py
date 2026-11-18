@@ -8,7 +8,7 @@ import tempfile
 import time
 import unittest
 
-from base import SCRIPT, Base
+from base import SCRIPT, Base, fwd
 
 NAMES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates", "names.json")
 
@@ -50,7 +50,7 @@ class TestInfo(Base):
         self.assertIsNone(i["profile_path"])
         self.assertIsNone(i["plugin_source"])
         self.assertIsNone(i["catalog_path"])
-        self.assertEqual(i["plans_dir"], os.path.join(self.cwd, ".planning"))
+        self.assertEqual(i["plans_dir"], fwd(os.path.join(self.cwd, ".planning")))
 
     def test_user_json_pt_e_override(self):
         self.user_json({"language": "pt-BR", "owner": "Ana", "reply_style": "summary",
@@ -69,14 +69,14 @@ class TestInfo(Base):
         subprocess.run(["git", "init", "-q", self.cwd], check=True)
         sub = os.path.join(self.cwd, "a", "b")
         os.makedirs(sub)
-        self.assertEqual(self.info(sub)["plans_dir"], os.path.join(self.cwd, ".planning"))
+        self.assertEqual(self.info(sub)["plans_dir"], fwd(os.path.join(self.cwd, ".planning")))
 
     def test_plans_dir_do_projeto(self):
         perfil = os.path.join(self.cwd, ".tune-up")
         os.makedirs(perfil)
         with open(os.path.join(perfil, "config.json"), "w", encoding="utf-8") as f:
             json.dump({"plans_dir": "docs/plans"}, f)
-        self.assertEqual(self.info()["plans_dir"], os.path.join(self.cwd, "docs", "plans"))
+        self.assertEqual(self.info()["plans_dir"], fwd(os.path.join(self.cwd, "docs", "plans")))
 
     def test_globs_de_rota(self):
         padrao = self.info()
@@ -95,7 +95,7 @@ class TestInfo(Base):
         perfil = os.path.join(self.cwd, ".tune-up")
         os.makedirs(perfil)
         open(os.path.join(perfil, "projeto.md"), "w", encoding="utf-8").close()
-        self.assertEqual(self.info()["profile_path"], os.path.join(perfil, "projeto.md"))
+        self.assertEqual(self.info()["profile_path"], fwd(os.path.join(perfil, "projeto.md")))
         open(os.path.join(perfil, "project.md"), "w", encoding="utf-8").close()
         self.assertEqual(self.info()["profile_path"], os.path.join(perfil, "project.md"))
 
@@ -108,7 +108,7 @@ class TestInfo(Base):
         catalogo = os.path.join(os.path.dirname(p), "skills-catalog.md")
         open(catalogo, "w", encoding="utf-8").close()
         i = self.info()
-        self.assertEqual(i["plugin_source"], fonte)
+        self.assertEqual(i["plugin_source"], fwd(fonte))
         self.assertEqual(i["catalog_path"], catalogo)
         self.assertTrue(os.path.isabs(i["catalog_path"]))
 
@@ -202,7 +202,7 @@ class TestInfo(Base):
         ps = self.info()["pitfall_skills"]
         self.assertEqual([p["name"] for p in ps], ["armadilhas-back", "front-pitfalls"])
         self.assertEqual(ps[0], {"name": "armadilhas-back", "paths": ["**/backend/**", "*.py"],
-                                 "path": os.path.realpath(os.path.join(novo, "skills", "armadilhas-back", "SKILL.md"))})
+                                 "path": fwd(os.path.realpath(os.path.join(novo, "skills", "armadilhas-back", "SKILL.md")))})
         self.assertEqual(ps[1]["paths"], ["src/**", "app/*.tsx"])
         self.assertTrue(all(os.path.isabs(p["path"]) for p in ps))
 

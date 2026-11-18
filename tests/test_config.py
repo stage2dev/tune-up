@@ -8,7 +8,7 @@ import sys
 import tempfile
 import unittest
 
-from base import IS_WIN, SCRIPT, SEM_MODOS, PromptBase, mkdtemp, symlink
+from base import IS_WIN, SCRIPT, SEM_MODOS, PromptBase, fwd, mkdtemp, symlink
 
 
 class TestC2PerfilConfiavel(PromptBase):
@@ -282,7 +282,7 @@ class TestH2aContratos(PromptBase):
                 self.assertEqual(c["research_free_paths"][-1], os.path.join(d, esperado))
                 r = subprocess.run([sys.executable, SCRIPT, "info"], cwd=d, env=self.env, timeout=20,
                                    capture_output=True, text=True, stdin=subprocess.DEVNULL)
-                self.assertEqual(json.loads(r.stdout)["plans_dir"], os.path.join(d, esperado))
+                self.assertEqual(json.loads(r.stdout)["plans_dir"], fwd(os.path.join(d, esperado)))
         with open(os.path.join(self.dados, "erros.log"), encoding="utf-8") as f:
             self.assertGreaterEqual(f.read().count("plans_dir invalid"), len(hostis))
 
@@ -297,7 +297,7 @@ class TestH2aContratos(PromptBase):
                 self.assertEqual(self.dump(d)["plans_dir"], esperado)
                 r = subprocess.run([sys.executable, SCRIPT, "info"], cwd=d, env=self.env, timeout=20,
                                    capture_output=True, text=True, stdin=subprocess.DEVNULL)
-                self.assertEqual(json.loads(r.stdout)["plans_dir"], os.path.normpath(os.path.join(d, esperado)))
+                self.assertEqual(json.loads(r.stdout)["plans_dir"], fwd(os.path.normpath(os.path.join(d, esperado))))
 
     def test_plans_dir_ancorado_na_raiz_do_projeto(self):
         self.cwd = self.projeto("proj2", {"plans_dir": "docs"})

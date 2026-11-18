@@ -48,6 +48,11 @@ def rmtree(caminho):
     shutil.rmtree(caminho, onerror=_forcar)
 
 
+def fwd(p):
+    """A path as `info` prints it: with `/` on Windows too (info._fwd)."""
+    return p.replace("\\", "/") if IS_WIN else p
+
+
 def symlink(alvo, link, dir_=False):
     """os.symlink, or skip the test when the platform/account cannot create symlinks."""
     try:
