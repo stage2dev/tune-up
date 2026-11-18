@@ -229,9 +229,10 @@ def chamada_rota(cmd):
 def chamada_contas(cmd):
     """`sh <this plugin>/scripts/py tune-up-mkt/scripts/contas.py status|falta|marcar|config ...`
     as the marketing skills pre-approve. Same refusals as chamada_rota; `--raiz` (it picks the
-    folder whose `.tune-up/mkt/` is written) is not exempt and goes through the normal rules."""
+    folder whose `.tune-up/mkt/` is written) is not exempt and goes through the normal rules.
+    Braces, globs and `~` are refused too: the shell could rebuild them into `--raiz <dir>`."""
     import shlex
-    if re.search(r"[;&|<>$`()\n\\]", cmd):
+    if re.search(r"[;&|<>$`()\n\\{}*?\[~]", cmd):
         return False
     try:
         toks = shlex.split(cmd)

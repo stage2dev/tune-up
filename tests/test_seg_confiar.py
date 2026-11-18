@@ -139,7 +139,8 @@ class TestContasMkt(PromptBase):
             self.assertIsNone(self.bash(ok), ok)
         for ruim in (c + "status; rm x", c + "status && rm x", c + "falta $(id)", c + "status `id`",
                      c + "status > %s/scripts/x" % r, c + "rodar", c + "status --raiz /tmp",
-                     c + "status --raiz=/tmp", 'sh "%s/scripts/py" tune-up-mkt/scripts/outro.py status' % r,
+                     c + "status --raiz=/tmp", c + "status {--raiz,/tmp}", c + "status --rai?=/tmp",
+                     c + "status --[r]aiz=/tmp", c + "status --raiz=~", 'sh "%s/scripts/py" tune-up-mkt/scripts/outro.py status' % r,
                      'sh "%s/../%s/scripts/py" tune-up-mkt/scripts/contas.py status' % (r, os.path.basename(r)),
                      "sh /tmp/py tune-up-mkt/scripts/contas.py status %s" % r,
                      "python3 %s/tune-up-mkt/scripts/contas.py status" % r):
