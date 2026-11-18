@@ -161,6 +161,8 @@ class TestLancador(unittest.TestCase):
         self.assertIn("hooks off", json.loads(r.stdout)["systemMessage"])
         r = self.roda("scripts/guarda.py", "bash", entrada="{}", path=self.so_bin)
         self.assertEqual((r.returncode, r.stdout), (0, ""))  # fail-open, no decision
+        r = self.roda("tune-up-mkt/scripts/guarda_mkt.py", entrada="{}", path=self.so_bin)
+        self.assertEqual((r.returncode, r.stdout), (0, ""))  # the marketing guard too, no message
         r = self.roda("scripts/titulo_terminal.py", path=self.so_bin)
         self.assertEqual(r.returncode, 127)
         self.assertFalse(os.path.exists(self.cache))
