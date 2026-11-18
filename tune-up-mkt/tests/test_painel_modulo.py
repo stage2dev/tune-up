@@ -232,6 +232,62 @@ class TesteEstados(Base):
         self.assertEqual(os.listdir(fora), [])
 
 
+class TesteEstadosDoContas(Base):
+    """contas.json written by the real R.montar (status and marcar paths): never a bad item, always a pt-BR word."""
+
+    def catalogo(self):
+        with open(self.mod.CATALOGO, encoding="utf-8") as f:
+            return json.load(f)
+
+    def marca(self, estado, dias):
+        return {"estado": estado, "prova": "manual", "via": "manual", "conferido_em": iso(AGORA - timedelta(days=dias))}
+
+    def gravar_montado(self, catalogo, auto, marcas):
+        self.gravar("contas.json", self.mod.R.montar(catalogo, auto, marcas, AGORA, AGORA))
+        r = self.montar()
+        nome = {s["id"]: s["nome"] for s in self.mod._catalogo()}["chrome"]
+        return r, self.linhas(r)[nome]["estado"]
+
+    def test_todo_estado_que_o_contas_grava_tem_palavra(self):
+        R, vistos = self.mod.R, set()
+        um = {"servicos": [{"id": "chrome", "conferir": [{"tipo": "plugin", "alvo": "x"}]}]}
+        casos = [(um, {"chrome": [{"tipo": "plugin", "via": "plugin", "estado": e, "detalhe": "enabled",
+                                   "conferido_em": iso(AGORA)}]}, {}) for e in R.PIOR_PRIMEIRO]  # status
+        casos += [(self.catalogo(), {}, {"chrome": self.marca(e, d)})  # marcar: fresh and expired marks
+                  for e in R.ESTADOS_MARCA for d in (0, 8)]
+        casos.append((self.catalogo(), {}, {}))  # manual only, never marked
+        for catalogo, auto, marcas in casos:
+            with self.subTest(auto=auto, marcas=marcas):
+                estado = self.mod.R.montar(catalogo, auto, marcas, AGORA, AGORA)["servicos"]["chrome"]["estado"]
+                vistos.add(estado)
+                r, palavra = self.gravar_montado(catalogo, auto, marcas)
+                self.assertIn(estado, self.mod.PALAVRAS)
+                self.assertEqual(palavra, self.mod.PALAVRAS[estado])
+                self.assertEqual([t for t in self.textos(r) if "não conseguiu ler" in t], [])
+        self.assertEqual(vistos, set(R.PIOR_PRIMEIRO) | {"conferir_de_novo"})
+        self.assertEqual(set(self.mod.PALAVRAS), vistos)
+
+    def test_marca_manual_vencida_pede_conferir_de_novo(self):
+        catalogo = self.catalogo()
+        chrome = [s for s in catalogo["servicos"] if s["id"] == "chrome"][0]
+        r, palavra = self.gravar_montado(catalogo, {}, {"chrome": self.marca("ligado", 8)})
+        textos = self.textos(r)
+        self.assertEqual([t for t in textos if "não conseguiu ler" in t], [])
+        self.assertEqual(palavra, "conferir de novo")
+        alerta = [t for t in textos if chrome["nome"] in t]
+        self.assertEqual(len(alerta), 1, textos)
+        self.assertIn("Confirme de novo à mão", alerta[0])
+        self.assertIn(chrome["conferir"][0]["alvo"], alerta[0])
+        self.assertNotIn(chrome["instalar"][0], alerta[0])
+
+    def test_checagens_null_nao_e_item_ruim(self):
+        self.gravar("contas.json", {"conferido_em": iso(AGORA), "servicos": {
+            "chrome": {"estado": "ligado", "checagens": None}}})
+        r = self.montar()
+        self.assertEqual([t for t in self.textos(r) if "não conseguiu ler" in t], [])
+        self.assertEqual(self.linhas(r)[self.mod._catalogo()[0]["nome"]]["estado"], "ligado")
+
+
 class TesteConferir(Base):
     def test_comeca_em_segundo_plano(self):
         r = self.agir()
@@ -309,6 +365,8 @@ class TesteConferir(Base):
         self.assertIs(r["ok"], True, r)
         self.assertEqual(len(self.chamadas), 1)
         self.assertIn("Conferindo as contas", r["mensagem"])
+        with open(os.path.join(self.mkt, "conferencia.log"), encoding="utf-8") as f:
+            self.assertEqual(f.read(), "conferencia: pid update failed: OSError\n")  # type only, no message
 
     def test_pid_vivo_real(self):
         self.assertTrue(self.C.pid_vivo(os.getpid()))

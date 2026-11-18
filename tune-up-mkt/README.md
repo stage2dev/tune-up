@@ -38,7 +38,7 @@ State lives in your project: `.tune-up/mkt/contas.json` and `.tune-up/mkt/config
 
 Turn on **Marketing** in the panel's Módulos screen (it arrives off). The tab "Contas" has a table with one row per service: what it is for, its state (for example "ligado" or "falta autenticar"), when it was checked and the next step. It reads `.tune-up/mkt/contas.json`, and warns when the last check is more than 24 hours old.
 
-The button "Conferir contas" runs `scripts/contas.py status` for the project in the background, one run at a time. It uses the same free local commands as the `connect` skill and spends no credits. The tab shows no keys, no account names and no command output; the output goes to `.tune-up/mkt/conferencia.log`, which stays on disk.
+The button "Conferir contas" runs `scripts/contas.py status` for the project in the background, one run at a time. It runs the same read-only commands on your machine as the `connect` skill; `claude mcp list` and the Composio CLI contact the services they check. It spends no credits. The tab shows no keys, no account names and no command output; the output goes to `.tune-up/mkt/conferencia.log`, which stays on disk.
 
 ## Skills
 

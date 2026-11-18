@@ -21,7 +21,8 @@ IDADE = timedelta(hours=24)       # = contas.IDADE_FALTA (o mesmo campo: conferi
 AVISO_FIM = timedelta(seconds=15)  # janela do aviso "conferência terminada": some em até 15 s (sem estado em memória)
 RITMO = 2                          # atualizar_em enquanto confere: resultado na tela até ~5 s depois do fim
 PALAVRAS = {"ligado": "ligado", "falta_autenticar": "falta autenticar", "nao_instalado": "não instalado",
-            "nao_sei": "não sei", "desligado": "desligado", "falhou": "falhou"}
+            "nao_sei": "não sei", "desligado": "desligado", "falhou": "falhou",
+            "conferir_de_novo": "conferir de novo"}  # marca manual com mais de 7 dias (contas_regras._item)
 NUNCA = "nunca conferido"
 
 INFO = {"id": "mkt", "titulo": "Marketing", "icone": "grafico", "acoes": ["conferir"],
@@ -62,6 +63,9 @@ def _passo(s, estado):
         return "Clique em Conferir contas."
     if estado == "falta_autenticar":
         return s["autenticar"]["pt"]
+    if estado == "conferir_de_novo":  # o texto da checagem manual do catálogo, como no skill connect
+        return "Confirme de novo à mão (a marca vale 7 dias): " + "; ".join(
+            c["alvo"] for c in s["conferir"] if c["tipo"] not in R.AUTOMATICOS)
     if estado in ("nao_instalado", "desligado"):
         return instalar
     return instalar + ". Depois: " + s["autenticar"]["pt"]
@@ -91,7 +95,8 @@ def _item(item):
         return NUNCA, [], False
     estado = item.get("estado")
     ok = isinstance(estado, str) and estado in PALAVRAS
-    checagens = item.get("checagens", [])
+    checagens = item.get("checagens")
+    checagens = [] if checagens is None else checagens  # null = lista vazia, como no contas.py
     if not isinstance(checagens, list):
         checagens, ok = [], False
     datas = []

@@ -144,9 +144,19 @@ def iniciar(raiz, quando=None, lancar_fn=lancar, vivo_pid=pid_vivo):
         try:  # the process runs: whatever happens to this pid update, the answer is "started"
             if ler_json(marcador)[0] == dados:  # the runner may already have ended and removed it
                 A.gravar_json(marcador, dict(dados, pid=pid))
-        except Exception:  # noqa: BLE001 - the marker keeps our own pid; it goes stale after VELHO at most
-            pass
+        except Exception as e:  # noqa: BLE001 - the marker keeps our own pid; it goes stale after VELHO at most
+            _anotar(raiz, "conferencia: pid update failed: %s\n" % type(e).__name__)
     return True, "Conferindo as contas. Leva até um minuto; a tela se atualiza sozinha."
+
+
+def _anotar(raiz, linha):
+    """Appends one fixed line to the log (never a path or an exception message). Never raises."""
+    try:
+        fd = os.open(A.caminho(raiz, LOG), os.O_WRONLY | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0))
+        with os.fdopen(fd, "a", encoding="utf-8") as f:
+            f.write(linha)
+    except Exception:  # noqa: BLE001 - logging must not change the answer
+        pass
 
 
 def encerrar(raiz, ident, inicio, codigo, quando=None):
