@@ -44,6 +44,8 @@ class TextosAgentes(unittest.TestCase):
             t = read(f)
             self.assertIn("suspected", t, f)
             self.assertIn("keep the severity", t, f)
+            self.assertIn("Every other finding without proof is reported with proof \"suspected\" (severity as judged), never presented as proven.", t, f)
+            self.assertIn("never a whole file except the patch;", t, f)
             self.assertNotIn("Group LOW", t, f)
             self.assertNotIn("N LOW", t, f)
             self.assertNotIn("lower the severity", t, f)
