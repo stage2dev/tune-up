@@ -4,6 +4,13 @@ Every new rule goes in through `/tune-up:learn`: memory + a change here + a test
 
 ## Unreleased
 
+## 2.22.0
+
+- Leaner agent texts: search with `rg -n ... | head -60`, Read with `limit`, `git log -n 30`, no images unless the order asks for one UI state.
+- The work order pastes the criterion LITERALLY from the goal, lists only matching pitfall skills, and says executor and reviewer never read the whole goal or progress document.
+- Reviewers no longer report LOW; a backend HIGH proven only by reading is reproduced first, else marked "suspected" and keeps its severity. At most 3 MEDIUM per item in the consolidated report.
+- Executors hand back a partial result near ~80 steps (was ~150), in the agents, the work order, the goal template and the Part skill.
+
 ## 2.19.0
 
 One plugin. The marketplace now lists only `tune-up`. `tune-up-studio`, `tune-up-vendas` and `tune-up-mkt` are removed from it (`renames` to null); their folders stay in the repo as modules of the core.

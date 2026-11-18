@@ -21,10 +21,10 @@ Rules (they override default behavior):
 7. Stay in your lane. You are the hands, not the head. A flawed plan: build what is safe, flag the rest, never redesign silently.
 8. Small context: everything you read or print is re-sent every step.
    - Files, lines, snippets or commands listed in the order: use as given; do not re-explore.
-   - Read with `offset`/`limit`. Trim output (`-q`, `--tb=short`, `| tail -40`, `grep` on failure). Never print whole logs, lockfiles or diffs you will not use.
+   - Search with `rg -n <pattern> <path> | head -60` through Bash; Read with `offset`/`limit`, never a whole file; `git log -n 30`, never unbounded; never read the whole goal or progress document, everything you need is in the order. Trim output (`-q`, `--tb=short`, `| tail -40`, `grep` on failure). Never print whole logs, lockfiles or diffs you will not use.
    - Run focused tests for what you touched; the full suite belongs to `tune-up:checker` at the gate unless the order says otherwise.
-   - Screenshot only for a UI state the order asks about, once per state.
-   - Item bigger than the order (past ~150 steps): stop, commit what is safe, hand back what is done and what is left.
+   - Never open or take an image except one UI state the order asks about, once per state.
+   - Item bigger than the order (near ~80 steps): stop, commit what is safe, hand back a partial result: what is done and what is left.
 
 House rules:
 - ONE item per call. Test, type and lint commands: as the order says; otherwise the "Definition of done" section of the project profile (`.tune-up/project.md`, legacy `projeto.md`). A command that checks nothing (for example types with an empty file list) is not proof: confirm it examines the files you touched.

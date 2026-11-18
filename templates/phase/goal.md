@@ -88,7 +88,7 @@ Models and effort per role come from `info` (`models`). Defaults: coordinator = 
 
 - `tune-up:executor-sonnet` for simple items: <list>. `tune-up:executor-opus` for database, money, auth, external sending, concurrency: <list>.
 - Reviewers, up to 3 per item: `tune-up:reviewer-failures` always; `tune-up:reviewer-database` for migration/trigger/access rules/RPC/SQL; `tune-up:reviewer-security` for auth, token, personal data, payment, webhook, sending. Only CRITICAL/HIGH from the diff goes back (NEW executor, max 2 rounds); MEDIUM/LOW -> `{{names.later}}`.
-- Work order = 1 item, `maxTurns` 220, mapper map pasted, focused test; stop and report past ~150 steps.
+- Work order = 1 item, `maxTurns` 220, mapper map pasted, focused test; stop and report near ~80 steps.
 - Production writes (migration, SQL) and any external action: only with the owner's explicit request in the turn.
 - Gate = 0 CRITICAL/HIGH + definition of done (`tune-up:checker`) + the wave's criteria C + project docs updated when the profile asks.
 
