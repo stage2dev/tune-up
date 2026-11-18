@@ -45,7 +45,8 @@ EU=$UID_REAL
 if [ -n "${TUNE_UP_RAIZ_TESTE:-}" ]; then
     [ "$UID_REAL" != 0 ] || die 3 "TUNE_UP_RAIZ_TESTE não vale para root; recusado."
     [[ $TUNE_UP_RAIZ_TESTE =~ ^/[A-Za-z0-9._/-]+$ ]] || die 3 "TUNE_UP_RAIZ_TESTE: caminho absoluto, sem espaço."
-    R=$TUNE_UP_RAIZ_TESTE
+    R=$(cd "$TUNE_UP_RAIZ_TESTE" && pwd -P) || die 3 "TUNE_UP_RAIZ_TESTE não existe."
+    [[ $R =~ ^/[A-Za-z0-9._/-]+$ ]] || die 3 "TUNE_UP_RAIZ_TESTE: caminho absoluto, sem espaço."
     EU=${TUNE_UP_UID_TESTE:-$UID_REAL}
 else
     # Real run: a fixed PATH, so root never picks a binary from /mnt (appendWindowsPath is on at first boot).
@@ -416,7 +417,11 @@ hashes = sys.argv[7:12]
 def sair(m):
     print("preparar: " + m, file=sys.stderr)
     sys.exit(8)
-base = os.path.realpath(os.path.dirname(prefixo.rstrip("/")))
+# Anchor on the literal prefix: realpath(prefixo) would follow a user-owned symlink above it
+# (~/.claude or cache -> /mnt/c/...), so any symlink on the prefix itself is refused.
+if os.path.realpath(prefixo) != os.path.normpath(prefixo):
+    sair("%s contém um link; recusado." % prefixo)
+base = os.path.dirname(prefixo.rstrip("/"))
 if not os.path.realpath(fonte).startswith(base + os.sep):
     sair("installed_plugins.json fora da pasta do usuário; recusado.")
 try:
@@ -442,7 +447,7 @@ if not isinstance(cam, str) or not isinstance(ver, str) or any(ord(c) < 32 for c
     sair("installed_plugins.json sem installPath/version válidos.")
 if not cam.startswith(prefixo) or ".." in cam.split("/"):
     sair("a pasta do plugin está fora de %s." % prefixo)
-real, raiz = os.path.realpath(cam), os.path.realpath(prefixo)
+real, raiz = os.path.realpath(cam), os.path.normpath(prefixo)
 if not real.startswith(raiz + os.sep) or not os.path.isdir(real):
     sair("a pasta do plugin sai de %s (link) ou não existe." % prefixo)
 qa = os.path.join(real, "tune-up-studio", "scripts", "qa_video.py")

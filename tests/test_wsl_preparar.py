@@ -58,7 +58,7 @@ def ler_fixados():
 @unittest.skipIf(sys.platform == "win32" or os.geteuid() == 0, "needs bash and a non-root uid")
 class Preparar(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.mkdtemp(prefix="tuprep")
+        self.tmp = os.path.realpath(tempfile.mkdtemp(prefix="tuprep"))
         self.r = os.path.join(self.tmp, "raiz")
         self.lib = os.path.join(self.tmp, "lib")
         self.bin = os.path.join(self.tmp, "bin")
@@ -346,6 +346,15 @@ class Marcar(Preparar):
         os.symlink(fora, link)
         self.instalado(link)
         self.recusa()
+
+    def test_recusa_pasta_acima_como_link(self):  # cache or ~/.claude replaced by a user-owned symlink
+        for i, partes in enumerate(((".claude", "plugins", "cache"), (".claude",))):
+            with self.subTest(partes=partes):
+                origem, fora = os.path.join(self.p("home", "tuneup"), *partes), os.path.join(self.tmp, "mnt%d" % i)
+                shutil.copytree(origem, fora, symlinks=True)
+                shutil.rmtree(origem)
+                os.symlink(fora, origem)
+                self.recusa()
 
     def test_recusa_sem_qa_video(self):
         os.remove(os.path.join(self.dir, "tune-up-studio", "scripts", "qa_video.py"))
