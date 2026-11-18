@@ -204,6 +204,8 @@ class TestePlugins(unittest.TestCase):
 
     def test_post_arquivo_mudou_no_meio_409(self):
         escrever(self.arq, USUARIO)
+        if not NT:
+            os.chmod(self.arq, 0o600)  # o temporário já tem o modo final antes de conferir; nunca mais aberto
         corrida = USUARIO.replace('"opus"', '"sonnet"')
         vistos = []
 
@@ -227,6 +229,83 @@ class TestePlugins(unittest.TestCase):
             os.chmod(self.arq, antes)
             self.assertEqual(self.mudar("b@m", not json.loads(ler(self.arq))["enabledPlugins"]["b@m"])[0], 200)
             self.assertEqual(stat.S_IMODE(os.stat(self.arq).st_mode), depois, oct(antes))
+
+    def intacto(self, bruto, st, r, codigo):
+        self.assertEqual((st, r.get("codigo")), (409, codigo), r)
+        self.assertEqual((ler(self.arq), self.backups(), self.temps()), (bruto, [], []))
+
+    def test_post_numero_ou_caractere_que_nao_regrava_409(self):  # B1, B2
+        for extra in ('"n": 1e999', '"n": NaN', '"n": -Infinity', '"s": "a\\ud800b"'):
+            bruto = ('{\n  %s,\n  "enabledPlugins": {"b@m": true}\n}\n' % extra).encode()
+            escrever(self.arq, bruto, "wb")
+            st, r = self.mudar("b@m", False)
+            self.intacto(bruto, st, r, "ilegivel" if "ud800" in extra else "numero")
+            self.assertNotIn("Infinity", r["erro"])
+
+    def test_post_nao_le_separado_de_json_invalido(self):  # B3
+        os.makedirs(self.arq)  # não é arquivo comum: OSError
+        st, r = self.mudar("b@m", False)
+        self.assertEqual((st, r["codigo"]), (409, "ilegivel"))
+        self.assertRegex(r["erro"], r"\((OSError|PermissionError)\)")  # Windows não abre pasta: PermissionError
+        self.assertNotIn("JSON", r["erro"])
+        os.rmdir(self.arq)
+        grande = ('{"enabledPlugins": {"b@m": true}, "x": "%s"}' % ("y" * plugins.LER_MAX)).encode()
+        escrever(self.arq, grande, "wb")
+        st, r = self.mudar("b@m", False)
+        self.intacto(grande, st, r, "ilegivel")
+        self.assertNotIn("JSON", r["erro"])
+        self.assertNotIn("yyyy", r["erro"])
+        escrever(self.arq, b"{x", "wb")
+        st, r = self.mudar("b@m", False)
+        self.intacto(b"{x", st, r, "ilegivel")
+        self.assertIn("JSON inválido", r["erro"])
+
+    def test_post_codigo_do_409(self):  # S3: corpo traz um codigo estável
+        escrever(self.arq, USUARIO)
+        self.assertEqual(self.mudar("tune-up@m", False)[1]["codigo"], "fixo")
+        with mock.patch.object(plugins, "_antes_de_trocar", lambda real: escrever(real, USUARIO + " ")):
+            self.assertEqual(self.mudar("b@m", False)[1]["codigo"], "mudou")
+
+    def test_post_backup_antes_da_conferencia(self):  # B4: existe na hora de conferir; some se a conferência falha
+        escrever(self.arq, USUARIO)
+        vistos = []
+
+        def mexe(real):
+            vistos.extend(self.backups())
+            escrever(real, USUARIO + " ")
+        with mock.patch.object(plugins, "_antes_de_trocar", mexe):
+            self.assertEqual(self.mudar("b@m", False)[0], 409)
+        self.assertEqual((len(vistos), self.backups(), self.temps()), (1, [], []))
+
+    def test_post_mesmo_segundo_nao_sobrescreve_backup(self):  # B4
+        escrever(self.arq, USUARIO)
+        escrever(os.path.join(self.pasta, "settings.json.bak-20260101-000000-x"), "x")
+        escrever(os.path.join(self.pasta, "outro.json.bak-20260101-000000-2"), "x")
+        conteudos = []
+        with mock.patch.object(plugins, "_carimbo", lambda: "20260101-000000"):
+            for i in range(11):
+                conteudos.append(ler(self.arq))
+                self.assertEqual(self.mudar("b@m", i % 2 == 1)[0], 200)
+                if i == 1:
+                    b = os.path.join(self.pasta, "settings.json.bak-20260101-000000")
+                    self.assertEqual((ler(b), ler(b + "-2")), (conteudos[0], conteudos[1]))
+        nomes = [os.path.basename(b) for b in self.backups()]
+        self.assertEqual(sorted(nomes), sorted(["settings.json.bak-20260101-000000-9", "settings.json.bak-20260101-000000-10",
+                                                "settings.json.bak-20260101-000000-11", "settings.json.bak-20260101-000000-x"]))
+        self.assertEqual(ler(os.path.join(self.pasta, "settings.json.bak-20260101-000000-11")), conteudos[10])
+        self.assertTrue(os.path.exists(os.path.join(self.pasta, "outro.json.bak-20260101-000000-2")))
+
+    def test_post_aviso_quando_o_projeto_ainda_decide(self):  # B5
+        escrever(self.arq, USUARIO)
+        for nome, rotulo in (("settings.json", "settings do projeto"), ("settings.local.json", "settings.local do projeto")):
+            shutil.rmtree(self.proj, ignore_errors=True)
+            escrever(os.path.join(self.proj, ".claude", nome), '{"enabledPlugins": {"b@m": false}}')
+            ligar = not json.loads(ler(self.arq))["enabledPlugins"]["b@m"]
+            st, r = self.mudar("b@m", ligar)
+            self.assertEqual(st, 200, r)
+            self.assertNotIn("próxima sessão", r["aviso"])
+            self.assertIn(rotulo, r["aviso"])
+            self.assertIn("neste projeto", r["aviso"])
 
     def test_post_atalho_grava_no_arquivo_real(self):
         alvo = os.path.join(self.tmp, "dotfiles", "settings.json")

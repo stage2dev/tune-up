@@ -1,7 +1,12 @@
+import { MutationObserver, QueryClient } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiPost, esquecerSessao } from '../../api/cliente';
-import type { Plugin, RespMudarPlugin } from '../../api/tipos';
-import { avisoSobreposto, botaoDoPlugin, detalheSucesso, podeArrastar, criarMovedor, dividirColunas, origemDoValor, pesoEstimado } from './plugins-logica';
+import { apiPost, ErroApi, esquecerSessao } from '../../api/cliente';
+import { chaves, opcoesMudarPlugin } from '../../api/ganchos';
+import type { Plugin, RespMudarPlugin, RespPlugins } from '../../api/tipos';
+import {
+  TEXTO_CONFLITO, TEXTO_SUCESSO, avisoConflito, avisoSobreposto, avisoSucesso, botaoDoPlugin, podeArrastar, criarMovedor, dividirColunas,
+  origemDoValor, pesoEstimado, soForaDoUsuario,
+} from './plugins-logica';
 
 const base: Plugin = { id: 'a@m', ligado: true, origem: 'usuario', valores: { usuario: true }, sobreposto: false, fixo: false, skills: 2, agentes: 1, peso: 300 };
 const plugin = (o: Partial<Plugin>): Plugin => ({ ...base, ...o });
@@ -36,8 +41,23 @@ describe('logica de plugins', () => {
     expect(podeArrastar(base)).toBe(true);
     expect(podeArrastar(plugin({ fixo: true }))).toBe(false);
     const r: RespMudarPlugin = { ok: true, plugins: [{ ...a, valores: { usuario: true, projeto: true } }], aviso: '' };
-    expect(detalheSucesso(r, 'a@m')).toContain('continua valendo');
-    expect(detalheSucesso({ ...r, plugins: [base] }, 'a@m')).toBeUndefined();
+    expect(avisoSucesso(r, 'a@m')).toEqual({ titulo: 'Salvo nos seus ajustes', texto: 'Mas neste projeto quem decide ainda são os ajustes do projeto.' });
+    const l = { ...r, plugins: [{ ...b, valores: { usuario: false, local: false } }] };
+    expect(avisoSucesso(l, 'a@m').texto).toContain('os ajustes locais do projeto'); // a palavra vem da origem, como no servidor
+    expect(avisoSucesso({ ...r, plugins: [base] }, 'a@m')).toEqual({ titulo: TEXTO_SUCESSO });
+  });
+  it('so no projeto ou no local: sem botao nem arraste, com a linha de onde mudar', () => {
+    const p = plugin({ origem: 'projeto', valores: { projeto: true } });
+    expect(soForaDoUsuario(p)).toBe('Esse valor vive só nos ajustes do projeto: mude por lá.');
+    expect(soForaDoUsuario(plugin({ origem: 'local', valores: { local: false } }))).toContain('os ajustes locais do projeto');
+    expect(podeArrastar(p)).toBe(false);
+    expect(soForaDoUsuario(base)).toBeNull();
+  });
+  it('409: titulo de conflito so no codigo mudou; nos outros, a frase do servidor', () => {
+    expect(avisoConflito(new ErroApi('Mudou enquanto eu gravava.', 409, undefined, 'mudou'))).toEqual({ titulo: TEXTO_CONFLITO, texto: 'Mudou enquanto eu gravava.' });
+    for (const c of ['fixo', 'ilegivel', 'numero', undefined]) {
+      expect(avisoConflito(new ErroApi('O tune-up não se desliga por aqui.', 409, undefined, c))).toEqual({ titulo: 'O tune-up não se desliga por aqui.' });
+    }
   });
 });
 
@@ -103,7 +123,7 @@ describe('movedor de plugins (fetch simulado)', () => {
     expect(await mover('a@m', true)).toBe('ok'); // liberou depois
   });
   it('409 pede a releitura da lista', async () => {
-    fila.push(async () => json(409, { erro: 'mudou' }));
+    fila.push(async () => json(409, { erro: 'Mudou.', codigo: 'mudou' }));
     expect(await novo()('a@m', false)).toBe('conflito');
     expect(eventos).toContain('refetch');
     expect(lista[0].ligado).toBe(true);
@@ -112,5 +132,23 @@ describe('movedor de plugins (fetch simulado)', () => {
     fila.push(async () => json(200, ok(true))); // pediu false, o servidor devolve usuario ainda true
     expect(await novo()('a@m', false)).toBe('erro');
     expect(eventos.some((e) => e.startsWith('erro:') && e.includes('não mudou'))).toBe(true);
+  });
+  it('mutacao real (useMudarPlugin): o cache so muda com a resposta e fica no erro', async () => {
+    const qc = new QueryClient();
+    const antes: RespPlugins = { plugins: [plugin({ ligado: true })], aviso: 'aviso do GET' };
+    qc.setQueryData(chaves.plugins, antes);
+    const obs = new MutationObserver(qc, opcoesMudarPlugin(qc));
+    let liberar!: () => void;
+    fila.push(() => new Promise((r) => { liberar = () => r(json(200, ok(false))); }));
+    const p = obs.mutate({ id: 'a@m', enabled: false });
+    await vi.waitFor(() => expect(liberar).toBeTypeOf('function'));
+    expect(qc.getQueryData<RespPlugins>(chaves.plugins)).toBe(antes); // no ar: nada mudou
+    liberar();
+    await p;
+    expect(qc.getQueryData<RespPlugins>(chaves.plugins)).toEqual({ plugins: ok(false).plugins, aviso: 'aviso do GET' });
+    const depois = qc.getQueryData<RespPlugins>(chaves.plugins);
+    fila.push(async () => json(409, { erro: 'Mudou.', codigo: 'mudou' }));
+    await expect(obs.mutate({ id: 'a@m', enabled: true })).rejects.toBeInstanceOf(ErroApi);
+    expect(qc.getQueryData<RespPlugins>(chaves.plugins)).toBe(depois); // erro: a lista fica
   });
 });

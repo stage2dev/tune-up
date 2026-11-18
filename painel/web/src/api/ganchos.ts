@@ -66,12 +66,13 @@ export const usePlugins = () =>
   useQuery({ queryKey: chaves.plugins, queryFn: () => apiGet<RespPlugins>('/api/plugins') });
 
 /** Liga/desliga um plugin no settings do usuario. Sem otimismo: a lista so muda com a resposta do servidor. */
+export const opcoesMudarPlugin = (qc: QueryClient) => ({
+  mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => apiPost<RespMudarPlugin>('/api/plugins', { id, enabled }),
+  onSuccess: (r: RespMudarPlugin) => qc.setQueryData<RespPlugins>(chaves.plugins, (antes) => ({ plugins: r.plugins, aviso: antes?.aviso ?? null })),
+});
+
 export function useMudarPlugin() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => apiPost<RespMudarPlugin>('/api/plugins', { id, enabled }),
-    onSuccess: (r) => qc.setQueryData<RespPlugins>(chaves.plugins, (antes) => ({ plugins: r.plugins, aviso: antes?.aviso ?? null })),
-  });
+  return useMutation(opcoesMudarPlugin(useQueryClient()));
 }
 
 /** Intervalo de releitura do modulo em ms: atualizar_em (s) preso em 2..60; sem numero, 15 s. */

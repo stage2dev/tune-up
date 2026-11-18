@@ -4,8 +4,9 @@ import { usePlugins, useMudarPlugin } from '../../api/ganchos';
 import type { Plugin } from '../../api/tipos';
 import { Botao, Cartao, Erro, EsqueletoPagina, EstadoVazio, useAvisos } from '../../componentes';
 import {
-  TEXTO_CONFLITO, TEXTO_FIXO, TEXTO_SUCESSO, TEXTO_VAZIO, TIPO_ARRASTE,
-  avisoSobreposto, botaoDoPlugin, criarMovedor, dividirColunas, origemDoValor, pesoEstimado, podeArrastar, detalheSucesso,
+  TEXTO_FIXO, TEXTO_VAZIO, TIPO_ARRASTE,
+  avisoConflito, avisoSobreposto, avisoSucesso, botaoDoPlugin, criarMovedor, dividirColunas, origemDoValor, pesoEstimado, podeArrastar,
+  soForaDoUsuario,
 } from './plugins-logica';
 
 export default function Plugins() {
@@ -21,9 +22,9 @@ export default function Plugins() {
     criarMovedor({
       enviar: (id, enabled) => vivo.current.mudar.mutateAsync({ id, enabled }),
       aoOcupar: setPendente,
-      aoSucesso: (r, id) => vivo.current.avisar({ tipo: 'sucesso', titulo: TEXTO_SUCESSO, texto: detalheSucesso(r, id) }),
-      aoConflito: (m) => {
-        vivo.current.avisar({ tipo: 'atencao', titulo: TEXTO_CONFLITO, texto: m });
+      aoSucesso: (r, id) => vivo.current.avisar({ tipo: 'sucesso', ...avisoSucesso(r, id) }),
+      aoConflito: (e) => {
+        vivo.current.avisar({ tipo: 'atencao', ...avisoConflito(e) });
         void vivo.current.refazer();
       },
       aoErro: (m) => vivo.current.avisar({ tipo: 'erro', titulo: 'Não deu para mudar o plugin', texto: m }),
@@ -59,6 +60,7 @@ export default function Plugins() {
         const botao = botaoDoPlugin(p);
         const meu = pendente === p.id;
         const sobreposto = avisoSobreposto(p);
+        const soFora = soForaDoUsuario(p);
         return (
           <div
             key={p.id}
@@ -75,6 +77,8 @@ export default function Plugins() {
               {sobreposto && <p className="mt-2 text-xs">{sobreposto}</p>}
               {p.fixo ? (
                 <p className="mt-2 text-xs">{TEXTO_FIXO}</p>
+              ) : soFora ? (
+                <p className="mt-2 text-xs">{soFora}</p>
               ) : (
                 <div className="mt-3">
                   <Botao

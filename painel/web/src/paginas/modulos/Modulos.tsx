@@ -15,9 +15,6 @@ export default function Modulos() {
   const { avisar } = useAvisos();
   const [pendente, setPendente] = useState<string | null>(null);
 
-  if (estado.isPending) return <Pagina titulo={TITULO} subtitulo={SUBTITULO}><EsqueletoPagina cartoes={2} /><Plugins /></Pagina>;
-  if (estado.isError) return <Pagina titulo={TITULO} subtitulo={SUBTITULO}><Erro erro={estado.error} aoTentar={() => void estado.refetch()} /><Plugins /></Pagina>;
-
   const clicar = async (e: Embutido, pedir: boolean) => {
     if (pendente) return;
     setPendente(e.id);
@@ -31,9 +28,14 @@ export default function Modulos() {
     }
   };
 
+  // <Plugins /> fica fora dos ramos: nao remonta quando os embutidos terminam de carregar (perderia o envio no ar).
   return (
     <Pagina titulo={TITULO} subtitulo={SUBTITULO}>
-      {estado.data.length === 0 ? (
+      {estado.isPending ? (
+        <EsqueletoPagina cartoes={2} />
+      ) : estado.isError ? (
+        <Erro erro={estado.error} aoTentar={() => void estado.refetch()} />
+      ) : estado.data.length === 0 ? (
         <EstadoVazio titulo="Nenhuma parte extra por aqui" texto="Quando o tune-up trouxer partes extras, elas aparecem nesta tela." />
       ) : (
         <div className="grid gap-4 md:grid-cols-2">

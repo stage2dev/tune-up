@@ -418,3 +418,6 @@ export interface RespMudarPlugin {
   plugins: Plugin[];
   aviso: string;
 }
+
+/** `codigo` do 409 de POST /api/plugins (vem em ErroApi.codigo). */
+export type CodigoPlugin409 = 'mudou' | 'fixo' | 'ilegivel' | 'numero';

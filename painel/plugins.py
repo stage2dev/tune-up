@@ -143,10 +143,9 @@ def listar(cfg):
     return 200, {"plugins": lista, "aviso": aviso}
 
 
-def _temp(pasta, base, dados):
-    """Grava `dados` num temporário novo (O_EXCL, sem seguir atalho, 0600) ao lado do arquivo; devolve o nome."""
-    tmp = os.path.join(pasta, ".%s.%s.tmp" % (base, secrets.token_hex(6)))
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+def _novo(caminho, dados):
+    """Grava `dados` num arquivo NOVO (O_EXCL: FileExistsError se o nome existe; sem seguir atalho; 0600)."""
+    fd = os.open(caminho, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
                  | getattr(os, "O_BINARY", 0), 0o600)
     try:
         with os.fdopen(fd, "wb") as f:
@@ -154,9 +153,26 @@ def _temp(pasta, base, dados):
             f.flush()
             os.fsync(f.fileno())
     except BaseException:
-        _tirar(tmp)
+        _tirar(caminho)
         raise
-    return tmp
+    return caminho
+
+
+def _temp(pasta, base, dados):
+    """Temporário novo ao lado do arquivo; devolve o nome."""
+    return _novo(os.path.join(pasta, ".%s.%s.tmp" % (base, secrets.token_hex(6))), dados)
+
+
+def _backup(pasta, base, dados):
+    """<base>.bak-AAAAMMDD-HHMMSS novo; no mesmo segundo ganha -2, -3...: nunca sobrescreve um backup."""
+    carimbo = _carimbo()
+    nome = os.path.join(pasta, "%s.bak-%s" % (base, carimbo))
+    for n in range(1 + max([i for c, i, _ in _backups(pasta, base) if c == carimbo], default=0), 100):
+        try:
+            return _novo(nome if n == 1 else "%s-%d" % (nome, n), dados)
+        except FileExistsError:
+            pass
+    raise OSError("backups demais no mesmo segundo")
 
 
 def _tirar(caminho):
@@ -166,60 +182,79 @@ def _tirar(caminho):
         pass
 
 
-def _podar(pasta, base):
-    """Deixa só os BACKUPS mais novos de <base>.bak-AAAAMMDD-HHMMSS; não toca em mais nada."""
-    rx = re.compile(re.escape(base) + r"\.bak-\d{8}-\d{6}\Z")
+def _backups(pasta, base):
+    """[(carimbo, número, nome)] de <base>.bak-AAAAMMDD-HHMMSS[-N]; [] se não lista a pasta."""
+    rx = re.compile(re.escape(base) + r"\.bak-(\d{8}-\d{6})(?:-([2-9]|[1-9]\d))?\Z")
     try:
-        velhos = sorted((n for n in os.listdir(pasta) if rx.match(n)), reverse=True)[BACKUPS:]
+        return [(m.group(1), int(m.group(2) or 1), n) for n in os.listdir(pasta) for m in [rx.match(n)] if m]
     except OSError:
-        return
-    for n in velhos:
+        return []
+
+
+def _podar(pasta, base):
+    """Deixa só os BACKUPS mais novos de <base>.bak-AAAAMMDD-HHMMSS[-N]; não toca em mais nada."""
+    for _, _, n in sorted(_backups(pasta, base), reverse=True)[BACKUPS:]:
         _tirar(os.path.join(pasta, n))  # falhar aqui só deixa um backup a mais
 
 
+def _recusa(codigo, erro):
+    """Corpo do 409: `codigo` estável (mudou, fixo, ilegivel, numero) para a tela não ler a frase."""
+    return {"erro": erro, "codigo": codigo}
+
+
 def _gravar(cfg, pid, ligar):
-    """(código, erro ou None, gravou). Troca só enabledPlugins[pid] no settings do usuário (o arquivo real
-    por trás de um atalho). OSError sobe: quem chamou responde 500."""
+    """(código, corpo de erro ou None, gravou). Troca só enabledPlugins[pid] no settings do usuário (o arquivo
+    real por trás de um atalho). Corpo do 409 = {erro, codigo}. OSError sobe: quem chamou responde 500."""
     real = os.path.realpath(_usuario(cfg))
     try:
         bruto, modo = _bytes(real, nofollow=True)
+    except OSError as e:  # só o tipo do erro: nunca o conteúdo
+        return 409, _recusa("ilegivel", "Não consegui ler seu settings do Claude (%s); não mexi nele." % type(e).__name__), False
+    try:
         dado = _objeto(bruto) if bruto is not None else None
-    except (OSError, ValueError):
-        return 409, "Não consegui ler seu settings do Claude (JSON inválido ou com comentário); não mexi nele.", False
+    except ValueError:
+        return 409, _recusa("ilegivel", "Não consegui ler seu settings do Claude (JSON inválido ou com comentário); "
+                                        "não mexi nele."), False
     mapa = (dado or {}).get("enabledPlugins")
     if not isinstance(mapa, dict) or not isinstance(mapa.get(pid), bool):
-        return 404, "Esse plugin não está no seu settings do Claude.", False
+        return 404, {"erro": "Esse plugin não está no seu settings do Claude."}, False
     if _fixo(pid):
-        return 409, "O tune-up não se desliga por aqui.", False
+        return 409, _recusa("fixo", "O tune-up não se desliga por aqui."), False
     if mapa[pid] is ligar:
         return 200, None, False
     mapa[pid] = ligar
     texto = bruto.decode("utf-8-sig")
     m = re.search(r'\n([ \t]+)"', texto)
-    novo = json.dumps(dado, indent=m.group(1) if m else 2, ensure_ascii=False) + ("\n" if texto.endswith("\n") else "")
+    try:
+        novo = json.dumps(dado, indent=m.group(1) if m else 2, ensure_ascii=False, allow_nan=False)
+    except ValueError:  # 1e999, NaN, Infinity: regravar daria um token que JSON estrito recusa
+        return 409, _recusa("numero", "Seu settings do Claude tem um número que este painel não consegue regravar "
+                                      "com segurança; não mexi nele."), False
+    novo += "\n" if texto.endswith("\n") else ""
     if "\r\n" in texto:
         novo = novo.replace("\n", "\r\n")
-    novo = (BOM if bruto.startswith(BOM) else b"") + novo.encode("utf-8")
+    try:
+        novo = (BOM if bruto.startswith(BOM) else b"") + novo.encode("utf-8")
+    except UnicodeEncodeError:  # "\ud800" sozinho
+        return 409, _recusa("ilegivel", "Seu settings do Claude tem um caractere que este painel não consegue "
+                                        "regravar com segurança; não mexi nele."), False
     pasta, base = os.path.split(real)
     tmp = _temp(pasta, base, novo)
+    bak = None
     try:
+        if os.name != "nt":
+            os.chmod(tmp, modo if modo & ~0o644 == 0 else 0o600)  # mantém o modo; nunca abre mais
+        bak = _backup(pasta, base, bruto)  # antes de conferir: conferir e trocar ficam colados
         _antes_de_trocar(real)
         agora, _ = _bytes(real, nofollow=True)
         if agora is None or hashlib.sha256(agora).digest() != hashlib.sha256(bruto).digest():
-            return 409, "Seu settings do Claude mudou enquanto eu gravava; nada mudou. Tente de novo.", False
-        bak = _temp(pasta, base, bruto)
-        try:
-            os.replace(bak, os.path.join(pasta, "%s.bak-%s" % (base, _carimbo())))  # mesmo segundo: fica o último
-        except OSError:
-            _tirar(bak)
-            raise
-        if os.name != "nt":
-            os.chmod(tmp, modo if modo & ~0o644 == 0 else 0o600)  # mantém o modo; nunca abre mais
+            return 409, _recusa("mudou", "Seu settings do Claude mudou enquanto eu gravava; nada mudou. Tente de novo."), False
         os.replace(tmp, real)
-        tmp = None
+        tmp = bak = None
     finally:
-        if tmp:
-            _tirar(tmp)
+        for sobra in (tmp, bak):
+            if sobra:
+                _tirar(sobra)
     _podar(pasta, base)
     return 200, None, True
 
@@ -235,10 +270,14 @@ def mudar(cfg, corpo, depois=None):
     except OSError as ex:
         return 500, {"erro": "Não consegui gravar seu settings do Claude (%s); nada mudou." % type(ex).__name__}
     if erro:
-        return codigo, {"erro": erro}
+        return codigo, erro
     if gravou:
         with habilidades._trava:  # a lista de skills lê enabledPlugins com cache
             habilidades._cache.clear()
         if depois:
             depois()
-    return 200, {"ok": True, "plugins": _publico(cfg)[0], "aviso": "vale na próxima sessão"}
+    lista = _publico(cfg)[0]
+    p = next((x for x in lista if x["id"] == corpo["id"]), None)
+    aviso = ("salvo no seu settings do Claude, mas neste projeto quem decide ainda é o %s" % ROTULO[p["origem"]]
+             if p and p["sobreposto"] else "vale na próxima sessão")
+    return 200, {"ok": True, "plugins": lista, "aviso": aviso}

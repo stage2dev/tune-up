@@ -473,17 +473,24 @@ export interface RespPlugins {
 
 /** POST /api/plugins (mesmas defesas dos outros POST). Troca só o booleano de uma chave que já existe no settings
  * do USUÁRIO (gravação atômica, backup datado, até 3). 400 corpo diferente de {id, enabled: boolean}; 404 id fora
- * do settings do usuário (ou arquivo ausente); 409 settings ilegível, plugin tune-up, ou arquivo mudou durante a
- * gravação (nada gravado); 500 se não gravou (nada mudou). Erro = { erro }. */
+ * do settings do usuário (ou arquivo ausente); 409 (nada gravado) = ErroPlugin409; 500 se não gravou (nada mudou).
+ * Erro = { erro }. */
 export interface ReqPlugin {
   id: string;
   enabled: boolean;
 }
 
+/** 409 de POST /api/plugins. codigo: mudou = arquivo mudou durante a gravação; fixo = plugin tune-up;
+ * ilegivel = não lê / JSON inválido / caractere que não regrava; numero = número que JSON estrito não aceita (1e999, NaN). */
+export interface ErroPlugin409 {
+  erro: string;
+  codigo: 'mudou' | 'fixo' | 'ilegivel' | 'numero';
+}
+
 export interface RespMudarPlugin {
   ok: true;
   plugins: Plugin[];
-  aviso: string; // "vale na próxima sessão"
+  aviso: string; // "vale na próxima sessão"; se o projeto/local ainda decide: "salvo no seu settings…, mas neste projeto quem decide ainda é o <settings do projeto | settings.local do projeto>"
 }
 
 import type { Bloco } from './blocos';
