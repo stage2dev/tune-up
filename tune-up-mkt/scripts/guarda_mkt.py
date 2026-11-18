@@ -93,8 +93,8 @@ LIMITE_JSON = 20000  # longer strings are not decoded as JSON (cost and nesting)
 def log_erro(texto):
     try:
         d = os.environ.get("CLAUDE_PLUGIN_DATA") or os.path.join(os.path.expanduser("~"), ".cache", "tune-up")
-        os.makedirs(d, exist_ok=True)
-        with open(os.path.join(d, "erros-mkt.log"), "a", encoding="utf-8") as f:
+        os.makedirs(d, mode=0o700, exist_ok=True)  # 0700 folder, 0600 file: like the core's sessao.criar_dir/abrir_privado
+        with open(os.path.join(d, "erros-mkt.log"), "a", encoding="utf-8", opener=lambda p, fl: os.open(p, fl, 0o600)) as f:
             f.write(("%s %s" % (time.strftime("%Y-%m-%dT%H:%M:%S"), texto)).replace("\n", " ")[:2000] + "\n")
     except Exception:
         pass
