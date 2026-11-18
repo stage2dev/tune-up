@@ -87,7 +87,7 @@ class TesteEstados(Base):
                                          "texto": "Ainda não houve conferência. Clique em Conferir contas."}])
         aba = r["abas"][0]
         self.assertEqual(aba["id"], "contas")
-        self.assertNotIn("atualizar_em", aba)
+        self.assertNotIn("atualizar_em", r)
         self.assertEqual({li["estado"] for li in self.linhas(r).values()}, {"nunca conferido"})
         self.assertEqual([c["rotulo"] for c in aba["blocos"][1]["colunas"]],
                          ["Serviço", "Para que serve", "Estado", "Conferido em", "Próximo passo"])
@@ -141,7 +141,7 @@ class TesteEstados(Base):
         self.gravar("conferindo.json", {"inicio": iso(AGORA - timedelta(seconds=20)), "pid": 77, "id": "a"})
         r = self.montar()
         self.assertIn("Conferindo as contas... a tela se atualiza sozinha.", self.textos(r))
-        self.assertEqual(r["abas"][0]["atualizar_em"], 3)
+        self.assertEqual(r["atualizar_em"], 3)
 
     def test_terminada_aparece_por_pouco_tempo(self):
         self.contas()
@@ -149,11 +149,11 @@ class TesteEstados(Base):
                                          "fim": iso(AGORA - timedelta(seconds=10)), "codigo": 0})
         r = self.montar()
         self.assertEqual(self.textos(r), ["Conferência terminada."])
-        self.assertEqual(r["abas"][0]["atualizar_em"], 15)  # re-read so the notice goes away
+        self.assertEqual(r["atualizar_em"], 15)  # re-read so the notice goes away
         self.mod.agora = lambda: AGORA + timedelta(minutes=2)
         r = self.montar()
         self.assertEqual(self.textos(r), [])
-        self.assertNotIn("atualizar_em", r["abas"][0])
+        self.assertNotIn("atualizar_em", r)
 
     def test_terminada_com_erro_nunca_vira_sucesso(self):
         self.contas()
@@ -166,7 +166,7 @@ class TesteEstados(Base):
         self.gravar("conferindo.json", {"inicio": iso(AGORA - timedelta(seconds=20)), "pid": 99, "id": "a"})
         r = self.montar()
         self.assertTrue([t for t in self.textos(r) if "parou sem terminar" in t])
-        self.assertNotIn("atualizar_em", r["abas"][0])
+        self.assertNotIn("atualizar_em", r)
         self.gravar("conferindo.json", {"inicio": iso(AGORA - timedelta(minutes=6)), "pid": 77, "id": "a"})
         self.assertTrue([t for t in self.textos(self.montar()) if "parou sem terminar" in t])  # too old
 
@@ -204,7 +204,7 @@ class TesteConferir(Base):
         if os.name != "nt":
             for nome in ("conferindo.json", "conferencia.log"):
                 self.assertEqual(stat.S_IMODE(os.stat(os.path.join(self.mkt, nome)).st_mode), 0o600, nome)
-        self.assertEqual(self.montar()["abas"][0]["atualizar_em"], 3)
+        self.assertEqual(self.montar()["atualizar_em"], 3)
 
     def test_segundo_clique_recusa(self):
         self.agir()

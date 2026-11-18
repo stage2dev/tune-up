@@ -133,9 +133,10 @@ def montar(ctx):
                     {"id": "estado", "rotulo": "Estado"}, {"id": "conferido_em", "rotulo": "Conferido em"},
                     {"id": "passo", "rotulo": "Próximo passo"}],
         "linhas": linhas, "vazio": "O catálogo de serviços está vazio."}]}
-    if ritmo:
-        aba["atualizar_em"] = ritmo
-    return {"alertas": alertas, "abas": [aba]}
+    saida = {"alertas": alertas, "abas": [aba]}
+    if ritmo:  # no topo: é onde o painel lê (modulos.py usa como validade do cache)
+        saida["atualizar_em"] = ritmo
+    return saida
 
 
 def agir(ctx, acao, dados):

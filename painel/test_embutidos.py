@@ -142,7 +142,7 @@ class TesteHTTPEmbutidos(unittest.TestCase):
         st, r = self.post("/api/modulos/mkt/acao", acao)
         self.assertLess(time.monotonic() - inicio, 2.0)
         self.assertEqual(st, 200, r)
-        self.assertEqual(self.get("/api/modulos/mkt")[1]["abas"][0].get("atualizar_em"), 3)
+        self.assertEqual(self.get("/api/modulos/mkt")[1].get("atualizar_em"), 3)
         st, r = self.post("/api/modulos/mkt/acao", acao)
         self.assertEqual(st, 409, r)
         self.assertIn("Já está conferindo", r["erro"])
