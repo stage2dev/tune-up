@@ -1,0 +1,339 @@
+[
+ {
+  "id": "c01",
+  "text": "Change the label of the save button to Keep changes. Files: ProfileForm.tsx, labels.json",
+  "files": [
+   "src/ui/ProfileForm.tsx",
+   "src/ui/labels.json"
+  ],
+  "expect": "sonnet",
+  "risk": false
+ },
+ {
+  "id": "c02",
+  "text": "Fix the typo in the empty-state message of the orders list. Files: OrdersEmpty.tsx",
+  "files": [
+   "src/ui/OrdersEmpty.tsx"
+  ],
+  "expect": "sonnet",
+  "risk": false
+ },
+ {
+  "id": "c03",
+  "text": "Add one unit test for the date formatter with a leap-year input. Files: test_dates.py",
+  "files": [
+   "tests/test_dates.py"
+  ],
+  "expect": "sonnet",
+  "risk": false
+ },
+ {
+  "id": "c04",
+  "text": "Rename the fixture helper make_user to build_user in the test suite. Files: conftest.py, test_cart.py",
+  "files": [
+   "tests/conftest.py",
+   "tests/test_cart.py"
+  ],
+  "expect": "sonnet",
+  "risk": false
+ },
+ {
+  "id": "c05",
+  "text": "Document the new --verbose flag in the usage section. Files: README.md",
+  "files": [
+   "README.md"
+  ],
+  "expect": "sonnet",
+  "risk": false
+ },
+ {
+  "id": "c06",
+  "text": "Add a short troubleshooting section for port conflicts. Files: TROUBLESHOOTING.md",
+  "files": [
+   "docs/TROUBLESHOOTING.md"
+  ],
+  "expect": "sonnet",
+  "risk": false
+ },
+ {
+  "id": "c07",
+  "text": "Add a GET /health route that returns the string ok. Files: routes.py, test_routes.py",
+  "files": [
+   "app/routes.py",
+   "tests/test_routes.py"
+  ],
+  "expect": "sonnet",
+  "risk": false
+ },
+ {
+  "id": "c08",
+  "text": "Add a GET /version route that returns the build number from a constant. Files: info_route.py",
+  "files": [
+   "app/info_route.py"
+  ],
+  "expect": "sonnet",
+  "risk": false
+ },
+ {
+  "id": "c09",
+  "text": "Change the default page size of the products list from 20 to 25. Files: settings.py",
+  "files": [
+   "app/settings.py"
+  ],
+  "expect": "sonnet",
+  "risk": false
+ },
+ {
+  "id": "c10",
+  "text": "Make the footer links wrap on narrow screens. Files: Footer.css, Footer.tsx",
+  "files": [
+   "src/ui/Footer.css",
+   "src/ui/Footer.tsx"
+  ],
+  "expect": "sonnet",
+  "risk": false
+ },
+ {
+  "id": "c11",
+  "text": "Restyle the pricing cards: new spacing, rounded corners, a hover shadow. Files: PricingCards.tsx, pricing.css",
+  "files": [
+   "src/ui/PricingCards.tsx",
+   "src/ui/pricing.css"
+  ],
+  "expect": "sonnet",
+  "risk": false
+ },
+ {
+  "id": "c12",
+  "text": "Redo the layout of the onboarding screen so the steps sit in a row on desktop. Files: Onboarding.tsx",
+  "files": [
+   "src/ui/Onboarding.tsx"
+  ],
+  "expect": "sonnet",
+  "risk": false
+ },
+ {
+  "id": "c13",
+  "text": "Create a screenshot-ready dark theme for the dashboard header. Files: Header.tsx, theme.css",
+  "files": [
+   "src/ui/Header.tsx",
+   "src/ui/theme.css"
+  ],
+  "expect": "sonnet",
+  "risk": false
+ },
+ {
+  "id": "c14",
+  "text": "Log the request id in the error handler. Files: errors.py",
+  "files": [
+   "app/errors.py"
+  ],
+  "expect": "sonnet",
+  "risk": false
+ },
+ {
+  "id": "c15",
+  "text": "Sort the tag list alphabetically before showing it. Files: tags.py",
+  "files": [
+   "app/tags.py"
+  ],
+  "expect": "sonnet",
+  "risk": false
+ },
+ {
+  "id": "c16",
+  "text": "Bump the pinned version of the date library and update the lock note. Files: requirements.txt",
+  "files": [
+   "requirements.txt"
+  ],
+  "expect": "sonnet",
+  "risk": false
+ },
+ {
+  "id": "c17",
+  "text": "Add a NOT NULL column plan_id to the subscriptions table and backfill it from the old plans table. Files: 0042_plan_id.sql",
+  "files": [
+   "db/migrations/0042_plan_id.sql"
+  ],
+  "expect": "opus",
+  "risk": true
+ },
+ {
+  "id": "c18",
+  "text": "Drop the unused legacy_notes table and its foreign keys. Files: 0043_drop_notes.sql",
+  "files": [
+   "db/migrations/0043_drop_notes.sql"
+  ],
+  "expect": "opus",
+  "risk": true
+ },
+ {
+  "id": "c19",
+  "text": "Change the row-level policy on invoices so a user sees only their own rows. Files: policies.sql",
+  "files": [
+   "db/policies.sql"
+  ],
+  "expect": "opus",
+  "risk": true
+ },
+ {
+  "id": "c20",
+  "text": "Make the login endpoint lock the account after five wrong passwords. Files: login.py",
+  "files": [
+   "app/login.py"
+  ],
+  "expect": "opus",
+  "risk": true
+ },
+ {
+  "id": "c21",
+  "text": "Let admins impersonate another user and record who did it. Files: impersonate.py",
+  "files": [
+   "app/impersonate.py"
+  ],
+  "expect": "opus",
+  "risk": true
+ },
+ {
+  "id": "c22",
+  "text": "Check the permission of the caller before a project is deleted. Files: projects.py",
+  "files": [
+   "app/projects.py"
+  ],
+  "expect": "opus",
+  "risk": true
+ },
+ {
+  "id": "c23",
+  "text": "Verify the HMAC signature of incoming events from the shipping partner before parsing. Files: shipping_events.py",
+  "files": [
+   "app/shipping_events.py"
+  ],
+  "expect": "opus",
+  "risk": true
+ },
+ {
+  "id": "c24",
+  "text": "Reject incoming callbacks whose signature header is missing or older than five minutes. Files: callbacks.py",
+  "files": [
+   "app/callbacks.py"
+  ],
+  "expect": "opus",
+  "risk": true
+ },
+ {
+  "id": "c25",
+  "text": "Charge the customer when the order is confirmed and refund when it is cancelled. Files: checkout.py",
+  "files": [
+   "app/checkout.py"
+  ],
+  "expect": "opus",
+  "risk": true
+ },
+ {
+  "id": "c26",
+  "text": "Round the invoice total to cents and apply the discount before tax. Files: totals.py",
+  "files": [
+   "app/totals.py"
+  ],
+  "expect": "opus",
+  "risk": true
+ },
+ {
+  "id": "c27",
+  "text": "Make the nightly job that closes expired trials retry failed rows without closing a row twice. Files: close_trials.py",
+  "files": [
+   "jobs/close_trials.py"
+  ],
+  "expect": "opus",
+  "risk": true
+ },
+ {
+  "id": "c28",
+  "text": "Two requests can reserve the last seat at the same time; make the reservation safe under concurrency. Files: seats.py",
+  "files": [
+   "app/seats.py"
+  ],
+  "expect": "opus",
+  "risk": true
+ },
+ {
+  "id": "c29",
+  "text": "Send the reminder e-mail to every customer with an unpaid invoice, once per invoice. Files: reminders.py",
+  "files": [
+   "app/reminders.py"
+  ],
+  "expect": "opus",
+  "risk": true
+ },
+ {
+  "id": "c30",
+  "text": "Send a text message to the customer when the delivery is late. Files: notify_late.py",
+  "files": [
+   "app/notify_late.py"
+  ],
+  "expect": "opus",
+  "risk": true
+ },
+ {
+  "id": "c31",
+  "text": "Move the third-party API key out of the code into the environment and rotate the old one. Files: config.py",
+  "files": [
+   "app/config.py"
+  ],
+  "expect": "opus",
+  "risk": true
+ },
+ {
+  "id": "c32",
+  "text": "Stop writing the session cookie value to the debug log. Files: logging_setup.py",
+  "files": [
+   "app/logging_setup.py"
+  ],
+  "expect": "opus",
+  "risk": true
+ },
+ {
+  "id": "c33",
+  "text": "Encrypt the stored national id of each customer and migrate the existing values. Files: customers.py",
+  "files": [
+   "app/customers.py"
+  ],
+  "expect": "opus",
+  "risk": true
+ },
+ {
+  "id": "c34",
+  "text": "Split the report module into three modules and move every caller; the shared cache must keep working. Files: report.py, report_cache.py, exporters.py, views.py",
+  "files": [
+   "app/report.py",
+   "app/report_cache.py",
+   "app/exporters.py",
+   "app/views.py"
+  ],
+  "expect": "opus",
+  "risk": false
+ },
+ {
+  "id": "c35",
+  "text": "Replace the hand-written retry loops in six services with one shared helper; behavior under timeouts must not change. Files: svc_a.py, svc_b.py, svc_c.py, retry.py",
+  "files": [
+   "app/svc_a.py",
+   "app/svc_b.py",
+   "app/svc_c.py",
+   "app/retry.py"
+  ],
+  "expect": "opus",
+  "risk": false
+ },
+ {
+  "id": "c36",
+  "text": "Find why the export sometimes returns an empty file on large accounts; the cause is not known. Files: export.py, storage.py",
+  "files": [
+   "app/export.py",
+   "app/storage.py"
+  ],
+  "expect": "opus",
+  "risk": false
+ }
+]

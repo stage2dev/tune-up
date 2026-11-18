@@ -6,6 +6,15 @@ Every new rule goes in through `/tune-up:learn`: memory + a change here + a test
 
 - CI: the Windows jobs failed 33 test expectations since 2.12.0 (paths compared with `\`, while `info` prints `/`; a `cdC:/x` case that is no command in cmd; a `wsl` word in a commit message, which asks on Windows like `node` does everywhere); those were test fixes only. Python 3.9 on Linux now runs on `ubuntu-24.04`: `ubuntu-latest` (26.04) has no 3.9 build. The panel, studio and sales suites now run to the end on Windows too, and found three product bugs there: the built-in Vendas module never loaded on Windows (its folder was compared with `/` against a path the system writes with `\`, so the panel answered 404); the `--settings` of a sandboxed action listed `PowerShell` twice in `deny`; and `leitor.da_raiz(..., nt=False)` used the Windows separator. The other Windows failures were tests that assumed macOS or Linux; they now pin the platform the way their neighbors do, compare paths the way the product prints them, or skip the Studio cases (the Studio does not run on native Windows).
 
+## 2.20.0
+
+- Optional model router for `guarda.py rota` (`router` block, off by default, trusted profile only). With `--text-file` it asks the Jev scorer four questions about the item text and can keep or raise the executor, never lower it. Any error or missing key keeps the fixed rule; `risk_globs` always win. The output has `model`, `scores` and `source`.
+- Two new agents: `visual` (looks at a screen or image, or creates a visual asset) and `executor-hard` (item that already failed on opus). The router uses them only when `visual_agent` or `hard_agent` names them.
+- `fable_agents` in `user.json`: a forbidden model is allowed for an agent type listed there, only through the Agent tool with an explicit model, never in a Workflow script.
+- `/tune-up:part` passes the item's action line and file base names to the router when it is enabled, and records suggested vs used model.
+- `evals/rota/`: 36 generic labelled cases and `rodar.py`. `--seco` checks the file offline (run by a unit test); the default mode makes one API call per case.
+- The question texts are new and the eval was not yet run against the real service, so the thresholds are untested.
+
 ## 2.18.0
 
 Bash guard: commands that Bash runs but the guard read as part of a string. Stricter on every system; a command that used to pass may now ask (research mode) or be denied (talk mode) because the guard now sees what it really runs.
