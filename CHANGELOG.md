@@ -4,6 +4,15 @@ Every new rule goes in through `/tune-up:learn`: memory + a change here + a test
 
 ## Unreleased
 
+## 2.19.0
+
+One plugin. The marketplace now lists only `tune-up`. `tune-up-studio`, `tune-up-vendas` and `tune-up-mkt` are removed from it (`renames` to null); their folders stay in the repo as modules of the core.
+
+- Migration, for whoever installed any of the three, in this order: `claude plugin marketplace update tune-up` (on a local clone, `git pull` in the clone first), then `claude plugin update tune-up@tune-up`, then restart Claude Code. Then uninstall the old plugins: `claude plugin uninstall tune-up-studio@tune-up`, and the same for `tune-up-vendas` and `tune-up-mkt`. Keeping them is not harmless: the Studio's old commands point at files that no longer exist, and the old marketing and sales plugins duplicate the core (the marketing guard runs twice, the Vendas start hint shows twice, and the `/tune-up-mkt:*` skills appear next to `/tune-up:*`). Your data stays. This order was NOT yet measured on a real install; that is the next step of the release.
+- Marketing: the guard for ad-account and public-post writes now runs for everyone who has `tune-up` (it used to need the separate plugin). It is the same guard: it only acts on marketing tools and commands, and it fails open on an internal error; its error log is `erros-mkt.log` in the plugin data folder. The five marketing skills are now `/tune-up:connect`, `/tune-up:campaign`, `/tune-up:content`, `/tune-up:seo` and `/tune-up:preflight`.
+- Vendas: the setup skill is `/tune-up:instalar` (typed by you; Claude does not start it on its own). The start-of-session hint about the WhatsApp not being prepared now follows the Módulos button (it used to follow the old `painel.json` line, which still counts).
+- Studio: its version now lives in `tune-up-studio/VERSION`.
+- Old `painel.json` lines: an old `modulos_de_plugins` line still counts as on, with a notice. An old `acoes_de_plugins` line for the Studio is ignored, with a notice, because the actions now come from the core (turn the Estúdio on in Módulos). For other separate plugins the line still needs the plugin installed.
 - CI: the Windows jobs failed 33 test expectations since 2.12.0 (paths compared with `\`, while `info` prints `/`; a `cdC:/x` case that is no command in cmd; a `wsl` word in a commit message, which asks on Windows like `node` does everywhere); those were test fixes only. Python 3.9 on Linux now runs on `ubuntu-24.04`: `ubuntu-latest` (26.04) has no 3.9 build. The panel, studio and sales suites now run to the end on Windows too, and found three product bugs there: the built-in Vendas module never loaded on Windows (its folder was compared with `/` against a path the system writes with `\`, so the panel answered 404); the `--settings` of a sandboxed action listed `PowerShell` twice in `deny`; and `leitor.da_raiz(..., nt=False)` used the Windows separator. The other Windows failures were tests that assumed macOS or Linux; they now pin the platform the way their neighbors do, compare paths the way the product prints them, or skip the Studio cases (the Studio does not run on native Windows).
 
 ## 2.18.0

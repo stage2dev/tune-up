@@ -87,6 +87,8 @@ INFO = {
         "Bash(*docker inspect*)",
         "Bash(*docker compose config*)",
         "Bash(*security find-generic-password*)",
+        "Bash(*vendas*servico*preparo.py*)",   # o serviço e o preparo no plugin único (`/` ou `\`)
+        "Bash(*vendas*servico*servico.py*)",
     ] + ["%s(%s/**)" % (ferramenta, dados) for dados in PASTAS_DE_DADOS for ferramenta in ("Read", "Edit", "Write")],
 }
 

@@ -21,6 +21,16 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/py\" vendas/scripts/inicio.py 2>/dev/null || true",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PreToolUse": [
@@ -60,6 +70,16 @@
           {
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/py\" scripts/guarda.py prod",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*|Bash|PowerShell|Monitor|Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/py\" tune-up-mkt/scripts/guarda_mkt.py",
             "timeout": 10
           }
         ]

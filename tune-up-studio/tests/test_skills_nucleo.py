@@ -26,7 +26,10 @@ class SkillsNucleo(unittest.TestCase):
     def test_manifest(self):
         with open(os.path.join(ROOT, ".claude-plugin", "plugin.json"), encoding="utf-8") as f:
             m = json.load(f)
-        self.assertIn("./tune-up-studio/skills", m["skills"])
+        for p in ("./tune-up-studio/skills", "./tune-up-mkt/skills", "./vendas/skills"):
+            self.assertIn(p, m["skills"])
+        for p in m["skills"]:  # every listed folder exists and has at least one skill
+            self.assertTrue(glob.glob(os.path.join(ROOT, p, "*", "SKILL.md")), p)
         self.assertNotIn("agents", m)
 
     def test_paths_have_studio_prefix(self):

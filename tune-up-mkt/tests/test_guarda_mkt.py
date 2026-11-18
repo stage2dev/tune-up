@@ -138,14 +138,17 @@ class TestMkt(Base):
 
     def test_hooks_matcher(self):
         # Claude Code tests a non-literal matcher as an unanchored JavaScript regex (RegExp.test) = re.search.
-        with open(os.path.join(RAIZ, "hooks", "hooks.json")) as f:
-            pre = json.load(f)["hooks"]["PreToolUse"][0]
+        with open(os.path.join(os.path.dirname(RAIZ), "hooks", "hooks.json")) as f:
+            grupos = json.load(f)["hooks"]["PreToolUse"]
+        pre = [g for g in grupos if g["hooks"][0]["command"].endswith("guarda_mkt.py")]
+        self.assertEqual(len(pre), 1, grupos)
+        pre = pre[0]
         m = pre["matcher"]
         for nome in ("Bash", "PowerShell", "Monitor", "Write", "Edit", "MultiEdit", "NotebookEdit",
                      "mcp__composio__X", "mcp__claude_ai_Composio__X", "mcp__hub__MULTI_EXECUTE"):
             self.assertTrue(re.search(m, nome), nome)
         self.assertIsNone(re.search(m, "Read"))
-        self.assertEqual(pre["hooks"][0]["command"], 'sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda_mkt.py')
+        self.assertEqual(pre["hooks"][0]["command"], 'sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/guarda_mkt.py')
 
     # False positive: slug only where it is a tool name
     def test_argumento_livre_com_cara_de_slug(self):

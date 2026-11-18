@@ -334,13 +334,28 @@ class Skill(unittest.TestCase):  # L5
         self.assertNotIn("disable-model-invocation", topo)
         linha = [x for x in topo.splitlines() if x.startswith("allowed-tools:")][0]
         regras = [r.strip() for r in linha.split(":", 1)[1].split("),") if r.strip()]
-        prefixo = 'Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py '
+        prefixo = 'Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/contas.py '
         for r in regras:
             self.assertTrue(r.startswith(prefixo), r)
             self.assertIn(r[len(prefixo):].rstrip(")").split()[0], ("status", "marcar", "falta", "config"), r)
         for termo in ("--gerar-indexnow", "`conta`", "metaads", "googleads", "`voz`", "curl ... | sh"):
             self.assertIn(termo, texto)
         self.assertNotIn("--via mcp|cli", texto)
+
+    def test_allowed_tools_das_5_skills_no_lancador_do_nucleo(self):
+        skills = os.path.join(os.path.dirname(os.path.dirname(SCRIPT)), "skills")
+        prefixo = 'Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/contas.py '
+        nomes = sorted(os.listdir(skills))
+        self.assertEqual(nomes, ["campaign", "connect", "content", "preflight", "seo"])
+        for nome in nomes:
+            with open(os.path.join(skills, nome, "SKILL.md"), encoding="utf-8") as f:
+                topo = f.read().split("---")[1]
+            linha = [x for x in topo.splitlines() if x.startswith("allowed-tools:")][0]
+            regras = [r.strip() for r in linha.split(":", 1)[1].split("),") if r.strip()]
+            self.assertTrue(regras, nome)
+            for r in regras:
+                self.assertTrue(r.startswith(prefixo), (nome, r))
+                self.assertIn(r[len(prefixo):].rstrip(")").split()[0], ("status", "marcar", "falta", "config"))
 
 
 if __name__ == "__main__":

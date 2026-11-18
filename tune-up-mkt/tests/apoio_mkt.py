@@ -1,6 +1,6 @@
 """Shared base for the guarda_mkt.py tests: runs the script as a subprocess with HOME/USERPROFILE = a temp dir.
 
-Config files go to <tmp>/.config/tune-up/ (Base.config). Any erros.log line fails the test unless erro=True.
+Config files go to <tmp>/.config/tune-up/ (Base.config). Any erros-mkt.log line fails the test unless erro=True.
 """
 import json
 import os
@@ -29,21 +29,21 @@ class Base(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def saida(self, entrada=None, bruto=None, env=None, erro=False, cwd=None):
-        """Raw hookSpecificOutput (or None). erro=False: an erros.log line (script crash) fails the test."""
+        """Raw hookSpecificOutput (or None). erro=False: an erros-mkt.log line (script crash) fails the test."""
         e = dict(self.env)
         e.update(env or {})
         r = subprocess.run([sys.executable, SCRIPT], input=bruto if bruto is not None else json.dumps(entrada),
                            capture_output=True, text=True, env=e, timeout=20, encoding="utf-8", cwd=cwd)
         self.assertEqual(r.returncode, 0, r.stderr)
-        log = os.path.join(self.dados, "erros.log")
+        log = os.path.join(self.dados, "erros-mkt.log")
         if os.path.exists(log):
             with open(log, encoding="utf-8") as f:
                 linhas = f.read()
             os.remove(log)
             if not erro:
-                self.fail("erros.log written: " + linhas)
+                self.fail("erros-mkt.log written: " + linhas)
         elif erro:
-            self.fail("expected an erros.log line")
+            self.fail("expected an erros-mkt.log line")
         return json.loads(r.stdout)["hookSpecificOutput"] if r.stdout.strip() else None
 
     def rodar(self, entrada=None, bruto=None, env=None, erro=False):
