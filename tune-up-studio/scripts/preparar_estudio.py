@@ -52,8 +52,12 @@ PASSOS = (("npm ci --ignore-scripts", ["ci", "--ignore-scripts", "--no-audit", "
 
 
 def versao_do_estudio(studio=STUDIO):
-    v = (va._ler_json(os.path.join(studio, ".claude-plugin", "plugin.json")) or {}).get("version")
-    return v if isinstance(v, str) and v.replace(".", "").isalnum() else "0"
+    try:  # the studio ships inside the core plugin: its own version lives in VERSION, not a manifest
+        with open(os.path.join(studio, "VERSION"), encoding="utf-8") as f:
+            v = f.read().strip()
+    except (OSError, UnicodeDecodeError):
+        v = None
+    return v if v and v.replace(".", "").isalnum() else "0"
 
 
 def _dentro(caminho, pasta):

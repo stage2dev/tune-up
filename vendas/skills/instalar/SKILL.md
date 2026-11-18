@@ -1,5 +1,6 @@
 ---
 name: instalar
+disable-model-invocation: true
 description: "One-step setup of the WhatsApp sales screen on this computer: Docker, the local Evolution API and the sales service, step by step in plain words. Use on: install, set up WhatsApp, prepare sales; instalar, preparar, preparar o WhatsApp, setup WhatsApp, configurar vendas."
 ---
 
@@ -13,7 +14,7 @@ The owner is usually not technical. Speak plain pt-BR, one short sentence per st
 2. Run the setup in the background (it can take many minutes the first time) and follow its output:
 
    ```
-   python3 -B "${CLAUDE_PLUGIN_ROOT}/servico/preparo.py" rodar --projeto "<project root>" --painel http://127.0.0.1:<panel port>
+   python3 -B "${CLAUDE_PLUGIN_ROOT}/vendas/servico/preparo.py" rodar --projeto "<project root>" --painel http://127.0.0.1:<panel port>
    ```
 
    On Windows use `python` instead of `python3`. Never add other options.

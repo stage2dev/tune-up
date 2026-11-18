@@ -1,14 +1,14 @@
 ---
 name: connect
 description: "Guides the owner through connecting their own marketing accounts one service at a time, checks each connection read-only and records the result. Use on: connect my marketing accounts, set up marketing, what is missing; conectar contas de marketing, cadastro, o que falta."
-allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py status), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py status *), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py marcar), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py marcar *), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py falta), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py falta *), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py config), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py config *)
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/contas.py status), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/contas.py status *), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/contas.py marcar), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/contas.py marcar *), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/contas.py falta), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/contas.py falta *), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/contas.py config), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/contas.py config *)
 ---
 
 # Connect marketing accounts
 
-Reply in the `language` of `~/.config/tune-up/user.json` (English if missing) and call the user `owner`. The catalog is `${CLAUDE_PLUGIN_ROOT}/servicos.json`: take every text from it (use its `pt` text when the language is Portuguese). Never invent a price, a limit or a URL that is not in the catalog.
+Reply in the `language` of `~/.config/tune-up/user.json` (English if missing) and call the user `owner`. The catalog is `${CLAUDE_PLUGIN_ROOT}/tune-up-mkt/servicos.json`: take every text from it (use its `pt` text when the language is Portuguese). Never invent a price, a limit or a URL that is not in the catalog.
 
-Commands below are all `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py <command>` (only these are pre-approved; anything else goes through the normal permission prompt).
+Commands below are all `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/contas.py <command>` (only these are pre-approved; anything else goes through the normal permission prompt).
 
 Hard rules for the whole skill:
 - The OWNER creates accounts and authorizes in the browser. You never create an account, never type credentials, and never ask the owner to paste a key, token, password or callback URL into the chat. If a service needs a key, the owner sets it through the provider's own login flow or in their own shell or env, outside the chat. Never write a secret to a file.

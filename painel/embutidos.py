@@ -33,7 +33,8 @@ NEGAR_VENDAS = tuple("Bash(*%s:%d*)" % (h, p) for p in PORTAS_VENDAS + PORTAS_EV
                      for h in ("127.0.0.1", "localhost")) \
     + ("Bash(*/api/modulos/*/acao*)", "Bash(*tune-up-vendas*)",
        "Bash(*docker exec*)", "Bash(*docker inspect*)", "Bash(*docker compose config*)",
-       "Bash(*security find-generic-password*)") \
+       "Bash(*security find-generic-password*)",
+       "Bash(*vendas*servico*preparo.py*)", "Bash(*vendas*servico*servico.py*)") \
     + tuple("%s(%s/**)" % (f, d) for d in PASTAS_DADOS_VENDAS for f in ("Read", "Edit", "Write"))
 
 EMBUTIDOS = (

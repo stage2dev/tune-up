@@ -19,7 +19,7 @@ from preparo_falso import SistemaFalso  # noqa: E402
 from testes.test_servico import carregar_modulo  # noqa: E402
 
 CASA = os.path.expanduser("~")
-MOSTRADOS = ("skills/instalar/SKILL.md", "README.md", "scripts/inicio.py", "hooks/hooks.json",
+MOSTRADOS = ("skills/instalar/SKILL.md", "README.md", "scripts/inicio.py",
              "painel/modulos/vendas/abas/preparar.py", "servico/preparo.py", "servico/preparo_docker.py",
              "servico/preparo_evolution.py", "servico/preparo_sistema.py", "servico/servico.py")
 
