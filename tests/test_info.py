@@ -97,7 +97,7 @@ class TestInfo(Base):
         open(os.path.join(perfil, "projeto.md"), "w", encoding="utf-8").close()
         self.assertEqual(self.info()["profile_path"], fwd(os.path.join(perfil, "projeto.md")))
         open(os.path.join(perfil, "project.md"), "w", encoding="utf-8").close()
-        self.assertEqual(self.info()["profile_path"], os.path.join(perfil, "project.md"))
+        self.assertEqual(self.info()["profile_path"], fwd(os.path.join(perfil, "project.md")))
 
     def test_plugin_source_e_catalogo(self):
         fonte = os.path.join(self.tmp, "fonte")
@@ -109,7 +109,7 @@ class TestInfo(Base):
         open(catalogo, "w", encoding="utf-8").close()
         i = self.info()
         self.assertEqual(i["plugin_source"], fwd(fonte))
-        self.assertEqual(i["catalog_path"], catalogo)
+        self.assertEqual(i["catalog_path"], fwd(catalogo))
         self.assertTrue(os.path.isabs(i["catalog_path"]))
 
     def test_confiar_nao_le_stdin(self):
