@@ -156,7 +156,7 @@ You can override models and effort per role in the `models` key of `user.json`.
 
 Buttons only launch actions from a closed list; each action carries its own tool rules. Details, configuration (`.tune-up/painel.json`) and the module contract: [`painel/README.md`](painel/README.md) (Portuguese). Works on macOS, Linux and Windows (Git Bash); Python 3.9+; no install step.
 
-Other optional plugin: `tune-up-mkt` (marketing accounts, skills and a guard for ad-account and public-post writes; 0.1.0 is a skeleton, see [`tune-up-mkt/README.md`](tune-up-mkt/README.md)). Install with `/plugin install tune-up-mkt@tune-up`. Studio and Vendas come inside tune-up: see the next section.
+Other optional plugin: `tune-up-mkt` (marketing accounts, skills and a guard for ad-account and public-post writes; 0.3.0: guard, account connection and campaign/content/SEO/preflight skills, see [`tune-up-mkt/README.md`](tune-up-mkt/README.md)). Install with `/plugin install tune-up-mkt@tune-up`. Studio and Vendas come inside tune-up: see the next section.
 
 ## Built-in modules
 
