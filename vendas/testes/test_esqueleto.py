@@ -24,22 +24,18 @@ TIPOS = {"kpis", "tabela", "lista", "serie", "texto", "acoes", "formulario", "co
 
 
 class TesteEsqueleto(unittest.TestCase):
-    def test_plugin_json(self):
-        with open(os.path.join(VENDAS, ".claude-plugin", "plugin.json"), encoding="utf-8") as f:
+    def test_nucleo_carrega_as_skills_de_vendas(self):
+        with open(os.path.join(RAIZ, ".claude-plugin", "plugin.json"), encoding="utf-8") as f:
             p = json.load(f)
-        self.assertEqual(p["name"], "tune-up-vendas")
-        self.assertEqual(p["version"], "0.3.0")
-        self.assertEqual(p["license"], "MIT")
-        self.assertTrue(p["description"].isascii() and p["description"])
+        self.assertEqual(p["name"], "tune-up")
+        self.assertIn("./vendas/skills", p["skills"])
+        self.assertFalse(os.path.exists(os.path.join(VENDAS, ".claude-plugin")))  # Vendas não é mais plugin próprio
 
     def test_marketplace_lista_os_plugins(self):
         with open(os.path.join(RAIZ, ".claude-plugin", "marketplace.json"), encoding="utf-8") as f:
             m = json.load(f)
-        nomes = [p["name"] for p in m["plugins"]]
-        self.assertEqual(sorted(nomes), ["tune-up", "tune-up-mkt", "tune-up-studio", "tune-up-vendas"])   # exatos, sem repetir
-        fontes = {p["name"]: p["source"] for p in m["plugins"]}
-        self.assertEqual({k: fontes.get(k) for k in ("tune-up", "tune-up-vendas")},
-                         {"tune-up": "./", "tune-up-vendas": "./vendas"})
+        self.assertEqual([(p["name"], p["source"]) for p in m["plugins"]], [("tune-up", "./")])
+        self.assertEqual(m["renames"], {"tune-up-studio": None, "tune-up-vendas": None, "tune-up-mkt": None})
 
     def test_modulo_carrega_pelo_painel_real(self):
         tmp = os.path.realpath(tempfile.mkdtemp())
