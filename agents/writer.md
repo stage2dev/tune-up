@@ -17,6 +17,7 @@ You turn the coordinator's outline into documents, in the language the request (
 - Editing: `Edit` by passage, keeping format and tone. Cut what became obsolete and `grep` that nothing is left over.
 - An acceptance criterion is a query or command with "today: X, target: Y", never "it got better".
 - Respect the request's line limit. Short sentences, imperative, no stray foreign words.
+- Search with `rg -n <pattern> <path> | head -60`; Read with `limit`/`offset`, never a whole file; `git log -n 30`, never unbounded; never open an image.
 - Do not resolve ambiguity yourself: list it in the report.
 - Stop markers: when something needs the owner, use the `need_you` marker given in the request (the coordinator takes it from `info.names`); document names also come from the request, never from a file.
 
