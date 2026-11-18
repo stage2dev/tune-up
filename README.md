@@ -152,6 +152,7 @@ You can override models and effort per role in the `models` key of `user.json`.
 - **Agents**: every Claude session of the project and, under it, its sub-agents and workflows by phase, each with model, effort, elapsed time and tool count. Refreshes every 2 s.
 - **Runs**: live view of each session launched from the panel, with "open in terminal" and "stop".
 - **Follow-up**: open work lists.
+- **Plugins** (on the Modules screen): your Claude Code plugins in two columns, "Ligado" and "Desligado"; drag a card to the other column or press its button. It changes only the true/false of a plugin already listed in your user Claude settings file (`~/.claude/settings.json`), after saving a dated backup (the last 3 are kept), and takes effect in the next Claude session. A project or local setting that overrides your value is shown on the card, and tune-up itself cannot be switched off from here.
 - **Project modules**: a project can add its own screens (declarative blocks) and actions in `.tune-up/painel-projeto/`, without touching the panel code.
 
 Buttons only launch actions from a closed list; each action carries its own tool rules. Details, configuration (`.tune-up/painel.json`) and the module contract: [`painel/README.md`](painel/README.md) (Portuguese). Works on macOS, Linux and Windows (Git Bash); Python 3.9+; no install step.

@@ -2,7 +2,7 @@
 // (nunca isLoading) para mostrar esqueleto; so mostre "vazio" quando !isPending && !isError.
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, ErroApi } from './cliente';
-import type { Acao, Acompanhamento, DadosModulo, EstadoPainel, Eventos, Execucao, ListaEmbutidos, ListaModulos, ReqAcaoModulo, RespAcaoModulo, RespHabilidades, RespModelos, Sessao } from './tipos';
+import type { Acao, Acompanhamento, DadosModulo, EstadoPainel, Eventos, Execucao, ListaEmbutidos, ListaModulos, ReqAcaoModulo, RespAcaoModulo, RespHabilidades, RespModelos, RespMudarPlugin, RespPlugins, Sessao } from './tipos';
 import { obterSessao } from './cliente';
 import { buscarEventos, intervaloEventos, type EventosCache } from './eventos';
 
@@ -18,6 +18,7 @@ export const chaves = {
   habilidades: ['habilidades'] as const,
   modulos: ['modulos'] as const,
   embutidos: ['embutidos'] as const,
+  plugins: ['plugins'] as const,
   modulo: (id: string) => ['modulo', id] as const,
   acompanhamento: ['acompanhamento'] as const,
 };
@@ -57,6 +58,19 @@ export function useLigarEmbutido() {
       void qc.invalidateQueries({ queryKey: chaves.modulos });
       void qc.invalidateQueries({ queryKey: chaves.acoes });
     },
+  });
+}
+
+/** Plugins do Claude Code (secao da tela Modulos). Sem releitura automatica: o arquivo so muda por acao da pessoa. */
+export const usePlugins = () =>
+  useQuery({ queryKey: chaves.plugins, queryFn: () => apiGet<RespPlugins>('/api/plugins') });
+
+/** Liga/desliga um plugin no settings do usuario. Sem otimismo: a lista so muda com a resposta do servidor. */
+export function useMudarPlugin() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => apiPost<RespMudarPlugin>('/api/plugins', { id, enabled }),
+    onSuccess: (r) => qc.setQueryData<RespPlugins>(chaves.plugins, (antes) => ({ plugins: r.plugins, aviso: antes?.aviso ?? null })),
   });
 }
 

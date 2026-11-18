@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useEmbutidos, useLigarEmbutido } from '../../api/ganchos';
 import type { Embutido } from '../../api/tipos';
 import { Botao, Cartao, Erro, EsqueletoPagina, EstadoVazio, Pagina, useAvisos } from '../../componentes';
+import Plugins from './Plugins';
 import { botaoDoEmbutido, motivoBloqueio, rotuloEstado, textoEnviando, textoFalha, textoSucesso, tituloFalha } from './logica';
 
 const TITULO = 'Módulos';
@@ -14,8 +15,8 @@ export default function Modulos() {
   const { avisar } = useAvisos();
   const [pendente, setPendente] = useState<string | null>(null);
 
-  if (estado.isPending) return <Pagina titulo={TITULO} subtitulo={SUBTITULO}><EsqueletoPagina cartoes={2} /></Pagina>;
-  if (estado.isError) return <Pagina titulo={TITULO} subtitulo={SUBTITULO}><Erro erro={estado.error} aoTentar={() => void estado.refetch()} /></Pagina>;
+  if (estado.isPending) return <Pagina titulo={TITULO} subtitulo={SUBTITULO}><EsqueletoPagina cartoes={2} /><Plugins /></Pagina>;
+  if (estado.isError) return <Pagina titulo={TITULO} subtitulo={SUBTITULO}><Erro erro={estado.error} aoTentar={() => void estado.refetch()} /><Plugins /></Pagina>;
 
   const clicar = async (e: Embutido, pedir: boolean) => {
     if (pendente) return;
@@ -63,6 +64,7 @@ export default function Modulos() {
           })}
         </div>
       )}
+      <Plugins />
     </Pagina>
   );
 }

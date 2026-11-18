@@ -6,6 +6,13 @@ Every new rule goes in through `/tune-up:learn`: memory + a change here + a test
 
 - CI: the Windows jobs failed 33 test expectations since 2.12.0 (paths compared with `\`, while `info` prints `/`; a `cdC:/x` case that is no command in cmd; a `wsl` word in a commit message, which asks on Windows like `node` does everywhere); those were test fixes only. Python 3.9 on Linux now runs on `ubuntu-24.04`: `ubuntu-latest` (26.04) has no 3.9 build. The panel, studio and sales suites now run to the end on Windows too, and found three product bugs there: the built-in Vendas module never loaded on Windows (its folder was compared with `/` against a path the system writes with `\`, so the panel answered 404); the `--settings` of a sandboxed action listed `PowerShell` twice in `deny`; and `leitor.da_raiz(..., nt=False)` used the Windows separator. The other Windows failures were tests that assumed macOS or Linux; they now pin the platform the way their neighbors do, compare paths the way the product prints them, or skip the Studio cases (the Studio does not run on native Windows).
 
+## 2.21.0
+
+- Panel, Modules screen: new "Plugins" section with your Claude Code plugins in two columns ("Ligado" / "Desligado"). Drag a card to the other column or use its "Ligar"/"Desligar" button; the card moves only when the server answers, and a failure leaves it where it was with the server's message.
+- New `GET /api/plugins`: reads `enabledPlugins` from the user, project and local settings (the last one that has the key wins) and sends, per plugin, the winning value and where it came from, whether the project or local value overrides the user's (`sobreposto`), skills, agents and the characters of the skill descriptions (`peso`, from the install folder; 0 when unknown). A settings file that does not open is left out and reported in `aviso`.
+- New `POST /api/plugins` `{id, enabled}`: flips only that boolean in the user's `~/.claude/settings.json` (atomic write, dated backup, last 3 kept); it never creates a key, never writes the project or local file, and refuses tune-up itself (409). The change takes effect in the next Claude session.
+- The screen shows a notice when the project or local settings override the user's value (changing it here does not change what applies in that project); a 409 shows "the settings changed outside; list reloaded" and re-reads the list.
+
 ## 2.18.0
 
 Bash guard: commands that Bash runs but the guard read as part of a string. Stricter on every system; a command that used to pass may now ask (research mode) or be denied (talk mode) because the guard now sees what it really runs.
