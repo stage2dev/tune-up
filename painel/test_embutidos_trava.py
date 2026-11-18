@@ -121,6 +121,7 @@ class TesteCodigoGuardado(Base):
         self.confere(conf, atalho, "atalho")
         self.confere(conf, self.raiz, "real")
 
+    @unittest.skipIf(os.name == "nt", "Estúdio indisponível no Windows nativo (sem sandbox); caminho em barras POSIX")
     def test_acao_do_estudio_ainda_roda_o_binario_e_os_scripts(self):
         scripts = os.path.join(self.studio, "scripts") + os.sep
         for aid in ("estudio.post", "estudio.video"):

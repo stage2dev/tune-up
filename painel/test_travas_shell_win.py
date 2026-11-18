@@ -8,7 +8,9 @@ import types
 
 sys.dont_write_bytecode = True
 
+import os  # noqa: E402
 import unittest  # noqa: E402
+from unittest import mock  # noqa: E402
 
 import travas  # noqa: E402
 from test_travas import ACAO_CODIGO, ACAO_LEITURA, conf  # noqa: E402
@@ -86,7 +88,14 @@ class TesteNegarPorPermissao(unittest.TestCase):
             travas.os = real
 
     def test_fora_do_windows_nao_muda(self):
-        self.assertNotIn("PowerShell", self.negar())
+        with mock.patch.object(travas, "os", types.SimpleNamespace(name="posix", path=os.path, sep=os.sep)):
+            self.assertNotIn("PowerShell", self.negar())
+
+    def test_windows_com_sandbox_nao_repete_o_powershell(self):
+        with mock.patch.object(travas, "os", types.SimpleNamespace(name="nt", path=ntpath, sep="\\")):
+            deny = json.loads(travas.settings_da_sessao(dict(ACAO_CODIGO, sandbox=True), python="python",
+                                                        este_arquivo="t.py"))["permissions"]["deny"]
+        self.assertEqual(deny.count("PowerShell"), 1)
 
 
 if __name__ == "__main__":

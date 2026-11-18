@@ -5,6 +5,7 @@ Nada chama o claude de verdade (CLI falso). A prova com sessão real fica em tes
 import json
 import os
 import tempfile
+import types
 import unittest
 from unittest import mock
 
@@ -102,7 +103,8 @@ class TesteSettings(unittest.TestCase):
         self.assertIn("Bash(rm *)", deny)
 
     def test_sem_sandbox_nada_muda(self):
-        conf = settings(catalogo.validar_acao(dict(SIMPLES, env={"DO_NOT_TRACK": "1"})), pasta=None)
+        with mock.patch.object(travas, "os", types.SimpleNamespace(name="posix", path=os.path, sep=os.sep)):  # no Windows entra o PowerShell
+            conf = settings(catalogo.validar_acao(dict(SIMPLES, env={"DO_NOT_TRACK": "1"})), pasta=None)
         for chave in ("sandbox", "worktree"):
             self.assertNotIn(chave, conf)
         self.assertEqual(conf["permissions"], {"deny": travas.NEGAR_LEVE})  # só o de sempre (risco leitura)

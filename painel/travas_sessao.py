@@ -61,7 +61,8 @@ def settings_da_sessao(acao, protegidos=(), liberados=(), python=None, este_arqu
     topo, negar_sb, perm = sandbox.bloco(acao, workspace, dados)
     negar = (list(NEGAR_LEVE) if acao.get("risco") in RISCO_LEVE else []) + list(trv.get("negar") or [])
     # Windows: PowerShell negado também por regra de permissão (vale até se o gancho não rodar, sem Git Bash)
-    negar += [r for r in negar_sb + ["PowerShell"] * (getattr(_os(), "name", "") == "nt") if r not in negar]
+    negar += [r for r in dict.fromkeys(negar_sb + ["PowerShell"] * (getattr(_os(), "name", "") == "nt"))
+              if r not in negar]
     if negar:
         perm["deny"] = negar
     if trv.get("permitir"):

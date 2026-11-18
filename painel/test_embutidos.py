@@ -5,10 +5,12 @@ sys.dont_write_bytecode = True
 
 import copy  # noqa: E402
 import json  # noqa: E402
+import ntpath  # noqa: E402
 import os  # noqa: E402
 import shutil  # noqa: E402
 import tempfile  # noqa: E402
 import threading  # noqa: E402
+import types  # noqa: E402
 import unittest  # noqa: E402
 from unittest import mock  # noqa: E402
 
@@ -75,6 +77,7 @@ class TesteHTTPEmbutidos(unittest.TestCase):
         st, _, dados = self.pedir("GET", caminho)
         return st, json.loads(dados)
 
+    @mock.patch.object(embutidos.sys, "platform", "linux")  # no win32 o Estúdio fica indisponível (test_c11)
     def test_c8_chegam_desligados_e_ligam_pela_api(self):
         st, r = self.get("/api/embutidos")
         self.assertEqual(st, 200)
@@ -135,6 +138,7 @@ class TesteHTTPEmbutidos(unittest.TestCase):
             self.assertEqual(self.post("/api/embutidos/estudio", {"ligado": False})[0], 200)  # desligar pode
 
 
+@mock.patch.object(embutidos.sys, "platform", "linux")  # no win32 o Estúdio não liga (409): test_c11 cobre
 class TesteEmbutidosProjeto(unittest.TestCase):
     """Projeto de verdade em pasta temporária (config.carregar), com HOME falso."""
 
@@ -242,6 +246,12 @@ class TesteEmbutidosProjeto(unittest.TestCase):
         cfg2["bruto"] = {"modulos_de_plugins": ["tune-up-vendas@x:vendas"]}
         self.assertEqual(modulos.regras_de_negar(cfg2), list(embutidos.NEGAR_VENDAS))  # só a linha antiga
 
+    def test_caminho_no_windows(self):
+        """No Windows o realpath troca / por \\: sem normalizar, caminho() era None e o Vendas dava 404."""
+        with mock.patch.object(embutidos, "os", types.SimpleNamespace(path=ntpath)), \
+                mock.patch.object(config, "PAINEL", "C:\\t\\painel"), mock.patch("ntpath.isdir", return_value=True):
+            self.assertEqual(embutidos._pasta("vendas/painel/modulos/vendas"), "C:\\t\\vendas\\painel\\modulos\\vendas")
+
     def test_lista_fixa_de_negar_igual_a_do_modulo_real(self):
         mod = modulos._importar(embutidos.caminho("vendas"), "vendas")
         self.assertEqual(list(embutidos.NEGAR_VENDAS), mod.INFO["negar"])
@@ -273,10 +283,11 @@ class TesteEmbutidosProjeto(unittest.TestCase):
         with open(arq, encoding="utf-8") as f:
             self.assertEqual(json.load(f), {"estudio": True, "vendas": False})
         os.remove(arq)
-        alvo = os.path.join(self.tmp, "alvo.json")
-        escrever(alvo, '{"estudio": true, "vendas": true}')
-        os.symlink(alvo, arq)
-        self.assertEqual(embutidos.ligados(cfg), [])  # atalho não é seguido
+        if os.name != "nt":  # atalho pede privilégio no Windows (como em test_embutidos_trava)
+            alvo = os.path.join(self.tmp, "alvo.json")
+            escrever(alvo, '{"estudio": true, "vendas": true}')
+            os.symlink(alvo, arq)
+            self.assertEqual(embutidos.ligados(cfg), [])  # atalho não é seguido
 
     def test_gravacao_que_falha_vira_erro(self):
         cfg = self.cfg()
@@ -287,6 +298,8 @@ class TesteEmbutidosProjeto(unittest.TestCase):
         self.assertEqual(st, 500)
         self.assertIn("nada mudou", r["erro"])
         self.assertEqual(chamou, [])
+        if os.name == "nt":  # atalho pede privilégio no Windows (como em test_embutidos_trava)
+            return
         cfg = self.cfg()
         os.makedirs(cfg["dados_dir"], exist_ok=True)
         os.symlink(os.path.join(self.tmp, "fora.json"), os.path.join(cfg["dados_dir"], embutidos.ARQUIVO + ".gravando"))

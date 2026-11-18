@@ -66,7 +66,8 @@ def pastas_codigo():
 
 def _pasta(rel):
     """Caminho real da pasta `rel` sob a raiz do plugin, ou None se ela (ou algo no meio) é atalho."""
-    pasta = os.path.join(os.path.realpath(os.path.dirname(config.PAINEL)), rel)
+    # normpath: no Windows o realpath troca / por \ e a pasta nunca casaria consigo mesma (embutido sumia)
+    pasta = os.path.join(os.path.realpath(os.path.dirname(config.PAINEL)), os.path.normpath(rel))
     return pasta if os.path.realpath(pasta) == pasta and os.path.isdir(pasta) else None
 
 

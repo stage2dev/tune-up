@@ -102,7 +102,7 @@ def dentro_de(caminho, raiz):
 
 def da_raiz(cwd, raiz, nt=None):
     """A sessão roda na raiz ou abaixo dela? No Windows sem caixa e com barras normalizadas (c:\\ = C:\\)."""
-    sep = os.sep
+    sep = "/"
     if os.name == "nt" if nt is None else nt:
         cwd, raiz, sep = ntpath.normcase(ntpath.normpath(cwd)), ntpath.normcase(ntpath.normpath(raiz)), "\\"
     return cwd == raiz or cwd.startswith(raiz + sep)

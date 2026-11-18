@@ -16,6 +16,7 @@ from unittest import mock
 import catalogo
 import config
 import embutidos
+import sandbox
 import test_chat
 import trabalho
 import travas
@@ -109,6 +110,7 @@ class TesteCaminho(Base):
                 os.path.realpath(STUDIO_REAL), "node", "node_modules", ".bin", "hyperframes"))
         self.assertIsNone(embutidos.estudio_hf(dict(self.cfg, dados_dir="")))
 
+    @unittest.skipIf(os.name == "nt", "Estúdio indisponível no Windows nativo (sem sandbox); caminho em barras POSIX")
     def test_d_ambiente_json_adulterado_nao_muda_o_caminho(self):
         self.preparado()
         with open(os.path.join(self.dados, "ambiente.json"), "w") as f:
@@ -230,8 +232,9 @@ class TesteGancho(Base):
                     self.assertIsNotNone(got)
                     self.assertIn(got[0], ("deny", "ask"))
             sb = json.loads(travas.argv_travas(dict(acoes_reais()[0], _travas={}), self.cfg)[1])
-            self.assertIn(self.dados + "/estudio-node", sb["sandbox"]["filesystem"]["denyWrite"])
+            self.assertIn(sandbox._barra(self.dados) + "/estudio-node", sb["sandbox"]["filesystem"]["denyWrite"])
 
+    @unittest.skipIf(os.name == "nt", "Estúdio indisponível no Windows nativo (sem sandbox); caminho em barras POSIX")
     def test_h_script_do_estudio_no_cache_do_marketplace(self):
         scripts = os.path.join(self.raiz, "tune-up-studio", "scripts") + "/"
         self.assertIn("/.claude/plugins/cache/tune-up/tune-up/2.11.0/", scripts)
@@ -281,6 +284,7 @@ class TesteLancador(test_chat.Base):
 
     def test_e_nao_preparado_lancador_responde_409_e_nao_dispara(self):
         lc = test_chat.Base.lanc(self, bruto={"estudio": {"video_rede_local": True}})
+        lc.plataforma = "linux"  # no win32 a ação com sandbox some do catálogo (test_so_windows.py)
         for hf in (None, os.path.join(self.tmp, "nao-existe", "hyperframes")):
             with mock.patch.object(embutidos, "estudio_hf", return_value=hf):
                 with self.assertRaises(catalogo.ErroAcao) as e:
