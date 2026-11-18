@@ -13,7 +13,7 @@ from package-lock.json; the panel computes the same path for {estudio_hf}). Othe
 and the old <dados>/tune-up-studio/ folder are removed (never through a symlink).
 
 Usage: python3 -I scripts/preparar_estudio.py --dados <pasta> [--projeto <pasta>] [--sim]
-       python3 -I scripts/preparar_estudio.py --so-instalar   (WSL2 only: install on the Linux disk)
+       python3 -I scripts/preparar_estudio.py --so-instalar   (any Linux but WSL1: install on the Linux disk)
 Exit code: 0 ready, 1 not ready (ambiente.json says why), 2 refused or already running.
 Python 3.9+, standard library only. Report in Brazilian Portuguese.
 """
@@ -107,6 +107,8 @@ def _raiz_linux(home):
 def _destino_linux(home, chave):
     """<home>/.local/share/tune-up/estudio-node/<key>/node on the Linux disk; refuses a symlink on the way."""
     raiz = _raiz_linux(home)
+    if not os.path.islink(raiz):
+        os.makedirs(raiz, mode=0o700, exist_ok=True)
     partes = [raiz, os.path.join(raiz, PASTA_NODE), os.path.join(raiz, PASTA_NODE, chave)]
     destino = os.path.join(partes[-1], "node")
     for caminho in partes + [destino]:
@@ -253,17 +255,32 @@ def _travar_em(caminho):
     return f
 
 
-def _so_instalar(wsl, home, rodar, which, studio):
-    """Install into the Linux-disk folder only: no ambiente.json, no question. 0 ok, 1 failed, 2 refused."""
-    if wsl() != 2:
-        print("--so-instalar só roda dentro do WSL2; nada feito.")
+def _recusa(wsl, plataforma):
+    """pt-BR refusal line when --so-instalar/--onde may not run here, else None (any Linux but WSL1)."""
+    if not (plataforma or sys.platform).startswith("linux"):
+        return "--so-instalar só roda em Linux ou WSL2; nada feito."
+    if wsl() == 1:
+        return "--so-instalar não roda no WSL1; converta para WSL2. Nada feito."
+    return None
+
+
+def _so_instalar(wsl, home, rodar, which, studio, plataforma=None):
+    """Install into the Linux-disk folder only: no ambiente.json, no question. 0 ok, 1 failed, 2 refused.
+    Last stdout line on success: node_dir=<absolute path>."""
+    motivo = _recusa(wsl, plataforma)
+    if motivo:
+        print(motivo)
         return 2
     home = home or os.path.expanduser("~")
     npm = which("npm")
     if not npm:
         print("npm não encontrado; nada instalado.")
         return 1
-    trava = _travar_em(_caminho_trava(None, home))
+    try:
+        trava = _travar_em(_caminho_trava(None, home))
+    except OSError as e:
+        print("Não consegui travar a pasta: %s" % e)
+        return 1
     if trava is None:
         print("Outro Preparar estúdio já está rodando; espere ele terminar.")
         return 2
@@ -274,15 +291,33 @@ def _so_instalar(wsl, home, rodar, which, studio):
         except OSError as e:
             print("Não consegui preparar a pasta: %s" % e)
             return 1
-        passos, pronto = _instalar(destino, npm, rodar)
+        pronto = False
+        try:
+            passos, pronto = _instalar(destino, npm, rodar)
+        finally:  # never leave an unverified node_modules (failure or Ctrl+C before the audit passed)
+            if not pronto:
+                shutil.rmtree(os.path.join(destino, "node_modules"), ignore_errors=True)
     if not pronto:
         print("Falhou: %s: %s" % (passos[-1]["passo"], passos[-1]["saida"]))
         return 1
     print("HyperFrames instalado em %s" % destino)
+    print("node_dir=%s" % os.path.abspath(destino))
     return 0
 
 
-def main(argv=None, entrada=input, wsl=va.wsl, home=None, rodar=_rodar, which=shutil.which, studio=STUDIO):
+def _onde(wsl, home, studio, plataforma=None):
+    """Print the --so-instalar destination (nothing created); 2 where --so-instalar refuses."""
+    motivo = _recusa(wsl, plataforma)
+    if motivo:
+        print(motivo, file=sys.stderr)
+        return 2
+    raiz = _raiz_linux(home or os.path.expanduser("~"))
+    print(os.path.abspath(os.path.join(raiz, PASTA_NODE, chave_do_ambiente(studio), "node")))
+    return 0
+
+
+def main(argv=None, entrada=input, wsl=va.wsl, home=None, rodar=_rodar, which=shutil.which, studio=STUDIO,
+         plataforma=None):
     saida_utf8.utf8()
     p = argparse.ArgumentParser(description="Prepara o estúdio (instala o HyperFrames fixado).")
     p.add_argument("--dados", help="pasta de dados do painel (<pacote>/dados)")
@@ -290,10 +325,15 @@ def main(argv=None, entrada=input, wsl=va.wsl, home=None, rodar=_rodar, which=sh
     p.add_argument("--sim", action="store_true", help="não perguntar (a tela já confirmou)")
     p.add_argument("--trava-herdada", action="store_true", help=argparse.SUPPRESS)  # o módulo já trava
     p.add_argument("--so-instalar", action="store_true",
-                   help="só instala o HyperFrames no disco do Linux (WSL2); sem ambiente.json, sem perguntar")
+                   help="só instala o HyperFrames no disco do Linux (Linux, não WSL1); sem ambiente.json, sem perguntar")
+    p.add_argument("--onde", action="store_true", help="só imprime a pasta que --so-instalar usaria")
     args = p.parse_args(argv)
+    if args.onde and (args.dados or args.so_instalar):
+        p.error("--onde não combina com --dados nem com --so-instalar")
+    if args.onde:
+        return _onde(wsl, home, studio, plataforma)
     if args.so_instalar:
-        return _so_instalar(wsl, home, rodar, which, studio)
+        return _so_instalar(wsl, home, rodar, which, studio, plataforma)
     if not args.dados:
         p.error("the following arguments are required: --dados")
     dados = os.path.abspath(args.dados)
@@ -311,7 +351,11 @@ def main(argv=None, entrada=input, wsl=va.wsl, home=None, rodar=_rodar, which=sh
             return 2
     # the panel's lock sits in dados; on /mnt/<letter>/ the shared Linux-disk folder needs its own lock
     herdada = args.trava_herdada and not _no_disco_do_windows(dados, wsl)
-    trava = open(os.devnull) if herdada else _travar(dados, home, wsl)
+    try:
+        trava = open(os.devnull) if herdada else _travar(dados, home, wsl)
+    except OSError as e:
+        print("Não consegui travar a pasta: %s" % e)
+        return 1
     if trava is None:
         print("Outro Preparar estúdio já está rodando; espere ele terminar.")
         return 2

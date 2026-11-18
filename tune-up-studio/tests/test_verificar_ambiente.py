@@ -128,6 +128,25 @@ class Wsl(unittest.TestCase):
         self.assertIsNone(va.wsl("linux", "6.8.0-45-generic"))
         self.assertIsNone(va.wsl("darwin", self.WSL2))
 
+    def test_kernel_string_heuristics(self):
+        for texto in ("4.19.104-microsoft-standard", "5.10.16.3-Microsoft-Standard-WSL2", "5.15.0-microsoft-WSL2-foo"):
+            self.assertEqual(va.wsl("linux", texto), 2, texto)
+        self.assertEqual(va.wsl("linux", "4.4.0-19041-Microsoft"), 1)
+
+    def test_node_dir_option(self):
+        vistos = []
+        orig = va.verificar
+        va.verificar = lambda projeto=None, node_dir=va.NODE_DIR: vistos.append(node_dir) or []
+        try:
+            self.assertEqual(va.main(["--node-dir", "/abs/node"]), 0)
+            self.assertEqual(vistos, ["/abs/node"])
+            for ruim in ("rel/node", "/a/../b", "/a/..", ".."):
+                self.assertEqual(va.main(["--node-dir", ruim]), 2, ruim)
+            self.assertEqual(va.main([]), 0)
+            self.assertEqual(vistos[-1], va.NODE_DIR)
+        finally:
+            va.verificar = orig
+
     def test_unreadable_osrelease_is_plain_linux(self):
         def falha():
             raise OSError("sem /proc")

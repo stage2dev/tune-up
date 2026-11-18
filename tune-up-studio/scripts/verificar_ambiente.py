@@ -61,13 +61,14 @@ def osrelease(ler=None):
 
 
 def wsl(plataforma=None, texto=None):
-    """None (not WSL), 1 or 2. Only the kernel release text decides: `microsoft` = WSL, `WSL2` in it = 2."""
+    """None (not WSL), 1 or 2. Only the kernel release text decides."""
     if not (plataforma or sys.platform).startswith("linux"):
         return None
     texto = (osrelease() if texto is None else texto).lower()
     if "microsoft" not in texto:
         return None
-    return 2 if "wsl2" in texto else 1
+    # Heuristic from known kernel strings, not from official docs; fails closed (unknown `microsoft` text = WSL1).
+    return 2 if "microsoft-standard" in texto or "wsl2" in texto else 1
 
 
 def sistema(plataforma=None, osrelease=None):
@@ -237,8 +238,13 @@ def main(argv=None):
     saida_utf8.utf8()
     p = argparse.ArgumentParser(description="Confere se esta máquina roda o estúdio.")
     p.add_argument("--projeto", default=os.getcwd(), help="pasta do projeto (lê .claude/settings*.json)")
+    p.add_argument("--node-dir", help="pasta do node (caminho absoluto, sem '..')")
     args = p.parse_args(argv)
-    itens = verificar(os.path.abspath(args.projeto))
+    node_dir = args.node_dir
+    if node_dir is not None and (not os.path.isabs(node_dir) or ".." in re.split(r"[\\/]", node_dir)):
+        print("--node-dir precisa ser um caminho absoluto sem '..'.", file=sys.stderr)
+        return 2
+    itens = verificar(os.path.abspath(args.projeto), node_dir=node_dir) if node_dir else verificar(os.path.abspath(args.projeto))
     print(relatorio(itens))
     return 1 if any(n == ERRO for n, _ in itens) else 0
 
