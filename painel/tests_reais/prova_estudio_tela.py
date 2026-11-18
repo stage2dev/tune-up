@@ -9,7 +9,7 @@ Não é teste de unidade (o unittest não descobre esta pasta): gasta 1 sessão 
 Cria um projeto descartável sem git em $HOME com o exemplo forno-miudo (sem as peças prontas) e um
 .tune-up/painel.json com "modulos_de_plugins" e "acoes_de_plugins" do tune-up-studio. O plugin não
 está instalado aqui: o painel sobe num processo filho (--servir) em que o registro de plugins
-devolve a pasta tune-up-studio deste repo e a sessão ganha `--plugin-dir` dela (o mesmo artifício
+devolve a pasta tune-up-studio deste repo e a sessão ganha `--plugin-dir` da raiz do repo (o mesmo artifício
 de prova_post_bg.py). Porta livre em 127.0.0.1, nunca a 8787.
 
 Depois, só HTTP com Sec-Fetch-Site same-origin, Origin e o token de /api/sessao:
@@ -59,7 +59,7 @@ def servir(projeto, porta):
     """Processo filho: o painel de verdade, com o tune-up-studio deste repo no lugar do instalado."""
     import lancador
     import painel
-    with open(os.path.join(STUDIO, ".claude-plugin", "plugin.json"), encoding="utf-8") as f:
+    with open(os.path.join(os.path.dirname(STUDIO), ".claude-plugin", "plugin.json"), encoding="utf-8") as f:
         versao = json.load(f).get("version")
     original = config.entrada_do_plugin
     config.entrada_do_plugin = lambda chave, home=None: (

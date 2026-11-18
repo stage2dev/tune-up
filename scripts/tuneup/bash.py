@@ -5,7 +5,7 @@ import re
 import time
 from .bash_parse import ESCOPO, TEXTO_PS, analisar_git, comandos, flags_curtas, junta_dir, posicionais, sem_heredoc
 from .config import SEVERIDADE, TESTE
-from .bash_guarda import chamada_info, chamada_rota, citacoes, grava_algo, ln_da_guarda, nega_em_conversa, nivel_do_texto
+from .bash_guarda import chamada_contas, chamada_info, chamada_rota, citacoes, grava_algo, ln_da_guarda, nega_em_conversa, nivel_do_texto
 from .escrita import alvos_de_escrita, alvos_que_contem, contem_protegida, protecao_da_guarda
 from .mensagens import msg
 from .powershell import no_bash
@@ -310,7 +310,9 @@ def achados_bash(cmd, d, cfg, regras_em=None):
             if not alvos or not scratch or not all(dentro(p, scratch) for p in alvos):
                 add("perguntar", pesq(exe))
 
-    nivel = nivel_do_texto(executor, links, cwd, " ".join(escrita) if escreve else "")
+    # the marketing skills' exact contas.py call cites the plugin root but writes no guard file
+    nivel = None if chamada_contas(cmd.strip()) else \
+        nivel_do_texto(executor, links, cwd, " ".join(escrita) if escreve else "")
     if nivel == "sempre":
         add("perguntar", msg("prot_settings_bash"))
     elif nivel == "turno" and not aprender:

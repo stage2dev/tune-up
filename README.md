@@ -157,16 +157,16 @@ You can override models and effort per role in the `models` key of `user.json`.
 
 Buttons only launch actions from a closed list; each action carries its own tool rules. Details, configuration (`.tune-up/painel.json`) and the module contract: [`painel/README.md`](painel/README.md) (Portuguese). Works on macOS, Linux and Windows (Git Bash); Python 3.9+; no install step.
 
-Other optional plugin: `tune-up-mkt` (marketing accounts, skills and a guard for ad-account and public-post writes; 0.3.0: guard, account connection and campaign/content/SEO/preflight skills, see [`tune-up-mkt/README.md`](tune-up-mkt/README.md)). Install with `/plugin install tune-up-mkt@tune-up`. Studio and Vendas come inside tune-up: see the next section.
-
 ## Built-in modules
 
-Studio and Vendas come inside tune-up and arrive off. Open the panel's **Módulos** screen (`/modulos`) and press the button on the one you want; press it again to turn it off. No `painel.json` edit and no separate plugin install.
+Studio and Vendas come inside tune-up and arrive off (Marketing is also part of tune-up; see below). Open the panel's **Módulos** screen (`/modulos`) and press the button on the one you want; press it again to turn it off. No `painel.json` edit and no separate plugin install.
 
-- **Studio** (posts, short videos and ads with your brand): five commands, typed by you, Claude does not start them on its own: `/tune-up:post`, `/tune-up:video`, `/tune-up:anuncio`, `/tune-up:marca`, `/tune-up:marca-ler`. Works on macOS, Linux and WSL2; not on native Windows. Details: [`tune-up-studio/README.md`](tune-up-studio/README.md).
+- **Studio** (posts, short videos and ads with your brand): five commands: `/tune-up:post`, `/tune-up:video`, `/tune-up:anuncio`, `/tune-up:marca`, `/tune-up:marca-ler`. Claude never starts them on its own. Post, video and anuncio are started from the panel's Estúdio screen (it passes the work folder, the format and the HyperFrames path); `/tune-up:marca` and `/tune-up:marca-ler` are typed by you. Works on macOS, Linux and WSL2; not on native Windows. Details: [`tune-up-studio/README.md`](tune-up-studio/README.md).
 - **Vendas** (WhatsApp sales screen): first version tested only on macOS; needs Docker. Details: [`vendas/README.md`](vendas/README.md).
 
-Do NOT install the separate `tune-up-studio` 0.4.0 plugin together with tune-up 2.11.0 or later: its commands now live in the core and would show twice. Whoever already prepared the Studio must prepare it again, once (Estúdio screen, Ambiente, Preparar).
+- **Marketing** (marketing accounts, skills and a guard for ad-account and public-post writes): part of tune-up, no install. Details: [`tune-up-mkt/README.md`](tune-up-mkt/README.md).
+
+Migration (2.19.0): the marketplace lists only `tune-up`. If you installed `tune-up-studio`, `tune-up-vendas` or `tune-up-mkt`, run `claude plugin marketplace update tune-up`, then `claude plugin update tune-up@tune-up`, then restart Claude Code, in this order (on a local clone, `git pull` in the clone first, as in the Windows note above). Then uninstall the old plugins: `claude plugin uninstall tune-up-studio@tune-up`, and the same for `tune-up-vendas` and `tune-up-mkt`. Keeping them is not harmless: the Studio's old commands point at files that no longer exist, and the old marketing and sales plugins duplicate the core (the marketing guard runs twice, the Vendas start hint shows twice, and the `/tune-up-mkt:*` skills appear next to `/tune-up:*`). Your data stays. This order was not yet measured on a real install.
 
 ## Guards (hooks)
 
@@ -178,6 +178,7 @@ Hooks run as Python scripts through a small launcher (`scripts/py`) that finds `
 | Production / Supabase | Asks before a write to a production database or project (SQL, MCP Supabase tools, remote CLI) unless you asked for it in this turn. Always on; turn it off per project with `supabase_guard: false` in a trusted profile. |
 | Research mode | Turns on with phrases like "research only" or "do not change anything" (English and pt-BR). While on, writes outside the scratchpad, `/tmp`, Claude's memory, `~/.claude/plans`, the plans folder and your `research_free_paths` ask for confirmation. Leaves with "go ahead" or similar. |
 | Talk mode | Turns on with `/tune-up:talk`, "talk mode" or "modo conversa". Denies code writes (Write, Edit, MultiEdit and Bash) inside the project; allows notes in `.md` files under `docs/`, the plans folder and `.tune-up/`. Leaves with "let's build" or similar. |
+| Marketing | Asks or blocks writes to ad accounts and public posts, through MCP tools or commands. Fails open (the action goes through) on an internal error. Details: [`tune-up-mkt/README.md`](tune-up-mkt/README.md). |
 | Forbidden models | Subagents never run on models listed in `forbidden_subagent_models` of `user.json` (default: `fable`). Reviewers are forced to opus; a missing `effort` is filled from the role table. |
 | Self-protection | Asks before writing to Claude's `settings*.json`, `~/.claude/plugins/`, `~/.config/tune-up/` (profile and trust list), the plugin's own folder and any path in `protected_paths`. |
 | Line limit | A code file may not grow past 450 lines (configurable with `line_limit`; generated files, `node_modules`, `migrations` and similar are exempt). Put `tune-up: allow-long <reason>` in the first 5 lines of a file to allow it. Only Write, Edit and MultiEdit are checked. |

@@ -1,12 +1,12 @@
 ---
 name: content
 description: "Writes and reviews marketing copy and content pieces (posts, captions, ad text, emails, landing text) with a QA checklist. Use on: write a post, write ad copy, caption, review this copy, content plan; escrever post, legenda, texto de anúncio, revisar texto, calendário de conteúdo."
-allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py falta), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py falta *), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py status), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py status *)
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/contas.py falta), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/contas.py falta *), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/contas.py status), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/contas.py status *)
 ---
 
 # Content
 
-Reply in the `language` of `~/.config/tune-up/user.json` (English if missing) and call the user `owner`. Commands are `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/contas.py <command>`. State lives in `.tune-up/mkt/contas.json` and `.tune-up/mkt/config.json` (`site`, `canais`, `indexnow_key`, `credit_ask_above`, default 2000). Service ids are in `${CLAUDE_PLUGIN_ROOT}/servicos.json`.
+Reply in the `language` of `~/.config/tune-up/user.json` (English if missing) and call the user `owner`. Commands are `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" tune-up-mkt/scripts/contas.py <command>`. State lives in `.tune-up/mkt/contas.json` and `.tune-up/mkt/config.json` (`site`, `canais`, `indexnow_key`, `credit_ask_above`, default 2000). Service ids are in `${CLAUDE_PLUGIN_ROOT}/tune-up-mkt/servicos.json`.
 
 ## Step 0 - Check what is connected
 
