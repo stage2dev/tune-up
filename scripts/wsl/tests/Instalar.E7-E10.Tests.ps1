@@ -31,15 +31,17 @@ Describe 'E7..E10 full run' {
         $esperado = @("${R}/usr/bin/test|-x|/usr/local/bin/tune-up-exec", "${R}/bin/rm|-f|/etc/tune-up/pronto.json") + $copia + @(
             "${R}${P}--raiz",
             "${T}/usr/bin/test|-x|/home/tuneup/.local/bin/claude",
+            "${T}/usr/bin/test|-d|/home/tuneup",
             '--terminate|tune-up',
             "${T}${P}--versao-plugin",
+            "${R}/bin/rm|-f|/etc/tune-up/pronto.json",
             "${T}${P}--usuario|--plugin|/mnt/c/tune-up",
             "${T}/home/tuneup/.local/bin/claude|auth|status",
             "${R}/usr/bin/test|-f|/etc/tune-up/pronto.json",
             "${T}${P}--verificar|--plugin|/mnt/c/tune-up",
             "${R}${P}--fechar",
             "${T}/usr/bin/test|-x|/home/tuneup/.local/bin/claude",
-            "${T}/home/tuneup/.local/bin/claude|agents|--json",
+            "${T}/home/tuneup/.local/bin/claude|agents|--json|--all",
             '--terminate|tune-up',
             "${R}${P}--marcar|--plugin-versao|$VersaoPluginReal")
         (Get-ChamadasDistro) -join "`n" | Should -BeExactly ($esperado -join "`n")
@@ -92,13 +94,26 @@ Describe 'E7..E10 full run' {
         (Get-Indice '--terminate') | Should -Be -1
     }
 
-    It 'E8 is redone when the plugin versions differ' {
+    It 'E8 is redone when the plugin versions differ, deleting the marker first so E10 re-marks' {
         Invoke-InstaladorTeste | Should -Be 0
         $global:TU.D.Plugin = '0.0.1'; $global:TU.Argvs.Clear()
         Invoke-InstaladorTeste -MesmaPasta | Should -Be 0
         @(Get-ChamadasDistro | Where-Object { $_ -like '*--usuario*' }).Count | Should -Be 1
         $global:TU.D.Plugin | Should -Be $VersaoPluginReal
         (Get-Indice '--raiz') | Should -Be -1
+        (Get-Indice '/bin/rm|-f|/etc/tune-up/pronto.json') | Should -BeLessThan (Get-Indice '--usuario')
+        (Get-Indice '/bin/rm|-f|/etc/tune-up/pronto.json') | Should -BeGreaterThan -1
+        (Get-Indice "--marcar|--plugin-versao|$VersaoPluginReal") | Should -BeGreaterThan (Get-Indice '--usuario')
+        $global:TU.D.Marca | Should -BeTrue
+    }
+
+    It 'E8 is redone when the plugin version matches but --verificar fails (half-failed --usuario)' {
+        Invoke-InstaladorTeste | Should -Be 0
+        $global:TU.D.Parcial = $true; $global:TU.Argvs.Clear()
+        Invoke-InstaladorTeste -MesmaPasta | Should -Be 0
+        (Get-Indice '--verificar') | Should -BeLessThan (Get-Indice '--usuario')
+        @(Get-ChamadasDistro | Where-Object { $_ -like '*--usuario*' }).Count | Should -Be 1
+        (Get-Indice '--marcar') | Should -BeGreaterThan (Get-Indice '--usuario')
     }
 
     It 'E10: --verificar failing stops before --fechar, shows and logs the report' {
@@ -154,9 +169,32 @@ Describe 'Live-session lock' {
         InModuleScope etapas { $script:Fixados = @{ DISTRO = 'tune-up' }; $script:Opcoes = @{ Forcar = $false }; $script:ArquivoLog = $null }
     }
 
-    It 'claude binary missing => proceeds without asking for sessions' {
+    It 'claude binary missing with /home/tuneup present => proceeds without asking for sessions' {
+        $global:TU.D.Raiz = $true
         { InModuleScope etapas { Test-SessaoViva } } | Should -Not -Throw
         @($global:TU.Argvs | Where-Object { $_ -contains 'agents' }).Count | Should -Be 0
+        @($global:TU.Argvs | Where-Object { ($_ -join '|') -eq '-d|tune-up|-u|tuneup|--exec|/usr/bin/test|-d|/home/tuneup' }).Count | Should -Be 1
+    }
+
+    It 'test -x exit 1 without /home/tuneup => refuses, -Forcar passes' {
+        { InModuleScope etapas { Test-SessaoViva } } | Should -Throw '*Não consegui conferir*'
+        @($global:TU.Argvs | Where-Object { $_ -contains 'agents' }).Count | Should -Be 0
+        InModuleScope etapas { $script:Opcoes.Forcar = $true }
+        { InModuleScope etapas { Test-SessaoViva } } | Should -Not -Throw
+    }
+
+    It 'only working/blocked/busy rows are live (<Nome>)' -ForEach @(
+        @{ Nome = 'done and stopped'; Saida = '[{"state":"done","status":"idle"},{"state":"stopped"},{"state":"completed"}]'; N = 0 }
+        @{ Nome = 'non-object rows'; Saida = '[1,"x",null]'; N = 0 }
+        @{ Nome = 'working'; Saida = '[{"state":"working"},{"state":"done"}]'; N = 1 }
+        @{ Nome = 'blocked and waiting'; Saida = '[{"state":"blocked"},{"state":"done","status":"waiting"}]'; N = 2 }
+        @{ Nome = 'status busy'; Saida = '[{"state":"done","status":"busy"}]'; N = 1 }
+        @{ Nome = 'unknown state, not idle'; Saida = '[{"state":"novo"},{"state":"novo","status":"idle"}]'; N = 1 }
+    ) {
+        $global:TU.D.TesteClaude = 0; $global:TU.D.AgentsSaida = $Saida
+        if ($N -eq 0) { { InModuleScope etapas { Test-SessaoViva } } | Should -Not -Throw }
+        else { { InModuleScope etapas { Test-SessaoViva } } | Should -Throw "*Há $N sessão*" }
+        @($global:TU.Argvs | Where-Object { ($_ -join '|') -like '*claude|agents|--json|--all' }).Count | Should -Be 1
     }
 
     It '<Nome> => proceeds' -ForEach @(@{ Nome = 'empty output'; Saida = '' }, @{ Nome = 'empty array'; Saida = " [ ]`n" }) {
@@ -168,7 +206,8 @@ Describe 'Live-session lock' {
         @{ Nome = 'a live session'; Codigo = 0; Saida = '[{"id":"x","status":"running"}]'; Erro = '*1 sessão*' }
         @{ Nome = 'agents --json failing'; Codigo = 1; Saida = ''; Erro = '*login pode ter expirado*' }
         @{ Nome = 'unparseable output'; Codigo = 0; Saida = 'Error: not logged in'; Erro = '*Não entendi*' }
-        @{ Nome = 'a single JSON object'; Codigo = 0; Saida = '{"id":"x"}'; Erro = '*1 sessão*' }
+        @{ Nome = 'a single JSON object'; Codigo = 0; Saida = '{"id":"x"}'; Erro = '*Não entendi*' }
+        @{ Nome = 'a JSON string'; Codigo = 0; Saida = '"x"'; Erro = '*Não entendi*' }
         @{ Nome = 'test -x failing oddly'; Codigo = 0; Saida = ''; Teste = 255; Erro = '*Não consegui conferir*' }
     ) {
         $global:TU.D.TesteClaude = if ($Teste) { $Teste } else { 0 }

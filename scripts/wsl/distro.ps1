@@ -59,13 +59,18 @@ function Wait-Segundos { param([int]$Segundos) Start-Sleep -Seconds $Segundos }
 # Returns $false, opening nothing, when an argument holds a cmd/wt metacharacter. Elements with spaces are
 # quoted here because Start-Process joins -ArgumentList with spaces (Assert-Argv already refused '"' and a
 # trailing backslash).
+function ConvertTo-ArgvCitado {
+    param([string[]]$Argv)
+    return @($Argv | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } })
+}
 function Start-Terminal {
     param([Parameter(Mandatory)][string[]]$Argv)
     Assert-Argv $Argv
     foreach ($a in $Argv) { if ($a -match $script:MetacharWin) { return $false } }
-    $lista = @($Argv | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } })
-    if (Get-Command 'wt.exe' -ErrorAction SilentlyContinue) {
-        Start-Process -FilePath 'wt.exe' -ArgumentList (@('-w', '0', 'nt') + $lista)
+    $lista = ConvertTo-ArgvCitado $Argv
+    $wt = @(Get-Command 'wt.exe' -CommandType Application -ErrorAction SilentlyContinue) | Select-Object -First 1
+    if ($wt) {
+        Start-Process -FilePath $wt.Source -ArgumentList (@('-w', '0', 'nt') + $lista)
     } else {
         Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList (@('/c', 'start', '""') + $lista)
     }
@@ -93,25 +98,50 @@ function Remove-Marca {
     if ($r.Codigo -ne 0) { Stop-Instalador ('Não consegui apagar a marca de pronto da distro (código {0}).' -f $r.Codigo) }
 }
 
-# Live-session lock, run before every --terminate and --unregister. Assumption (the JSON shape of
-# `claude agents --json` is not confirmed for the pinned version): exit 0 with empty output or an empty
-# JSON array means no session; anything else non-empty counts every entry as live (fail closed). Any
-# other failure refuses too. -Forcar overrides. The command output is never logged or shown.
+# One `claude agents --json --all` row counts as live when painel/agentes.py (_estado_basico, no idle
+# time known) maps it to rodando or precisa_de_voce: the same field names (state, status) and values.
+function Test-LinhaViva {
+    param($Linha)
+    $st = ''; $ss = ''
+    foreach ($p in $Linha.PSObject.Properties) {
+        if ($p.Name -eq 'state') { $st = "$($p.Value)".ToLowerInvariant() }
+        if ($p.Name -eq 'status') { $ss = "$($p.Value)".ToLowerInvariant() }
+    }
+    if ($st -eq 'blocked' -or $ss -eq 'waiting' -or $ss -eq 'busy') { return $true }
+    if ($st -in 'working', 'running', 'busy', 'active') { return $true }
+    if ($st -in 'done', 'completed', 'finished', 'stopped', 'killed', 'failed', 'error', 'exited') { return $false }
+    return ($ss -ne 'idle')
+}
+
+# Live-session lock, run before every --terminate and --unregister. Field names follow painel/agentes.py
+# (measured on CLI 2.1.322, not confirmed for the pinned version). Assumption kept from A3b: exit 0 with
+# empty output means no session. Output that is not a JSON array refuses (fail closed); so does any other
+# failure. -Forcar overrides. The command output is never logged or shown.
 function Test-SessaoViva {
     $u = $script:UsuarioDistro
     $c = Invoke-NaDistro $u @('/usr/bin/test', '-x', $script:ClaudeDistro)
-    if ($c.Codigo -eq 1) { Write-Log 'trava: claude nao instalado, sem sessao'; return }
+    $cod = $c.Codigo
+    if ($cod -eq 1) {
+        # exit 1 means "no binary" only when the user's home is really there (else -u tuneup itself failed)
+        if ((Invoke-NaDistro $u @('/usr/bin/test', '-d', '/home/tuneup')).Codigo -eq 0) { Write-Log 'trava: claude nao instalado, sem sessao'; return }
+        $cod = -1
+    }
     $motivo = $null
-    if ($c.Codigo -ne 0) {
+    if ($cod -ne 0) {
         $motivo = 'Não consegui conferir se o Claude está aberto na distro'
     } else {
-        $r = Invoke-NaDistro $u @($script:ClaudeDistro, 'agents', '--json')
+        $r = Invoke-NaDistro $u @($script:ClaudeDistro, 'agents', '--json', '--all')
         $t = "$($r.Saida)".Trim()
         if ($r.Codigo -ne 0) {
             $motivo = 'Não consegui conferir as sessões abertas do Claude na distro (o login pode ter expirado)'
         } elseif ($t) {
             $n = -1
-            try { $n = @(ConvertFrom-Json -InputObject $t | ForEach-Object { $_ }).Count } catch { $n = -1 }
+            if ($t.StartsWith('[')) {
+                try {
+                    $n = @(ConvertFrom-Json -InputObject $t | ForEach-Object { $_ } |
+                        Where-Object { $_ -is [Management.Automation.PSCustomObject] -and (Test-LinhaViva $_) }).Count
+                } catch { $n = -1 }
+            }
             if ($n -lt 0) { $motivo = 'Não entendi a resposta do Claude sobre as sessões abertas' }
             elseif ($n -gt 0) { $motivo = 'Há {0} sessão(ões) do Claude aberta(s) na distro' -f $n }
         }
@@ -164,9 +194,12 @@ function Fazer-E7 {
 function Testar-E8 {
     $v = Invoke-Preparar $script:UsuarioDistro @('--versao-plugin')
     if ($v.Codigo -ne 0 -or "$($v.Saida)".Trim() -ne (Get-VersaoPlugin)) { return $false }
-    return ((Invoke-NaDistro $script:UsuarioDistro @('/usr/bin/test', '-x', $script:ClaudeDistro)).Codigo -eq 0)
+    if ((Invoke-NaDistro $script:UsuarioDistro @('/usr/bin/test', '-x', $script:ClaudeDistro)).Codigo -ne 0) { return $false }
+    # a half-failed --usuario (Chrome or HyperFrames) keeps the new plugin version: verify the whole install
+    return ((Invoke-Preparar $script:UsuarioDistro @('--verificar', '--plugin', (Get-RaizRepoWsl))).Codigo -eq 0)
 }
 function Fazer-E8 {
+    Remove-Marca   # a redone E8 must redo E10 and re-mark with the new plugin version
     $r = Invoke-Preparar $script:UsuarioDistro @('--usuario', '--plugin', (Get-RaizRepoWsl))
     if ($r.Codigo -ne 0) { Stop-Preparar '--usuario' $r.Codigo }
 }
@@ -182,7 +215,7 @@ function Fazer-E9 {
     $base = @($wsl, '-d', $script:Fixados.DISTRO, '-u', $script:UsuarioDistro)
     $argv = $base + @('--cd', '~', '--exec', '/usr/bin/env', 'BROWSER=/usr/local/bin/tune-up-abrir', $script:ClaudeDistro, 'auth', 'login')
     if (-not (Start-Terminal -Argv $argv)) {
-        Stop-Instalador ('Não consegui abrir uma janela nova. Rode este comando no PowerShell e depois rode o instalador de novo: {0}' -f ($argv -join ' '))
+        Stop-Instalador ('Não consegui abrir uma janela nova. Rode este comando no PowerShell e depois rode o instalador de novo: {0}' -f ((ConvertTo-ArgvCitado $argv) -join ' '))
     }
     Write-Mensagem 'Abri uma janela nova para você entrar na sua conta do Claude. Siga o que aparece nela; eu espero aqui por até 15 minutos.'
     $limite = (Get-Agora) + 900
@@ -209,7 +242,7 @@ function Open-Projeto {
     if (Start-Terminal -Argv $proj) {
         Write-Mensagem 'Abri o Claude na pasta do projeto: aceite a confiança na pasta e feche.'
     } else {
-        Write-Mensagem ('Não consegui abrir o Claude na pasta do projeto. Depois, rode: {0}' -f ($proj -join ' '))
+        Write-Mensagem ('Não consegui abrir o Claude na pasta do projeto. Depois, rode: {0}' -f ((ConvertTo-ArgvCitado $proj) -join ' '))
     }
 }
 
@@ -237,6 +270,7 @@ function Assert-DistroNossa {
 function Invoke-Login {
     Assert-DistroNossa
     $script:EtapaAtual = 9
+    Test-SessaoViva   # refuse before touching the marker or wsl.conf
     Remove-Marca
     $r = Invoke-Preparar 'root' @('--abrir-interop')
     if ($r.Codigo -ne 0) { Stop-Preparar '--abrir-interop' $r.Codigo }

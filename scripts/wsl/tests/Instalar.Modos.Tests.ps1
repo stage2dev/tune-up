@@ -10,7 +10,8 @@ BeforeAll {
                 '*/bin/rm|-f|/etc/tune-up/pronto.json' { 'rm-marca' }
                 '*--abrir-interop' { 'abrir-interop' }
                 '*/usr/bin/test|-x|/home/tuneup/.local/bin/claude' { 'lock' }
-                '*agents|--json' { 'lock' }
+                '*/usr/bin/test|-d|/home/tuneup' { 'lock' }
+                '*agents|--json|--all' { 'lock' }
                 '--terminate|*' { 'terminate' }
                 '*auth|status' { 'auth' }
                 '*--verificar*' { 'verificar' }
@@ -36,10 +37,19 @@ Describe '-Login' {
         Invoke-Pronto
         $global:TU.D.Auth = $false; $global:TU.LoginEm = $global:TU.Agora + 5
         Invoke-InstaladorTeste -MesmaPasta -Extra @{ Login = $true } | Should -Be 0
-        Get-Rotulos | Should -Be 'rm-marca,abrir-interop,lock,terminate,auth,verificar,fechar,lock,terminate,marcar'
+        Get-Rotulos | Should -Be 'lock,rm-marca,abrir-interop,lock,terminate,auth,verificar,fechar,lock,terminate,marcar'
         $global:TU.Terminais.Count | Should -Be 1
         $global:TU.D.Marca | Should -BeTrue
         $global:TU.D.Interop | Should -BeFalse
+    }
+
+    It 'a live session refuses before the marker is deleted or interop opened' {
+        Invoke-Pronto
+        $global:TU.D.AgentsSaida = '[{"state":"working"}]'
+        Invoke-InstaladorTeste -MesmaPasta -Extra @{ Login = $true } | Should -Be 1
+        @(Get-ChamadasDistro | Where-Object { $_ -match '/bin/rm|--abrir-interop|--terminate' }).Count | Should -Be 0
+        $global:TU.D.Marca | Should -BeTrue
+        $global:TU.D.Conf | Should -Be 'off'
     }
 
     It 'refuses when the distro is not installed' {
@@ -56,10 +66,18 @@ Describe '-Atualizar' {
         $global:TU.D.Plugin = '0.0.1'
         Invoke-InstaladorTeste -MesmaPasta -Extra @{ Atualizar = $true } | Should -Be 0
         $escritas = @(Get-ArgvsDeEscrita | ForEach-Object { $_ -join '|' })
-        @($escritas | Where-Object { $_ -notmatch '/usr/bin/install|--usuario|--marcar' }).Count | Should -Be 0
+        @($escritas | Where-Object { $_ -notmatch '/usr/bin/install|/bin/rm\|-f\|/etc/tune-up/pronto\.json|--usuario|--marcar' }).Count | Should -Be 0
         @($escritas | Where-Object { $_ -match '--marcar' }).Count | Should -Be 1
-        Get-Rotulos | Should -Be 'copia,usuario,marcar'
+        Get-Rotulos | Should -Be 'copia,rm-marca,usuario,marcar'
         $global:TU.D.Plugin | Should -Be $VersaoPluginReal
+    }
+
+    It 'a half-failed --usuario leaves no valid marker' {
+        Invoke-Pronto
+        $global:TU.D.Codigos['--usuario'] = 8
+        Invoke-InstaladorTeste -MesmaPasta -Extra @{ Atualizar = $true } | Should -Be 1
+        $global:TU.D.Marca | Should -BeFalse
+        Get-Rotulos | Should -Be 'copia,rm-marca,usuario'
     }
 
     It '--marcar exiting 7 points to -Login or the full installer' {
@@ -225,9 +243,10 @@ Describe 'Start-Terminal' {
     AfterEach { $env:SystemRoot = $global:TU.SystemRoot }
 
     It 'uses wt.exe new-tab with the argv, quoting elements with spaces' {
-        Mock -ModuleName etapas Get-Command -ParameterFilter { $Name -eq 'wt.exe' } { [pscustomobject]@{ Name = 'wt.exe' } }
+        $wt = 'C:\Users\Jo Silva\AppData\Local\Microsoft\WindowsApps\wt.exe'
+        Mock -ModuleName etapas Get-Command -ParameterFilter { $Name -eq 'wt.exe' -and $CommandType -eq 'Application' } { [pscustomobject]@{ Name = 'wt.exe'; Source = $wt } }
         InModuleScope etapas { Start-Terminal -Argv @('C:\Windows\System32\wsl.exe', '--cd', '/mnt/c/a b', '--exec', 'x') } | Should -BeTrue
-        $global:TU.Inicio.Arquivo | Should -Be 'wt.exe'
+        $global:TU.Inicio.Arquivo | Should -Be $wt
         ($global:TU.Inicio.Args -join '|') | Should -BeExactly '-w|0|nt|C:\Windows\System32\wsl.exe|--cd|"/mnt/c/a b"|--exec|x'
     }
 
@@ -236,6 +255,18 @@ Describe 'Start-Terminal' {
         InModuleScope etapas { Start-Terminal -Argv @('C:\Windows\System32\wsl.exe', '-d', 'tune-up') } | Should -BeTrue
         $global:TU.Inicio.Arquivo | Should -Be 'C:\Windows\System32\cmd.exe'
         ($global:TU.Inicio.Args -join '|') | Should -BeExactly '/c|start|""|C:\Windows\System32\wsl.exe|-d|tune-up'
+    }
+
+    It 'a terminal that cannot open prints the command with the spaced element quoted' {
+        Mock -ModuleName etapas Start-Terminal { $false }
+        Mock -ModuleName etapas Write-Mensagem { $null = $global:TU.Msgs.Add($Texto) }
+        Mock -ModuleName etapas Get-CaminhoWsl { 'C:\Windows\System32\wsl.exe' }
+        Mock -ModuleName etapas ConvertTo-CaminhoWsl { '/mnt/c/a b' }
+        InModuleScope etapas {
+            $script:Fixados = @{ DISTRO = 'tune-up' }; $script:Opcoes = @{ Projeto = 'C:\a b' }; $script:ProjetoPendente = $true
+            Open-Projeto
+        }
+        ($global:TU.Msgs -join "`n") | Should -BeLike '*C:\Windows\System32\wsl.exe -d tune-up -u tuneup --cd "/mnt/c/a b" --exec /home/tuneup/.local/bin/claude'
     }
 
     It 'refuses a cmd/wt metacharacter (<C>) and opens nothing' -ForEach @(@{ C = '&' }, @{ C = ';' }, @{ C = '%' }, @{ C = '(' }) {

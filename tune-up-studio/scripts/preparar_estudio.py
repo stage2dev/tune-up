@@ -178,7 +178,11 @@ def gravar(dados, conteudo):
 
 
 def _instalar(node_dir, npm, rodar):
-    """Run PASSOS in node_dir. Returns (passos, pronto); node_modules is removed when the audit fails."""
+    """Run PASSOS in node_dir. Returns (passos, pronto); node_modules is removed when the audit fails.
+    The signature stamp goes first in every path; only _so_instalar writes it back after the audit."""
+    selo = os.path.join(node_dir, va.SELO)
+    if os.path.lexists(selo):
+        os.remove(selo)
     passos, pronto = [], True
     for nome, args, limite in PASSOS:
         t0 = time.monotonic()
@@ -292,9 +296,7 @@ def _so_instalar(wsl, home, rodar, which, studio, plataforma=None):
             chave = chave_do_ambiente(studio)
             destino = _destino_linux(home, chave)
             _copiar_pacote(studio, destino)
-            selo = os.path.join(destino, va.SELO)  # gone before npm ci: a killed run leaves no stamp
-            if os.path.lexists(selo):
-                os.remove(selo)
+            selo = os.path.join(destino, va.SELO)  # _instalar deletes it before npm ci
         except OSError as e:
             print("Não consegui preparar a pasta: %s" % e)
             return 1
@@ -302,11 +304,14 @@ def _so_instalar(wsl, home, rodar, which, studio, plataforma=None):
         try:
             passos, pronto = _instalar(destino, npm, rodar)
             if pronto:
-                with open(selo + ".tmp", "w", encoding="utf-8") as f:
-                    f.write(chave + "\n")
-                os.replace(selo + ".tmp", selo)
+                try:
+                    with open(selo + ".tmp", "w", encoding="utf-8") as f:
+                        f.write(chave + "\n")
+                    os.replace(selo + ".tmp", selo)
+                except OSError as e:
+                    pronto, passos = False, [{"passo": "selo de assinatura", "saida": str(e)}]
         except OSError as e:
-            pronto, passos = False, [{"passo": "selo de assinatura", "saida": str(e)}]
+            pronto, passos = False, [{"passo": "instalação", "saida": str(e)}]
         finally:  # never leave an unverified node_modules (failure or Ctrl+C before the audit passed)
             if not pronto:
                 shutil.rmtree(os.path.join(destino, "node_modules"), ignore_errors=True)

@@ -38,7 +38,8 @@ function New-Maquina {
         Admin = $false; ListaCodigo = 0; Terminais = New-Object System.Collections.ArrayList; TerminalAbre = $true; LoginEm = $null
         # Fake distro: Conf = wsl.conf on disk ('on' = interop on), Interop = what the running distro has.
         D = @{ Raiz = $false; Padrao = 'root'; Conf = 'on'; Interop = $true; Plugin = ''; Claude = $false; Auth = $true
-            Marca = $false; Codigos = @{}; TesteClaude = $null; AgentsCodigo = 0; AgentsSaida = ''; Verificar = 'RELATORIO-VERIFICAR' }
+            Marca = $false; Codigos = @{}; TesteClaude = $null; AgentsCodigo = 0; AgentsSaida = ''; Verificar = 'RELATORIO-VERIFICAR'
+            Parcial = $false }   # Parcial: a half-failed --usuario left --verificar failing
     }
 }
 
@@ -53,7 +54,7 @@ function Invoke-DistroFalsa {
     if ($cmd -like '/bin/bash /usr/local/lib/tune-up/preparar.sh *') {
         $modo = $Argv[$i + 3]
         if ($D.Codigos.ContainsKey($modo)) { $r.Codigo = $D.Codigos[$modo] }
-        if ($modo -eq '--verificar') { $r.Saida = $D.Verificar }   # the report prints on success and failure
+        if ($modo -eq '--verificar') { $r.Saida = $D.Verificar; if ($D.Parcial) { $r.Codigo = 1 } }   # the report prints on success and failure
     }
     switch -Exact ($cmd) {
         '/usr/bin/test -x /usr/local/bin/tune-up-exec' { if (-not $D.Raiz) { $r.Codigo = 1 } }
@@ -63,7 +64,8 @@ function Invoke-DistroFalsa {
         '/usr/bin/test -x /home/tuneup/.local/bin/claude' {
             if ($null -ne $D.TesteClaude) { $r.Codigo = $D.TesteClaude } elseif (-not $D.Claude) { $r.Codigo = 1 }
         }
-        '/home/tuneup/.local/bin/claude agents --json' { $r.Codigo = $D.AgentsCodigo; $r.Saida = $D.AgentsSaida }
+        '/usr/bin/test -d /home/tuneup' { if (-not $D.Raiz) { $r.Codigo = 1 } }
+        '/home/tuneup/.local/bin/claude agents --json --all' { $r.Codigo = $D.AgentsCodigo; $r.Saida = $D.AgentsSaida }
         '/home/tuneup/.local/bin/claude auth status' { $r.Saida = 'SEGREDO-AUTH pessoa@exemplo.com'; if (-not $D.Auth) { $r.Codigo = 1 } }
         '/usr/bin/test -f /etc/tune-up/pronto.json' { if (-not $D.Marca) { $r.Codigo = 1 } }
         '/usr/bin/printenv WSL_INTEROP' { if ($D.Interop) { $r.Saida = '/run/WSL/1_interop' } else { $r.Codigo = 1 } }
@@ -71,7 +73,7 @@ function Invoke-DistroFalsa {
     if ($modo -and $r.Codigo -eq 0) {
         switch ($modo) {
             '--raiz' { $D.Raiz = $true; $D.Conf = 'on'; $D.Marca = $false }
-            '--usuario' { $D.Plugin = $VersaoPluginReal; $D.Claude = $true }
+            '--usuario' { $D.Plugin = $VersaoPluginReal; $D.Claude = $true; $D.Parcial = $false }
             '--versao-plugin' { if ($D.Plugin) { $r.Saida = $D.Plugin } else { $r.Codigo = 1 } }
             '--fechar' { $D.Conf = 'off' }
             '--abrir-interop' { $D.Marca = $false; $D.Conf = 'on' }

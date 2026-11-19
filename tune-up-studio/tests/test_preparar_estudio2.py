@@ -83,6 +83,31 @@ class TestSelo(Base):
         os.remove(self.selo)
         self.assertEqual(va.hyperframes(self.destino, selo=True)[0][0], va.ERRO)
 
+    def test_instalar_do_painel_apaga_o_selo_velho_e_nao_grava(self):
+        self.velho()
+        visto = []
+        base = self.rodar([0, 0])
+
+        def f(cmd, cwd, timeout):
+            visto.append(os.path.lexists(self.selo))
+            return base(cmd, cwd, timeout)
+        self.assertTrue(pe._instalar(self.destino, "/bin/npm", f)[1])
+        self.assertEqual(visto, [False, False])
+        self.assertFalse(os.path.lexists(self.selo))
+
+    def test_oserror_do_npm_nao_vira_falha_do_selo(self):
+        self.velho()
+
+        def quebra(cmd, cwd, timeout):
+            raise OSError("npm sumiu")
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            codigo = pe.main(["--so-instalar"], wsl=lambda: None, home=self.home, rodar=quebra,
+                             which=lambda n: "/bin/" + n, studio=self.studio, plataforma="linux")
+        self.assertEqual(codigo, 1)
+        self.assertIn("npm sumiu", out.getvalue())
+        self.assertNotIn("selo de assinatura", out.getvalue())
+        self.assertFalse(os.path.lexists(self.selo))
+
 
 class TestTravaErro(Base):
     def test_erro_de_trava_no_main_grava_nao_pronto(self):
