@@ -77,6 +77,7 @@ def bloco(acao, workspace, dados_dir, wsl=None):
         # o caso geral (.eNv, curinga) fica no gancho (travas._wsl)
         caixa = sorted({x.upper() for x in SEGREDOS} | {x.title() for x in SEGREDOS})
         fs["denyRead"] += win + ([ws + "/" + x for x in caixa] + [ws + "/**/" + x for x in caixa] if ws else [])
+        negar += ["Read(%s/**/%s)" % (caminho_de_regra(ws), x) for x in caixa] if ws else []
         negar += ["Read(/%s/**)" % x for x in win]
     perm["blockWritesOutsideWorkingDirectories"] = True
     return topo, negar, perm

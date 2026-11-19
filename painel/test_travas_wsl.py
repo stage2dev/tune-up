@@ -116,6 +116,13 @@ class TesteSettingsWsl(unittest.TestCase):
         host = test_sandbox.settings(test_sandbox.fixture())["sandbox"]["filesystem"]["denyRead"]
         self.assertFalse([x for x in host if ".ENV" in x or ".Env" in x])
 
+    def test_permissions_deny_variantes_de_caixa(self):
+        negar = self.cfg["permissions"]["deny"]
+        for x in (".ENV*", ".Env*", "*.PEM", "*.Pem", "*.KEY", "*.Key"):
+            self.assertIn("Read(/%s/**/%s)" % (WS_W, x), negar)
+        hnegar = test_sandbox.settings(test_sandbox.fixture())["permissions"]["deny"]
+        self.assertFalse([x for x in hnegar if ".ENV" in x or ".Env" in x or "PEM" in x])
+
 
 class TesteDecidirWsl(unittest.TestCase):
     def setUp(self):
