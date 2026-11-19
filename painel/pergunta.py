@@ -17,7 +17,7 @@ def arquivo(cfg, sid):
     return os.path.join(cfg["dados_dir"], "perguntas", sid + ".json")
 
 
-def ler(cfg, sid, reg=None):
+def ler(cfg, sid, reg=None, pastas=None):
     """Pergunta de múltipla escolha que a sessão quis fazer (gravada pelo gancho em travas.py).
 
     O arquivo mora numa pasta em que a sessão pode escrever: é lido como dado não confiável
@@ -36,7 +36,8 @@ def ler(cfg, sid, reg=None):
         comeco = max(float((reg or {}).get("iniciada_ts") or 0), float((reg or {}).get("respondida_ts") or 0))
         if info.st_mtime < comeco - 2:
             return None
-        ult = transcricao.ultima_atividade(cfg["projects_dir"], sid, cfg["workspace"])
+        pasta, cwd = pastas or (cfg["projects_dir"], cfg["workspace"])  # pastas: (projects dir, cwd) of a WSL run
+        ult = None if pasta is None else transcricao.ultima_atividade(pasta, sid, cwd)
         if ult is not None and ult > info.st_mtime + PERGUNTA_VALE:
             return None  # a sessão seguiu trabalhando depois de perguntar: a pergunta ficou para trás
         lista = dado.get("perguntas") if isinstance(dado, dict) else None

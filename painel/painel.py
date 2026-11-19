@@ -325,8 +325,7 @@ def fazer_handler(app):
             desde = (query.get("desde") or ["0"])[0]
             if not re.fullmatch(r"\d{1,15}", desde):
                 return self._erro(400, "O número 'desde' é inválido.")
-            caminho = transcricao.localizar(app.cfg["projects_dir"], ex.get("sessao_id") or reg.get("sessao_id"),
-                                            reg.get("cwd") or app.cfg["workspace"])
+            caminho = lanc.lancador_wsl.localizar(app.lancador, reg, ex.get("sessao_id") or reg.get("sessao_id"))  # its side
             inteiro = (query.get("inteiro") or ["0"])[0] in ("1", "true")
             dado = transcricao.ler(caminho, int(desde),
                                    corte_fala=transcricao.CORTE_INTEIRO if inteiro else transcricao.CORTE)

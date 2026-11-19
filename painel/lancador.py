@@ -110,21 +110,21 @@ class Lancador:
 
     def esquecer_agentes(self):
         with self._trava_agentes:
-            self._agentes = (0.0, None)
+            self._agentes, self._agentes_wsl = (0.0, None), None
 
-    def comando_attach(self, exec_id):
+    def comando_attach(self, exec_id, reg=None):
+        if lancador_wsl.e_wsl(reg):
+            return lancador_wsl.comando_attach(exec_id)
         if self.plataforma == "win32":
             return subprocess.list2cmdline([self.cfg["claude_bin"], "attach", exec_id])
         return "%s attach %s" % (shlex.quote(self.cfg["claude_bin"]), exec_id)
 
-    def _estado(self, reg, agente, agora):
+    def _estado(self, reg, agente, agora, agora_w=None):
         ocioso = ult = None
         sid = str((agente or {}).get("sessionId") or reg.get("sessao_id") or "")
         if agente and sid:
-            try:
-                import transcricao
-                ult = transcricao.ultima_atividade(self.cfg["projects_dir"], sid, reg.get("cwd") or self.cfg["workspace"])
-                ocioso = None if ult is None else time.time() - ult
+            try:  # WSL: idle on the distro clock (agora_w), transcript under cwd_wsl
+                ocioso, ult = lancador_wsl.ocioso(self, reg, sid, agora, agora_w)
             except Exception:
                 ocioso = ult = None
         estado = mapear_estado(reg, agente, agora, ocioso)
@@ -148,11 +148,11 @@ class Lancador:
                 caixa["regras"] = None
         return caixa["regras"] is not None and set(caixa["regras"]) <= set(reg.get("negar_modulos") or [])
 
-    def _como_execucao(self, reg, agentes, agora, caixa=None):
+    def _como_execucao(self, reg, agentes, agora, caixa=None, agora_w=None):
         if agentes is None:  # CLI falhou: mantém o último estado visto
             estado = self._ultimo.get(reg["id"], "rodando")
         else:
-            estado = self._ultimo[reg["id"]] = self._estado(reg, agentes.get(reg["id"]), agora)
+            estado = self._ultimo[reg["id"]] = self._estado(reg, agentes.get(reg["id"]), agora, agora_w)
         out = {k: reg.get(k) for k in ("id", "nome", "acao", "titulo", "iniciada_em", "trabalho")}
         out["grupo"] = out["area"] = reg.get("grupo") or reg.get("area") or ""
         sid = reg.get("sessao_id") or ""
@@ -169,14 +169,14 @@ class Lancador:
             and self._regras_cabem(reg, {} if caixa is None else caixa))
         responde = acorda and (estado in RESPONDIVEIS or perguntou)
         out.update(sessao_id=sid, params=reg.get("params") or {}, estado=estado,
-                   comando_attach=self.comando_attach(reg["id"]), modelo=reg.get("modelo") or "",
+                   comando_attach=self.comando_attach(reg["id"], reg), modelo=reg.get("modelo") or "",
                    esforco=reg.get("esforco") or "", pode_responder=responde, habilidades=reg.get("habilidades") or [],
                    # mandar mensagem com a sessão trabalhando ou esperando: para a vez dela e continua na mesma sessão
                    pode_interromper=acorda and estado in ATIVOS)
         # Espera presa no terminal (pedido de permissão): escrever no chat cancela o pedido, não o responde.
         out["espera_terminal"] = bool(estado == "precisa_de_voce" and not perguntou
                                       and linha is not None and linha.get("waitingFor"))
-        achada = pergunta.ler(self.cfg, sid, reg) if responde else None
+        achada = pergunta.ler(self.cfg, sid, reg, lancador_wsl.pastas(self, reg)) if responde else None
         if achada:
             out["pergunta"] = achada
         for k in ("fase", "parte", "falha"):
@@ -190,18 +190,19 @@ class Lancador:
         `travado=True` quando quem chama já segura a trava do registro (flock não é reentrante).
         """
         regs = self.registro.ler()
-        agentes = self.agentes(forcar)
-        agora = self.relogio()
+        lados = lancador_wsl.Lados(self, regs, forcar)  # host and WSL lists; each record reads its own side
+        agora, agora_w = self.relogio(), lados.agora_w
         novos = {}
         for r in regs:  # aprende o sessionId completo e quando terminou (sobrevive ao `claude rm`)
+            agentes = lados.de(r)
             a = (agentes or {}).get(r["id"]) or {}
             sid = str(a.get("sessionId") or "")
             if not r.get("sessao_id") and RE_SESSAO.match(sid) and sid.startswith(r["id"]):
                 r["sessao_id"] = novos.setdefault(r["id"], {})["sessao_id"] = sid
-            if a and not r.get("terminou_em") and self._estado(r, a, agora) == "terminou":
+            if a and not r.get("terminou_em") and self._estado(r, a, agora, agora_w) == "terminou":
                 r["terminou_em"] = novos.setdefault(r["id"], {})["terminou_em"] = agora_iso(agora)
             if agentes is not None and teto.tem_teto(r):  # passou do tempo: `claude stop` e marca falha
-                campos = teto.conferir(r, self._estado(r, agentes.get(r["id"]), agora), agora, self._parar_cli)
+                campos = teto.conferir(r, self._estado(r, agentes.get(r["id"]), agora, agora_w), agora, self._parar_cli)
                 if campos:
                     r.update(campos)
                     novos.setdefault(r["id"], {}).update(campos)
@@ -217,7 +218,7 @@ class Lancador:
                                 r[k] = v
                     self.registro.gravar(atual)
         caixa = {}  # regras dos módulos: lidas no máximo uma vez por lista
-        lista = [self._como_execucao(r, agentes, agora, caixa) for r in regs]
+        lista = [lados.marcar(self._como_execucao(r, lados.de(r), agora, caixa, agora_w), r) for r in regs]
         return sorted(lista, key=lambda e: e["iniciada_em"] or "", reverse=True)
 
     def achar(self, exec_id):
@@ -336,7 +337,7 @@ class Lancador:
         if not set(agora_negar) <= set(reg.get("negar_modulos") or []):
             raise ErroAcao("As regras das telas mudaram depois que esta conversa começou. "
                            "Comece uma conversa nova.", 409, exec_id)
-        bin_, ws = self.cfg["claude_bin"], self.cfg["workspace"]
+        ws = self.cfg["workspace"]
         with self._trava:
             todas = self.execucoes(forcar=True)
             ex = next((e for e in todas if e["id"] == exec_id), None)
@@ -355,21 +356,22 @@ class Lancador:
             if not ativa and len(ativas) >= self.cfg["max_execucoes"]:  # a que já roda já ocupa a vaga dela
                 raise ErroAcao("Já tem %d rodando ao mesmo tempo. Espere uma acabar ou pare uma."
                                % len(ativas), 409, ativas[0]["id"])
-            cod, out, err = self.rodar([bin_, "stop", exec_id], ws, 20)
+            cod, out, err = self.rodar(lancador_wsl.cli(self, reg, "stop", exec_id), ws, 20)
             if cod != 0 and "No job matching" not in err + out:
                 raise ErroAcao("Não consegui preparar a sessão para continuar.", 500)
             for tentativa in (1, 2):
-                self._esperar_processo_sair(exec_id)
-                cod, out, err = self.rodar([bin_, "--bg", "--resume", ex["sessao_id"], texto], ws, 60)
+                self._esperar_processo_sair(exec_id, reg)
+                cod, out, err = self.rodar(lancador_wsl.retomar(self, reg, ex["sessao_id"], texto), ws, 60)
                 m = RE_SAIDA.search(RE_ANSI.sub("", out + "\n" + err))
                 if cod != 0 or not m:
+                    lancador_wsl.portao(self, cod, reg)  # WSL gate 97: zerar + 409
                     raise ErroAcao("Não consegui continuar a conversa. Veja se o comando claude funciona.", 500)
                 if m.group(1) == exec_id:
                     break
                 # Veio uma cópia (visto de verdade: o `stop` volta antes de o processo antigo sair).
                 # A cópia não fica: para, apaga e tenta mais uma vez.
-                parou = self.rodar([bin_, "stop", m.group(1)], ws, 20)[0] == 0
-                self.rodar([bin_, "rm", m.group(1)], ws, 20)
+                parou = self.rodar(lancador_wsl.cli(self, reg, "stop", m.group(1)), ws, 20)[0] == 0
+                self.rodar(lancador_wsl.cli(self, reg, "rm", m.group(1)), ws, 20)
                 self.esquecer_agentes()
                 if not parou:  # a cópia pode seguir viva: entra no registro para aparecer na tela e contar no teto
                     t = self.relogio()
@@ -396,28 +398,27 @@ class Lancador:
         out["estado"] = self._ultimo[exec_id] = "rodando"  # acabou de acordar; a lista do CLI ainda não foi relida
         return out
 
-    def _esperar_processo_sair(self, exec_id, vezes=12, pausa=0.5):
+    def _esperar_processo_sair(self, exec_id, reg=None, vezes=12, pausa=0.5):
         """Depois do `claude stop`: espera a linha da sessão ficar sem processo (sem pid e sem status).
 
         Medido no CLI 2.1.322: sessão viva tem `pid` e `status`; parada fica só com `state`.
         """
         for _ in range(vezes):
-            linha = (self.agentes(forcar=True) or {}).get(exec_id)
+            linha = (lancador_wsl.agentes_de(self, reg, True) or {}).get(exec_id)
             if linha is None or (not linha.get("pid") and not linha.get("status")):
                 return True
             self.dormir(pausa)
         return False
 
     def _parar_cli(self, exec_id):
-        cod, out, err = self.rodar([self.cfg["claude_bin"], "stop", exec_id], self.cfg["workspace"], 20)
+        cod, out, err = self.rodar(lancador_wsl.cli(self, self.achar(exec_id), "stop", exec_id), self.cfg["workspace"], 20)
         return cod == 0 or "No job matching" in err + out
 
     def parar(self, exec_id):
         if self.achar(exec_id) is None:
             raise ErroAcao("Não achei essa execução.", 404)
         antes = (self.execucao(exec_id) or {}).get("estado")
-        cod, out, err = self.rodar([self.cfg["claude_bin"], "stop", exec_id], self.cfg["workspace"], 20)
-        if cod != 0 and "No job matching" not in err + out:
+        if not self._parar_cli(exec_id):
             raise ErroAcao("Não consegui parar a sessão.", 500)
         if antes in ATIVOS:  # parar uma que já terminou não muda o que ela foi
             self.registro.atualizar(exec_id, parada_pelo_painel=True)
@@ -426,11 +427,12 @@ class Lancador:
 
     def abrir(self, exec_id):
         """Abre o Terminal em `claude attach <id>`. O AppleScript é fixo; o comando vai como argv."""
-        if self.achar(exec_id) is None:
+        reg = self.achar(exec_id)
+        if reg is None:
             raise ErroAcao("Não achei essa execução.", 404)
-        comando = self.comando_attach(exec_id)
+        comando = self.comando_attach(exec_id, reg)
         if self.plataforma == "win32":
-            return self._abrir_windows(exec_id, comando)
+            return self._abrir_windows(exec_id, comando, reg)
         if self.plataforma != "darwin":
             return {"ok": False, "comando": comando}
         args = ["osascript"]
@@ -439,7 +441,9 @@ class Lancador:
         cod, _out, _err = self.rodar(args + [comando], self.cfg["workspace"], 15)
         return {"ok": cod == 0, "comando": comando}
 
-    def _abrir_windows(self, exec_id, comando):
+    def _abrir_windows(self, exec_id, comando, reg=None):
         """Aba do Windows Terminal (ou janela do cmd) em `claude attach <id>`; argv, sem pipes."""
+        if lancador_wsl.e_wsl(reg):  # wsl.exe -d tune-up -u tuneup --exec <claude> attach <id>
+            return {"ok": bool(abrir_win.abrir_wsl(exec_id, self.cfg["workspace"], self.abrir_janela)), "comando": comando}
         ok = abrir_win.abrir(self.cfg["claude_bin"], exec_id, self.cfg["workspace"], self.abrir_janela)
         return {"ok": bool(ok), "comando": comando}
