@@ -290,7 +290,7 @@ class Lancador:
             if cod != 0 or not (m := RE_SAIDA.search(RE_ANSI.sub("", out + "\n" + err))):
                 trabalho.apagar(pasta)
                 if w:  # gate 97 (resets the probe) or untrusted folder: 409 with what to do
-                    lancador_wsl.conferir(self, w, cod, out, err)
+                    lancador_wsl.conferir(self, w, cod, out, err, pasta)
                 raise ErroAcao("Não consegui começar a sessão do Claude (%s). Veja se o comando claude funciona."
                                % mascara.primeira_linha(err + "\n" + out), 500)  # causa: workspace sem confiança...
             t = self.relogio()

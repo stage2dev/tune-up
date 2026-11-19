@@ -75,15 +75,18 @@ def comando(lanc, w, cwd, nome, escolha, acao, prompt):
     return cmd
 
 
-def conferir(lanc, w, cod, out, err):
-    """Failed WSL launch: gate refusal (97) and the folder trust prompt become a 409 with what to do."""
+def conferir(lanc, w, cod, out, err, pasta=None):
+    """Failed WSL launch: gate refusal (97) and the folder trust prompt become a 409 with what to do.
+    The per-launch work folder is already deleted and new each time: the trust command points at its
+    stable parent (trabalhos). Trust inherited by subfolders is not proven here."""
     if cod == PORTAO_NEGOU:
         s = sonda(lanc)
         if hasattr(s, "zerar"):
             s.zerar()
         raise ErroAcao(NAO_PRONTA % "a ponte com o Windows (interop) está ligada ou a preparação não terminou", 409)
     if "not trusted" in (out + "\n" + err).lower():
-        linha = subprocess.list2cmdline(["wsl.exe", "-d", wsl.DISTRO, "--cd", w["cwd_wsl"], "--exec",
+        pasta_w = posixpath.dirname(w["cwd_wsl"]) if pasta else w["cwd_wsl"]
+        linha = subprocess.list2cmdline(["wsl.exe", "-d", wsl.DISTRO, "--cd", pasta_w, "--exec",
                                          w["marcador"]["claude_bin"]])  # for display only, never run
         raise ErroAcao("Abra a pasta uma vez no WSL e aceite a confiança: " + linha, 409)
 

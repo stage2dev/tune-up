@@ -173,7 +173,11 @@ class TesteRecusas(Base):
             l.iniciar("t.caixa", {"ideia": "oi"})
         self.assertEqual(e.exception.codigo, 409)
         self.assertEqual(e.exception.mensagem, "Abra a pasta uma vez no WSL e aceite a confiança: wsl.exe -d tune-up "
-                                               "--cd %s --exec /home/tuneup/.local/bin/claude" % PASTA_W)
+                                               "--cd %s --exec /home/tuneup/.local/bin/claude"
+                         % PASTA_W.rsplit("/", 1)[0])
+        # the per-launch work folder was deleted and is new each time: the command points at its stable parent
+        self.assertEqual(self.apagadas, [PASTA])
+        self.assertNotIn(PASTA_W + " ", e.exception.mensagem)
         self.assertEqual(self.sonda.zeradas, 0)
 
     def test_falha_comum_continua_500(self):
