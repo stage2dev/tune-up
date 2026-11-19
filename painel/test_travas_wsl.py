@@ -101,10 +101,20 @@ class TesteSettingsWsl(unittest.TestCase):
         self.assertIn(DADOS_W + "/estudio-dono.json", self.conf["prot"])
         self.assertIn(WS_W + "/.tune-up/painel/dados", self.conf["lib"])
 
-    def test_ler_env_como_no_host(self):
+    def test_ler_env_nega_sem_caixa(self):
+        """Host: the hook leaves .env to the Read rule. WSL (/mnt has no case): the hook denies .env, .Env, .ENV."""
         host = test_sandbox.gancho(test_sandbox.settings(test_sandbox.fixture()))
-        ler = {"file_path": WS_W + "/.env"}
-        self.assertEqual(linux(self.conf, "Read", ler), travas.decidir(host, "Read", {"file_path": "/proj [1]/.env"}))
+        self.assertIsNone(travas.decidir(host, "Read", {"file_path": "/proj [1]/.env"}))
+        for nome in (".env", ".Env", ".ENV", ".Env.local", "x.PEM"):
+            self.assertEqual(linux(self.conf, "Read", {"file_path": WS_W + "/" + nome})[0], "deny", nome)
+
+    def test_sandbox_variantes_de_caixa(self):
+        ler = self.cfg["sandbox"]["filesystem"]["denyRead"]
+        for x in (".ENV*", ".Env*", "*.PEM", "*.Key"):
+            self.assertIn(WS_W + "/" + x, ler)
+            self.assertIn(WS_W + "/**/" + x, ler)
+        host = test_sandbox.settings(test_sandbox.fixture())["sandbox"]["filesystem"]["denyRead"]
+        self.assertFalse([x for x in host if ".ENV" in x or ".Env" in x])
 
 
 class TesteDecidirWsl(unittest.TestCase):
@@ -189,6 +199,50 @@ class TesteDecidirWsl(unittest.TestCase):
             vezes.clear()
             with self.assertRaises(PermissionError):
                 travas._insistir(falha, False)
+
+
+CURINGA_NEGA = [("Bash", {"command": "cat /mnt/c/proj/.ENV"}), ("Read", {"file_path": WS_W + "/.Env"}),
+                ("Bash", {"command": "cat %s/.en?" % WS_W}), ("Bash", {"command": "cat %s/.e*" % WS_W}),
+                ("Bash", {"command": "/mnt/c/Win*/System32/cmd.ex? /c echo x"}), ("Bash", {"command": "cmd.ex?"}),
+                ("Bash", {"command": "{cmd,x}.exe"}), ("Grep", {"pattern": "x", "glob": ".e*", "path": WS_W}),
+                ("Bash", {"command": "ls /mnt/c/Users/*/.s?h"}), ("Bash", {"command": "cat '%s/.E'nv.local" % WS_W}),
+                ("Bash", {"command": "cat ~/../../mnt/c/U*/x"}), ("Bash", {"command": "cat /m*/c/x"}),
+                ("Bash", {"command": "ls {/mnt/c/Users/Ana/.ssh,x}"}), ("Bash", {"command": "cat %s/x{/../../..,}/.ssh/id" % WS_W}),
+                ("Glob", {"pattern": "/mnt/c/Users/*/.aws/*"}), ("Bash", {"command": "echo " + "{a,b}" * 30})]
+CURINGA_PASSA = [("Bash", {"command": "ls %s/*.png" % WS_W}), ("Bash", {"command": "cat %s/src/**/*.html" % WS_W}),
+                 ("Glob", {"pattern": "**/*.md"}), ("Glob", {"pattern": "**/*.md", "path": WS_W}),
+                 ("Bash", {"command": "ls *.png"}), ("Read", {"file_path": WS_W + "/foto [1].png"}),
+                 ("Grep", {"pattern": "x", "glob": "*.{md,txt}", "path": WS_W})]
+
+
+class TesteCuringaWsl(unittest.TestCase):
+    """Bash expands globs and braces before running, and /mnt/<letter>/ has no case: the WSL hook decides on what they can reach."""
+
+    def setUp(self):
+        self.conf = dict(gancho(json.loads(texto_wsl()))[1], n=[], p=[])  # the core alone (the Studio's rules deny `ls`)
+
+    def test_nega(self):
+        for ferr, ent in CURINGA_NEGA:
+            with self.subTest(ent=ent):
+                self.assertEqual(linux(self.conf, ferr, ent), ("deny", travas.decidir(self.conf, "Bash", {"command": "cmd.exe"})[1]))
+
+    def test_passa(self):
+        for ferr, ent in CURINGA_PASSA:
+            with self.subTest(ent=ent):
+                self.assertIsNone(linux(self.conf, ferr, ent))
+
+    def test_sem_workspace_conhecido_nega_curinga_em_mnt(self):
+        conf = dict(self.conf, prot=[p for p in self.conf["prot"] if not p.endswith("painel.json")])
+        self.assertEqual(linux(conf, "Bash", {"command": "ls %s/*.png" % WS_W})[0], "deny")
+        self.assertIsNone(linux(conf, "Bash", {"command": "ls %s/a.png" % WS_W}))
+
+    def test_host_nem_chama(self):
+        """Without "wsl" the new checks never run: same decision as before, on the Mac/Linux and on Windows."""
+        host = {k: v for k, v in self.conf.items() if k != "wsl"}
+        with mock.patch.object(travas, "_wsl", side_effect=AssertionError("WSL check on host")):
+            for ferr, ent in CURINGA_NEGA + CURINGA_PASSA:
+                for nt in (False, True):
+                    travas.decidir(host, ferr, ent, PASTA_W, nt=nt, realpath=lambda c: c)
 
 
 class TestePlugin(unittest.TestCase):

@@ -133,10 +133,14 @@ def montar(ctx):
     lista = pecas.pecas(ctx)
     amb = _ambiente(_pasta(ctx)) if _pasta(ctx) else None
     pronto = bool(amb) and amb.get("pronto") is True and _mesma_chave(amb)
-    if marca is not None:  # Windows: the ready flag is the hyperframes inside the distro, not ambiente.json
-        pronto = _hf_pronto(ctx)
     texto = r["alertas"][0]["texto"] if amb else ("Clique em Preparar. O estúdio baixa as ferramentas dele "
                                                   "(cerca de 100 MB), uma vez só.")
+    if marca is not None:  # Windows: the ready flag AND its text come from the hyperframes inside the distro, not ambiente.json
+        pronto = _hf_pronto(ctx)
+        preparando = not pronto and bool(amb) and amb.get("estado") == "preparando"  # the WSL Preparar writes ambiente.json too
+        texto = ("Estúdio pronto (no WSL). Próximo passo: aprovar a marca." if pronto else texto if preparando else
+                 "O estúdio ainda não está pronto no WSL. Clique em Preparar: ele baixa as ferramentas (cerca de 100 MB), uma vez só.")
+        r["alertas"] = [{"nivel": "info" if pronto or preparando else "atencao", "texto": texto}]
     ambiente = [{"tipo": "texto", "titulo": "Passo 1 de 3: preparar o estúdio", "texto": texto}
                 | ({"ir_para": {"aba": "marca", "rotulo": "Ir para 2. Marca"}} if pronto else {})]
     if pronto and aprovada:  # tudo pronto: nenhum aviso no topo de toda aba (nem número no menu)

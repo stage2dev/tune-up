@@ -109,6 +109,36 @@ class TestMontar(Base):
         self.assertEqual(hf.call_args[0][0], self.rodar)
         self.assertTrue(any("ir_para" in b for a in r["abas"] if a["id"] == "ambiente" for b in a["blocos"]))
 
+    def textos(self, pronto, amb):
+        os.makedirs(os.path.join(self.tmp, "dados"), exist_ok=True)
+        with open(os.path.join(self.tmp, "dados", "ambiente.json"), "w", encoding="utf-8") as f:
+            json.dump(amb, f)
+        with mock.patch.object(wsl, "hf_pronto", return_value=pronto):
+            r = self.mod.montar(self.ctx())
+        aba = next(a for a in r["abas"] if a["id"] == "ambiente")["blocos"][0]
+        return aba, [a["texto"] for a in r["alertas"]]
+
+    def test_texto_de_pronto_vem_do_hf_pronto_nao_do_ambiente_json(self):
+        """ambiente.json (Windows side) says the opposite of the distro: the tab and the top follow hf_pronto."""
+        for amb in ({"pronto": False, "erro": "ffmpeg falhou"}, {}):
+            with self.subTest(amb=amb):
+                aba, alertas = self.textos(True, amb)
+                self.assertIn("pronto (no WSL)", aba["texto"])
+                self.assertIn("ir_para", aba)
+                self.assertFalse([t for t in alertas + [aba["texto"]] if "não está pronto" in t or "Preparar" in t])
+        for amb in ({"pronto": True, "chave": "x"}, {"pronto": True}, {}):
+            with self.subTest(amb=amb):
+                aba, alertas = self.textos(False, amb)
+                self.assertIn("Clique em Preparar", aba["texto"])
+                self.assertNotIn("ir_para", aba)
+                self.assertFalse([t for t in alertas + [aba["texto"]] if "pronto." in t or "pronto (no WSL)" in t])
+                self.assertEqual(alertas, [aba["texto"]])
+
+    def test_preparando_mostra_o_andamento(self):
+        aba, alertas = self.textos(False, {"estado": "preparando"})
+        self.assertIn("Preparando o estúdio", aba["texto"])
+        self.assertEqual(alertas, [aba["texto"]])
+
     def test_nao_pronta_recusa_com_o_motivo(self):
         r = self.mod.montar(self.ctx({"pronta": False, "motivo": "conferindo o WSL..."}))
         self.assertTrue(any("instalar.ps1" in a["texto"] and "conferindo" in a["texto"] for a in r["alertas"]))

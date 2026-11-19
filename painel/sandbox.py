@@ -72,7 +72,11 @@ def bloco(acao, workspace, dados_dir, wsl=None):
     if wsl:
         letras = sorted({"c"} | set(re.findall(r"^/mnt/([a-z])(?:/|$)", ws)))
         win = ["/mnt/%s/Users/*/%s" % (letra, x) for letra in letras for x in SEGREDOS_WIN]
-        fs["denyRead"] += win
+        # o formato do sandbox não tem opção sem caixa (docs de sandboxing) e /mnt/<letra>/ não diferencia: soma as variantes
+        # comuns (.ENV*, .Env*, *.PEM...). Se o denyRead do Linux já pega a caixa no /mnt é medida da prova na máquina real;
+        # o caso geral (.eNv, curinga) fica no gancho (travas._wsl)
+        caixa = sorted({x.upper() for x in SEGREDOS} | {x.title() for x in SEGREDOS})
+        fs["denyRead"] += win + ([ws + "/" + x for x in caixa] + [ws + "/**/" + x for x in caixa] if ws else [])
         negar += ["Read(/%s/**)" % x for x in win]
     perm["blockWritesOutsideWorkingDirectories"] = True
     return topo, negar, perm
