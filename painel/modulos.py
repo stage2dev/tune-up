@@ -45,6 +45,7 @@ def caminho_do_modulo(cfg, mid, sonda=None):
     """Caminho real de modulo.py ou levanta ErroModulo(404)."""
     if not isinstance(mid, str) or not RE_ID.match(mid):
         raise ErroModulo(404, "Essa tela não existe neste projeto.")
+    sonda = cfg.get("_sonda") if sonda is None else sonda  # rotas sem sonda (mídia, ?ref=, envio): a do App
     if mid not in (cfg.get("modulos") or []) and mid in embutidos.ligados(cfg, sonda=sonda):  # embutido (embutidos.py)
         real = embutidos.caminho(mid)
         if not real:

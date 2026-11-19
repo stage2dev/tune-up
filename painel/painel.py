@@ -101,7 +101,7 @@ class App:
         self.porta = cfg.get("porta", 8787)
         self.estado = Estado(plans_dir, cfg, rodar_externos)
         self.lancador = lancador or lanc.Lancador(cfg, self.estado.dado)
-        self.sonda = getattr(self.lancador, "sonda_atual", None)
+        self.sonda = cfg["_sonda"] = getattr(self.lancador, "sonda_atual", None)  # modulos.carregar sem sonda
         cfg["_execucoes"] = getattr(self.lancador, "execucoes", None)  # ctx["execucoes"] dos módulos (fila do estúdio)
 
     def origens(self):

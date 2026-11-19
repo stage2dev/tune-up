@@ -142,6 +142,28 @@ class TesteEmbutido(Base):
         c = self.cfg()
         self.assertEqual(modulos.caminho_do_modulo(c, "estudio", sonda=PRONTA), embutidos.caminho("estudio"))
 
+    def test_midia_envio_e_ref_usam_a_sonda_do_app(self):
+        # midia/arquivo_ref/envio call modulos.carregar(cfg, mid) without a probe: the App's probe rides in cfg.
+        # No platform parameter reaches those routes, so the host platform is swapped like test_embutidos does.
+        import arquivo_ref, envio, midia, painel  # noqa: E401
+        c = self.cfg()
+        lc = lancador.Lancador(c, lambda: {}, plataforma="win32", sonda=PRONTA)
+        painel.App(c, os.path.join(self.tmp, "plans"), lancador=lc, rodar_externos=False)
+        def midia_msg():
+            try:
+                return midia.pasta_do_modulo(c, "estudio") and ""
+            except modulos.ErroModulo as e:
+                return e.mensagem
+
+        with unittest.mock.patch.object(embutidos.sys, "platform", "win32"):
+            self.assertNotIn("não existe", midia_msg())  # the module loads (no media folder here: other 404)
+            st, r = envio.receber(c, "estudio", "logo", {}, None)
+            self.assertNotEqual(st, 404, r)
+            r = arquivo_ref.servir(c, "estudio", ["x.png"], {"Sec-Fetch-Site": "same-origin"})
+            self.assertNotIn("não existe".encode(), r["corpo"], r)  # the Estúdio has no arquivo(): other 404
+            c["_sonda"] = NAO  # WSL down: still refused as today
+            self.assertIn("não existe", midia_msg())
+
 
 class TesteLancador(Base):
     def lc(self, sonda, plataforma="win32"):
