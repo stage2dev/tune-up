@@ -21,6 +21,7 @@ import abrir_win
 from abrir_win import METACHAR_WIN  # noqa: F401
 from habilidades import anexar as anexar_habilidades, pedido as pedido_com_habilidades
 import embutidos
+import lancador_wsl
 import mascara
 import modulos
 import teto
@@ -58,10 +59,11 @@ def rodar_padrao(cmd, cwd, timeout):
 
 
 class Lancador:
-    def __init__(self, cfg, obter_estado, rodar=rodar_padrao, relogio=time.time, plataforma=None, sonda=None):
+    def __init__(self, cfg, obter_estado, rodar=rodar_padrao, relogio=time.time, plataforma=None, sonda=None, ancora=None):
         self.cfg, self.obter_estado, self.rodar, self.relogio = cfg, obter_estado, rodar, relogio
         self.plataforma = plataforma or sys.platform
-        self.sonda = sonda  # dict or callable (see catalogo.ler_sonda); None on win32 = one shared wsl.Sonda, lazily
+        self.sonda = sonda  # dict, callable or wsl.Sonda; None on win32 = one shared wsl.Sonda, lazily
+        self.ancora = ancora  # wsl_ancora.Ancora shared by the WSL launches; None = a real one at the first
         self._trava_sonda = threading.Lock()
         self.dormir = time.sleep  # trocado nos testes
         self.abrir_janela = abrir_win.abrir_janela_padrao  # idem (Windows)
@@ -78,14 +80,8 @@ class Lancador:
 
     def sonda_atual(self):
         """Valor da sonda do WSL2 sem esperar (None fora do Windows). Só cria a Sonda real na primeira consulta."""
-        with self._trava_sonda:
-            if self.sonda is None:
-                if self.plataforma != "win32":
-                    return None
-                import wsl
-                self.sonda = wsl.Sonda(plataforma=self.plataforma).valor_atual
-            sonda = self.sonda
-        return sonda() if callable(sonda) else sonda
+        sonda = lancador_wsl.sonda(self)
+        return sonda.valor_atual() if hasattr(sonda, "valor_atual") else sonda() if callable(sonda) else sonda
 
     def catalogo(self):
         return catalogo_do_projeto(self.cfg, self.plataforma, self.sonda_atual)
@@ -243,7 +239,8 @@ class Lancador:
         precisa_estado = any(p["tipo"] in ("fase", "parte") for p in acao["params"])
         valores = validar_params(acao, params, self.obter_estado() if precisa_estado else {})
         mascarados = {k: mascara.mascarar(v) if isinstance(v, str) else v for k, v in valores.items()}
-        est = embutidos.estudio_da_acao(self.cfg, acao)  # {estudio_hf}: caminho do servidor; não preparado = 409
+        w = lancador_wsl.preparar(self, acao)  # win32 + sandbox: in the distro (ready probe or 409); None = host
+        est = w["est"] if w else embutidos.estudio_da_acao(self.cfg, acao)  # {estudio_hf}: server path; not prepared = 409
         # "trabalho" só para conferir aqui; dentro da trava o prompt é refeito com a pasta de verdade
         base, nome = trabalho.montar_prompt(acao, valores, "trabalho", est), nome_da_sessao(acao, mascarados)
         prompt, nomes_hab = pedido_com_habilidades(self.cfg, acao["grupo"], base, habilidades)  # vazio: 400
@@ -272,17 +269,18 @@ class Lancador:
             pasta = trabalho.nova_pasta(self.cfg["dados_dir"], acao)  # None: a ação não usa {trabalho}
             cwd = pasta if acao.get("sandbox") else self.cfg["workspace"]  # sandbox: cwd = pasta de trabalho
             if pasta:  # o id do trabalho fica fora de `valores` (a checagem de duplicata acima não o vê)
-                prompt, acao = trabalho.montar_prompt(acao, valores, pasta, est), trabalho.resolver_travas(acao, pasta, est)
+                alvo, caminho = lancador_wsl.alvo(w, pasta)  # WSL: /mnt/<drive>/... in the travas and the prompt
+                prompt, acao = trabalho.montar_prompt(acao, valores, alvo, est, caminho), trabalho.resolver_travas(acao, alvo, est)
                 prompt = prompt.rstrip() + sufixo if sufixo else prompt
             # travas de verdade (deny + gancho) no argv; o prompt vai por último, nunca começa com '-'
             # pular_permissoes: some so o pedido comum de permissao. Medido no CLI 2.1.322: regra de negar,
             # gancho que nega e gancho que pergunta continuam valendo com essa flag.
-            pular = ["--dangerously-skip-permissions"] if self.cfg.get("pular_permissoes") else []
+            pular = ["--dangerously-skip-permissions"] if self.cfg.get("pular_permissoes") and not w else []
             # --effort aceita max (claude --help); a chave de esforço do --settings vai só até xhigh (não
             # medido aqui), então uma reserva pelo --settings não cobriria max. Esforço vai só pela opção.
             escolha = (["--model", modelo] if modelo else []) + (["--effort", esforco] if esforco else [])
-            cmd = ([self.cfg["claude_bin"], "--bg", "-n", nome] + escolha + pular
-                   + argv_travas(acao, self.cfg) + [prompt])
+            cmd = lancador_wsl.comando(self, w, cwd, nome, escolha, acao, prompt) if w else (
+                [self.cfg["claude_bin"], "--bg", "-n", nome] + escolha + pular + argv_travas(acao, self.cfg) + [prompt])
             try:
                 trabalho.criar(pasta, acao, valores)
                 cod, out, err = self.rodar(cmd, cwd, 60)
@@ -291,6 +289,8 @@ class Lancador:
                 raise
             if cod != 0 or not (m := RE_SAIDA.search(RE_ANSI.sub("", out + "\n" + err))):
                 trabalho.apagar(pasta)
+                if w:  # gate 97 (resets the probe) or untrusted folder: 409 with what to do
+                    lancador_wsl.conferir(self, w, cod, out, err)
                 raise ErroAcao("Não consegui começar a sessão do Claude (%s). Veja se o comando claude funciona."
                                % mascara.primeira_linha(err + "\n" + out), 500)  # causa: workspace sem confiança...
             t = self.relogio()
@@ -299,13 +299,19 @@ class Lancador:
                    "iniciada_ts": t, "cwd": cwd, "risco": acao["risco"], "sandbox": bool(acao.get("sandbox")),
                    "modelo": modelo, "esforco": esforco, "negar_modulos": sorted(extra), "habilidades": nomes_hab,
                    "trabalho": os.path.basename(pasta) if pasta else "",
+                   **({"lado": "wsl", "cwd_wsl": w["cwd_wsl"]} if w else {}),  # absent = host
                    **{c: acao.get(c) for c in teto.CAMPOS}}
             for p in acao["params"]:
                 if p["tipo"] in ("fase", "parte") and valores.get(p["nome"]):
                     reg[p["tipo"]] = valores[p["nome"]]
             self.registro.gravar([r for r in self.registro.ler() if r["id"] != reg["id"]] + [reg])
         self.esquecer_agentes()
-        return self._como_execucao(reg, {}, t)
+        return lancador_wsl.avisar(self, w, self._como_execucao(reg, {}, t))
+
+    def fechar(self):
+        """Stops the WSL anchor (the anchor also stops itself at exit)."""
+        if self.ancora is not None:
+            self.ancora.parar()
 
     def responder(self, exec_id, texto, interromper=False, habilidades=None):
         """Manda outra mensagem para a MESMA sessão. Levanta ErroAcao.
