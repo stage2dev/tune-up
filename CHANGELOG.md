@@ -21,6 +21,7 @@ Not proven here:
 - `claude install` and `claude plugin marketplace add/install/update` inside the distro never ran: the Claude binary does not run under emulation on the dev Mac.
 - These are assumptions to be measured with `-Medir`: the shape of `claude agents --json`, `wsl --import` of a `.wsl` file, `--cd` together with `--exec`, the exit codes 3010 and 1641, and the interop signals.
 - The panel bridge is not in this version.
+
 ## 2.25.0
 
 Marketing gets a panel tab.
