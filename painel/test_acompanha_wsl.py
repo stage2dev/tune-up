@@ -9,6 +9,7 @@ import time
 import unittest
 
 import abrir_win
+import lancador
 import lancador_wsl
 import modulos
 import transcricao
@@ -118,6 +119,22 @@ class TesteListas(Lados):
             l = self.montar(**marca)
             self.assertEqual(self.por_id(l)["bb222222"]["estado"], "rodando")
             self.assertIn(AG_WSL, self.wsl_chamadas())
+
+    def test_sem_lista_wsl_marcas_valem(self):
+        # Panel restart (no last state) + probe not ready or WSL list failing: finished runs never come back as
+        # 'rodando' nor fill max_execucoes.
+        casos = (({"terminou_em": "2026-11-18T10:05:00"}, "terminou"), ({"parada_pelo_painel": True}, "parada"),
+                 ({"falha": "max_minutos", "parada_pelo_painel": True}, "parada"))
+        for sonda, falha in ((SondaFalsa(atual=NAO), set()), (None, {"wsl"})):
+            for marca, esperado in casos:
+                self.falha = falha
+                l = self.montar(sonda=sonda, host=False, **marca)
+                ex = l.execucoes(forcar=True)
+                self.assertEqual(ex[0]["estado"], esperado, (marca, falha))
+                self.assertEqual([e for e in ex if e["estado"] in lancador.ATIVOS], [], (marca, falha))
+        # `falha` beside another live WSL run (list missing): stopped for good, never 'rodando'
+        self.assertEqual(lancador_wsl.sem_lista({}, {"id": "x", "lado": "wsl", "falha": "max_minutos"}, 0), "parada")
+        self.assertEqual(lancador_wsl.sem_lista({}, {"id": "x", "terminou_em": "t"}, 0), "rodando")  # host as before
 
     def test_teto_vale_com_terminou_em(self):
         self.wsl_ = [linha("bb222222", SID_W, "working", "busy")]

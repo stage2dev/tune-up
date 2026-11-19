@@ -161,6 +161,20 @@ def _vivas(regs):
     return any(e_wsl(r) and not r.get("falha") for r in regs)
 
 
+def sem_lista(ultimo, reg, agora):
+    """State when the record's side list is missing (probe not ready, list failed). Host: last seen or 'rodando',
+    as before. WSL with no last seen state (panel restart): the record's markers decide, so finished runs never
+    come back as 'rodando' and never fill max_execucoes."""
+    if reg["id"] in ultimo or not e_wsl(reg):
+        return ultimo.get(reg["id"], "rodando")
+    if reg.get("falha"):
+        return "parada"
+    if reg.get("terminou_em") or reg.get("parada_pelo_painel"):
+        from estado_exec import mapear_estado
+        return mapear_estado(reg, None, agora)
+    return "rodando"
+
+
 def agentes_wsl(lanc, forcar=False):
     """({id: line} of `claude agents --json --all` in the distro or None, agora_wsl or None); same TTL as the host.
     Read-only listing: argv_cru as tuneup, no gate. The distro clock is read with it (idle is computed on it)."""

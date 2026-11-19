@@ -150,7 +150,7 @@ class Lancador:
 
     def _como_execucao(self, reg, agentes, agora, caixa=None, agora_w=None):
         if agentes is None:  # CLI falhou: mantém o último estado visto
-            estado = self._ultimo.get(reg["id"], "rodando")
+            estado = lancador_wsl.sem_lista(self._ultimo, reg, agora)
         else:
             estado = self._ultimo[reg["id"]] = self._estado(reg, agentes.get(reg["id"]), agora, agora_w)
         out = {k: reg.get(k) for k in ("id", "nome", "acao", "titulo", "iniciada_em", "trabalho")}
