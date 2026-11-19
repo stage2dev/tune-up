@@ -51,4 +51,6 @@ O instalador cria uma distro Linux só dele, chamada `tune-up`. Ele pede permiss
 - Janelas do Claude abertas na distro: feche-as, ou use `-Forcar`.
 - Download recusado (sha256 diferente): verifique a internet e rode de novo. Nada baixado é usado antes de conferir.
 
-Ainda não: o painel não abre ações do estúdio no Windows. Isso vem na próxima parte.
+## O painel
+
+Com a distro pronta, o painel abre as ações do estúdio dentro dela e mantém uma âncora (`sleep infinity`) para o WSL não desligar. Fechar o painel pode parar as sessões do WSL depois de uns 15 segundos. Detalhes e comandos: `painel/README.md`, seção "Windows + WSL2". Ainda não foi provado numa máquina Windows real.
