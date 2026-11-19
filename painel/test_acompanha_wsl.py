@@ -106,10 +106,26 @@ class TesteListas(Lados):
         self.assertNotIn("aviso", ex["aa111111"])
 
     def test_sem_execucao_wsl_viva_nao_busca(self):
-        l = self.montar(terminou_em="2026-11-18T10:05:00")
-        ex = self.por_id(l)
+        l = self.montar(falha="max_minutos", parada_pelo_painel=True)  # only `falha` is final
+        self.por_id(l)
         self.assertEqual(self.wsl_chamadas(), [])
-        self.assertEqual(ex["bb222222"]["estado"], "terminou")
+
+    def test_marcas_aprendidas_nao_congelam_o_wsl(self):
+        # terminou_em / parada_pelo_painel are learned markers: the session can wake again (attach, task end)
+        for marca in ({"terminou_em": "2026-11-18T10:05:00"}, {"parada_pelo_painel": True}):
+            self.chamadas = []
+            self.wsl_ = [linha("bb222222", SID_W, "working", "busy")]
+            l = self.montar(**marca)
+            self.assertEqual(self.por_id(l)["bb222222"]["estado"], "rodando")
+            self.assertIn(AG_WSL, self.wsl_chamadas())
+
+    def test_teto_vale_com_terminou_em(self):
+        self.wsl_ = [linha("bb222222", SID_W, "working", "busy")]
+        l = self.montar(terminou_em="2026-11-18T10:05:00", max_minutos=1)  # started 1 h ago
+        self.por_id(l)
+        stop = [wsl.exe_wsl(), "-d", "tune-up", "-u", "tuneup", "--exec", wsl.CLAUDE_BIN, "stop", "bb222222"]
+        self.assertIn(stop, self.wsl_chamadas())
+        self.assertEqual(l.achar("bb222222").get("falha"), "max_minutos")
 
     def test_falha_do_host_mantem_o_wsl(self):
         l = self.montar()
@@ -236,6 +252,34 @@ class TestePararResponder(Lados):
             self.assertNotIn("--", c)
             if wsl.PORTAO in c:
                 self.assertIn("--resume", c)
+
+    def test_retomar_wsl_garante_a_ancora_antes_do_stop(self):
+        l = self.responder((0, "backgrounded · bb222222 · x\n", ""))
+        self.log.clear()
+        try:
+            l.responder("bb222222", "continua")
+        except ErroAcao:
+            pass
+        self.assertIn("garantir", self.log)
+
+    def test_ancora_que_nao_sobe_na_retomada_409_sem_stop(self):
+        l = self.responder((0, "backgrounded · bb222222 · x\n", ""))
+        self.ancora.ok = False
+        with self.assertRaises(ErroAcao) as e:
+            l.responder("bb222222", "continua")
+        self.assertEqual(e.exception.codigo, 409)
+        self.assertFalse([c for c in self.wsl_chamadas() if "stop" in c or "--resume" in c])
+
+    def test_retomar_host_nao_toca_na_ancora(self):
+        self.host = [linha("aa111111", SID_H, "done", "", None)]
+        l = self.montar(sandbox=False)
+        l.dormir = lambda s: None
+        self.log.clear()
+        try:
+            l.responder("aa111111", "continua")
+        except ErroAcao:
+            pass
+        self.assertNotIn("garantir", self.log)
 
     def test_portao_97_na_retomada(self):
         l = self.responder((97, "", "negado"))

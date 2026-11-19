@@ -356,6 +356,7 @@ class Lancador:
             if not ativa and len(ativas) >= self.cfg["max_execucoes"]:  # a que já roda já ocupa a vaga dela
                 raise ErroAcao("Já tem %d rodando ao mesmo tempo. Espere uma acabar ou pare uma."
                                % len(ativas), 409, ativas[0]["id"])
+            lancador_wsl.manter(self, reg)  # WSL: anchor up before stop/resume, else 409 (session left as is)
             cod, out, err = self.rodar(lancador_wsl.cli(self, reg, "stop", exec_id), ws, 20)
             if cod != 0 and "No job matching" not in err + out:
                 raise ErroAcao("Não consegui preparar a sessão para continuar.", 500)

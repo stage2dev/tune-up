@@ -156,8 +156,9 @@ def _lista(cod, out):
 
 
 def _vivas(regs):
-    """WSL executions the registry does not already know as final (finished or stopped by the panel)."""
-    return any(e_wsl(r) and not r.get("terminou_em") and not r.get("parada_pelo_painel") for r in regs)
+    """WSL executions that may still change. terminou_em/parada_pelo_painel are learned markers (the session can
+    wake again: attach, a background task ending), so only `falha` (the panel stopped it for good) counts as final."""
+    return any(e_wsl(r) and not r.get("falha") for r in regs)
 
 
 def agentes_wsl(lanc, forcar=False):
@@ -216,6 +217,12 @@ def cli(lanc, reg, *args):
     if e_wsl(reg):
         return wsl.argv_cru([wsl.CLAUDE_BIN] + list(args), usuario="tuneup")
     return [lanc.cfg["claude_bin"]] + list(args)
+
+
+def manter(lanc, reg):
+    """WSL resume starts work in the distro: the anchor must be up first (before the `claude stop`), else 409."""
+    if e_wsl(reg) and not ancora(lanc).garantir():
+        raise ErroAcao(NAO_PRONTA % "não consegui manter o WSL ligado", 409)
 
 
 def retomar(lanc, reg, sid, texto):
