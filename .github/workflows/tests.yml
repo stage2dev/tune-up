@@ -140,3 +140,38 @@ jobs:
             echo "::error::painel/web/dist is stale: run npm run build in painel/web and commit"
             exit 1
           fi
+
+  wsl-pester:
+    # Once per workflow (not per python): Windows PowerShell 5.1 and PowerShell 7 both run the suite.
+    name: WSL installer (Pester, windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pester (instalador WSL)
+        shell: powershell
+        run: |
+          Install-Module Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -SkipPublisherCheck
+          Import-Module Pester -RequiredVersion 5.7.1
+          Invoke-Pester scripts/wsl/tests -CI
+
+      - name: Pester (instalador WSL)
+        if: ${{ !cancelled() }}  # one red shell must not hide the other
+        shell: pwsh
+        run: |
+          Install-Module Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -SkipPublisherCheck
+          Import-Module Pester -RequiredVersion 5.7.1
+          Invoke-Pester scripts/wsl/tests -CI
+
+  wsl-conteiner:
+    name: WSL scripts (ubuntu:24.04 container)
+    runs-on: ubuntu-24.04
+    container: ubuntu:24.04
+    timeout-minutes: 30
+    steps:
+      # actions/checkout works without git in the image: it falls back to the REST tarball.
+      - uses: actions/checkout@v4
+
+      - name: preparar.sh in a bare container
+        run: bash scripts/wsl/tests/ci_conteiner.sh
