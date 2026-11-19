@@ -208,7 +208,13 @@ CURINGA_NEGA = [("Bash", {"command": "cat /mnt/c/proj/.ENV"}), ("Read", {"file_p
                 ("Bash", {"command": "ls /mnt/c/Users/*/.s?h"}), ("Bash", {"command": "cat '%s/.E'nv.local" % WS_W}),
                 ("Bash", {"command": "cat ~/../../mnt/c/U*/x"}), ("Bash", {"command": "cat /m*/c/x"}),
                 ("Bash", {"command": "ls {/mnt/c/Users/Ana/.ssh,x}"}), ("Bash", {"command": "cat %s/x{/../../..,}/.ssh/id" % WS_W}),
-                ("Glob", {"pattern": "/mnt/c/Users/*/.aws/*"}), ("Bash", {"command": "echo " + "{a,b}" * 30})]
+                ("Glob", {"pattern": "/mnt/c/Users/*/.aws/*"}), ("Bash", {"command": "echo " + "{a,b}" * 30}),
+                # a leading wildcard reaches a dot name through find, grep --include, rg -g, dotglob and the Grep tool
+                ("Bash", {"command": "grep -r --include='*nv' x %s" % WS_W}), ("Bash", {"command": "rg --hidden -g '*nv' x %s" % WS_W}),
+                ("Bash", {"command": "rg --hidden -g '*.ENV' x"}), ("Bash", {"command": "find %s -name '*nv'" % WS_W}),
+                ("Grep", {"pattern": "x", "glob": "*nv", "path": WS_W}), ("Grep", {"pattern": "x", "glob": "*.env", "path": WS_W}),
+                ("Glob", {"pattern": "**/*nv"}), ("Bash", {"command": "shopt -s dotglob; cat *nv"}),
+                ("Bash", {"command": "GLOBIGNORE=x; cat *nv"}), ("Bash", {"command": "cat %s/*.env.local" % WS_W})]
 CURINGA_PASSA = [("Bash", {"command": "ls %s/*.png" % WS_W}), ("Bash", {"command": "cat %s/src/**/*.html" % WS_W}),
                  ("Glob", {"pattern": "**/*.md"}), ("Glob", {"pattern": "**/*.md", "path": WS_W}),
                  ("Bash", {"command": "ls *.png"}), ("Read", {"file_path": WS_W + "/foto [1].png"}),

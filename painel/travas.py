@@ -335,10 +335,10 @@ def _wsl(conf, ferramenta, entrada, cwd):
 
 
 def _cruza(a, b):
-    """Algum nome (até 255) casa o glob `a` e o `b` (`x`, `x*` ou `*x`)? `[..]` vale `?`, sem caixa; curinga no início de `a` não pega `.`."""
-    a, b = (re.sub(r"\[[^\]/]*\]?", "?", x.lower()) for x in (a, b))
-    cortes = [a[:k] for k in range(len(a) + 1)] if b[-1:] == "*" else [a[k:] for k in range(len(a) + 1)] if b[:1] == "*" else [a]
-    return re.search(r"[*?]", a) is not None if len(a) > 255 else not (a[:1] in ("*", "?") and b[:1] == ".") and any(fnmatch.fnmatchcase(b.strip("*"), x) for x in cortes)
+    """Algum nome (até 255) casa o glob `a` e o `b` (`x`, `x*` ou `*x`)? `[..]` vale `?`, sem caixa; `*a` contra `.x` (find, rg -g): `.x` puro ou o resto de `a`."""
+    a, b, r = (re.sub(r"\[[^\]/]*\]?", "?", x.lower()) for x in (a, b, a.lstrip("*?") if b[:1] == "." else a))  # `*nv`, `*.env.l` sim; `*.png` não
+    return re.search(r"[*?]", a) is not None if len(a) > 255 else any(fnmatch.fnmatchcase(b.strip("*"), x) for x in [a] + (
+        [r[:k] if b[-1:] == "*" else r[k:] for k in range(len(r) + 1)] if "*" in (b[:1], b[-1:]) else [r]))
 
 
 def _decidir(conf, ferramenta, entrada, cwd, nt, realpath, forte):
