@@ -255,9 +255,11 @@ def catalogo_do_projeto(cfg, plataforma=None, sonda=None):
     import embutidos
     import extensoes
     pastas, avisos = extensoes.pastas_de_acoes(cfg)
-    # embutidos ligados entram depois do pacote, com as regras de plugin: o pacote não tira as travas deles
-    acoes, av = carregar_catalogo([cfg["acoes_dir"], cfg.get("acoes_pacote_dir")] + embutidos.pastas_de_acoes(cfg)
-                                  + pastas)
+    # embutidos ligados entram depois do pacote, com as regras de plugin: o pacote não tira as travas deles.
+    # The built-in folders load without the WSL reason (as if ready): every Estúdio action has `sandbox`,
+    # so the win32 filter below decides and warns, and the probe is read there at most once.
+    acoes, av = carregar_catalogo([cfg["acoes_dir"], cfg.get("acoes_pacote_dir")]
+                                  + embutidos.pastas_de_acoes(cfg, plataforma, {"pronta": True}) + pastas)
     acoes = [a for a in acoes if not a.get("_so_com") or chave_ligada(cfg.get("bruto"), a["_so_com"])]
     if plataforma == "win32":
         if any(a.get("sandbox") for a in acoes):

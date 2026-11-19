@@ -10,6 +10,7 @@ import subprocess  # noqa: E402
 import tempfile  # noqa: E402
 import threading  # noqa: E402
 import unittest  # noqa: E402
+import unittest.mock  # noqa: E402
 
 import catalogo  # noqa: E402
 import config  # noqa: E402
@@ -98,6 +99,24 @@ class TesteCatalogo(Base):
             ids, avisos = self.ids(plat, NAO)
             self.assertEqual([i for i in ids if i in ESTUDIO], ESTUDIO)
             self.assertFalse([a for a in avisos if "WSL2" in a], avisos)
+
+    def test_plataforma_injetada_chega_aos_embutidos(self):
+        # on a real Windows host embutidos falls back to sys.platform: the injected platform must reach it,
+        # and the Estúdio folder must load whatever the probe says (the sandbox filter + warning decide)
+        real = embutidos.pastas_de_acoes
+        vistos = []
+
+        def espia(cfg, plataforma=None, sonda=None):
+            pastas = real(cfg, plataforma, sonda)
+            vistos.append((plataforma, pastas))
+            return pastas
+
+        with unittest.mock.patch.object(embutidos, "pastas_de_acoes", espia):
+            for s in (PRONTA, NAO):
+                self.ids("win32", s)
+        self.assertEqual([p for p, _ in vistos], ["win32", "win32"], vistos)
+        self.assertTrue(all(pastas == [embutidos._pasta(embutidos._POR_ID["estudio"]["acoes"])]
+                            for _, pastas in vistos), vistos)
 
 
 class TesteEmbutido(Base):
