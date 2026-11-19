@@ -44,6 +44,7 @@ $script:Opcoes = @{ Script = ''; Projeto = ''; SemReiniciar = $false; Forcar = $
 # Wrappers and helpers live in apoio.ps1 (split for size); dot-sourced so they share this module scope.
 . (Join-Path $PSScriptRoot 'apoio.ps1')
 . (Join-Path $PSScriptRoot 'distro.ps1')
+. (Join-Path $PSScriptRoot 'medir.ps1')
 
 function Invoke-Reinicio {
     param([int]$Etapa)
@@ -316,15 +317,12 @@ function Invoke-Instalador {
         Write-Mensagem 'Use só uma opção entre -Remover, -Login, -Atualizar e -Medir.'
         return 2
     }
-    if ($Medir) {
-        Write-Mensagem 'ainda nao implementado nesta versao'
-        return 2
-    }
     try {
         Initialize-Instalador -Fixados $Fixados
         if ($Remover) { return [int](Invoke-Remover) }
         if ($Login) { Invoke-Login; return 0 }
         if ($Atualizar) { Invoke-Atualizar; return 0 }
+        if ($Medir) { return [int](Invoke-Medir) }
         $inicio = 1
         if ($Retomar) {
             Remove-RunOnce

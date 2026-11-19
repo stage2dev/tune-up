@@ -74,11 +74,9 @@ Describe 'Runner E1..E6' {
         ($global:TU.Msgs -join "`n") | Should -Match 'LOCALAPPDATA'
     }
 
-    It '-Medir exits 2 with the not-implemented message; two modes at once exit 2' {
-        Invoke-Instalador -Medir | Should -Be 2
-        $global:TU.Msgs[0] | Should -Be 'ainda nao implementado nesta versao'
+    It 'two modes at once exit 2 (-Medir is covered by Instalar.Medir.Tests.ps1)' {
         Invoke-Instalador -Login -Remover | Should -Be 2
-        $global:TU.Msgs[1] | Should -Match 'só uma opção'
+        $global:TU.Msgs[0] | Should -Match 'só uma opção'
     }
 
     It 'E2 with WSL missing elevates exactly --install --no-distribution' {

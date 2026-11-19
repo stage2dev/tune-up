@@ -35,10 +35,11 @@ function New-Maquina {
         Elevados = New-Object System.Collections.ArrayList
         Msgs = New-Object System.Collections.ArrayList
         RunOnce = $null
+        Ancoras = New-Object System.Collections.ArrayList
         Admin = $false; ListaCodigo = 0; Terminais = New-Object System.Collections.ArrayList; TerminalAbre = $true; LoginEm = $null
         # Fake distro: Conf = wsl.conf on disk ('on' = interop on), Interop = what the running distro has.
         D = @{ Raiz = $false; Padrao = 'root'; Conf = 'on'; Interop = $true; Plugin = ''; Claude = $false; Auth = $true
-            Marca = $false; Codigos = @{}; TesteClaude = $null; AgentsCodigo = 0; AgentsSaida = ''; Verificar = 'RELATORIO-VERIFICAR'
+            MedirCodigo = 0; MedirSaida = ''; Sessao = 'ok'; Marca = $false; Codigos = @{}; TesteClaude = $null; AgentsCodigo = 0; AgentsSaida = ''; Verificar = 'RELATORIO-VERIFICAR'
             Parcial = $false }   # Parcial: a half-failed --usuario left --verificar failing
     }
 }
@@ -56,6 +57,10 @@ function Invoke-DistroFalsa {
         if ($D.Codigos.ContainsKey($modo)) { $r.Codigo = $D.Codigos[$modo] }
         if ($modo -eq '--verificar') { $r.Saida = $D.Verificar; if ($D.Parcial) { $r.Codigo = 1 } }   # the report prints on success and failure
     }
+    # -Medir: printf echoes its text, medir.sh answers from D.MedirSaida, claude --bg prints a session id.
+    if ($Argv[$i + 1] -eq '/usr/bin/printf') { $r.Saida = $Argv[$i + 3] }
+    if ($cmd -like '/bin/bash /usr/local/lib/tune-up/medir.sh *') { $r.Codigo = $D.MedirCodigo; $r.Saida = $D.MedirSaida }
+    if ($cmd -like '/usr/local/bin/tune-up-exec * --bg *') { $r.Saida = 'backgrounded ' + [char]0xB7 + ' abc123def' }
     switch -Exact ($cmd) {
         '/usr/bin/test -x /usr/local/bin/tune-up-exec' { if (-not $D.Raiz) { $r.Codigo = 1 } }
         '/usr/local/bin/node --version' { if ($D.Raiz) { $r.Saida = "v$NodeVersaoReal" } else { $r.Codigo = 127 } }
@@ -101,7 +106,7 @@ function Use-MaquinaFalsa {
         switch -Wildcard ($Argv -join ' ') {
             '--terminate *' { $global:TU.D.Interop = ($global:TU.D.Conf -eq 'on'); if ($global:TU.D.Raiz) { $global:TU.D.Padrao = 'tuneup' } }
             '--unregister *' { $global:TU.Distros = @($global:TU.Distros | Where-Object { $_ -ne $Argv[1] }); $global:TU.Reg = $null }
-            '--version' { if (-not $global:TU.Wsl) { $r.Codigo = 1 } }
+            '--version' { if (-not $global:TU.Wsl) { $r.Codigo = 1 } else { $r.Saida = "Versão do WSL: 2.4.0.0`nVersão do kernel: 5.15.153.1" } }
             '-l -q' { $r.Saida = ($global:TU.Distros -join "`n"); if ($global:TU.ListaCodigo) { $r.Codigo = $global:TU.ListaCodigo } }
             '-l -v' { $r.Saida = "  NAME      STATE           VERSION`n* tune-up    Stopped         $($global:TU.Versao)" }
             '--update' { $r.Codigo = $global:TU.UpdateCodigo; $r.Saida = $global:TU.UpdateSaida }
@@ -138,6 +143,8 @@ function Use-MaquinaFalsa {
         if ($global:TU.LoginEm -and $global:TU.Agora -ge $global:TU.LoginEm) { $global:TU.D.Auth = $true }
     }
     # The repo root of a Linux test run is not a drive-letter path; ConvertTo-CaminhoWsl has its own tests.
+    Mock -ModuleName etapas Start-Ancora { $null = $global:TU.Ancoras.Add('start'); [pscustomobject]@{ Id = 4242 } }
+    Mock -ModuleName etapas Stop-Ancora { if ($Processo) { $null = $global:TU.Ancoras.Add('stop') } }
     Mock -ModuleName etapas Get-RaizRepoWsl { '/mnt/c/tune-up' }
 }
 
