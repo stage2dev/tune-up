@@ -15,7 +15,7 @@ $script:ChavesReinicioHklm = @(
 $script:ChavesFixados = @('UBUNTU_URL', 'UBUNTU_SHA256', 'NODE_VERSAO', 'NODE_URL', 'NODE_SHA256',
     'FFMPEG_URL', 'FFMPEG_SHA256', 'CLAUDE_VERSAO', 'CLAUDE_URL', 'CLAUDE_SHA256',
     'CHROME_VERSAO', 'CHROME_URL', 'CHROME_SHA256', 'DISTRO', 'USUARIO')
-# Step table. A step N is live when functions Testar-E<N> and Fazer-E<N> exist; 7-10 are placeholders.
+# Step table. A step N is live when functions Testar-E<N> and Fazer-E<N> exist (7-10 live in distro.ps1).
 $script:Etapas = @(
     @{ N = 1; Texto = 'Verificando o Windows' },
     @{ N = 2; Texto = 'Verificando se o WSL está instalado' },
@@ -23,10 +23,10 @@ $script:Etapas = @(
     @{ N = 4; Texto = 'Atualizando o WSL' },
     @{ N = 5; Texto = 'Baixando o Ubuntu' },
     @{ N = 6; Texto = 'Criando a distro tune-up' },
-    @{ N = 7; Texto = 'Etapa 7' },
-    @{ N = 8; Texto = 'Etapa 8' },
-    @{ N = 9; Texto = 'Etapa 9' },
-    @{ N = 10; Texto = 'Etapa 10' })
+    @{ N = 7; Texto = 'Preparando o sistema da distro' },
+    @{ N = 8; Texto = 'Instalando o Claude Code e o plugin' },
+    @{ N = 9; Texto = 'Entrando na sua conta do Claude' },
+    @{ N = 10; Texto = 'Conferindo tudo e fechando a ponte com o Windows' })
 $script:Pasta = $null
 $script:ArquivoLog = $null
 $script:Fixados = $null
@@ -34,10 +34,14 @@ $script:Estado = $null
 $script:EstadoExistia = $false
 $script:EtapaAtual = 0
 $script:PedidoReinicio = 0
+$script:Aviso = $false
+# Repo root (two levels above scripts\wsl): source of the files copied into the distro and of plugin.json.
+$script:RaizRepo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $script:Opcoes = @{ Script = ''; Projeto = ''; SemReiniciar = $false; Forcar = $false; Retomar = $false }
 
 # Wrappers and helpers live in apoio.ps1 (split for size); dot-sourced so they share this module scope.
 . (Join-Path $PSScriptRoot 'apoio.ps1')
+. (Join-Path $PSScriptRoot 'distro.ps1')
 
 function Invoke-Reinicio {
     param([int]$Etapa)
@@ -151,6 +155,7 @@ function Fazer-E4 {
     if ((Invoke-Wsl -Argv @('--version')).Codigo -ne 0) {
         Stop-Instalador ('O WSL não está funcionando e não consegui atualizá-lo. Detalhes no log: {0}' -f $script:ArquivoLog)
     }
+    $script:Aviso = $true
     Write-Mensagem 'Aviso: não consegui atualizar o WSL agora (sem internet?). Sigo com a versão instalada; a próxima execução tenta de novo.'
 }
 
@@ -182,7 +187,10 @@ function Fazer-E5 {
 function Get-DistrosListadas {
     $r = Invoke-Wsl -Utf8 -Argv @('-l', '-q')
     # Assumption: a non-zero exit here means "no distro installed" (wsl.exe does that on an empty list).
-    if ($r.Codigo -ne 0) { return @() }
+    if ($r.Codigo -ne 0) {
+        Write-Log ('wsl -l -q saiu com codigo {0}; tratado como nenhuma distro' -f $r.Codigo)
+        return @()
+    }
     return @($r.Saida -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 }
 function Get-VersaoDistro {
@@ -206,6 +214,15 @@ function Testar-E6 {
     $e = $script:Estado
     $nossa = $script:EstadoExistia -and $reg -and $e.distroGuid -and $e.distroBasePath -and
         ($reg.Guid -eq $e.distroGuid) -and ($reg.BasePath -eq $e.distroBasePath)
+    # A run cut off between --import and saving the GUID: adopt it only if we recorded that import here.
+    if (-not $nossa -and $script:EstadoExistia -and $reg -and -not $e.distroGuid -and $e.importandoEm -and
+        (Test-MesmoCaminho $e.importandoDir (Join-Path $script:Pasta 'distro')) -and (Test-MesmoCaminho $reg.BasePath $e.importandoDir)) {
+        Write-Log 'distro importada numa execucao interrompida; adotada'
+        $e.distroGuid = $reg.Guid
+        $e.distroBasePath = $reg.BasePath
+        Save-Estado
+        return $true
+    }
     if (-not $nossa) {
         Write-Log 'distro ja existe e nao confere com estado.json; nada foi alterado'
         Stop-Instalador "Já existe uma distro $d que não foi criada por este instalador. Nada foi alterado."
@@ -215,6 +232,16 @@ function Testar-E6 {
 function Fazer-E6 {
     $d = $script:Fixados.DISTRO
     $dir = Join-Path $script:Pasta 'distro'
+    # A resume at step 6 skips E5: check the rootfs hash again right before importing it.
+    if (-not (Testar-E5)) {
+        $arq = Get-CaminhoRootfs
+        if (Test-Path -LiteralPath $arq) { Remove-Item -LiteralPath $arq -Force }
+        Write-Log 'sha256 do Ubuntu diferente antes do import; arquivo apagado'
+        Stop-Instalador 'O arquivo do Ubuntu não confere com a assinatura esperada e foi apagado. Rode o instalador de novo para baixá-lo outra vez.'
+    }
+    $script:Estado.importandoEm = Get-Agora
+    $script:Estado.importandoDir = $dir
+    Save-Estado
     # Importing a .wsl file through --import is not documented; measurement M8 decides (assumption).
     $r = Invoke-Wsl -Utf8 -Argv @('--import', $d, $dir, (Get-CaminhoRootfs), '--version', '2')
     if ($r.Codigo -ne 0) {
@@ -254,6 +281,7 @@ function Invoke-Etapas {
             continue
         }
         Write-Log 'inicio'
+        $script:Aviso = $false
         $feito = @(& "Testar-E$n")
         if ($feito.Count -gt 0 -and $feito[-1] -eq $true) { Write-Mensagem "$rotulo ok (já estava pronto)"; continue }
         $null = & "Fazer-E$n"
@@ -262,7 +290,7 @@ function Invoke-Etapas {
             return (Invoke-Reinicio -Etapa $script:PedidoReinicio)
         }
         if ([int]$script:Estado.etapa -le $n) { $script:Estado.etapa = $n + 1; Save-Estado }
-        Write-Mensagem "$rotulo ok"
+        if ($script:Aviso) { Write-Mensagem "$rotulo aviso" } else { Write-Mensagem "$rotulo ok" }
     }
     return 0
 }
@@ -276,12 +304,23 @@ function Invoke-Instalador {
     $script:PedidoReinicio = 0
     $script:EtapaAtual = 0
     $script:ArquivoLog = $null
-    if ($Remover -or $Login -or $Atualizar -or $Medir) {
+    if (Test-Administrador) {
+        Write-Mensagem 'Não rode o instalador como administrador. Abra o PowerShell normal (sem "Executar como administrador") e rode de novo; ele pede a permissão só quando precisar.'
+        return 2
+    }
+    if (@($Remover, $Login, $Atualizar, $Medir | Where-Object { $_ }).Count -gt 1) {
+        Write-Mensagem 'Use só uma opção entre -Remover, -Login, -Atualizar e -Medir.'
+        return 2
+    }
+    if ($Medir) {
         Write-Mensagem 'ainda nao implementado nesta versao'
         return 2
     }
     try {
         Initialize-Instalador -Fixados $Fixados
+        if ($Remover) { return [int](Invoke-Remover) }
+        if ($Login) { Invoke-Login; return 0 }
+        if ($Atualizar) { Invoke-Atualizar; return 0 }
         $inicio = 1
         if ($Retomar) {
             Remove-RunOnce
@@ -296,14 +335,18 @@ function Invoke-Instalador {
         } else {
             Write-Mensagem ('Erro inesperado: {0}' -f $_.Exception.Message)
         }
-        Write-Log ('parou: {0}' -f $_.Exception.Message)
-        if ($Retomar) {
-            Write-Mensagem 'A continuação automática falhou. Depois de resolver o problema acima, rode à mão no PowerShell:'
-            $manual = Get-ComandoRetomar
-            Write-Mensagem $manual
-            Write-Log ('comando manual: {0}' -f $manual)
-            # RunOnce opens a console that closes when powershell.exe exits: hold it so the text is read.
-            $null = Read-Resposta 'Aperte Enter para fechar'
+        try {
+            if ($Retomar) {
+                Write-Mensagem 'A continuação automática falhou. Depois de resolver o problema acima, rode à mão no PowerShell:'
+                $manual = Get-ComandoRetomar
+                Write-Mensagem $manual
+            }
+            Write-Log ('parou: {0}' -f $_.Exception.Message)
+            if ($Retomar) { Write-Log ('comando manual: {0}' -f $manual) }
+        } finally {
+            # RunOnce opens a console that closes when powershell.exe exits: hold it so the text is read,
+            # even when writing the log failed.
+            if ($Retomar) { $null = Read-Resposta 'Aperte Enter para fechar' }
         }
         return $codigo
     }

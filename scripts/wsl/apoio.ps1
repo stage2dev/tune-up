@@ -98,7 +98,14 @@ function Assert-Argv {
         if ([string]::IsNullOrEmpty($a)) { Stop-Instalador 'Argumento vazio para o wsl.exe (erro interno).' }
         # A bare double dash hands the rest to the Linux shell; always use --exec with an argv instead.
         if ($a -eq ('-' * 2)) { Stop-Instalador 'Argumento proibido para o wsl.exe (erro interno).' }
+        # PowerShell 5.1 native argument passing breaks on an embedded '"' or a trailing backslash.
+        if ($a.Contains('"') -or $a.EndsWith('\')) { Stop-Instalador "Argumento com aspas ou terminado em \ não é aceito: $a" 2 }
     }
+}
+
+function Test-Administrador {
+    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+    return (New-Object Security.Principal.WindowsPrincipal $id).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
 function Get-CaminhoWsl {
@@ -134,6 +141,17 @@ function Invoke-Wsl {
     return [pscustomobject]@{ Codigo = [int]$codigo; Saida = ($texto -replace "`0", '') }
 }
 
+# The only elevated launch in the installer: ShellExecute with the elevation verb on the given file.
+function Start-ProcessoElevado {
+    param([Parameter(Mandatory)][string]$Arquivo, [Parameter(Mandatory)][string]$Argumentos)
+    $psi = New-Object Diagnostics.ProcessStartInfo
+    $psi.FileName = $Arquivo
+    $psi.Arguments = $Argumentos
+    $psi.Verb = 'RunAs'
+    $psi.UseShellExecute = $true
+    return [Diagnostics.Process]::Start($psi)
+}
+
 # The ONLY elevated call. Target is always the System32 wsl.exe; a cancelled UAC prompt returns 1223.
 function Invoke-WslElevado {
     param([Parameter(Mandatory)][string[]]$Argv)
@@ -144,8 +162,9 @@ function Invoke-WslElevado {
     if (-not $env:SystemRoot) { Stop-Instalador 'A variável SystemRoot está vazia; não sei onde está o wsl.exe.' }
     Write-Log ('wsl.exe (administrador) {0}' -f ($Argv -join ' '))
     try {
-        $p = Start-Process -FilePath "$env:SystemRoot\System32\wsl.exe" -ArgumentList $Argv -Verb RunAs -PassThru
-        $null = $p.Handle
+        # Elements were validated above (no spaces or quotes), so a plain join is the exact command line.
+        $p = Start-ProcessoElevado -Arquivo "$env:SystemRoot\System32\wsl.exe" -Argumentos ($Argv -join ' ')
+        if ($null -eq $p) { throw (New-Object System.InvalidOperationException 'o Windows não iniciou o processo') }
         $p.WaitForExit()
         $codigo = $p.ExitCode
     } catch {
@@ -189,7 +208,7 @@ function Read-Estado {
     $arq = Join-Path $script:Pasta 'estado.json'
     $script:EstadoExistia = Test-Path -LiteralPath $arq
     $h = @{ versao = 1; etapa = 1; wslInstalarCodigo = $null; wslInstaladoEm = $null; wslAtualizadoEm = $null
-        reinicioPedidoEm = $null; distroGuid = $null; distroBasePath = $null }
+        reinicioPedidoEm = $null; distroGuid = $null; distroBasePath = $null; importandoEm = $null; importandoDir = $null }
     if ($script:EstadoExistia) {
         try { $obj = [IO.File]::ReadAllText($arq) | ConvertFrom-Json }
         catch { Stop-Instalador "O arquivo $arq está corrompido. Não apague a distro; peça ajuda ao suporte." }

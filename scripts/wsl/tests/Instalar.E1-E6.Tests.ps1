@@ -8,12 +8,12 @@ AfterAll { $env:LOCALAPPDATA = $script:LocalOriginal; Remove-Variable -Name TU -
 Describe 'Runner E1..E6' {
     BeforeEach { New-Maquina; Use-MaquinaFalsa }
 
-    It 'runs E1..E6 in order, imports with the exact argv and keeps 7-10 as placeholders' {
+    It 'runs E1..E10 in order and imports with the exact argv' {
         $global:TU.Wsl = $false
         Invoke-InstaladorTeste | Should -Be 0
         $linhas = @($global:TU.Msgs | Where-Object { $_ -match '^\[\d+/10\]' })
         ($linhas | ForEach-Object { [int]($_ -replace '^\[(\d+)/10\].*', '$1') }) -join ',' | Should -Be '1,2,3,4,5,6,7,8,9,10'
-        $linhas[6] | Should -Match 'ainda nao implementado nesta versao'
+        @($linhas[6..9] | Where-Object { $_ -match '\.\.\. ok' }).Count | Should -Be 4
         $dir = Join-Path (Get-PastaTeste) 'distro'
         $rootfs = Join-Path (Join-Path (Get-PastaTeste) 'baixados') 'ubuntu-24.04.5-wsl-amd64.wsl'
         $imp = @($global:TU.Argvs | Where-Object { $_[0] -eq '--import' })
@@ -22,7 +22,7 @@ Describe 'Runner E1..E6' {
         $est = Get-Content -Raw (Join-Path (Get-PastaTeste) 'estado.json') | ConvertFrom-Json
         $est.distroGuid | Should -Be '{1111-2222}'
         $est.distroBasePath | Should -Be $dir
-        $est.etapa | Should -Be 7
+        $est.etapa | Should -Be 11
     }
 
     It 'a second run with everything done makes zero write calls' {
@@ -38,7 +38,8 @@ Describe 'Runner E1..E6' {
         Should -Invoke -ModuleName etapas Set-RunOnce -Times 0 -Exactly
         (Get-FileHash $estado).Hash | Should -Be $antes
         (Get-Item $estado).LastWriteTimeUtc | Should -Be $quando
-        @($global:TU.Msgs | Where-Object { $_ -match '^\[[2-6]/10\].*já estava pronto' }).Count | Should -Be 5
+        @($global:TU.Msgs | Where-Object { $_ -match '^\[([2-9]|10)/10\].*já estava pronto' }).Count | Should -Be 9
+        $global:TU.Terminais.Count | Should -Be 0
     }
 
     It 'E1 without virtualization stops with a BIOS instruction and never calls wsl' {
@@ -73,13 +74,11 @@ Describe 'Runner E1..E6' {
         ($global:TU.Msgs -join "`n") | Should -Match 'LOCALAPPDATA'
     }
 
-    It 'later parameters exit 2 with the not-implemented message' {
-        foreach ($p in 'Remover', 'Login', 'Atualizar', 'Medir') {
-            $global:TU.Msgs.Clear()
-            $h = @{}; $h[$p] = $true
-            Invoke-Instalador @h | Should -Be 2
-            $global:TU.Msgs[0] | Should -Be 'ainda nao implementado nesta versao'
-        }
+    It '-Medir exits 2 with the not-implemented message; two modes at once exit 2' {
+        Invoke-Instalador -Medir | Should -Be 2
+        $global:TU.Msgs[0] | Should -Be 'ainda nao implementado nesta versao'
+        Invoke-Instalador -Login -Remover | Should -Be 2
+        $global:TU.Msgs[1] | Should -Match 'só uma opção'
     }
 
     It 'E2 with WSL missing elevates exactly --install --no-distribution' {
@@ -346,10 +345,10 @@ Describe 'Wrappers' {
     It 'Invoke-WslElevado targets the System32 wsl.exe' {
         $antes = $env:SystemRoot; $env:SystemRoot = 'C:\Windows'
         try {
-            Mock -ModuleName etapas Start-Process { $global:TU.Alvo = $FilePath; $global:TU.Verbo = $Verb; [pscustomobject]@{ Handle = 1; ExitCode = 0 } | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value { } -PassThru }
+            Mock -ModuleName etapas Start-ProcessoElevado { $global:TU.Alvo = $Arquivo; $global:TU.Args = $Argumentos; [pscustomobject]@{ ExitCode = 0 } | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value { } -PassThru }
             InModuleScope etapas { Invoke-WslElevado -Argv @('--install', '--no-distribution') } | Should -Be 0
             $global:TU.Alvo | Should -BeExactly 'C:\Windows\System32\wsl.exe'
-            $global:TU.Verbo | Should -Be 'RunAs'
+            $global:TU.Args | Should -BeExactly '--install --no-distribution'
         } finally { $env:SystemRoot = $antes }
     }
 
@@ -357,9 +356,8 @@ Describe 'Wrappers' {
         $antes = $env:SystemRoot; $env:SystemRoot = 'C:\Windows'
         try {
             Mock -ModuleName etapas Write-Mensagem { $null = $global:TU.Msgs.Add($Texto) }
-            Mock -ModuleName etapas Start-Process {
-                throw (New-Object System.InvalidOperationException 'cancelado', (New-Object System.ComponentModel.Win32Exception 1223))
-            }
+            # The real exception type the ShellExecute launch throws when the UAC prompt is cancelled.
+            Mock -ModuleName etapas Start-ProcessoElevado { throw (New-Object System.ComponentModel.Win32Exception 1223) }
             InModuleScope etapas { Invoke-WslElevado -Argv @('--update') } | Should -Be 1223
             ($global:TU.Msgs -join "`n") | Should -Match 'permissão de administrador foi recusada'
         } finally { $env:SystemRoot = $antes }
@@ -405,7 +403,7 @@ Describe 'Wrappers' {
 
 Describe 'Encoding' {
     It '<Arquivo> is UTF-8 with BOM so PowerShell 5.1 keeps the accents' -ForEach @(
-        @{ Arquivo = 'etapas.psm1' }, @{ Arquivo = 'apoio.ps1' }, @{ Arquivo = 'instalar.ps1' }
+        @{ Arquivo = 'etapas.psm1' }, @{ Arquivo = 'apoio.ps1' }, @{ Arquivo = 'distro.ps1' }, @{ Arquivo = 'instalar.ps1' }
     ) {
         $b = [IO.File]::ReadAllBytes((Join-Path $RaizWsl $Arquivo))
         ($b[0], $b[1], $b[2]) -join ',' | Should -Be '239,187,191'
