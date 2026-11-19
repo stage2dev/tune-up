@@ -251,8 +251,11 @@ def _item(conferir, auto, marca, agora, modo="todas"):
     return item
 
 
-def montar(catalogo, auto, marcas, agora):
-    """contas.json content. auto: key -> automatic check results; marcas: key -> mark (key = id or id:canal)."""
+def montar(catalogo, auto, marcas, agora, conferido_em=None):
+    """contas.json content. auto: key -> automatic check results; marcas: key -> mark (key = id or id:canal).
+
+    conferido_em: date of the last automatic check (status passes now, marcar keeps the stored one); None = never.
+    """
     servicos = {}
     for s in catalogo["servicos"]:
         item = _item(s["conferir"], auto.get(s["id"], []), marcas.get(s["id"]), agora, s.get("modo", "todas"))
@@ -266,7 +269,7 @@ def montar(catalogo, auto, marcas, agora):
                 chave = s["id"] + ":" + c["id"]
                 item["canais"][c["id"]] = _item(c["conferir"], auto.get(chave, []), marcas.get(chave), agora)
         servicos[s["id"]] = item
-    return {"versao": 1, "conferido_em": iso(agora), "servicos": servicos}
+    return {"versao": 1, "conferido_em": iso(conferido_em) if conferido_em else None, "servicos": servicos}
 
 
 def chaves(catalogo):

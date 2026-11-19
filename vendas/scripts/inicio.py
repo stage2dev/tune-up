@@ -13,7 +13,7 @@ LINHA = ("tune-up: o WhatsApp deste projeto ainda não está preparado. No paine
          "botão \"Preparar tudo\" faz isso (ou use /tune-up:instalar).")
 PAINEL_MAX = 64 * 1024   # = config.LIMITE_JSON
 ESTADO_MAX = 4096        # = embutidos.MAX_BYTES
-EMBUTIDOS = ("estudio", "vendas")   # = ids de painel/embutidos.EMBUTIDOS (um valor não booleano desliga tudo)
+EMBUTIDOS = ("estudio", "vendas", "mkt")   # = ids de painel/embutidos.EMBUTIDOS (um valor não booleano desliga tudo)
 RE_PACOTE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,59}$")   # = config.RE_PACOTE
 
 

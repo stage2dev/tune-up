@@ -207,7 +207,7 @@ def cmd_status(a, raiz, catalogo, agora, rodar, which, lang):
 
     def fazer(antigo):  # marks recorded while the commands ran are merged, never lost
         _, marcas = guardados(antigo, catalogo, agora)
-        return R.montar(catalogo, auto, R.juntar(marcas_antes, marcas), agora)
+        return R.montar(catalogo, auto, R.juntar(marcas_antes, marcas), agora, agora)
     dados, ruim = A.atualizar(raiz, "contas.json", fazer)
     aviso = avisar_ruim(ruim, raiz, lang)
     saida = dict(dados, aviso=aviso) if aviso else dados
@@ -228,7 +228,8 @@ def cmd_marcar(a, raiz, catalogo, agora, lang):
 
     def fazer(antigo):
         auto, marcas = guardados(antigo, catalogo, agora)
-        return R.montar(catalogo, auto, R.juntar(marcas, {a.id: nova}), agora)
+        quando = R.ler_iso(antigo.get("conferido_em")) if isinstance(antigo, dict) else None  # only status refreshes it
+        return R.montar(catalogo, auto, R.juntar(marcas, {a.id: nova}), agora, quando)
     _, ruim = A.atualizar(raiz, "contas.json", fazer)
     avisar_ruim(ruim, raiz, lang)
     escrever(TEXTOS[lang]["marcado"].format(a.id, a.estado))

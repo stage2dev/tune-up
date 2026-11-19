@@ -1,4 +1,4 @@
-"""Módulos embutidos: o Estúdio e o Vendas vêm dentro do próprio tune-up e chegam desligados.
+"""Módulos embutidos: o Estúdio, o Vendas e o Marketing vêm dentro do próprio tune-up e chegam desligados.
 
 A lista é fixa (EMBUTIDOS): o id da URL nunca vira caminho. O arquivo de cada um fica sob a raiz do
 plugin (a pasta acima de painel/) e passa pela checagem de caminho real. Ligado ou desligado mora em
@@ -48,10 +48,15 @@ EMBUTIDOS = (
      "modulo": "vendas/painel/modulos/vendas/modulo.py", "acoes": None,
      "negar": NEGAR_VENDAS, "dados": PASTAS_DADOS_VENDAS,
      "aviso": "primeira versão testada só no macOS; precisa de Docker", "sem_windows": None},
+    {"id": "mkt", "titulo": "Marketing", "plugin": "tune-up-mkt",
+     "descricao": "Mostra quais contas de marketing estão ligadas e confere de novo com um clique.",
+     "modulo": "tune-up-mkt/painel/modulos/mkt/modulo.py", "acoes": None,
+     "negar": (), "dados": (), "aviso": None, "sem_windows": None},
 )
 _POR_ID = {e["id"]: e for e in EMBUTIDOS}
 # tudo o que os módulos importam ou rodam no servidor (irmãos, scripts/, node/, servico/) mora nestas pastas
-PASTAS_CODIGO = ("tune-up-studio", "vendas")
+# (tune-up-mkt: o módulo carrega scripts/contas_*.py e o servidor roda scripts/contas.py status)
+PASTAS_CODIGO = ("tune-up-studio", "vendas", "tune-up-mkt")
 
 
 def pastas_codigo():

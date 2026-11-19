@@ -167,6 +167,15 @@ class TesteLigado(unittest.TestCase):
             painel = "vendas" in embutidos.ligados(config.carregar(raiz, home=self.tmp))
             self.assertEqual((n, inicio.modulo_ligado(raiz), painel), (n, esperado, esperado))
 
+    def test_mkt_nao_booleano_desliga_como_no_painel(self):
+        casos = (({"vendas": True}, True), ({"vendas": True, "mkt": True}, True),
+                 ({"vendas": True, "mkt": False}, True), ({"vendas": True, "mkt": "x"}, False),
+                 ({"vendas": True, "mkt": None}, False))
+        for n, (estado, esperado) in enumerate(casos):
+            raiz = self.projeto(100 + n, {}, estado, "painel-projeto/dados", False)
+            painel = "vendas" in embutidos.ligados(config.carregar(raiz, home=self.tmp))
+            self.assertEqual((estado, inicio.modulo_ligado(raiz), painel), (estado, esperado, esperado))
+
     def test_ligado_pelo_arquivo_avisa_e_desligado_cala(self):
         base = os.path.join(self.tmp, "vendas-dados")
         for n, (conf, estado, dados, pacote_arquivo, esperado) in enumerate(CASOS):
