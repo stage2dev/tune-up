@@ -109,6 +109,56 @@ class Ffmpeg(unittest.TestCase):
         self.assertEqual(va.nomes_de_filtros(FILTERS_OUT), set(va.FILTROS))
 
 
+class Wsl(unittest.TestCase):
+    WSL1 = "4.4.0-19041-Microsoft"
+    WSL2 = "6.6.87.2-microsoft-standard-WSL2"
+
+    def test_wsl1_is_refused(self):
+        itens = va.sistema("linux", self.WSL1)
+        self.assertEqual(levels(itens), [va.ERRO])
+        self.assertIn("WSL1", itens[0][1])
+        self.assertIn("[falta]", va.relatorio(itens))
+
+    def test_wsl2_and_plain_linux_are_ok(self):
+        self.assertEqual(levels(va.sistema("linux", self.WSL2)), [va.OK])
+        self.assertIn("WSL2", va.sistema("linux", self.WSL2)[0][1])
+        self.assertEqual(levels(va.sistema("linux", "6.8.0-45-generic")), [va.OK])
+        self.assertEqual(va.wsl("linux", self.WSL1), 1)
+        self.assertEqual(va.wsl("linux", self.WSL2), 2)
+        self.assertIsNone(va.wsl("linux", "6.8.0-45-generic"))
+        self.assertIsNone(va.wsl("darwin", self.WSL2))
+
+    def test_kernel_string_heuristics(self):
+        for texto in ("4.19.104-microsoft-standard", "5.10.16.3-Microsoft-Standard-WSL2", "5.15.0-microsoft-WSL2-foo"):
+            self.assertEqual(va.wsl("linux", texto), 2, texto)
+        self.assertEqual(va.wsl("linux", "4.4.0-19041-Microsoft"), 1)
+
+    def test_node_dir_option(self):
+        vistos = []
+        orig = va.verificar
+        va.verificar = lambda projeto=None, node_dir=va.NODE_DIR, selo=False: vistos.append((node_dir, selo)) or []
+        try:
+            self.assertEqual(va.main(["--node-dir", "/abs/node"]), 0)
+            self.assertEqual(vistos, [("/abs/node", True)])
+            for ruim in ("rel/node", "/a/../b", "/a/..", ".."):
+                self.assertEqual(va.main(["--node-dir", ruim]), 2, ruim)
+            self.assertEqual(va.main([]), 0)
+            self.assertEqual(vistos[-1], (va.NODE_DIR, False))
+        finally:
+            va.verificar = orig
+
+    def test_unreadable_osrelease_is_plain_linux(self):
+        def falha():
+            raise OSError("sem /proc")
+        self.assertEqual(va.osrelease(falha), "")
+        self.assertEqual(va.osrelease(lambda: self.WSL2), self.WSL2)
+        self.assertEqual(levels(va.sistema("linux", "")), [va.OK])
+
+    def test_darwin_and_windows_unchanged(self):
+        self.assertEqual(va.sistema("darwin", self.WSL1), [(va.OK, "sistema: macOS")])
+        self.assertEqual(levels(va.sistema("win32", self.WSL2)), [va.ERRO])
+
+
 class SystemAndNode(unittest.TestCase):
     def test_windows_is_refused(self):
         self.assertEqual(levels(va.sistema("win32")), [va.ERRO])
@@ -150,6 +200,17 @@ class Files(unittest.TestCase):
         self.assertEqual(levels(va.hyperframes(node_dir)), [va.ERRO])
         self.write("node/node_modules/hyperframes/package.json", {"version": "0.9.6"})
         self.assertEqual(levels(va.hyperframes(node_dir)), [va.OK])
+
+    def test_hyperframes_signature_stamp_only_when_asked(self):
+        self.write("node/package.json", {"dependencies": {"hyperframes": "0.9.6"}})
+        self.write("node/node_modules/hyperframes/package.json", {"version": "0.9.6"})
+        node_dir = os.path.join(self.d, "node")
+        self.assertEqual(levels(va.hyperframes(node_dir)), [va.OK])  # panel flow: no stamp needed
+        res = va.hyperframes(node_dir, selo=True)
+        self.assertEqual(res, [(va.ERRO, "hyperframes: instalação sem conferência de assinatura; "
+                                         "rode o instalador de novo")])
+        self.write("node/" + va.SELO, "abc\n")
+        self.assertEqual(levels(va.hyperframes(node_dir, selo=True)), [va.OK])
 
     def test_chrome_cache(self):
         env = {"HYPERFRAMES_CACHE_DIR": os.path.join(self.d, "hf")}

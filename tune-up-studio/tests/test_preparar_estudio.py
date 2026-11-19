@@ -1,5 +1,6 @@
 """Unit tests for scripts/preparar_estudio.py and the estudio module. No network, no real npm."""
 import importlib.util
+import io
 import json
 import os
 import shutil
@@ -320,6 +321,167 @@ class TestModulo(Base):
             mod.agir({"dados": outra, "dados_dir": self.dados, "raiz": self.tmp}, "preparar", {"confirmar": True})
         self.assertEqual(popen.call_args[0][0][3:5], ["--dados", self.dados])
         self.assertFalse(os.path.exists(outra))
+
+
+class TestWsl(Base):
+    """Under WSL with dados on /mnt/<letter>/ the node folder and the lock live on the Linux disk."""
+
+    def setUp(self):
+        super().setUp()
+        self.home = os.path.join(self.tmp, "home")
+        os.makedirs(self.home)
+        self.linux = os.path.join(self.home, ".local", "share", "tune-up")
+        self.mnt = "/mnt/c/Users/x/dados"
+        p = mock.patch.object(pe, "_real", lambda c: self.mnt if c == self.dados else c)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_pasta_node_vai_para_o_disco_do_linux(self):
+        chave = pe.chave_do_ambiente(self.studio)
+        esperado = os.path.join(self.linux, "estudio-node", chave, "node")
+        sob_claude = os.path.join(self.home, ".claude", "studio")  # studio under ~/.claude: same answer
+        shutil.copytree(self.studio, sob_claude)
+        for studio in (self.studio, sob_claude):
+            d = pe.pasta_node(self.dados, studio, self.home, wsl=lambda: 2)
+            self.assertEqual(d, esperado)
+        for nome in ("package.json", "package-lock.json"):
+            self.assertTrue(os.path.isfile(os.path.join(d, nome)))
+        self.assertFalse(os.path.exists(os.path.join(self.dados, "estudio-node")))
+
+    def test_chaves_velhas_do_disco_do_linux_somem(self):
+        velha = os.path.join(self.linux, "estudio-node", "velha", "node")
+        os.makedirs(velha)
+        pe.pasta_node(self.dados, self.studio, self.home, wsl=lambda: 1)
+        self.assertFalse(os.path.exists(os.path.dirname(velha)))
+
+    def test_wsl_com_dados_no_disco_do_linux_nao_muda(self):
+        with mock.patch.object(pe, "_real", lambda c: c):
+            d = pe.pasta_node(self.dados, self.studio, self.home, wsl=lambda: 2)
+        self.assertEqual(d, os.path.join(self.studio, "node"))
+        self.assertFalse(os.path.exists(self.linux))
+
+    def test_fora_do_wsl_nao_muda(self):
+        d = pe.pasta_node(self.dados, self.studio, self.home, wsl=lambda: None)
+        self.assertEqual(d, os.path.join(self.studio, "node"))
+        self.assertFalse(os.path.exists(self.linux))
+
+    @unittest.skipIf(sys.platform == "win32", "symlinks need privileges on Windows")
+    def test_atalho_no_destino_e_recusado(self):
+        alvo = os.path.join(self.tmp, "alvo")
+        os.makedirs(alvo)
+        os.makedirs(os.path.join(self.linux, "estudio-node"))
+        os.symlink(alvo, os.path.join(self.linux, "estudio-node", pe.chave_do_ambiente(self.studio)))
+        with self.assertRaises(OSError):
+            pe.pasta_node(self.dados, self.studio, self.home, wsl=lambda: 2)
+        self.assertEqual(os.listdir(alvo), [])
+
+    def test_caminho_da_trava(self):
+        self.assertEqual(pe._caminho_trava(self.dados, self.home, lambda: 2), os.path.join(self.linux, "ambiente.lock"))
+        self.assertEqual(oct(os.stat(self.linux).st_mode & 0o777), "0o700")
+        self.assertEqual(pe._caminho_trava(self.dados, self.home, lambda: None), os.path.join(self.dados, "ambiente.lock"))
+        with mock.patch.object(pe, "_real", lambda c: c):
+            self.assertEqual(pe._caminho_trava(self.dados, self.home, lambda: 2), os.path.join(self.dados, "ambiente.lock"))
+
+    def test_so_instalar_fora_do_wsl_sai_com_2(self):
+        r = pe.main(["--so-instalar"], wsl=lambda: None, home=self.home, rodar=self.rodar([0, 0]),
+                    which=lambda n: "/bin/" + n, studio=self.studio, plataforma="darwin")
+        self.assertEqual(r, 2)
+        self.assertEqual(self.chamadas, [])
+        self.assertFalse(os.path.exists(self.linux))
+
+    def test_so_instalar_no_wsl2_roda_os_dois_passos_sem_ambiente_json(self):
+        destino = os.path.join(self.linux, "estudio-node", pe.chave_do_ambiente(self.studio), "node")
+        r = pe.main(["--so-instalar"], wsl=lambda: 2, home=self.home, rodar=self.rodar([0, 0]),
+                    which=lambda n: "/bin/" + n, studio=self.studio, plataforma="linux")
+        self.assertEqual(r, 0)
+        self.assertEqual([c for c, _ in self.chamadas],
+                         [["ci", "--ignore-scripts", "--no-audit", "--no-fund"], ["audit", "signatures"]])
+        self.assertEqual({cwd for _, cwd in self.chamadas}, {destino})
+        self.assertFalse(os.path.exists(os.path.join(self.dados, "ambiente.json")))
+
+    def test_so_instalar_apaga_node_modules_se_a_auditoria_falha(self):
+        destino = os.path.join(self.linux, "estudio-node", pe.chave_do_ambiente(self.studio), "node")
+        r = pe.main(["--so-instalar"], wsl=lambda: 2, home=self.home, rodar=self.rodar([0, 1]),
+                    which=lambda n: "/bin/" + n, studio=self.studio, plataforma="linux")
+        self.assertEqual(r, 1)
+        self.assertFalse(os.path.exists(os.path.join(destino, "node_modules")))
+
+    def so(self, args, wsl=lambda: None, codigos=(0, 0), rodar=None, plataforma="linux", home=None):
+        return pe.main(args, wsl=wsl, home=home or self.home, rodar=rodar or self.rodar(list(codigos)),
+                       which=lambda n: "/bin/" + n, studio=self.studio, plataforma=plataforma)
+
+    def destino(self):
+        return os.path.join(self.linux, "estudio-node", pe.chave_do_ambiente(self.studio), "node")
+
+    def test_so_instalar_em_linux_comum_imprime_node_dir_por_ultimo(self):
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            r = self.so(["--so-instalar"])
+        self.assertEqual(r, 0)
+        self.assertEqual(out.getvalue().splitlines()[-1], "node_dir=" + os.path.abspath(self.destino()))
+
+    def test_so_instalar_recusa_wsl1_e_nao_linux(self):
+        for wsl, plat in ((lambda: 1, "linux"), (lambda: None, "win32"), (lambda: None, "darwin")):
+            with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+                self.assertEqual(self.so(["--so-instalar"], wsl=wsl, plataforma=plat), 2)
+            self.assertEqual(len(out.getvalue().splitlines()), 1)
+        self.assertEqual(self.chamadas, [])
+        self.assertFalse(os.path.exists(self.linux))
+
+    def test_onde_imprime_so_o_caminho_e_nao_cria_nada(self):
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            r = self.so(["--onde"])
+        self.assertEqual(r, 0)
+        self.assertEqual(out.getvalue(), os.path.abspath(self.destino()) + "\n")
+        self.assertFalse(os.path.exists(self.linux))
+        self.assertEqual(self.chamadas, [])
+
+    def test_onde_recusa_onde_so_instalar_recusa(self):
+        for wsl, plat in ((lambda: 1, "linux"), (lambda: None, "darwin")):
+            with mock.patch("sys.stdout", new_callable=io.StringIO) as out, \
+                    mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+                self.assertEqual(self.so(["--onde"], wsl=wsl, plataforma=plat), 2)
+            self.assertEqual(out.getvalue(), "")
+            self.assertEqual(len(err.getvalue().splitlines()), 1)
+
+    @unittest.skipIf(sys.platform == "win32", "symlinks need privileges on Windows")
+    def test_so_instalar_com_trava_em_atalho_retorna_1_sem_traceback(self):
+        alvo = os.path.join(self.tmp, "alvo")
+        os.makedirs(alvo)
+        os.makedirs(os.path.dirname(self.linux))
+        os.symlink(alvo, self.linux)
+        self.assertEqual(self.so(["--so-instalar"]), 1)
+        self.assertEqual(self.so(["--dados", self.dados, "--sim"], wsl=lambda: 2), 1)
+        self.assertEqual(os.listdir(alvo), [])
+
+    def test_so_instalar_apaga_node_modules_se_o_ci_falha_ou_e_interrompido(self):
+        self.assertEqual(self.so(["--so-instalar"], codigos=(1,)), 1)
+        self.assertFalse(os.path.exists(os.path.join(self.destino(), "node_modules")))
+        base = self.rodar([0, 0])
+
+        def interrompido(cmd, cwd, timeout):
+            base(cmd, cwd, timeout)
+            raise KeyboardInterrupt
+        with self.assertRaises(KeyboardInterrupt):
+            self.so(["--so-instalar"], rodar=interrompido)
+        self.assertFalse(os.path.exists(os.path.join(self.destino(), "node_modules")))
+
+    def test_destino_linux_cria_a_raiz_com_0700(self):
+        pe._destino_linux(self.home, "k")
+        self.assertEqual(oct(os.stat(self.linux).st_mode & 0o777), "0o700")
+
+    def test_trava_herdada_no_wsl_ainda_respeita_a_trava_do_disco_do_linux(self):
+        trava = pe._travar_em(pe._caminho_trava(None, self.home))
+        self.addCleanup(trava.close)
+        r = pe.main(["--dados", self.dados, "--sim", "--trava-herdada"], wsl=lambda: 2, home=self.home,
+                    rodar=self.rodar([0, 0]), which=lambda n: "/bin/" + n, studio=self.studio)
+        self.assertEqual(r, 2)
+        self.assertEqual(self.chamadas, [])
+        self.assertFalse(os.path.exists(os.path.join(self.dados, "ambiente.json")))
+
+    def test_sem_dados_e_sem_so_instalar_continua_erro_do_argparse(self):
+        with self.assertRaises(SystemExit) as e:
+            pe.main([])
+        self.assertEqual(e.exception.code, 2)
 
 
 if __name__ == "__main__":

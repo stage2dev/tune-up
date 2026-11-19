@@ -26,6 +26,7 @@ import saida_utf8  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 STUDIO = os.path.dirname(HERE)
 NODE_DIR = os.path.join(STUDIO, "node")
+SELO = ".assinaturas-ok"  # written by preparar_estudio.py --so-instalar only after `npm audit signatures` passed
 
 NODE_MIN = 22  # engines of hyperframes 0.9.6
 CHROME_VERSION = "152.0.7977.30"  # chrome-headless-shell pinned by hyperframes 0.9.6
@@ -49,12 +50,37 @@ def _rodar(cmd, timeout=20):
     return p.returncode, p.stdout.decode("utf-8", "replace")
 
 
-def sistema(plataforma=None):
+def osrelease(ler=None):
+    """Text of /proc/sys/kernel/osrelease, or "" when unreadable (never raises)."""
+    try:
+        if ler:
+            return str(ler())
+        with open("/proc/sys/kernel/osrelease", encoding="utf-8", errors="replace") as f:
+            return f.read().strip()
+    except Exception:  # noqa: BLE001 - a failed read just means "not WSL"
+        return ""
+
+
+def wsl(plataforma=None, texto=None):
+    """None (not WSL), 1 or 2. Only the kernel release text decides."""
+    if not (plataforma or sys.platform).startswith("linux"):
+        return None
+    texto = (osrelease() if texto is None else texto).lower()
+    if "microsoft" not in texto:
+        return None
+    # Heuristic from known kernel strings, not from official docs; fails closed (unknown `microsoft` text = WSL1).
+    return 2 if "microsoft-standard" in texto or "wsl2" in texto else 1
+
+
+def sistema(plataforma=None, osrelease=None):
     plataforma = plataforma or sys.platform
     if plataforma == "darwin":
         return [(OK, "sistema: macOS")]
     if plataforma.startswith("linux"):
-        return [(OK, "sistema: Linux (WSL2 conta como Linux)")]
+        versao = wsl(plataforma, osrelease)
+        if versao == 1:
+            return [(ERRO, "sistema: WSL1 não serve; converta com wsl --set-version <distro> 2")]
+        return [(OK, "sistema: Linux (WSL2)" if versao == 2 else "sistema: Linux")]
     return [(ERRO, "sistema: o estúdio roda só em macOS, Linux e WSL2; no Windows, use o WSL2")]
 
 
@@ -79,12 +105,14 @@ def _ler_json(caminho):
         return None
 
 
-def hyperframes(node_dir=NODE_DIR):
+def hyperframes(node_dir=NODE_DIR, selo=False):
     pedido = (_ler_json(os.path.join(node_dir, "package.json")) or {}).get("dependencies", {}).get("hyperframes")
     instalado = _ler_json(os.path.join(node_dir, "node_modules", "hyperframes", "package.json"))
     cmd = "cd tune-up-studio/node && npm ci --ignore-scripts"
     if not isinstance(instalado, dict):
         return [(ERRO, "hyperframes: não instalado; rode: %s" % cmd)]
+    if selo and not os.path.isfile(os.path.join(node_dir, SELO)):
+        return [(ERRO, "hyperframes: instalação sem conferência de assinatura; rode o instalador de novo")]
     if not pedido or instalado.get("version") != pedido:
         return [(ERRO, "hyperframes: instalado %s, fixado %s; rode: %s" % (instalado.get("version"), pedido, cmd))]
     return [(OK, "hyperframes: %s instalado" % pedido)]
@@ -195,8 +223,8 @@ def sandbox_do_usuario(projeto=None, home=None):
     return res or [(OK, "settings: nenhuma chave de sandbox do usuário amplia o estúdio")]
 
 
-def verificar(projeto=None, node_dir=NODE_DIR):
-    return (sistema() + node() + hyperframes(node_dir) + chrome() + ffmpeg() + sandbox_linux()
+def verificar(projeto=None, node_dir=NODE_DIR, selo=False):
+    return (sistema() + node() + hyperframes(node_dir, selo) + chrome() + ffmpeg() + sandbox_linux()
             + sandbox_do_usuario(projeto))
 
 
@@ -213,8 +241,15 @@ def main(argv=None):
     saida_utf8.utf8()
     p = argparse.ArgumentParser(description="Confere se esta máquina roda o estúdio.")
     p.add_argument("--projeto", default=os.getcwd(), help="pasta do projeto (lê .claude/settings*.json)")
+    p.add_argument("--node-dir", help="pasta do node (caminho absoluto, sem '..')")
     args = p.parse_args(argv)
-    itens = verificar(os.path.abspath(args.projeto))
+    node_dir = args.node_dir
+    if node_dir is not None and (not os.path.isabs(node_dir) or ".." in re.split(r"[\\/]", node_dir)):
+        print("--node-dir precisa ser um caminho absoluto sem '..'.", file=sys.stderr)
+        return 2
+    # --node-dir is the --so-instalar folder: it also needs the signature stamp (the panel uses ambiente.json)
+    itens = (verificar(os.path.abspath(args.projeto), node_dir=node_dir, selo=True) if node_dir
+             else verificar(os.path.abspath(args.projeto)))
     print(relatorio(itens))
     return 1 if any(n == ERRO for n, _ in itens) else 0
 
