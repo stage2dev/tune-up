@@ -10,6 +10,10 @@ Platforms: the studio runs on macOS, Linux and WSL2 only. Native Windows is not
 supported (the Claude Code sandbox it relies on does not run there); the
 `tune-up` panel itself still runs on Windows.
 
+Windows via WSL2: em prova. The installer exists (`scripts/wsl/instalar.ps1`, see the
+root README, section "Windows (WSL2)"); the panel bridge and the real-machine proof are
+still pending, so the panel does not launch studio actions on Windows yet.
+
 ## Turn it on
 
 Open the panel's **Módulos** screen (`/modulos`) and press the button on

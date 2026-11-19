@@ -207,6 +207,27 @@ Some guards only warn or ask, they do not block: research mode, self-protection,
 
 Workflow scripts: the guard also warns when a Workflow script calls `agent()` without a literal `tune-up:*` `agentType` (a generic agent starts with about three times the context). Mark a justified exception with `// tune-up: allow-generic <reason>` on the line above. The `workflow_generic` key in `config.json` sets the behavior: `warn` (default), `block` or `off`. Start scripts from `templates/workflow-template.js`.
 
+## Windows (WSL2)
+
+The tune-up studio runs on Linux, so on Windows it runs inside WSL2. One command sets that up. Open a NORMAL PowerShell (not "Run as administrator") and run:
+
+```
+powershell -ExecutionPolicy Bypass -File scripts\wsl\instalar.ps1 -Projeto <folder>
+```
+
+What it does, in plain words:
+
+- Creates its own Linux named `tune-up`, separate from any other Linux you have.
+- Downloads 5 pinned files and checks each one against a known sha256 before using it.
+- Asks for administrator only if Windows does not have WSL yet, and only for the system `wsl.exe`. It may ask for one restart and continues by itself afterwards.
+- Opens a window for the Claude login.
+
+Other modes: `-Login` (log in again), `-Atualizar` (update), `-Medir` (record measurements for the real-machine proof), `-Remover` (delete the distro and the installer folder, after you confirm), `-Forcar` (close open Claude windows in the distro without refusing), `-SemReiniciar` (do not restart Windows by itself), `-Retomar` (continue after a restart).
+
+The studio session reads the project on `C:` through `/mnt/c`. The log is in `%LOCALAPPDATA%\tune-up\wsl\logs`. To remove everything, run the same command with `-Remover`. More detail and a troubleshooting list: `scripts/wsl/README.md`.
+
+Not yet: the panel does not launch studio actions on Windows. That arrives with the next part. This installer was not yet tried on a real Windows machine.
+
 ## Configuration
 
 | File | What |

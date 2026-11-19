@@ -4,6 +4,24 @@ Every new rule goes in through `/tune-up:learn`: memory + a change here + a test
 
 ## Unreleased
 
+## 2.26.0
+
+Windows installer through WSL2, Part A. `tune-up-studio` 0.5.0. The panel does not launch studio actions on Windows yet: that is the next part.
+
+- New `scripts/wsl/instalar.ps1` (run from a normal, non-administrator PowerShell): creates its own WSL2 distro named `tune-up`, separate from any other, in 10 steps. It asks for administrator only through the system `wsl.exe`, and only when Windows lacks WSL; it may ask for one restart and then resumes by itself (RunOnce). Other modes: `-Login`, `-Atualizar`, `-Medir`, `-Remover`, `-Forcar`, `-SemReiniciar`, `-Retomar`, `-Projeto`. Inside the distro `preparar.sh` installs the tools and writes `/etc/tune-up/pronto.json` only after the Windows interop is off.
+- Five pinned downloads in `scripts/wsl/fixados.env`, each checked against its sha256 before anything is extracted or run: Ubuntu, Node and Claude Code have a verified signature; the FFmpeg checksum is unsigned (it comes from the same release page as the file); Chrome was captured from two matching downloads.
+- Studio: WSL1 is refused; under WSL, `node_modules` and the lock live on the Linux disk; `preparar_estudio.py` takes `--so-instalar`, `--onde` and `--node-dir`; a signature stamp records what was installed.
+- CI: a Pester job on `windows-latest` and one in an `ubuntu:24.04` container for the WSL scripts.
+- New user docs: a Windows (WSL2) section in the README, `scripts/wsl/README.md`, and the studio README marks Windows as "em prova".
+
+Not proven here:
+
+- Nothing ran on real Windows or on PowerShell 5.1. Pester ran on PowerShell 7 in a Linux container; the `windows-latest` CI job is the first Windows run.
+- The UAC prompt and the restart/RunOnce resume are only simulated: no Windows machine without WSL was available.
+- `claude install` and `claude plugin marketplace add/install/update` inside the distro never ran: the Claude binary does not run under emulation on the dev Mac.
+- These are assumptions to be measured with `-Medir`: the shape of `claude agents --json`, `wsl --import` of a `.wsl` file, `--cd` together with `--exec`, the exit codes 3010 and 1641, and the interop signals.
+- The panel bridge is not in this version.
+
 ## 2.24.0
 
 - Optional model router for `guarda.py rota` (`router` block, off by default, trusted profile only). With `--text-file` it asks the Jev scorer four questions about the item text and can keep or raise the executor, never lower it. Any error or missing key keeps the fixed rule; `risk_globs` always win. The output has `model`, `scores` and `source`.
