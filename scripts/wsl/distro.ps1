@@ -194,13 +194,22 @@ function Fazer-E9 {
         }
     }
     Write-Log 'login confirmado'
-    if ($script:Opcoes.Projeto) {
-        $proj = $base + @('--cd', (ConvertTo-CaminhoWsl -Caminho $script:Opcoes.Projeto), '--exec', $script:ClaudeDistro)
-        if (Start-Terminal -Argv $proj) {
-            Write-Mensagem 'Abri o Claude na pasta do projeto: aceite a confiança na pasta e feche.'
-        } else {
-            Write-Mensagem ('Não consegui abrir o Claude na pasta do projeto. Depois, rode: {0}' -f ($proj -join ' '))
-        }
+    # The project window opens only after the marker is written (interop off): see Open-Projeto.
+    $script:ProjetoPendente = [bool]$script:Opcoes.Projeto
+}
+
+# Opens claude in the -Projeto folder so the person accepts the folder trust. Called only once the
+# marker is written or already confirmed, i.e. after --fechar and --terminate: the project's hooks
+# must never run in a session where interop is still on.
+function Open-Projeto {
+    if (-not $script:ProjetoPendente) { return }
+    $script:ProjetoPendente = $false
+    $proj = @((Get-CaminhoWsl), '-d', $script:Fixados.DISTRO, '-u', $script:UsuarioDistro,
+        '--cd', (ConvertTo-CaminhoWsl -Caminho $script:Opcoes.Projeto), '--exec', $script:ClaudeDistro)
+    if (Start-Terminal -Argv $proj) {
+        Write-Mensagem 'Abri o Claude na pasta do projeto: aceite a confiança na pasta e feche.'
+    } else {
+        Write-Mensagem ('Não consegui abrir o Claude na pasta do projeto. Depois, rode: {0}' -f ($proj -join ' '))
     }
 }
 
@@ -218,6 +227,7 @@ function Fazer-E10 {
     if ($f.Codigo -ne 0) { Stop-Preparar '--fechar' $f.Codigo }
     Stop-Distro
     Set-Marca
+    Open-Projeto
 }
 
 function Assert-DistroNossa {

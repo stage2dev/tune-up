@@ -9,6 +9,8 @@ $ErrorActionPreference = 'Stop'
 # Registry roots are injectable: tests point them at TestRegistry:. HKLM is only ever read (Test-Path).
 $script:RaizHkcu = 'HKCU:'
 $script:RaizHklm = 'HKLM:'
+# Set by Fazer-E9 when -Projeto was given; Open-Projeto (distro.ps1) consumes it once the marker is written.
+$script:ProjetoPendente = $false
 $script:ChavesReinicioHklm = @(
     'SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending',
     'SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired')
@@ -73,6 +75,7 @@ function Initialize-Instalador {
     }
     if (-not $Fixados) { $Fixados = Join-Path $PSScriptRoot 'fixados.env' }
     $script:Fixados = Read-Fixados -Caminho $Fixados
+    $script:ProjetoPendente = $false
     if ($script:Opcoes.Projeto) {
         $null = ConvertTo-CaminhoWsl -Caminho $script:Opcoes.Projeto
         if (-not (Test-Path -LiteralPath $script:Opcoes.Projeto -PathType Container)) {
@@ -292,6 +295,7 @@ function Invoke-Etapas {
         if ([int]$script:Estado.etapa -le $n) { $script:Estado.etapa = $n + 1; Save-Estado }
         if ($script:Aviso) { Write-Mensagem "$rotulo aviso" } else { Write-Mensagem "$rotulo ok" }
     }
+    Open-Projeto   # login redone while E10 was already confirmed (marker present, interop off)
     return 0
 }
 

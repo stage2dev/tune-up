@@ -216,6 +216,44 @@ Describe 'E9 login' {
         $global:TU.Msgs | Should -Contain 'Abri o Claude na pasta do projeto: aceite a confiança na pasta e feche.'
     }
 
+    It 'the -Projeto window opens only after --marcar, with the marker written and interop off (<Modo>)' -ForEach @(
+        @{ Modo = 'full run'; Extra = @{} }
+        @{ Modo = '-Login'; Extra = @{ Login = $true } }
+        @{ Modo = 'login redone, E10 already done'; Extra = @{}; Antes = $true }
+    ) {
+        Mock -ModuleName etapas ConvertTo-CaminhoWsl { '/mnt/c/site' }
+        $proj = Join-Path $TestDrive 'site'; $null = New-Item -ItemType Directory -Force $proj
+        if ($Antes -or $Extra.Login) { $global:TU.D.Auth = $true; Invoke-InstaladorTeste | Should -Be 0; $global:TU.D.Auth = $false }
+        $global:TU.Argvs.Clear(); $global:TU.Terminais.Clear(); $global:TU.LoginEm = $global:TU.Agora + 5
+        $global:TU.NoTerminal = New-Object System.Collections.ArrayList
+        Mock -ModuleName etapas Start-Terminal {
+            $null = $global:TU.Terminais.Add([string[]]$Argv)
+            $null = $global:TU.NoTerminal.Add(@{ N = $global:TU.Argvs.Count; Marca = $global:TU.D.Marca; Interop = $global:TU.D.Interop })
+            $true
+        }
+        $e = @{ Projeto = $proj } + $Extra
+        Invoke-InstaladorTeste -MesmaPasta:([bool]($Antes -or $Extra.Login)) -Extra $e | Should -Be 0
+        $global:TU.Terminais.Count | Should -Be 2
+        $global:TU.Terminais[1] | Should -Contain '--cd'
+        $global:TU.Terminais[1][-1] | Should -Be '/home/tuneup/.local/bin/claude'
+        $estado = $global:TU.NoTerminal[1]
+        $estado.Marca | Should -BeTrue
+        $estado.Interop | Should -BeFalse
+        if (-not $Antes) {
+            $m = -1
+            for ($i = 0; $i -lt $global:TU.Argvs.Count; $i++) { if ($global:TU.Argvs[$i] -contains '--marcar') { $m = $i } }
+            $m | Should -BeGreaterThan -1
+            $estado.N | Should -BeGreaterThan $m
+        }
+    }
+
+    It 'with -Projeto and the lock refusing at E10, the project window never opens' {
+        Mock -ModuleName etapas ConvertTo-CaminhoWsl { '/mnt/c/site' }
+        $proj = Join-Path $TestDrive 'site'; $null = New-Item -ItemType Directory -Force $proj
+        $global:TU.LoginEm = $global:TU.Agora + 5; $global:TU.D.AgentsSaida = '[{"id":"a"}]'
+        Invoke-InstaladorTeste -Extra @{ Projeto = $proj } | Should -Be 1
+        $global:TU.Terminais.Count | Should -Be 1
+    }
 }
 
 Describe 'E9 log hygiene (real Invoke-Wsl, fake wsl.exe)' {
