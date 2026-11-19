@@ -18,7 +18,7 @@ Not proven here:
 
 - Nothing ran on real Windows or on PowerShell 5.1. Pester ran on PowerShell 7 in a Linux container; the `windows-latest` CI job is the first Windows run.
 - The UAC prompt and the restart/RunOnce resume are only simulated: no Windows machine without WSL was available.
-- `claude install` and `claude plugin marketplace add/install/update` inside the distro never ran: the Claude binary does not run under emulation on the dev Mac.
+- `claude install` and `claude plugin marketplace add/install` ran for real only in the `ubuntu:24.04` CI container (logged out, on plain Linux, not inside WSL): the pinned binary installed, the plugin installed, Chrome and HyperFrames passed the check. `claude plugin update`, and all of it inside a real WSL distro, never ran.
 - These are assumptions to be measured with `-Medir`: the shape of `claude agents --json`, `wsl --import` of a `.wsl` file, `--cd` together with `--exec`, the exit codes 3010 and 1641, and the interop signals.
 - The panel bridge is not in this version.
 
