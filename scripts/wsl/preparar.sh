@@ -12,12 +12,20 @@
 #   --fechar                                 root   final wsl.conf (interop off); never writes the marker
 #   --marcar --plugin-versao <x.y.z>         root   writes /etc/tune-up/pronto.json (only with interop off)
 #   --abrir-interop                          root   deletes the marker, then install-phase wsl.conf
+#   --versao-plugin                          tuneup prints only the installed tune-up@tune-up version (1: none)
 # Tests only: TUNE_UP_RAIZ_TESTE=<dir> prefixes /etc, /usr, /run/WSL, /home and /var/tmp, and
 # TUNE_UP_UID_TESTE stands in for the uid. Both are honoured only when the real uid is not 0.
 set -euo pipefail
 export LC_ALL=C
 umask 022
 
+# Builtins only until PATH is pinned: real run (or root) gets a fixed PATH before any external command,
+# so root never picks a binary from /mnt (appendWindowsPath is on at first boot).
+UID_REAL=$EUID
+if [ -z "${TUNE_UP_RAIZ_TESTE:-}" ] || [ "$UID_REAL" = 0 ]; then
+    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    export PATH
+fi
 U=tuneup
 AQUI=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 TMPD=""
@@ -35,11 +43,11 @@ Uso: preparar.sh <modo>
   --fechar                                 (root) wsl.conf final, ponte com o Windows desligada
   --marcar --plugin-versao <x.y.z>         (root) grava /etc/tune-up/pronto.json
   --abrir-interop                          (root) apaga a marca e liga a ponte para o login
+  --versao-plugin                          (tuneup) imprime só a versão instalada do plugin tune-up
 FIM
     exit 2
 }
 
-UID_REAL=$(id -u)
 R=""
 EU=$UID_REAL
 if [ -n "${TUNE_UP_RAIZ_TESTE:-}" ]; then
@@ -48,10 +56,6 @@ if [ -n "${TUNE_UP_RAIZ_TESTE:-}" ]; then
     R=$(cd "$TUNE_UP_RAIZ_TESTE" && pwd -P) || die 3 "TUNE_UP_RAIZ_TESTE não existe."
     [[ $R =~ ^/[A-Za-z0-9._/-]+$ ]] || die 3 "TUNE_UP_RAIZ_TESTE: caminho absoluto, sem espaço."
     EU=${TUNE_UP_UID_TESTE:-$UID_REAL}
-else
-    # Real run: a fixed PATH, so root never picks a binary from /mnt (appendWindowsPath is on at first boot).
-    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-    export PATH
 fi
 PY="$R/usr/bin/python3"
 HOME_U="$R/home/$U"
@@ -74,6 +78,7 @@ ler_fixados() {
         chave=${linha%%=*}
         valor=${linha#*=}
         [ "$chave" != "$linha" ] || die 4 "fixados.env linha $n: não é CHAVE=valor."
+        [[ $chave =~ ^[A-Z0-9_]+$ ]] || die 4 "fixados.env linha $n: chave inválida."
         case " $CHAVES " in
             *" $chave "*) ;;
             *) die 4 "fixados.env linha $n: chave desconhecida." ;;
@@ -316,16 +321,24 @@ claude_na_versao() { # `claude --version` prints "<version> (Claude Code)"
     return 1
 }
 
+# One line per profile: its hash, or sha256sum's error when missing (so created/deleted also differs).
+hash_perfis() { sha256sum -- "$HOME/.profile" "$HOME/.bashrc" 2>&1 || true; }
+
 instalar_claude() {
     if claude_na_versao; then
         msg "Claude Code $CLAUDE_VERSAO já instalado."
         return
     fi
+    local antes
     baixar "$CLAUDE_URL" "$CLAUDE_SHA256" claude
     chmod 0755 "$TMPD/claude"
+    antes=$(hash_perfis)
     # Last step of the official installer, run on the verified binary; install.sh is never fetched.
     # NOT documented whether `install` downloads again by itself: the real-machine test records it.
     "$TMPD/claude" install "$CLAUDE_VERSAO" || die 1 "a instalação do Claude Code falhou."
+    # Whether `install` edits shell profiles is not documented: detect it, restore nothing, leave a log line.
+    [ "$(hash_perfis)" = "$antes" ] ||
+        msg "Aviso: a instalação do Claude Code alterou ~/.profile ou ~/.bashrc; nada foi desfeito."
     claude_na_versao || die 1 "o Claude Code instalado não responde a versão $CLAUDE_VERSAO."
     msg "Claude Code $CLAUDE_VERSAO instalado."
 }
@@ -345,18 +358,55 @@ sys.exit(0 if isinstance(d, dict) and (sys.argv[2] in d or (isinstance(p, dict) 
 ' "$1" "$2"
 }
 
+# Prints a version (manifest "version", or the single user-scope tune-up@tune-up entry); exit 1 otherwise.
+VERSAO_PY='
+import json, re, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as f:
+        d = json.load(f)
+except (OSError, ValueError):
+    sys.exit(1)
+if sys.argv[2] == "manifesto":
+    v = d.get("version") if isinstance(d, dict) else None
+else:
+    pl = d.get("plugins") if isinstance(d, dict) else None
+    e = pl.get("tune-up@tune-up") if isinstance(pl, dict) else None
+    e = [e] if isinstance(e, dict) else e if isinstance(e, list) else []
+    e = [x for x in e if isinstance(x, dict) and x.get("scope", "user") == "user"]
+    v = e[0].get("version") if len(e) == 1 else None
+if not isinstance(v, str) or not re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}", v):
+    sys.exit(1)
+print(v)
+'
+versao_json() { "$PY" -I -c "$VERSAO_PY" "$1" "$2"; }
+
+# Skips only when the installed version equals the manifest's (the manifest "version" wins in Claude
+# Code's computed version: code.claude.com/docs/en/plugins/loading#how-claude-code-computes-the-version).
 instalar_plugin() {
-    local c="$HOME/.local/bin/claude" pasta="$HOME/.claude/plugins"
+    local c="$HOME/.local/bin/claude" pasta="$HOME/.claude/plugins" quer tem
+    quer=$(versao_json "$PLUGIN/.claude-plugin/plugin.json" manifesto) ||
+        die 1 "$PLUGIN/.claude-plugin/plugin.json sem version válida."
     if json_tem "$pasta/known_marketplaces.json" tune-up; then
         msg "Marketplace tune-up já cadastrado."
     else
         "$c" plugin marketplace add "$PLUGIN" || die 1 "não consegui cadastrar o marketplace do plugin."
     fi
-    if json_tem "$pasta/installed_plugins.json" tune-up@tune-up; then
-        msg "Plugin tune-up já instalado."
-    else
-        "$c" plugin install tune-up@tune-up --scope user || die 1 "não consegui instalar o plugin tune-up."
+    tem=$(versao_json "$pasta/installed_plugins.json" instalado) || tem=""
+    if [ "$tem" = "$quer" ]; then
+        msg "Plugin tune-up $quer já instalado."
+        return
     fi
+    if [ -z "$tem" ]; then
+        "$c" plugin install tune-up@tune-up --scope user || die 1 "não consegui instalar o plugin tune-up."
+    else
+        msg "Plugin tune-up $tem instalado; atualizando para $quer..."
+        # Assumption: the marketplace was added from this same --plugin folder (update re-reads its source).
+        "$c" plugin marketplace update tune-up || die 1 "não consegui atualizar o marketplace do plugin."
+        "$c" plugin update tune-up@tune-up --scope user || die 1 "não consegui atualizar o plugin tune-up."
+    fi
+    tem=$(versao_json "$pasta/installed_plugins.json" instalado) || tem=""
+    [ "$tem" = "$quer" ] || die 1 "o plugin tune-up ficou na versão ${tem:-nenhuma}, esperado $quer."
+    msg "Plugin tune-up $quer instalado."
 }
 
 instalar_chrome() {
@@ -506,6 +556,7 @@ case "$MODO" in
     --usuario) [ -n "$PLUGIN" ] && [ -z "$PVERSAO" ] || uso ;;
     --verificar) [ -n "$PLUGIN" ] && [ -z "$PVERSAO" ] && [ "$SEM_LOGIN" = 0 ] || uso ;;
     --marcar) [ -n "$PVERSAO" ] && [ -z "$PLUGIN" ] && [ "$SEM_LOGIN" = 0 ] || uso ;;
+    --versao-plugin) [ -z "$PLUGIN$PVERSAO" ] && [ "$SEM_LOGIN" = 0 ] || uso ;;
     *) uso ;;
 esac
 case "$MODO" in
@@ -515,4 +566,5 @@ case "$MODO" in
     --fechar) ser_root --fechar; escrever_wslconf false; msg "wsl.conf final gravado (ponte desligada)." ;;
     --marcar) modo_marcar ;;
     --abrir-interop) ser_root --abrir-interop; apagar_marca; escrever_wslconf true; msg "Ponte ligada para o login." ;;
+    --versao-plugin) ser_usuario --versao-plugin; versao_json "$HOME_U/.claude/plugins/installed_plugins.json" instalado || exit 1 ;;
 esac

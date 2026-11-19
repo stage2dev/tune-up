@@ -18,13 +18,14 @@ PASSWD_TUNEUP = "tuneup:x:1000:1000::/home/tuneup:/bin/bash"
 CONTEUDO = """#!/bin/sh
 echo "claude $*" >> "$FAKE_LOG"
 case "$1" in
-  install) mkdir -p "$HOME/.local/bin"; cp "$0" "$HOME/.local/bin/claude" ;;
+  install) mkdir -p "$HOME/.local/bin"; cp "$0" "$HOME/.local/bin/claude"; [ -z "$FAKE_PERFIL" ] || echo x >> "$HOME/.bashrc" ;;
   --version) echo "$FAKE_CLAUDE_V (Claude Code)" ;;
   plugin)
     mkdir -p "$HOME/.claude/plugins"
     case "$2" in
       marketplace) echo '{"tune-up": {}}' > "$HOME/.claude/plugins/known_marketplaces.json" ;;
-      install) echo '{"version": 2, "plugins": {"tune-up@tune-up": []}}' > "$HOME/.claude/plugins/installed_plugins.json" ;;
+      install|update) printf '{"version": 2, "plugins": {"tune-up@tune-up": [{"scope": "user", "version": "%s"}]}}' \
+        "${FAKE_PLUGIN_V:-2.19.0}" > "$HOME/.claude/plugins/installed_plugins.json" ;;
     esac ;;
 esac
 """
@@ -85,7 +86,8 @@ class Preparar(unittest.TestCase):
         self.plugin = os.path.join(self.tmp, "plugin")
         os.makedirs(os.path.join(self.plugin, ".claude-plugin"))
         os.makedirs(os.path.join(self.plugin, "tune-up-studio", "scripts"))
-        open(os.path.join(self.plugin, ".claude-plugin", "plugin.json"), "w").close()
+        with open(os.path.join(self.plugin, ".claude-plugin", "plugin.json"), "w") as f:
+            f.write('{"name": "tune-up", "version": "2.19.0"}')
         for nome in ("preparar_estudio.py", "verificar_ambiente.py"):
             with open(os.path.join(self.plugin, "tune-up-studio", "scripts", nome), "w") as f:
                 f.write("import sys\nopen(%r, 'a').write('%s ' + ' '.join(sys.argv[1:]) + '\\n')\n"

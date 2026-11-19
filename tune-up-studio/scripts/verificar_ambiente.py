@@ -26,6 +26,7 @@ import saida_utf8  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 STUDIO = os.path.dirname(HERE)
 NODE_DIR = os.path.join(STUDIO, "node")
+SELO = ".assinaturas-ok"  # written by preparar_estudio.py --so-instalar only after `npm audit signatures` passed
 
 NODE_MIN = 22  # engines of hyperframes 0.9.6
 CHROME_VERSION = "152.0.7977.30"  # chrome-headless-shell pinned by hyperframes 0.9.6
@@ -104,12 +105,14 @@ def _ler_json(caminho):
         return None
 
 
-def hyperframes(node_dir=NODE_DIR):
+def hyperframes(node_dir=NODE_DIR, selo=False):
     pedido = (_ler_json(os.path.join(node_dir, "package.json")) or {}).get("dependencies", {}).get("hyperframes")
     instalado = _ler_json(os.path.join(node_dir, "node_modules", "hyperframes", "package.json"))
     cmd = "cd tune-up-studio/node && npm ci --ignore-scripts"
     if not isinstance(instalado, dict):
         return [(ERRO, "hyperframes: não instalado; rode: %s" % cmd)]
+    if selo and not os.path.isfile(os.path.join(node_dir, SELO)):
+        return [(ERRO, "hyperframes: instalação sem conferência de assinatura; rode o instalador de novo")]
     if not pedido or instalado.get("version") != pedido:
         return [(ERRO, "hyperframes: instalado %s, fixado %s; rode: %s" % (instalado.get("version"), pedido, cmd))]
     return [(OK, "hyperframes: %s instalado" % pedido)]
@@ -220,8 +223,8 @@ def sandbox_do_usuario(projeto=None, home=None):
     return res or [(OK, "settings: nenhuma chave de sandbox do usuário amplia o estúdio")]
 
 
-def verificar(projeto=None, node_dir=NODE_DIR):
-    return (sistema() + node() + hyperframes(node_dir) + chrome() + ffmpeg() + sandbox_linux()
+def verificar(projeto=None, node_dir=NODE_DIR, selo=False):
+    return (sistema() + node() + hyperframes(node_dir, selo) + chrome() + ffmpeg() + sandbox_linux()
             + sandbox_do_usuario(projeto))
 
 
@@ -244,7 +247,9 @@ def main(argv=None):
     if node_dir is not None and (not os.path.isabs(node_dir) or ".." in re.split(r"[\\/]", node_dir)):
         print("--node-dir precisa ser um caminho absoluto sem '..'.", file=sys.stderr)
         return 2
-    itens = verificar(os.path.abspath(args.projeto), node_dir=node_dir) if node_dir else verificar(os.path.abspath(args.projeto))
+    # --node-dir is the --so-instalar folder: it also needs the signature stamp (the panel uses ambiente.json)
+    itens = (verificar(os.path.abspath(args.projeto), node_dir=node_dir, selo=True) if node_dir
+             else verificar(os.path.abspath(args.projeto)))
     print(relatorio(itens))
     return 1 if any(n == ERRO for n, _ in itens) else 0
 

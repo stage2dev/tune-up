@@ -19,6 +19,7 @@ Python 3.9+, standard library only. Report in Brazilian Portuguese.
 """
 import argparse
 import datetime
+import errno
 import hashlib
 import json
 import os
@@ -249,9 +250,11 @@ def _travar_em(caminho):
         elif msvcrt is not None:
             f.seek(0)  # mode "a" starts at the end: the locked byte must always be byte 0
             msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
-    except OSError:
+    except OSError as e:
         f.close()
-        return None
+        if e.errno in (errno.EWOULDBLOCK, errno.EAGAIN, errno.EACCES):  # held by another run
+            return None
+        raise
     return f
 
 
@@ -286,14 +289,24 @@ def _so_instalar(wsl, home, rodar, which, studio, plataforma=None):
         return 2
     with trava:
         try:
-            destino = _destino_linux(home, chave_do_ambiente(studio))
+            chave = chave_do_ambiente(studio)
+            destino = _destino_linux(home, chave)
             _copiar_pacote(studio, destino)
+            selo = os.path.join(destino, va.SELO)  # gone before npm ci: a killed run leaves no stamp
+            if os.path.lexists(selo):
+                os.remove(selo)
         except OSError as e:
             print("Não consegui preparar a pasta: %s" % e)
             return 1
         pronto = False
         try:
             passos, pronto = _instalar(destino, npm, rodar)
+            if pronto:
+                with open(selo + ".tmp", "w", encoding="utf-8") as f:
+                    f.write(chave + "\n")
+                os.replace(selo + ".tmp", selo)
+        except OSError as e:
+            pronto, passos = False, [{"passo": "selo de assinatura", "saida": str(e)}]
         finally:  # never leave an unverified node_modules (failure or Ctrl+C before the audit passed)
             if not pronto:
                 shutil.rmtree(os.path.join(destino, "node_modules"), ignore_errors=True)
@@ -355,6 +368,10 @@ def main(argv=None, entrada=input, wsl=va.wsl, home=None, rodar=_rodar, which=sh
         trava = open(os.devnull) if herdada else _travar(dados, home, wsl)
     except OSError as e:
         print("Não consegui travar a pasta: %s" % e)
+        try:  # an older "pronto": true must not survive a run that could not even lock
+            gravar(dados, {"versao": 1, "gravado_em": _agora(), "pronto": False, "erro": str(e)[:300]})
+        except OSError:
+            pass
         return 1
     if trava is None:
         print("Outro Preparar estúdio já está rodando; espere ele terminar.")

@@ -136,14 +136,14 @@ class Wsl(unittest.TestCase):
     def test_node_dir_option(self):
         vistos = []
         orig = va.verificar
-        va.verificar = lambda projeto=None, node_dir=va.NODE_DIR: vistos.append(node_dir) or []
+        va.verificar = lambda projeto=None, node_dir=va.NODE_DIR, selo=False: vistos.append((node_dir, selo)) or []
         try:
             self.assertEqual(va.main(["--node-dir", "/abs/node"]), 0)
-            self.assertEqual(vistos, ["/abs/node"])
+            self.assertEqual(vistos, [("/abs/node", True)])
             for ruim in ("rel/node", "/a/../b", "/a/..", ".."):
                 self.assertEqual(va.main(["--node-dir", ruim]), 2, ruim)
             self.assertEqual(va.main([]), 0)
-            self.assertEqual(vistos[-1], va.NODE_DIR)
+            self.assertEqual(vistos[-1], (va.NODE_DIR, False))
         finally:
             va.verificar = orig
 
@@ -200,6 +200,17 @@ class Files(unittest.TestCase):
         self.assertEqual(levels(va.hyperframes(node_dir)), [va.ERRO])
         self.write("node/node_modules/hyperframes/package.json", {"version": "0.9.6"})
         self.assertEqual(levels(va.hyperframes(node_dir)), [va.OK])
+
+    def test_hyperframes_signature_stamp_only_when_asked(self):
+        self.write("node/package.json", {"dependencies": {"hyperframes": "0.9.6"}})
+        self.write("node/node_modules/hyperframes/package.json", {"version": "0.9.6"})
+        node_dir = os.path.join(self.d, "node")
+        self.assertEqual(levels(va.hyperframes(node_dir)), [va.OK])  # panel flow: no stamp needed
+        res = va.hyperframes(node_dir, selo=True)
+        self.assertEqual(res, [(va.ERRO, "hyperframes: instalação sem conferência de assinatura; "
+                                         "rode o instalador de novo")])
+        self.write("node/" + va.SELO, "abc\n")
+        self.assertEqual(levels(va.hyperframes(node_dir, selo=True)), [va.OK])
 
     def test_chrome_cache(self):
         env = {"HYPERFRAMES_CACHE_DIR": os.path.join(self.d, "hf")}
