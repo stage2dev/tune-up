@@ -19,7 +19,7 @@ import subprocess  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
 
-from catalogo import ErroAcao  # noqa: E402
+from erros import ErroAcao  # noqa: E402
 
 DISTRO = "tune-up"
 PORTAO = "/usr/local/bin/tune-up-exec"
@@ -173,6 +173,7 @@ class Sonda:
         self.plataforma = plataforma or sys.platform
         self._trava, self._rodando = threading.Lock(), threading.Lock()
         self._valor, self._quando, self._geracao, self._fio = None, 0, 0, None
+        self._zeradas = 0  # bumped by zerar(); a probe that started before it must not store its result
 
     def _fresco(self):
         if self._valor is None:
@@ -192,14 +193,18 @@ class Sonda:
             with self._trava:
                 if self._geracao != geracao and self._valor is not None:
                     return self._valor
+                zerada = self._zeradas
             v = self._sondar()
             with self._trava:
+                if self._zeradas != zerada:  # zerar() ran while probing: the answer may be stale, never store it
+                    return _nao("conferindo de novo...")
                 self._valor, self._quando, self._geracao = v, self.relogio(), self._geracao + 1
             return v
 
     def zerar(self):
         with self._trava:
             self._valor = None
+            self._zeradas += 1
 
     def valor_atual(self):
         """Nunca espera: devolve o que tem e, se estiver velho, confere em segundo plano."""

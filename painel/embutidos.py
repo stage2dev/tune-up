@@ -18,7 +18,7 @@ import sys
 import threading
 
 import config
-from catalogo import ESTUDIO_HF, RE_CONTROLE, ErroAcao
+from catalogo import ESTUDIO_HF, RE_CONTROLE, ErroAcao, ler_sonda
 
 ARQUIVO = "embutidos-ligados.json"
 MAX_BYTES = 4096
@@ -86,9 +86,14 @@ def caminho(mid):
     return arq
 
 
-def _motivo(e):
-    """Por que o embutido não roda neste computador (lido na hora: o teste troca sys.platform), ou None."""
-    return e["sem_windows"] if e["sem_windows"] and sys.platform == "win32" else None
+def _motivo(e, plataforma=None, sonda=None):
+    """Por que o embutido não roda neste computador (lido na hora: o teste troca sys.platform), ou None.
+    No Windows só vale quando a sonda do WSL2 (dict ou callable) não está pronta; aí o motivo dela vai junto."""
+    if not e["sem_windows"] or (sys.platform if plataforma is None else plataforma) != "win32":
+        return None
+    pronta, porque = ler_sonda(sonda)
+    return None if pronta else "%s. Rode scripts\\wsl\\instalar.ps1 (pasta do plugin) e recarregue (%s)" % (
+        e["sem_windows"], porque)
 
 
 def _arquivo(cfg):
@@ -134,7 +139,7 @@ def _antigas(cfg):
     return {antiga(x): x for x in (lista if isinstance(lista, list) else []) if antiga(x)}
 
 
-def _situacao(cfg):
+def _situacao(cfg, plataforma=None, sonda=None):
     """[(embutido, ligado, conhecido, avisos)]; conhecido = já foi ligado alguma vez (vale para as regras de negar)."""
     estado, aviso = _ler(cfg)
     antigas, projeto = _antigas(cfg), cfg.get("modulos") or []
@@ -153,18 +158,18 @@ def _situacao(cfg):
         casa = cfg.get("home") or os.path.expanduser("~")  # pasta de dados em disco: sinal fora de dados_dir
         conhecido = (estado is None or mid in estado or mid in antigas
                      or any(os.path.isdir(os.path.join(casa, d[2:])) for d in e["dados"]))
-        saida.append((e, bool(ligado) and not _motivo(e), conhecido, avisos))
+        saida.append((e, bool(ligado) and not _motivo(e, plataforma, sonda), conhecido, avisos))
     return saida
 
 
-def ligados(cfg):
+def ligados(cfg, plataforma=None, sonda=None):
     """Ids dos embutidos ligados e disponíveis neste computador."""
-    return [e["id"] for e, ligado, _, _ in _situacao(cfg) if ligado]
+    return [e["id"] for e, ligado, _, _ in _situacao(cfg, plataforma, sonda) if ligado]
 
 
-def pastas_de_acoes(cfg):
+def pastas_de_acoes(cfg, plataforma=None, sonda=None):
     """Pastas de ações dos embutidos ligados (código do núcleo: sem a trava das extensões)."""
-    pastas = [_pasta(_POR_ID[mid]["acoes"]) for mid in ligados(cfg) if _POR_ID[mid]["acoes"]]
+    pastas = [_pasta(_POR_ID[mid]["acoes"]) for mid in ligados(cfg, plataforma, sonda) if _POR_ID[mid]["acoes"]]
     return [p for p in pastas if p]
 
 
@@ -176,15 +181,16 @@ def negar(cfg):
     return regras
 
 
-def _publico(cfg):
+def _publico(cfg, plataforma=None, sonda=None):
     return [{"id": e["id"], "titulo": e["titulo"], "descricao": e["descricao"], "ligado": ligado,
-             "disponivel": _motivo(e) is None, "motivo": _motivo(e), "avisos": avisos}
-            for e, ligado, _, avisos in _situacao(cfg)]
+             "disponivel": _motivo(e, plataforma, sonda) is None, "motivo": _motivo(e, plataforma, sonda),
+             "avisos": avisos}
+            for e, ligado, _, avisos in _situacao(cfg, plataforma, sonda)]
 
 
-def listar(cfg):
+def listar(cfg, plataforma=None, sonda=None):
     """(200, corpo) de GET /api/embutidos."""
-    return 200, {"embutidos": _publico(cfg)}
+    return 200, {"embutidos": _publico(cfg, plataforma, sonda)}
 
 
 def _gravar(cfg, mid, ligado):
@@ -204,7 +210,7 @@ def _gravar(cfg, mid, ligado):
         os.replace(tmp, caminho_arq)  # troca o nome: um atalho plantado no lugar some, não é seguido
 
 
-def mudar(cfg, mid, corpo, depois=None):
+def mudar(cfg, mid, corpo, depois=None, plataforma=None, sonda=None):
     """(código, corpo) de POST /api/embutidos/<id> {"ligado": bool}; `depois()` roda só se gravou."""
     e = _POR_ID.get(mid)
     if e is None:
@@ -212,15 +218,16 @@ def mudar(cfg, mid, corpo, depois=None):
     ligado = corpo.get("ligado")
     if not isinstance(ligado, bool):
         return 400, {"erro": "Mande \"ligado\" como true ou false."}
-    if ligado and _motivo(e):
-        return 409, {"erro": "Este módulo não roda neste computador: %s." % _motivo(e)}
+    motivo = _motivo(e, plataforma, sonda)
+    if ligado and motivo:
+        return 409, {"erro": "Este módulo não roda neste computador: %s." % motivo}
     try:
         _gravar(cfg, mid, ligado)
     except (OSError, KeyError) as ex:
         return 500, {"erro": "Não consegui guardar a escolha (%s); nada mudou." % type(ex).__name__}
     if depois:
         depois()
-    return 200, {"ok": True, "embutidos": _publico(cfg)}
+    return 200, {"ok": True, "embutidos": _publico(cfg, plataforma, sonda)}
 
 
 MARCA_HF = "{" + ESTUDIO_HF + "}"

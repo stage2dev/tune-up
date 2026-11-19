@@ -58,9 +58,11 @@ def rodar_padrao(cmd, cwd, timeout):
 
 
 class Lancador:
-    def __init__(self, cfg, obter_estado, rodar=rodar_padrao, relogio=time.time, plataforma=None):
+    def __init__(self, cfg, obter_estado, rodar=rodar_padrao, relogio=time.time, plataforma=None, sonda=None):
         self.cfg, self.obter_estado, self.rodar, self.relogio = cfg, obter_estado, rodar, relogio
         self.plataforma = plataforma or sys.platform
+        self.sonda = sonda  # dict or callable (see catalogo.ler_sonda); None on win32 = one shared wsl.Sonda, lazily
+        self._trava_sonda = threading.Lock()
         self.dormir = time.sleep  # trocado nos testes
         self.abrir_janela = abrir_win.abrir_janela_padrao  # idem (Windows)
         self.registro = Registro(cfg["dados_dir"])
@@ -74,8 +76,19 @@ class Lancador:
         """{apelido: sim|nao|verificando|nao_sei} dos modelos preferidos das ações (dispara a sonda)."""
         return self.modelos.resumo(self.catalogo()[0])
 
+    def sonda_atual(self):
+        """Valor da sonda do WSL2 sem esperar (None fora do Windows). Só cria a Sonda real na primeira consulta."""
+        with self._trava_sonda:
+            if self.sonda is None:
+                if self.plataforma != "win32":
+                    return None
+                import wsl
+                self.sonda = wsl.Sonda(plataforma=self.plataforma).valor_atual
+            sonda = self.sonda
+        return sonda() if callable(sonda) else sonda
+
     def catalogo(self):
-        return catalogo_do_projeto(self.cfg, self.plataforma)
+        return catalogo_do_projeto(self.cfg, self.plataforma, self.sonda_atual)
 
     def acoes(self):
         acoes, avisos = self.catalogo()
