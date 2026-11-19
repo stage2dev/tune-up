@@ -21,6 +21,14 @@ Not proven here:
 - `claude install` and `claude plugin marketplace add/install/update` inside the distro never ran: the Claude binary does not run under emulation on the dev Mac.
 - These are assumptions to be measured with `-Medir`: the shape of `claude agents --json`, `wsl --import` of a `.wsl` file, `--cd` together with `--exec`, the exit codes 3010 and 1641, and the interop signals.
 - The panel bridge is not in this version.
+## 2.25.0
+
+Marketing gets a panel tab.
+
+- New built-in module Marketing (off until turned on in the Módulos screen). Its tab "Contas" lists each marketing service with its state, when it was checked and the next step; the button "Conferir contas" runs `contas.py status` for the project in the background (read-only commands run on your machine, some of which contact the services they check; no credits). It shows no keys, account names or command output.
+- Fix: `contas.py marcar` keeps the top-level `conferido_em` of the last `status`, so a manual mark no longer makes an old automatic check look fresh.
+- `tune-up-mkt/` is now protected in sessions launched by the panel (a panel session can no longer edit files there), like `tune-up-studio/` and `vendas/`.
+- An old `painel.json` line `"modulos_de_plugins": ["tune-up-mkt@...:mkt"]` counts as on, with a notice, like the Studio and Vendas lines.
 
 ## 2.24.0
 

@@ -1,7 +1,7 @@
 """Código dos embutidos guardado como o painel/ (fix do item A1): checkout fora de ~/.claude, travas reais.
 
-O plugin roda de um checkout (`claude --plugin-dir <repo>`): <tmp>/dev/tune-up com painel/, tune-up-studio/ e
-vendas/. As travas saem de travas.argv_travas (o mesmo caminho do lançador) e o gancho decide com travas.decidir.
+O plugin roda de um checkout (`claude --plugin-dir <repo>`): <tmp>/dev/tune-up com painel/, tune-up-studio/,
+vendas/ e tune-up-mkt/. As travas saem de travas.argv_travas (o mesmo caminho do lançador) e o gancho decide com travas.decidir.
 """
 import sys
 
@@ -25,6 +25,7 @@ from test_travas import ACAO_CODIGO, ACAO_LEITURA  # noqa: E402
 
 MODULO_VENDAS = ("vendas", "painel", "modulos", "vendas", "modulo.py")
 MODULO_ESTUDIO = ("tune-up-studio", "painel", "modulos", "estudio", "modulo.py")
+MODULO_MKT = ("tune-up-mkt", "painel", "modulos", "mkt", "modulo.py")
 INFO = 'INFO = {"titulo": "X"}\ndef montar(ctx):\n    return {}\n'
 
 
@@ -43,6 +44,7 @@ class Base(unittest.TestCase):
         escrever(os.path.join(self.raiz, "painel", "painel.py"))
         escrever(os.path.join(self.raiz, *MODULO_VENDAS), INFO)
         escrever(os.path.join(self.raiz, *MODULO_ESTUDIO), INFO)
+        escrever(os.path.join(self.raiz, *MODULO_MKT), INFO)
         escrever(os.path.join(self.studio, "painel", "acoes", "estudio.json"))
         shutil.copyfile(ACOES, os.path.join(self.studio, "painel", "acoes", "estudio.json"))
         escrever(os.path.join(self.studio, "scripts", "qa_imagem.py"))
@@ -82,7 +84,10 @@ class TesteCodigoGuardado(Base):
                 os.path.join(raiz, *MODULO_ESTUDIO),
                 os.path.join(raiz, "tune-up-studio", "painel", "acoes", "estudio.json"),
                 os.path.join(raiz, "tune-up-studio", "scripts", "preparar_estudio.py"),
-                os.path.join(raiz, "tune-up-studio", "node", "node_modules", ".bin", "hyperframes")]
+                os.path.join(raiz, "tune-up-studio", "node", "node_modules", ".bin", "hyperframes"),
+                os.path.join(raiz, *MODULO_MKT),
+                os.path.join(raiz, "tune-up-mkt", "painel", "modulos", "mkt", "rodar_conferencia.py"),
+                os.path.join(raiz, "tune-up-mkt", "scripts", "contas.py")]
 
     def casos(self, raiz):
         for alvo in self.alvos(raiz):

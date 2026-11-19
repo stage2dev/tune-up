@@ -2,7 +2,7 @@
 
 Marketing module for [tune-up](../README.md): guided connection of your own marketing accounts, campaign, content, SEO and preflight skills, and a guard that blocks or asks before writes to ad accounts and public posts.
 
-Status: 0.3.0: guard + guided account connection + campaign, content, SEO and preflight skills; the panel tab arrives next.
+Status: 0.3.0: guard + guided account connection + campaign, content, SEO and preflight skills + the panel tab "Contas" (Marketing module).
 
 ## Install
 
@@ -33,6 +33,12 @@ State lives in your project: `.tune-up/mkt/contas.json` and `.tune-up/mkt/config
 - IndexNow: `config --gerar-indexnow` creates the key (public by design: it is published at your site root). Never put any other key in this field.
 - Checks run in the project folder, so project-scoped servers count. State files reached through a symbolic link are refused.
 - Limit: when a check command times out, only that command is stopped; programs it started may keep running.
+
+## Panel tab
+
+Turn on **Marketing** in the panel's Módulos screen (it arrives off). The tab "Contas" has a table with one row per service: what it is for, its state (for example "ligado" or "falta autenticar"), when it was checked and the next step. It reads `.tune-up/mkt/contas.json`, and warns when the last check is more than 24 hours old.
+
+The button "Conferir contas" runs `scripts/contas.py status` for the project in the background, one run at a time. It runs the same read-only commands on your machine as the `connect` skill; `claude mcp list` and the Composio CLI contact the services they check. It spends no credits. The tab shows no keys, no account names and no command output; the output goes to `.tune-up/mkt/conferencia.log`, which stays on disk.
 
 ## Skills
 
