@@ -46,7 +46,7 @@ Describe '-Medir' {
 
     It 'answering s runs M1 without anchor and M2 with one, stops the anchor and removes both sessions' {
         $global:TU.Resposta = 's'
-        $global:TU.D.AgentsSaida = '[{"id":"abc123def456","state":"working"}]'
+        $global:TU.D.AgentsSaida = '[{"id":"abc123def456","state":"working","pid":42}]'
         Invoke-MedirTeste | Should -Be 0
         ($global:TU.Ancoras -join ',') | Should -Be 'start,stop'
         @($global:TU.Argvs | Where-Object { $_ -contains '--bg' }).Count | Should -Be 2
@@ -63,6 +63,27 @@ Describe '-Medir' {
         (Get-Resumo | Where-Object { $_ -match '^M2 ' }) | Should -Match 'FALHOU.*PRECISO DE VOCÊ'
         (Get-Resumo | Where-Object { $_ -match '^M1 ' }) | Should -Match 'FALHOU.*âncora é obrigatória'
         ($global:TU.Ancoras -join ',') | Should -Be 'start,stop'
+    }
+
+    It 'a stale blocked row with no pid and no status is FALHOU, not a surviving session' {
+        $global:TU.Resposta = 's'
+        $global:TU.D.AgentsSaida = '[{"id":"abc123def456","state":"blocked"}]'
+        Invoke-MedirTeste | Should -Be 0
+        (Get-Resumo | Where-Object { $_ -match '^M1 ' }) | Should -Match 'M1 \| FALHOU'
+        (Get-Resumo | Where-Object { $_ -match '^M2 ' }) | Should -Match 'M2 \| FALHOU'
+    }
+
+    It 'a done row is INCONCLUSIVO with no consequence; a blocked row with a pid is OK' {
+        $global:TU.Resposta = 's'
+        $global:TU.D.AgentsSaida = '[{"id":"abc123def456","state":"done","pid":42}]'
+        Invoke-MedirTeste | Should -Be 0
+        (Get-Resumo | Where-Object { $_ -match '^M1 ' }) | Should -Match 'M1 \| INCONCLUSIVO'
+        (Get-Resumo | Where-Object { $_ -match '^M2 ' }) | Should -Not -Match 'Consequência'
+        New-Maquina; Use-MaquinaFalsa; Invoke-Pronto; $global:TU.D.MedirSaida = $script:SaidaSh
+        $global:TU.Resposta = 's'
+        $global:TU.D.AgentsSaida = '[{"id":"abc123def456","state":"blocked","pid":42}]'
+        Invoke-MedirTeste | Should -Be 0
+        (Get-Resumo | Where-Object { $_ -match '^M2 ' }) | Should -Match 'M2 \| OK'
     }
 
     It 'the summary lists M1..M9 and the M9 round trip records the refused texts' {

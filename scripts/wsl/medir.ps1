@@ -58,7 +58,7 @@ function Start-SessaoMedida {
     return $m.Groups[1].Value
 }
 
-# 'ok', 'morreu' or 'sumiu' for the session id in `claude agents --json --all` (field names as Test-LinhaViva).
+# 'ok', 'morreu', 'inconclusivo', 'sumiu' or 'sem-resposta' for the session id in `claude agents --json --all` (field names as Test-LinhaViva).
 function Get-EstadoSessao {
     param([string]$Id)
     $r = Invoke-NaDistro $script:UsuarioDistro @($script:ClaudeDistro, 'agents', '--json', '--all')
@@ -66,15 +66,20 @@ function Get-EstadoSessao {
     if ($r.Codigo -ne 0 -or -not $t.StartsWith('[')) { return 'sem-resposta' }
     try { $lista = @(ConvertFrom-Json -InputObject $t | ForEach-Object { $_ }) } catch { return 'sem-resposta' }
     foreach ($l in $lista) {
-        $i = ''; $st = ''
+        $i = ''; $st = ''; $ss = ''; $pid_ = ''
         foreach ($p in $l.PSObject.Properties) {
             if ($p.Name -eq 'id') { $i = "$($p.Value)" }
             if ($p.Name -eq 'state') { $st = "$($p.Value)".ToLowerInvariant() }
+            if ($p.Name -eq 'status') { $ss = "$($p.Value)" }
+            if ($p.Name -eq 'pid') { $pid_ = "$($p.Value)" }
         }
         if ($i -and ($i.StartsWith($Id) -or $Id.StartsWith($i))) {
-            Write-Log ('sessao {0}: state={1}' -f $Id, $st)
+            Write-Log ('sessao {0}: state={1} status={2} pid={3}' -f $Id, $st, $ss, $pid_)
             if ($st -in 'failed', 'error', 'killed', 'stopped', 'exited') { return 'morreu' }
-            return 'ok'
+            # A row with neither status nor pid is the CLI's stale row of a dead process (painel/lancador.py sem_processo).
+            if ((Test-LinhaViva $l) -and ($ss -or $pid_)) { return 'ok' }
+            if (Test-LinhaViva $l) { return 'morreu' }
+            return 'inconclusivo'   # done/completed/finished or idle: the session ended its turn, survival unknown
         }
     }
     return 'sumiu'
@@ -96,7 +101,8 @@ function Measure-Sessao {
         Write-Mensagem 'Esperando 120 segundos depois que o wsl.exe saiu...'
         Wait-Segundos 120
         $e = Get-EstadoSessao -Id $id
-        if ($e -eq 'ok') { Add-Medida $N 'OK' ('a sessão continuou em claude agents 120 s depois{0}' -f $(if ($ComAncora) { ' (com âncora)' } else { ' (sem âncora)' })) }
+        if ($e -eq 'inconclusivo') { Add-Medida $N 'INCONCLUSIVO' 'a sessão já tinha terminado a tarefa (done/idle) 120 s depois; não dá para saber se sobreviveu, rode -Medir de novo' }
+        elseif ($e -eq 'ok') { Add-Medida $N 'OK' ('a sessão continuou em claude agents 120 s depois{0}' -f $(if ($ComAncora) { ' (com âncora)' } else { ' (sem âncora)' })) }
         else { Add-Medida $N 'FALHOU' ('a sessão não sobreviveu 120 s depois ({0}){1}' -f $e, $(if ($ComAncora) { ' mesmo com âncora' } else { ' sem âncora' })) }
     } finally {
         Stop-Ancora $ancora
