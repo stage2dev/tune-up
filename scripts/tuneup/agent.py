@@ -194,7 +194,9 @@ def ev_agent(d, cfg):
         return None
     modelo = ti.get("model")
     f = modelo_proibido(modelo, lista)
-    if f:
+    # only exception: an explicit model for an agent type listed in user.json fable_agents (exact ==)
+    st = ti.get("subagent_type")
+    if f and not (isinstance(st, str) and st in ler_usuario()[0]["fable_agents"]):
         return decisao_pre("bloquear", msg("modelo_proibido", f))
     if sem_modelo(modelo):  # "inherit"/"default" = no model: the session model applies
         modelo = None
