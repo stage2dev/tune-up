@@ -263,11 +263,23 @@ def estudio_hf(cfg):
     return hf if hf and os.path.isabs(hf) and not RE_CONTROLE.search(hf) else None
 
 
-def estudio_da_acao(cfg, acao):
+def estudio_da_acao(cfg, acao, hf_pronto=None):
     """{"hf", "py"} da ação que cita {estudio_hf} (prompt ou travas); None se não cita. Levanta ErroAcao 409
-    se o Estúdio não está preparado para esta chave (o binário não existe no caminho calculado)."""
+    se o Estúdio não está preparado para esta chave (o binário não existe no caminho calculado).
+    `hf_pronto(chave)` (sessão no WSL): caminho calculado por wsl.caminho_hf e existência pela sonda da distro;
+    "py" fica para o argv_travas (pasta do plugin na marca da distro)."""
     if MARCA_HF not in acao["_prompt"] + json.dumps(acao.get("_travas") or {}, ensure_ascii=False):
         return None
+    if hf_pronto is not None:
+        import wsl
+        try:
+            chave = chave_do_ambiente(os.path.join(os.path.realpath(os.path.dirname(config.PAINEL)), "tune-up-studio"))
+        except OSError:
+            chave = None
+        if not chave or not hf_pronto(chave):
+            raise ErroAcao("Prepare o Estúdio antes: abra a tela Estúdio, aba 1. Ambiente, e clique em Preparar "
+                           "(no Windows, rode antes o instalador scripts\\wsl\\instalar.ps1).", 409)
+        return {"hf": wsl.caminho_hf(chave), "py": None, "chave": chave}
     hf = estudio_hf(cfg)
     if not hf or not os.path.isfile(hf):
         raise ErroAcao("Prepare o Estúdio antes: abra a tela Estúdio, aba 1. Ambiente, e clique em Preparar.", 409)
