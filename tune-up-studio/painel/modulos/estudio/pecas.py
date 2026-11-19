@@ -130,7 +130,7 @@ def pecas(ctx):
         item["aprovado"], item["recusado"] = _marcas(ctx, e["trabalho"])
         if p and e.get("estado") != "rodando":
             try:
-                item["selo"] = selo.calcular(p, e["acao"], e.get("params") or {})
+                item["selo"] = selo.calcular(p, e["acao"], e.get("params") or {}, ctx.get("ffprobe_wsl"))
             except Exception as erro:  # noqa: B902 - pasta sumiu ou mudou, JSON fundo: só esta peça fica vermelha
                 item["selo"] = {"ok": False, "linha": "PRECISA DO SEU OLHO: não consegui conferir (%s)"
                                 % type(erro).__name__, "arquivos": [], "falhas": ["conferir"]}
@@ -322,7 +322,7 @@ def aprovar(ctx, dados):
     if _marcas(ctx, tid)[1]:
         return {"feito": False, "mensagem": "Você recusou esta peça."}
     antes = selo.assinatura(p)
-    s = selo.calcular(p, e["acao"], e.get("params") or {})
+    s = selo.calcular(p, e["acao"], e.get("params") or {}, ctx.get("ffprobe_wsl"))
     if not s["ok"]:
         return {"feito": False, "mensagem": "O selo desta peça não está verde: %s" % s["linha"][:300]}
     os.makedirs(pasta_ap, mode=0o700, exist_ok=True)

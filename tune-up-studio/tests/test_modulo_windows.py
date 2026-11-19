@@ -36,6 +36,7 @@ class TestModuloWindows(unittest.TestCase):
         popen.assert_not_called()
         self.assertFalse(r["feito"])
         self.assertIn("WSL2", r["mensagem"])
+        self.assertIn("instalar.ps1", r["mensagem"])
         for nome in ("ambiente.lock", "ambiente.log"):
             self.assertFalse(os.path.exists(os.path.join(self.dados, nome)))
         self.assertFalse(os.path.exists(self.dados))  # nem a pasta é criada
@@ -43,7 +44,8 @@ class TestModuloWindows(unittest.TestCase):
     def test_montar_no_windows_mostra_a_frase_sem_preparar_nem_pedir_peca(self):
         self.windows(True)
         r = self.mod.montar({"dados": self.dados})
-        self.assertTrue(any(a["nivel"] == "atencao" and "WSL2" in a["texto"] for a in r["alertas"]))
+        self.assertTrue(any(a["nivel"] == "atencao" and "WSL2" in a["texto"] and "instalar.ps1" in a["texto"]
+                            for a in r["alertas"]))
         abas = {a["id"]: a["blocos"] for a in r["abas"]}
         todos = [b for blocos in abas.values() for b in blocos]
         self.assertFalse([b for b in todos if b.get("acao") == "preparar"])

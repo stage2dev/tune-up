@@ -25,6 +25,7 @@ import dono
 import embutidos
 import modulos_plugin
 import travas_validar
+import wsl
 from modulos_forma import ErroModulo, conferir  # noqa: F401 - modulos.ErroModulo/conferir seguem valendo
 
 RE_ID = re.compile(r"^[a-z0-9_-]{1,40}$")
@@ -156,7 +157,9 @@ def contexto(cfg):
     return {"raiz": cfg.get("raiz") or cfg.get("workspace"), "pacote": pacote,
             "dados": os.path.join(pacote, "dados") if pacote else "", "dados_dir": cfg.get("dados_dir") or "",
             "config": dict(cfg.get("bruto") or {}), "hoje": datetime.date.today(),
-            "execucoes": cfg.get("_execucoes"), "dono_faltando": lambda requer: dono.faltando(cfg, requer)}
+            "execucoes": cfg.get("_execucoes"), "dono_faltando": lambda requer: dono.faltando(cfg, requer),
+            # WSL handle for modules (Estúdio on Windows): the probe, the wsl helpers and the runner, all injectable
+            "sonda": cfg.get("_sonda"), "wsl": wsl, "wsl_rodar": wsl.rodar_padrao}
 
 
 def _rodar_montar(mod, ctx, mid, tempo, chave=None):

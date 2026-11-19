@@ -92,7 +92,7 @@ For each piece of the plan write `a<N>/fonte/index.html`, sized `largura` x `alt
 
 Before the QA of each Meta piece, Read its snapshot and score `checklist-atencao.md` (one image: 9 items, items 3, 6 and 12 skipped): any item at 0, fix the worst (it counts as a fix round). The per-piece QA runs without `--atencao`.
 
-Per piece (`HF` = the path after `HyperFrames:` in the request, exactly as given (the panel computes it; it comes quoted when it has a space); with none (skill typed by hand in a checkout), `${CLAUDE_PLUGIN_ROOT}/tune-up-studio/node/node_modules/.bin/hyperframes`, absolute path; use the given path only if it ends in `/node/node_modules/.bin/hyperframes` and sits under an `estudio-node` folder inside the project's `.tune-up` data folder or under `${CLAUDE_PLUGIN_ROOT}/tune-up-studio/node/`, otherwise the checkout path, and say so; one command each, no `cd`, `;`, `>` or `|`):
+Per piece (`HF` = the path after `HyperFrames:` in the request, exactly as given (the panel computes it; it comes quoted when it has a space); with none (skill typed by hand in a checkout), `${CLAUDE_PLUGIN_ROOT}/tune-up-studio/node/node_modules/.bin/hyperframes`, absolute path; use the given path only if it ends in `/node/node_modules/.bin/hyperframes` and sits under an `estudio-node` folder inside the project's `.tune-up` data folder, under `${CLAUDE_PLUGIN_ROOT}/tune-up-studio/node/`, or under `/home/tuneup/.local/share/tune-up/estudio-node/` (the WSL install made by the Windows installer), otherwise the checkout path, and say so; one command each, no `cd`, `;`, `>` or `|`):
 
 1. `HF snapshot a<N>/fonte --at 0 --no-end -o a<N>/snap` -> `a<N>/snap/frame-00-at-0s.png`.
 2. `HF check a<N>/fonte --json --strict`. Do not copy its output anywhere.
