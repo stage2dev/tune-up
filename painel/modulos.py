@@ -25,6 +25,7 @@ import dono
 import embutidos
 import modulos_plugin
 import travas_validar
+import wsl
 from modulos_forma import ErroModulo, conferir  # noqa: F401 - modulos.ErroModulo/conferir seguem valendo
 
 RE_ID = re.compile(r"^[a-z0-9_-]{1,40}$")
@@ -41,18 +42,19 @@ _agindo = {}       # id -> thread de agir()
 _geracao = {}      # id -> sobe a cada agir() que volta; montar() em voo não grava cache velho
 
 
-def caminho_do_modulo(cfg, mid):
+def caminho_do_modulo(cfg, mid, sonda=None):
     """Caminho real de modulo.py ou levanta ErroModulo(404)."""
     if not isinstance(mid, str) or not RE_ID.match(mid):
         raise ErroModulo(404, "Essa tela não existe neste projeto.")
-    if mid not in (cfg.get("modulos") or []) and mid in embutidos.ligados(cfg):  # embutido (embutidos.py)
+    sonda = cfg.get("_sonda") if sonda is None else sonda  # rotas sem sonda (mídia, ?ref=, envio): a do App
+    if mid not in (cfg.get("modulos") or []) and mid in embutidos.ligados(cfg, sonda=sonda):  # embutido (embutidos.py)
         real = embutidos.caminho(mid)
         if not real:
             raise ErroModulo(404, "Essa tela não existe neste projeto.",
                              ["módulo embutido %s sem modulo.py (ou ele é atalho): não carreguei" % mid])
         return real
     if mid not in (cfg.get("modulos") or []):
-        chave = modulos_plugin.ligados(cfg)[0].get(mid)
+        chave = modulos_plugin.ligados(cfg, sonda=sonda)[0].get(mid)
         if not chave:
             raise ErroModulo(404, "Essa tela não existe neste projeto.")
         real, aviso = modulos_plugin.caminho(cfg, mid, chave)
@@ -129,9 +131,9 @@ def _importar(caminho, mid):
     return mod
 
 
-def carregar(cfg, mid):
+def carregar(cfg, mid, sonda=None):
     """O módulo importado ou ErroModulo (404 sem arquivo, 500 se o import quebra)."""
-    caminho = caminho_do_modulo(cfg, mid)
+    caminho = caminho_do_modulo(cfg, mid, sonda)
     try:
         mod = _importar(caminho, mid)
     except Exception as e:
@@ -155,7 +157,9 @@ def contexto(cfg):
     return {"raiz": cfg.get("raiz") or cfg.get("workspace"), "pacote": pacote,
             "dados": os.path.join(pacote, "dados") if pacote else "", "dados_dir": cfg.get("dados_dir") or "",
             "config": dict(cfg.get("bruto") or {}), "hoje": datetime.date.today(),
-            "execucoes": cfg.get("_execucoes"), "dono_faltando": lambda requer: dono.faltando(cfg, requer)}
+            "execucoes": cfg.get("_execucoes"), "dono_faltando": lambda requer: dono.faltando(cfg, requer),
+            # WSL handle for modules (Estúdio on Windows): the probe, the wsl helpers and the runner, all injectable
+            "sonda": cfg.get("_sonda"), "wsl": wsl, "wsl_rodar": wsl.rodar_padrao}
 
 
 def _rodar_montar(mod, ctx, mid, tempo, chave=None):
@@ -189,7 +193,7 @@ def _rodar_montar(mod, ctx, mid, tempo, chave=None):
     return t.caixa.get("dado")
 
 
-def montar(cfg, mid, usar_cache=True, tempo=TEMPO_LIMITE, pulso=None):
+def montar(cfg, mid, usar_cache=True, tempo=TEMPO_LIMITE, pulso=None, *, sonda=None):
     """(código, corpo) de GET /api/modulos/<id>; `pulso` diferente do guardado vence o cache (sessão começou/terminou)."""
     agora = time.monotonic()
     with _lock:
@@ -200,7 +204,7 @@ def montar(cfg, mid, usar_cache=True, tempo=TEMPO_LIMITE, pulso=None):
         if item and agora - item[0] < item[4] and item[3] == pulso:
             return item[1], item[2]
     try:
-        mod = carregar(cfg, mid)
+        mod = carregar(cfg, mid, sonda)
         saida = conferir(_rodar_montar(mod, contexto(cfg), mid, tempo, (geracao, pulso)), info(mod, mid))
         codigo, corpo = 200, saida
     except ErroModulo as e:
@@ -214,18 +218,18 @@ def montar(cfg, mid, usar_cache=True, tempo=TEMPO_LIMITE, pulso=None):
     return codigo, corpo
 
 
-def listar(cfg, tempo=TEMPO_LIMITE):
+def listar(cfg, tempo=TEMPO_LIMITE, *, sonda=None):
     """Corpo de GET /api/modulos: cada módulo habilitado com o número de alertas."""
     saida, avisos = [], []
     if cfg.get("modulos") and not cfg.get("pacote_ok"):
         avisos.append("painel.json lista módulos, mas não achei o pacote do projeto")
-    de_plugins, av_plugins = modulos_plugin.ligados(cfg)
+    de_plugins, av_plugins = modulos_plugin.ligados(cfg, sonda=sonda)
     avisos.extend(av_plugins)
     projeto = list(cfg.get("modulos") or [])
-    for mid in projeto + [m for m in embutidos.ligados(cfg) if m not in projeto] + list(de_plugins):
+    for mid in projeto + [m for m in embutidos.ligados(cfg, sonda=sonda) if m not in projeto] + list(de_plugins):
         item = {"id": mid, "titulo": mid, "icone": "", "alertas": 0}
         try:
-            item.update(info(carregar(cfg, mid), mid))
+            item.update(info(carregar(cfg, mid, sonda), mid))
         except ErroModulo as e:
             avisos.extend(e.avisos or [e.mensagem])
             if e.codigo == 404:
@@ -301,10 +305,10 @@ def _conferir_esquema(i, mid, acao, dados):
         raise ErroModulo(400, "A ação recebeu um campo com valor do tipo errado.")
 
 
-def agir(cfg, mid, acao, dados, tempo=TEMPO_LIMITE):
+def agir(cfg, mid, acao, dados, tempo=TEMPO_LIMITE, *, sonda=None):
     """(código, corpo) de POST /api/modulos/<id>/acao. `dados` vai intacto para agir()."""
     try:
-        mod = carregar(cfg, mid)
+        mod = carregar(cfg, mid, sonda)
         if not callable(getattr(mod, "agir", None)):
             raise ErroModulo(404, "Esta tela não tem ações.")
         i = getattr(mod, "INFO", None)

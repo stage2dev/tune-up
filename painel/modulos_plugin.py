@@ -16,7 +16,7 @@ RE_NOME = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
 RE_ID = re.compile(r"^[a-z0-9_-]{1,40}$")
 
 
-def ligados(cfg):
+def ligados(cfg, plataforma=None, sonda=None):
     """({id curto: "plugin@marketplace"}, avisos). Entrada ruim, repetida ou com id igual ao de um
     módulo do pacote é recusada com aviso; o resto segue."""
     lista = (cfg.get("bruto") or {}).get("modulos_de_plugins")
@@ -24,7 +24,7 @@ def ligados(cfg):
         return {}, []
     if not isinstance(lista, list):
         return {}, ["painel.json: modulos_de_plugins precisa ser uma lista; ignorei"]
-    mapa, avisos, de_dentro = {}, [], embutidos.ligados(cfg)
+    mapa, avisos, de_dentro = {}, [], embutidos.ligados(cfg, plataforma, sonda)
     for entrada in lista:
         if embutidos.antiga(entrada):  # Estúdio/Vendas do plugin separado: agora vêm do núcleo (embutidos.py)
             continue

@@ -226,7 +226,7 @@ Other modes: `-Login` (log in again), `-Atualizar` (update), `-Medir` (record me
 
 The studio session reads the project on `C:` through `/mnt/c`. The log is in `%LOCALAPPDATA%\tune-up\wsl\logs`. To remove everything, run the same command with `-Remover`. More detail and a troubleshooting list: `scripts/wsl/README.md`.
 
-Not yet: the panel does not launch studio actions on Windows. That arrives with the next part. This installer was not yet tried on a real Windows machine.
+The panel uses this distro for the studio actions. Details: [`painel/README.md`](painel/README.md#windows--wsl2) (Portuguese). Neither the installer nor the panel bridge was yet tried on a real Windows machine.
 
 ## Configuration
 

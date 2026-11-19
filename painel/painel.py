@@ -101,6 +101,7 @@ class App:
         self.porta = cfg.get("porta", 8787)
         self.estado = Estado(plans_dir, cfg, rodar_externos)
         self.lancador = lancador or lanc.Lancador(cfg, self.estado.dado)
+        self.sonda = cfg["_sonda"] = getattr(self.lancador, "sonda_atual", None)  # modulos.carregar sem sonda
         cfg["_execucoes"] = getattr(self.lancador, "execucoes", None)  # ctx["execucoes"] dos módulos (fila do estúdio)
 
     def origens(self):
@@ -268,9 +269,9 @@ def fazer_handler(app):
             if caminho == "/api/agentes":
                 return self._agentes(query)
             if caminho == "/api/modulos":
-                return self._json(200, modulos.listar(app.cfg))
+                return self._json(200, modulos.listar(app.cfg, sonda=app.sonda))
             if caminho == "/api/embutidos":
-                return self._json(*embutidos.listar(app.cfg))
+                return self._json(*embutidos.listar(app.cfg, sonda=app.sonda))
             if caminho == "/api/plugins": return self._json(*plugins.listar(app.cfg))  # noqa: E701 - plugins.py
             if caminho == "/api/habilidades":
                 return self._json(200, habilidades.para_tela(habilidades.listar(app.cfg)))
@@ -279,7 +280,7 @@ def fazer_handler(app):
                 fresco = (query.get("fresco") or ["0"])[0] in ("1", "true")
                 pulso = tuple((e.get("id"), e.get("estado")) for e in app.lancador.execucoes())  # fim de sessão aparece já
                 return self._json(*modulos.montar(app.cfg, urllib.parse.unquote(m.group(1)), usar_cache=not fresco,
-                                                  pulso=pulso))
+                                                  pulso=pulso, sonda=app.sonda))
             m = RE_ROTA_MODULO_ARQ.match(caminho)
             if m and "ref" in query:  # arquivo(ctx, ref) do módulo (arquivo_ref.py); ?c= é a pasta de mídia
                 return self._enviar(**arquivo_ref.servir(app.cfg, m.group(1), query["ref"], self.headers, self.command))
@@ -324,8 +325,7 @@ def fazer_handler(app):
             desde = (query.get("desde") or ["0"])[0]
             if not re.fullmatch(r"\d{1,15}", desde):
                 return self._erro(400, "O número 'desde' é inválido.")
-            caminho = transcricao.localizar(app.cfg["projects_dir"], ex.get("sessao_id") or reg.get("sessao_id"),
-                                            reg.get("cwd") or app.cfg["workspace"])
+            caminho = lanc.lancador_wsl.localizar(app.lancador, reg, ex.get("sessao_id") or reg.get("sessao_id"))  # its side
             inteiro = (query.get("inteiro") or ["0"])[0] in ("1", "true")
             dado = transcricao.ler(caminho, int(desde),
                                    corte_fala=transcricao.CORTE_INTEIRO if inteiro else transcricao.CORTE)
@@ -368,12 +368,12 @@ def fazer_handler(app):
                     return self._json(200, {"execucao": para_tela(ex)})
                 if caminho.startswith("/api/embutidos/"):  # liga/desliga Estúdio ou Vendas (embutidos.py)
                     return self._json(*embutidos.mudar(app.cfg, caminho[len("/api/embutidos/"):], corpo,
-                                                       depois=lambda: (modulos.esquecer(), app.estado.invalidar())))
+                                                       depois=lambda: (modulos.esquecer(), app.estado.invalidar()), sonda=app.sonda))
                 if caminho == "/api/plugins": return self._json(*plugins.mudar(app.cfg, corpo, depois=app.estado.invalidar))  # noqa: E701,E501
                 m = RE_ROTA_MODULO_ACAO.match(caminho)
                 if m:  # `dados` vai intacto para o módulo e nunca é registrado nem ecoado
                     return self._json(*modulos.agir(app.cfg, urllib.parse.unquote(m.group(1)),
-                                                    corpo.get("acao"), corpo.get("dados")))
+                                                    corpo.get("acao"), corpo.get("dados"), sonda=app.sonda))
                 return self._erro(404, "Não encontrado.")
             except lanc.ErroAcao as e:
                 extra = {"execucao_id": e.execucao_id} if e.execucao_id else {}

@@ -50,8 +50,8 @@ INFO = {"id": "estudio", "titulo": "Estúdio", "icone": "clapperboard",
                      "marca.tom": dict(CAMPO, ligado="booleano"),
                      "marca.remover_foto": {"destino": "texto", "arquivo": "texto"},
                      "peca.aprovar": PECA, "peca.recusar": PECA}}
-# o estúdio pede o sandbox do Claude Code, que não existe no Windows nativo (o catálogo já esconde as ações)
-SO_WSL2 = "O estúdio não roda no Windows. Use o WSL2 (o Linux dentro do Windows)."
+# o estúdio pede o sandbox do Claude Code, que no Windows só existe dentro do WSL2 preparado (o catálogo já esconde as ações)
+SO_WSL2 = "As ações do estúdio pedem o WSL2. Rode scripts\\wsl\\instalar.ps1 (pasta do plugin) e recarregue."
 REL_MARCA = marca_acoes.REL_MARCA
 SCRIPT = os.path.join(marca_acoes.SCRIPTS, "preparar_estudio.py")
 COMANDOS = {"envio.recebido": marca_acoes.recebido, "marca.editar": marca_acoes.editar,
@@ -62,6 +62,36 @@ COMANDOS = {"envio.recebido": marca_acoes.recebido, "marca.editar": marca_acoes.
 
 def _windows():
     return os.name == "nt"
+
+
+def _wsl(ctx):
+    """(marca, motivo): marca = the probe's marker when on Windows with a ready distro, else None + the reason."""
+    if not _windows():
+        return None, ""
+    v = ctx.get("sonda")
+    v = v() if callable(v) else v
+    if isinstance(v, dict) and v.get("pronta") is True and isinstance(v.get("marcador"), dict):
+        return v["marcador"], ""
+    return None, str(v.get("motivo") or "") if isinstance(v, dict) else "WSL não conferido"
+
+
+def _recusa_wsl(motivo):
+    return SO_WSL2 + (" (%s)" % motivo.rstrip(".") if motivo else "")
+
+
+def _ffprobe_wsl(ctx):
+    """callable(video, pasta, tempo) -> (codigo, saida, erro) running the distro's ffprobe, for selo.py."""
+    w, rodar = ctx["wsl"], ctx["wsl_rodar"]
+
+    def f(video, pasta, tempo):
+        cmd = w.argv(w.para_wsl(pasta), ["/usr/local/bin/ffprobe", "-v", "error", "-print_format", "json",
+                                          "-count_frames", "-show_streams", "-show_format", w.para_wsl(video)])
+        return rodar(cmd, tempo)
+    return f
+
+
+def _com_wsl(ctx):
+    return dict(ctx, ffprobe_wsl=_ffprobe_wsl(ctx)) if _wsl(ctx)[0] is not None else ctx
 
 
 def _ambiente(dados):
@@ -93,6 +123,8 @@ def _pasta(ctx):
 
 
 def montar(ctx):
+    marca, motivo = _wsl(ctx)
+    ctx = _com_wsl(ctx)
     r = _montar_ambiente(ctx)
     m = _marca(ctx)
     sha = hashlib.sha256(m[1]).hexdigest() if m else ""  # o dono aprova o que vê; o sha256 prende a estes bytes
@@ -103,6 +135,12 @@ def montar(ctx):
     pronto = bool(amb) and amb.get("pronto") is True and _mesma_chave(amb)
     texto = r["alertas"][0]["texto"] if amb else ("Clique em Preparar. O estúdio baixa as ferramentas dele "
                                                   "(cerca de 100 MB), uma vez só.")
+    if marca is not None:  # Windows: the ready flag AND its text come from the hyperframes inside the distro, not ambiente.json
+        pronto = _hf_pronto(ctx)
+        preparando = not pronto and bool(amb) and amb.get("estado") == "preparando"  # the WSL Preparar writes ambiente.json too
+        texto = ("Estúdio pronto (no WSL). Próximo passo: aprovar a marca." if pronto else texto if preparando else
+                 "O estúdio ainda não está pronto no WSL. Clique em Preparar: ele baixa as ferramentas (cerca de 100 MB), uma vez só.")
+        r["alertas"] = [{"nivel": "info" if pronto or preparando else "atencao", "texto": texto}]
     ambiente = [{"tipo": "texto", "titulo": "Passo 1 de 3: preparar o estúdio", "texto": texto}
                 | ({"ir_para": {"aba": "marca", "rotulo": "Ir para 2. Marca"}} if pronto else {})]
     if pronto and aprovada:  # tudo pronto: nenhum aviso no topo de toda aba (nem número no menu)
@@ -117,11 +155,19 @@ def montar(ctx):
                  {"id": "fila", "titulo": "Fila", "blocos": pecas.aba_fila(lista)},
                  {"id": "galeria", "titulo": "Galeria", "blocos": pecas.aba_galeria(lista)},
                  {"id": "aprovacao", "titulo": "Aprovação", "blocos": pecas.aba_aprovacao(lista, ctx)}]
-    if _windows():  # nada de Preparar nem de pedir peça: uma linha só
-        r["alertas"] = [{"nivel": "atencao", "texto": SO_WSL2}]
+    if _windows() and marca is None:  # nada de Preparar nem de pedir peça: uma linha só
+        r["alertas"] = [{"nivel": "atencao", "texto": _recusa_wsl(motivo)}]
         for aba in (r["abas"][0], r["abas"][2]):
-            aba["blocos"] = [{"tipo": "texto", "titulo": "Estúdio", "texto": SO_WSL2}]
+            aba["blocos"] = [{"tipo": "texto", "titulo": "Estúdio", "texto": _recusa_wsl(motivo)}]
     return r
+
+
+def _hf_pronto(ctx):
+    chave = _chave()
+    try:
+        return chave is not None and ctx["wsl"].hf_pronto(ctx["wsl_rodar"], chave) is True
+    except Exception:  # noqa: BLE001 - a broken check is "not ready", never a crash of the screen
+        return False
 
 
 def _montar_ambiente(ctx):
@@ -196,7 +242,7 @@ def _marca_redescobrir(ctx, dados):
 
 def agir(ctx, acao, dados):
     if acao == "peca.aprovar":
-        return pecas.aprovar(ctx, dados)
+        return pecas.aprovar(_com_wsl(ctx), dados)
     if acao == "peca.recusar":
         return pecas.recusar(ctx, dados)
     if acao == "marca.redescobrir":
@@ -207,13 +253,16 @@ def agir(ctx, acao, dados):
         return COMANDOS[acao](ctx, dados)
     if acao != "preparar":
         return {"feito": False, "mensagem": "Ação desconhecida."}
-    if _windows():  # Popen(pass_fds=...) quebra no Windows; nada é gravado em disco
-        return {"feito": False, "mensagem": SO_WSL2}
+    marca, motivo = _wsl(ctx)
+    if _windows() and marca is None:  # Popen(pass_fds=...) quebra no Windows; nada é gravado em disco
+        return {"feito": False, "mensagem": _recusa_wsl(motivo)}
     if dados.get("confirmar") is not True:
         return {"feito": False, "mensagem": "Confirme: isto baixa o HyperFrames pela internet (cerca de 100 MB)."}
     pasta = _pasta(ctx)
     if not pasta:
         return {"feito": False, "mensagem": "Este projeto não tem pasta de dados do painel."}
+    if marca is not None:
+        return _preparar_wsl(ctx, marca, pasta)
     os.makedirs(pasta, exist_ok=True)
     trava = _travar(pasta)
     if trava is None:
@@ -223,4 +272,25 @@ def agir(ctx, acao, dados):
         subprocess.Popen([sys.executable, "-I", SCRIPT, "--dados", pasta, "--projeto", ctx.get("raiz") or pasta,
                           "--sim", "--trava-herdada"], stdin=nada, stdout=log, stderr=subprocess.STDOUT,
                          cwd=pasta, start_new_session=True, pass_fds=(trava.fileno(),))
+    return {"feito": True, "mensagem": "Preparando o estúdio. Leva alguns minutos; a tela se atualiza sozinha."}
+
+
+
+def _preparar_wsl(ctx, marca, pasta):
+    """Windows + ready distro: run the Prepare script inside it (its own lock lives in WSL; no pass_fds here)."""
+    w = ctx["wsl"]
+    plugin = marca.get("plugin_dir")
+    if not w.plugin_dir_valido(plugin):
+        return {"feito": False, "mensagem": "A marca do WSL aponta para uma pasta do plugin inválida. "
+                                            "Rode scripts\\wsl\\instalar.ps1 de novo."}
+    try:
+        cmd = w.argv(w.para_wsl(pasta), ["/usr/bin/python3", "-I", plugin + "/tune-up-studio/scripts/preparar_estudio.py",
+                                         "--dados", w.para_wsl(pasta), "--projeto", w.para_wsl(ctx.get("raiz") or pasta),
+                                         "--sim"])
+        os.makedirs(pasta, exist_ok=True)
+        with open(os.path.join(pasta, "ambiente.log"), "wb") as log:
+            subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                             creationflags=w.CREATE_NO_WINDOW)
+    except (w.ErroAcao, OSError) as e:
+        return {"feito": False, "mensagem": "Não consegui iniciar o Preparar no WSL: %s" % str(e)[:200]}
     return {"feito": True, "mensagem": "Preparando o estúdio. Leva alguns minutos; a tela se atualiza sozinha."}

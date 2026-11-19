@@ -22,6 +22,7 @@ SEGREDOS = (".env*", "*.pem", "*.key")
 RE_ENV = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 ENV_PROIBIDO = re.compile(r"^(CLAUDE|ANTHROPIC|LD_|DYLD_)|^(PATH|HOME|TMPDIR|SHELL|NODE_OPTIONS|BASH_ENV|ENV)$")
 MAX_ENV, MAX_VALOR = 20, 200
+SEGREDOS_WIN = (".claude", ".ssh", "AppData", ".aws", ".config", ".gnupg")  # em /mnt/<letra>/Users/*/ (sessão no WSL)
 
 
 def validar(a):
@@ -46,8 +47,10 @@ def _barra(p):
     return p.replace("\\", "/").rstrip("/")
 
 
-def bloco(acao, workspace, dados_dir):
-    """(chaves de topo do settings, regras extras de permissions.deny, chaves extras de permissions)."""
+def bloco(acao, workspace, dados_dir, wsl=None):
+    """(chaves de topo do settings, regras extras de permissions.deny, chaves extras de permissions).
+    `wsl` (sessão no WSL): workspace e dados já em /mnt/<letra>/...; nega também ler os segredos do usuário do
+    Windows, na unidade do workspace e na C:, pelo sandbox (Bash) e por regra Read (as ferramentas do Claude)."""
     topo, negar, perm = {}, [], {}
     if acao.get("_env"):
         topo["env"] = dict(acao["_env"])
@@ -66,5 +69,15 @@ def bloco(acao, workspace, dados_dir):
     # o padrão "worktree" trava Write/Edit até EnterWorktree, que o bloqueio abaixo tira da sessão
     topo["worktree"] = {"bgIsolation": "none"}
     negar = list(NEGAR) + (["Read(%s/**/%s)" % (caminho_de_regra(ws), x) for x in SEGREDOS] if ws else [])
+    if wsl:
+        letras = sorted({"c"} | set(re.findall(r"^/mnt/([a-z])(?:/|$)", ws)))
+        win = ["/mnt/%s/Users/*/%s" % (letra, x) for letra in letras for x in SEGREDOS_WIN]
+        # o formato do sandbox não tem opção sem caixa (docs de sandboxing) e /mnt/<letra>/ não diferencia: soma as variantes
+        # comuns (.ENV*, .Env*, *.PEM...). Se o denyRead do Linux já pega a caixa no /mnt é medida da prova na máquina real;
+        # o caso geral (.eNv, curinga) fica no gancho (travas._wsl)
+        caixa = sorted({x.upper() for x in SEGREDOS} | {x.title() for x in SEGREDOS})
+        fs["denyRead"] += win + ([ws + "/" + x for x in caixa] + [ws + "/**/" + x for x in caixa] if ws else [])
+        negar += ["Read(%s/**/%s)" % (caminho_de_regra(ws), x) for x in caixa] if ws else []
+        negar += ["Read(/%s/**)" % x for x in win]
     perm["blockWritesOutsideWorkingDirectories"] = True
     return topo, negar, perm

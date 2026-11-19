@@ -7,6 +7,8 @@ a janela. Aqui o Popen não recebe stdin/stdout/stderr e usa close_fds=True (nad
 import shutil
 import subprocess
 
+import wsl
+
 # cmd.exe relê a linha e o wt.exe separa subcomandos por ';'. Com qualquer um destes no
 # caminho do claude, não abre: devolve o comando para a pessoa colar.
 METACHAR_WIN = set('&|<>^%!"();')
@@ -35,3 +37,14 @@ def abrir(claude, exec_id, cwd, abrir_janela=abrir_janela_padrao, which=None):
     if (which or shutil.which)("wt.exe"):
         return abrir_janela(["wt.exe", "-w", "0", "new-tab"] + dentro, cwd, False)
     return abrir_janela(dentro, cwd, True)  # janela nova do cmd, sem o `start` no meio
+
+
+def abrir_wsl(exec_id, cwd, abrir_janela=abrir_janela_padrao, which=None):
+    """Same as abrir() for a session inside the tune-up distro: wsl.exe (full path) ... --exec <claude> attach <id>.
+    True/False if it tried; None if refused by a metacharacter."""
+    dentro = wsl.argv_cru([wsl.CLAUDE_BIN, "attach", exec_id], usuario="tuneup")
+    if METACHAR_WIN & set("".join(dentro)):
+        return None
+    if (which or shutil.which)("wt.exe"):
+        return abrir_janela(["wt.exe", "-w", "0", "new-tab"] + dentro, cwd, False)
+    return abrir_janela(["cmd", "/k"] + dentro, cwd, True)

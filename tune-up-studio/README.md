@@ -10,9 +10,10 @@ Platforms: the studio runs on macOS, Linux and WSL2 only. Native Windows is not
 supported (the Claude Code sandbox it relies on does not run there); the
 `tune-up` panel itself still runs on Windows.
 
-Windows via WSL2: em prova. The installer exists (`scripts/wsl/instalar.ps1`, see the
-root README, section "Windows (WSL2)"); the panel bridge and the real-machine proof are
-still pending, so the panel does not launch studio actions on Windows yet.
+Windows via WSL2: em prova. The installer (`scripts/wsl/instalar.ps1`, see the root
+README, section "Windows (WSL2)") and the panel bridge (`painel/wsl.py`, see
+`painel/README.md`, section "Windows + WSL2") exist. The real-machine proof is still
+pending: nothing ran on Windows or against a real distro yet.
 
 ## Turn it on
 

@@ -4,9 +4,26 @@ Every new rule goes in through `/tune-up:learn`: memory + a change here + a test
 
 ## Unreleased
 
+## 2.27.0
+
+Windows installer through WSL2, Part B: the panel bridge. `tune-up-studio` 0.6.0.
+
+- New `painel/wsl.py`: path translation, the `wsl.exe --exec` argv through the gate `/usr/local/bin/tune-up-exec` (or the raw path for read-only probes), the readiness probe (distro listed, marker with the plugin's version, interop off) and `python -I painel\wsl.py --medir-argv`.
+- New `painel/wsl_ancora.py`: a `sleep infinity` child keeps the distro on while the panel runs (retries after 5, 30 and 120 s; a Job object ends it when the panel closes).
+- New `painel/lancador_wsl.py`: on Windows, a sandboxed action launches inside the distro. Executions are followed per side (list, stop, remove, resume, attach, transcript through `\\wsl.localhost`). `pular_permissoes` is ignored there and the result says so.
+- The catalog, the built-in Studio and its tabs follow the probe on Windows: ready shows the actions, not ready shows the reason and the installer command. `{estudio_hf}` is computed for the distro. Settings, hooks and the trust refusals know the WSL paths; the interop stays denied.
+- Behaviour on macOS, Linux and on Windows without a ready distro is unchanged.
+- Docs: "Windows + WSL2" section in `painel/README.md`; the root README, `scripts/wsl/README.md` and the studio README no longer say the panel does not launch studio actions on Windows.
+
+Not proven here:
+
+- None of this ran on Windows or against a real WSL distro. All tests use fakes on macOS. CI runs the unit tests on `windows-latest`, but with no distro.
+- Unmeasured: the Job object that ends the anchor, access to `\\wsl.localhost`, the `wt.exe` attach, passing prompts through `wsl.exe` (measure with `--medir-argv`), session survival with and without the anchor (M1/M2), the sandbox on `/mnt/c` (M4), and interop off blocking `cmd.exe` (M5).
+- Conservative choices because of that: the anchor is always on (closing the panel can still stop WSL sessions after about 15 s); the WSL side only works with a ready probe; there is no fallback to run a sandboxed action on the Windows host.
+
 ## 2.26.0
 
-Windows installer through WSL2, Part A. `tune-up-studio` 0.5.0. The panel does not launch studio actions on Windows yet: that is the next part.
+Windows installer through WSL2, Part A. `tune-up-studio` 0.5.0. The panel does not launch studio actions on Windows yet: that comes in 2.27.0.
 
 - New `scripts/wsl/instalar.ps1` (run from a normal, non-administrator PowerShell): creates its own WSL2 distro named `tune-up`, separate from any other, in 10 steps. It asks for administrator only through the system `wsl.exe`, and only when Windows lacks WSL; it may ask for one restart and then resumes by itself (RunOnce). Other modes: `-Login`, `-Atualizar`, `-Medir`, `-Remover`, `-Forcar`, `-SemReiniciar`, `-Retomar`, `-Projeto`. Inside the distro `preparar.sh` installs the tools and writes `/etc/tune-up/pronto.json` only after the Windows interop is off.
 - Five pinned downloads in `scripts/wsl/fixados.env`, each checked against its sha256 before anything is extracted or run: Ubuntu, Node and Claude Code have a verified signature; the FFmpeg checksum is unsigned (it comes from the same release page as the file); Chrome was captured from two matching downloads.

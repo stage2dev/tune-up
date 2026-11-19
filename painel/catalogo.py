@@ -13,6 +13,7 @@ import sys
 import dono
 import sandbox
 import teto
+from erros import ErroAcao  # noqa: F401 - re-exported: every module imports it from here
 from travas_validar import validar_travas
 
 RE_ID_ACAO = re.compile(r"^[a-z0-9][a-z0-9.\-]{1,60}$")
@@ -41,12 +42,6 @@ GRUPO_CHAT = "chat"  # cada ação deste grupo é um nível do chat da tela inic
 LIMITE_ACOES = 256 * 1024
 
 
-class ErroAcao(Exception):
-    """Erro com texto simples para a tela e o código HTTP certo."""
-
-    def __init__(self, mensagem, codigo=400, execucao_id=None):
-        Exception.__init__(self, mensagem)
-        self.mensagem, self.codigo, self.execucao_id = mensagem, codigo, execucao_id
 
 
 def _validar_param(p):
@@ -240,26 +235,40 @@ def chave_ligada(bruto, chave):
     return no is True
 
 
-def catalogo_do_projeto(cfg, plataforma=None):
+def ler_sonda(sonda):
+    """(pronta, motivo) da sonda do WSL: um dict {pronta, motivo} ou um callable que o devolve; sem ela, não pronta."""
+    v = sonda() if callable(sonda) else sonda
+    if not isinstance(v, dict):
+        return False, "WSL não conferido"
+    return v.get("pronta") is True, str(v.get("motivo") or "WSL não conferido")
+
+
+def catalogo_do_projeto(cfg, plataforma=None, sonda=None):
     """Núcleo, pacote do projeto e, por último, as ações de plugins aceitos (extensoes.py).
 
     Ação com `so_com` (ex.: a do vídeo com render local, que precisa de `rede_local`) só entra
     quando o painel.json do projeto liga essa chave: fora dela não aparece nem dispara.
-    No Windows (win32) a ação com `sandbox` também sai (o sandbox do Claude Code não existe lá), com um aviso.
+    No Windows (win32) a ação com `sandbox` também sai, com um aviso, a menos que a sonda do WSL2 diga
+    "pronta" (`sonda`: dict ou callable, só consultada se alguma ação pede sandbox).
     """
     plataforma = sys.platform if plataforma is None else plataforma
     import embutidos
     import extensoes
     pastas, avisos = extensoes.pastas_de_acoes(cfg)
-    # embutidos ligados entram depois do pacote, com as regras de plugin: o pacote não tira as travas deles
-    acoes, av = carregar_catalogo([cfg["acoes_dir"], cfg.get("acoes_pacote_dir")] + embutidos.pastas_de_acoes(cfg)
-                                  + pastas)
+    # embutidos ligados entram depois do pacote, com as regras de plugin: o pacote não tira as travas deles.
+    # The built-in folders load without the WSL reason (as if ready): every Estúdio action has `sandbox`,
+    # so the win32 filter below decides and warns, and the probe is read there at most once.
+    acoes, av = carregar_catalogo([cfg["acoes_dir"], cfg.get("acoes_pacote_dir")]
+                                  + embutidos.pastas_de_acoes(cfg, plataforma, {"pronta": True}) + pastas)
     acoes = [a for a in acoes if not a.get("_so_com") or chave_ligada(cfg.get("bruto"), a["_so_com"])]
     if plataforma == "win32":
-        sem = [a for a in acoes if not a.get("sandbox")]
-        if len(sem) != len(acoes):
-            acoes = sem
-            av = av + ["No Windows, as ações que pedem sandbox (como as do estúdio) ficam escondidas. Use o WSL2."]
+        if any(a.get("sandbox") for a in acoes):
+            pronta, motivo = ler_sonda(sonda)
+            # `so_com` + sandbox (video-motion, rede_local) is not proven in the WSL: it stays hidden on win32
+            acoes = [a for a in acoes if not a.get("sandbox") or (pronta and not a.get("_so_com"))]
+            if not pronta:
+                av = av + ["As ações do estúdio pedem o WSL2. Rode scripts\\wsl\\instalar.ps1 (pasta do plugin) "
+                           "e recarregue. (%s)" % motivo]
     return acoes, avisos + av
 
 

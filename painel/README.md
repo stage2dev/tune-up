@@ -176,6 +176,35 @@ Cruza o registro com `claude agents --json --all` (cache de 3 s). Medido no CLI 
 
 `GET /api/execucoes/{id}/eventos?desde=N` lê `~/.claude/projects/<cwd com não-letras trocadas por ->/<sessionId>.jsonl` aos pedaços (`desde` = posição em bytes). Mostra fala do usuário, fala do assistente, ferramenta usada (com um resumo do alvo), resultado com erro e subagente disparado. Textos são cortados em 600 letras e o que parece segredo (Bearer, chave, token, senha=..., JWT, URL com senha) vira `***`.
 
+## Windows + WSL2
+
+No Windows, as ações do estúdio (as que têm `sandbox`) rodam dentro da distro `tune-up` criada por `scripts\wsl\instalar.ps1`. Todo o resto continua no Windows.
+
+**Quando aparecem.** A sonda confere, nesta ordem: a distro `tune-up` está na lista do `wsl.exe`; a marca `/etc/tune-up/pronto.json` existe e tem a mesma versão do plugin do painel; o interop com o Windows está desligado. Só com os três a sonda diz "pronta" e as ações do estúdio aparecem. O resultado fica em cache (60 s se pronta, 15 s se não). Ações com `so_com` e `sandbox` continuam escondidas no Windows.
+
+**Como roda.** Toda chamada ao `wsl.exe` usa `--exec` e uma lista de argumentos montada por `painel/wsl.py`. Passam pelo portão `/usr/local/bin/tune-up-exec` só o que começa trabalho: lançar, retomar, o Preparar do estúdio e o `ffprobe` do selo. O resto usa o caminho cru (`wsl.argv_cru`), sem o portão: a sonda, a hora da distro, a lista (`claude agents`), o `claude stop` e o `claude rm`, o `attach`, a âncora e a conferência do HyperFrames. Nunca há texto de shell. Sem sonda pronta, a ação recusa com 409; não há plano B no Windows.
+
+**Cada lado.**
+- Lista e estado: o painel lê `claude agents --json --all` do Windows e o da distro e junta os dois. O lado vem do registro (`lado`, `cwd_wsl`). Sem a lista do WSL (sonda não pronta, falha, painel reiniciado), as execuções do WSL já terminadas mantêm o estado dos marcadores.
+- Parar, remover e retomar: rodam do lado da execução. No WSL, parar e remover usam o caminho cru (não começam trabalho); retomar passa pelo portão e garante a âncora antes.
+- Abrir: o botão abre o Windows Terminal (`wt.exe`) ou o `cmd` num `wsl.exe --exec claude attach <id>`; o campo de comando mostra a mesma linha.
+- Conversa: o `.jsonl` é lido pelo Windows em `\\wsl.localhost\tune-up\home\tuneup\.claude\projects` (ou `\\wsl$\...`), na pasta do `cwd_wsl`.
+- `{estudio_hf}` (HyperFrames) é calculado a partir da chave do estúdio e conferido dentro da distro; não vem do `ambiente.json`.
+
+**Âncora.** O painel mantém um `wsl.exe ... sleep infinity` rodando para a VM não desligar. Ele só sobe depois de uma sonda nova dizer "pronta"; se cair, tenta de novo após 5 s, 30 s e 120 s. No Windows o filho entra num Job object que o encerra quando o painel fecha. Consequência: fechar o painel pode parar as sessões do WSL depois de uns 15 segundos, porque o WSL desliga uma distro ociosa. A âncora fica sempre ligada; ainda não foi medido se ela é necessária (M1/M2).
+
+**`pular_permissoes`.** É ignorado nas execuções do WSL: a sessão pede as permissões de sempre, e o resultado da ação avisa.
+
+**Dono do estúdio.** `estudio-dono.json` fica em `<dados_dir>`, no Windows, e só o servidor grava. Nenhuma sessão, do WSL ou não, escreve nele. O painel não edita `.wslconfig` nem `~/.claude.json`.
+
+**Quando não está pronto.** O catálogo mostra um aviso com o motivo e some com as ações do estúdio; a tela do Estúdio manda rodar o instalador. Para corrigir, num PowerShell normal:
+- distro ausente (ou sem a marca): o instalador completo, `powershell -ExecutionPolicy Bypass -File scripts\wsl\instalar.ps1` (sem opção);
+- marca de outra versão do plugin: `... instalar.ps1 -Atualizar`;
+- interop ainda ligado: `... instalar.ps1 -Login` (ou o instalador completo); se persistir, procure o suporte;
+- login expirado: `... instalar.ps1 -Login`.
+
+**Medir o argv.** `python -I painel\wsl.py --medir-argv` (só no Windows, com a distro pronta) passa textos difíceis (`R$99`, `$(id)`, crase, aspas) pelo `wsl.exe --exec` e mostra o que chegou. Serve para conferir a passagem de prompts; ainda não foi rodado.
+
 ## Segurança
 
 - Escuta só em `127.0.0.1`; `Host` precisa ser `127.0.0.1` ou `localhost` (421).

@@ -54,13 +54,14 @@ def _hf(acao, est):
     return None
 
 
-def montar_prompt(acao, valores, pasta, est=None):
-    """Prompt com `{trabalho}` = pasta, cada texto_longo = caminho do entrada.md e `{estudio_hf}` = o HyperFrames."""
+def montar_prompt(acao, valores, pasta, est=None, caminho=os.path):
+    """Prompt com `{trabalho}` = pasta, cada texto_longo = caminho do entrada.md e `{estudio_hf}` = o HyperFrames.
+    `caminho`: módulo de caminho da `pasta` (posixpath para a pasta já traduzida da sessão no WSL)."""
     hf = _hf(acao, est)
     trocas = {ESTUDIO_HF: hf} if hf else {}
     if pasta is not None:
         trocas[TRABALHO] = pasta
-        trocas.update({n: os.path.join(pasta, ARQ_TEXTO) for n in _longos(acao)})
+        trocas.update({n: caminho.join(pasta, ARQ_TEXTO) for n in _longos(acao)})
     if not trocas:
         return montar(acao["_prompt"], valores)
     sinais = {k: _SINAL + k + _SINAL for k in trocas}

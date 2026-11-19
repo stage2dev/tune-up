@@ -32,6 +32,7 @@ MAX_JSON = 1024 * 1024
 MAX_LEGENDA = 20000
 MAX_CACHE = 200
 TEMPO_FFPROBE = 8  # a tela tem 20 s para montar; um MP4 que trava o ffprobe fica vermelho
+TEMPO_FFPROBE_WSL = 20  # o primeiro wsl.exe pode acordar a distro
 VIDEOS = {"estudio.video": "reserve", "estudio.video-motion": "hyperframes"}
 _lock = threading.Lock()
 _qa = {}
@@ -249,9 +250,21 @@ def _reels(qi):
     return int(v["largura"]), int(v["altura"])
 
 
-def _video(qi, qv, pasta, acao, params):
+def _probe_wsl(rodar, video, pasta):
+    """(dado, erro): the distro's ffprobe via `rodar(video, pasta, tempo)`; same JSON rules as qa_video.probe."""
+    try:
+        cod, out, err = rodar(video, pasta, TEMPO_FFPROBE_WSL)
+        if cod != 0:
+            return None, "o ffprobe do WSL falhou (código %s)" % cod
+        dado = json.loads(out)
+    except Exception as e:  # noqa: BLE001 - any failure is a red check, never a crash of the screen
+        return None, "não consegui rodar o ffprobe no WSL (%s)" % type(e).__name__
+    return (dado, None) if isinstance(dado, dict) else (None, "a resposta do ffprobe do WSL é inválida")
+
+
+def _video(qi, qv, pasta, acao, params, ffprobe_wsl=None):
     video, fonte = os.path.join(pasta, "video.mp4"), os.path.join(pasta, "fonte")
-    ffprobe = shutil.which("ffprobe")
+    ffprobe = shutil.which("ffprobe") if ffprobe_wsl is None else True
     checks = []
     try:
         duracao = float(params.get("duracao"))
@@ -265,10 +278,15 @@ def _video(qi, qv, pasta, acao, params):
         checks.append(qi.result("ffprobe", False, ["ffprobe não está instalado"]))
     elif not checks:
         try:
-            dado = qv.probe(video, ffprobe, TEMPO_FFPROBE)
+            if ffprobe_wsl is None:
+                dado = qv.probe(video, ffprobe, TEMPO_FFPROBE)
+            else:
+                dado, erro = _probe_wsl(ffprobe_wsl, video, pasta)
+                if erro:
+                    raise ValueError(erro)
             checks += qv.stream_checks(dado, video, largura, altura, duracao, 30.0)
         except (ValueError, OSError) as e:
-            checks.append(qi.result("probe", False, [str(e)[:300]]))
+            checks.append(qi.result("ffprobe" if ffprobe_wsl else "probe", False, [str(e)[:300]]))
         else:
             tag = qv.check_reserve_tag(dado)
             if VIDEOS[acao] == "reserve":
@@ -289,10 +307,10 @@ def tipo(acao):
         "anuncio" if acao == "estudio.anuncio" else None
 
 
-def calcular(pasta, acao, params):
+def calcular(pasta, acao, params, ffprobe_wsl=None):
     """{"ok", "linha", "falhas" (nomes das checagens vermelhas), "arquivos": [{"c" (relativo à pasta), "nome", "falhas"}]};
     em cache pela assinatura."""
-    chave = (acao, json.dumps(params or {}, sort_keys=True, ensure_ascii=False), assinatura(pasta))
+    chave = (acao, json.dumps(params or {}, sort_keys=True, ensure_ascii=False), assinatura(pasta), ffprobe_wsl is not None)
     with _lock:
         item = _cache.get(pasta)
         if item and item[0] == chave:
@@ -301,7 +319,7 @@ def calcular(pasta, acao, params):
     if tipo(acao) == "post":
         selo = _post(qi, pasta, params or {})
     elif tipo(acao) == "video":
-        selo = _video(qi, qv, pasta, acao, params or {})
+        selo = _video(qi, qv, pasta, acao, params or {}, ffprobe_wsl)
     elif tipo(acao) == "anuncio":
         selo = _anuncio(qi, pasta, params or {})
     else:

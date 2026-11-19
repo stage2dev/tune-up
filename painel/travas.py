@@ -1,19 +1,19 @@
-"""Travas de verdade das sessões que o painel dispara (não só frase no prompt). O núcleo não conhece ferramenta
-de projeto nenhum: as travas vêm do JSON da ação, em "negar" e "permitir": ["<regra de permissão>" | {regra do gancho}].
+"""Travas de verdade das sessões que o painel dispara (não só frase no prompt). O núcleo não conhece ferramenta de projeto nenhum: as travas vêm do
+JSON da ação, em "negar" e "permitir": ["<regra de permissão>" | {regra do gancho}].
 - Texto vira regra de permissão do Claude Code (`permissions.deny`/`.allow`), ex. "mcp__x__y", "Bash(rm *)".
-- Objeto vira regra do gancho PreToolUse que roda ESTE arquivo e olha o conteúdo da chamada: {"ferramenta": regex
-  (nome inteiro), "campo"?: campo da entrada, "entrada"?: regex nesse campo (ou na entrada inteira em JSON),
-  "decisao"?: "deny" | "ask" (padrão deny), "motivo"?: texto}. Uma regra de "permitir" que casa cala o gancho
-  (antes das de "negar"); a proteção fixa abaixo vale sempre.
-Proteção fixa do núcleo (toda ação): mexer em .claude/settings*.json, .claude/hooks|skills|plugins, CLAUDE.md,
-.mcp.json, no painel.json, no núcleo ou no pacote do painel (menos <pacote>/dados/) nega em ação de risco
-leitura/rascunho e pergunta em código/crédito. No Bash de leitura/rascunho, só verbo de leitura conhecido pode citar
-essas árvores. Ação com Bash no `permitir`: comando composto, código inline, heredoc ou script é negado antes do
-`permitir`. A ferramenta PowerShell (Windows) é negada sempre; no Windows, chamar cmd, PowerShell, WSL ou
-.bat/.cmd pelo Bash cai na regra forte, antes do `permitir`. Se o gancho falhar: nega em leitura/rascunho, pergunta no resto; se o processo nem rodar, sai com 2
-(bloqueia). Deny de gancho vence o "allow" de outro gancho. Python 3.9, só stdlib; não importa nada do painel.
-"""
+- Objeto vira regra do gancho PreToolUse que roda ESTE arquivo e olha o conteúdo da chamada: {"ferramenta": regex (nome inteiro), "campo"?: campo da
+  entrada, "entrada"?: regex nesse campo (ou na entrada inteira em JSON), "decisao"?: "deny" | "ask" (padrão deny), "motivo"?: texto}. Uma regra de
+  "permitir" que casa cala o gancho (antes das de "negar"); a proteção fixa abaixo vale sempre.
+Proteção fixa do núcleo (toda ação): mexer em .claude/settings*.json, .claude/hooks|skills|plugins, CLAUDE.md, .mcp.json, no painel.json, no núcleo ou
+no pacote do painel (menos <pacote>/dados/) nega em ação de risco leitura/rascunho e pergunta em código/crédito. No Bash de leitura/rascunho, só verbo
+de leitura conhecido pode citar essas árvores. Ação com Bash no `permitir`: comando composto, código inline, heredoc ou script é negado antes do
+`permitir`. A ferramenta PowerShell (Windows) é negada sempre; no Windows, chamar cmd, PowerShell, WSL ou .bat/.cmd pelo Bash cai na regra forte,
+antes do `permitir`. Se o gancho falhar: nega em leitura/rascunho, pergunta no resto; se o processo nem rodar, sai com 2 (bloqueia). Deny de gancho
+vence o "allow" de outro gancho. Conf "wsl" (sessão no WSL): sem caixa; nome 8.3, programa e segredo do Windows negados. Python 3.9, só stdlib; não
+importa nada do painel."""
 import base64
+import contextlib
+import fnmatch
 import json
 import ntpath
 import os
@@ -25,10 +25,8 @@ import unicodedata
 
 RISCO_LEVE = ("leitura", "rascunho")
 DECISOES = ("deny", "ask")
-NEGAR_LEVE = ["Edit(**/.claude/settings*.json)", "Write(**/.claude/settings*.json)",
-              "MultiEdit(**/.claude/settings*.json)"]
-_CONFIG = (r"(?i)(^|[/\s'\"=])\.claude/(settings[^/\s'\"]*\.json|(hooks|skills|plugins)\b)"
-           r"|(^|[/\s'\"=])(claude(\.local)?\.md|\.mcp\.json)($|[/\s'\";|&)<>])"
+NEGAR_LEVE = ["Edit(**/.claude/settings*.json)", "Write(**/.claude/settings*.json)", "MultiEdit(**/.claude/settings*.json)"]
+_CONFIG = (r"(?i)(^|[/\s'\"=])\.claude/(settings[^/\s'\"]*\.json|(hooks|skills|plugins)\b)" r"|(^|[/\s'\"=])(claude(\.local)?\.md|\.mcp\.json)($|[/\s'\";|&)<>])"
            r"|(^|[/\s'\"=])\.tune-up/painel(\.json|[\w.-]*/%s)")
 # <pacote>/dados/ fica de fora, menos o que é do dono; com `..` no Bash, a exceção `dados/` não vale
 CAMINHO_CONFIG = re.compile(_CONFIG % r"((?!dados/)|dados/(estudio-dono\.json|aprovados)\b)")
@@ -36,15 +34,12 @@ CAMINHO_CONFIG_PP = re.compile(_CONFIG % "")
 BASH_ESCREVE = re.compile(r">|\btee\b|\bsed\s+-i|\bmv\b|\bcp\b|\brm\b|\bchmod\b|\bln\b|\btouch\b|\btruncate\b")
 # Bash por texto: o que mais escreve (verbo no início do comando, heredoc, find -delete...).
 BASH_ESCREVE_MAIS = re.compile(r"(?i)<<|\s-(delete|exec|execdir|ok)\b|\bsort\b[^;|&]*\s-o|\b(perl|ruby)\b[^;|&]*\s-\w*i")
-INTERPRETES = {"python", "py", "node", "perl", "ruby", "php", "bash", "sh", "zsh", "dash", "ksh", "fish", "pwsh",
-               "powershell", "cmd", "deno", "bun", "osascript", "source", "."}
-VERBOS_ESCRITA = INTERPRETES | set(
-    "dd install rsync unlink mkdir rmdir patch xargs copy xcopy robocopy move del erase ren rename rd md set-content "
-    "add-content out-file remove-item copy-item move-item new-item rename-item sudo doas env eval exec git tar unzip "
-    "ditto scp curl wget certutil bitsadmin esentutl start-bitstransfer".split())
-VERBOS_LEITURA = set("cat ls head tail grep egrep fgrep rg wc stat file du diff cmp less more type dir findstr pwd cd "
-                     "echo printf test true realpath readlink basename dirname tree jq md5 md5sum shasum sha256sum "
-                     "get-content get-childitem".split())
+INTERPRETES = {"python", "py", "node", "perl", "ruby", "php", "bash", "sh", "zsh", "dash", "ksh", "fish", "pwsh", "powershell", "cmd", "deno", "bun", "osascript", "source", "."}
+VERBOS_ESCRITA = INTERPRETES | set("dd install rsync unlink mkdir rmdir patch xargs copy xcopy robocopy move del erase ren rename rd md set-content "
+                                   "add-content out-file remove-item copy-item move-item new-item rename-item sudo doas env eval exec git tar unzip "
+                                   "ditto scp curl wget certutil bitsadmin esentutl start-bitstransfer".split())
+VERBOS_LEITURA = set("cat ls head tail grep egrep fgrep rg wc stat file du diff cmp less more type dir findstr pwd cd echo printf test "
+                     "true realpath readlink basename dirname tree jq md5 md5sum shasum sha256sum get-content get-childitem".split())
 SEP_BASH = re.compile(r"&&|\|\||\$\(|[;&|\n(){}`]")
 META_BASH = re.compile(r";|&&|\|\||\||\$\(|`|<<|[<>]\(|\n|(?<![<>])&(?!>)")
 CURINGA = re.compile(r"[*?\[{$`]")
@@ -55,14 +50,12 @@ DONO = ("estudio-dono.json", "aprovados", "extensoes.json",  # em <dados>: só o
 # escrita que cita esses nomes em qualquer caminho: `cd <dados> && echo > estudio-dono.json` não passa
 RE_DONO = re.compile(r"(?i)(^|[/\s'\"=<>;|&()])(%s)($|[/\s'\";|&)<>])" % "|".join(re.escape(n) for n in DONO))
 PONTO_PONTO = re.compile(r"(^|[/\s'\"=])\.\.($|[/\s'\";|&)<>])")
-FERR_ARQUIVO = ("Edit", "Write", "MultiEdit", "NotebookEdit")
-FERR_COMANDO = ("Bash",)
+FERR_ARQUIVO, FERR_COMANDO = ("Edit", "Write", "MultiEdit", "NotebookEdit"), ("Bash",)
 # PowerShell (ferramenta do Claude Code no Windows): negado inteiro no painel. A trava lê o texto do comando, e o
 # PowerShell tem formas demais de montar caminho (aspas curvas, travessão, Join-String, iwr -OutFile, `\??\`...).
 MOTIVO_PS = "no painel use o Bash (Git Bash); a ferramenta PowerShell fica de fora das sessões do painel"
 # Windows, no Bash: outro shell (cmd expande %VAR%, PowerShell, WSL) ou .bat/.cmd: a trava não lê o que ele roda
-RE_SHELL_WIN = re.compile(r"(?i)(^|[\s;&|(`=/])(cmd|command\.com|powershell(_ise)?|pwsh|wslg?|conhost|runas|cscript"
-                          r"|wscript|mshta)(\.exe)?(?=$|[\s;&|)`])|comspec\b")
+RE_SHELL_WIN = re.compile(r"(?i)(^|[\s;&|(`=/])(cmd|command\.com|powershell(_ise)?|pwsh|wslg?|conhost|runas|cscript|wscript|mshta)(\.exe)?(?=$|[\s;&|)`])|comspec\b")
 MOTIVO_SHELL = "no painel use o Bash direto: cmd, PowerShell, WSL e .bat/.cmd rodam fora do que a trava lê"
 RE_UNIDADE = re.compile(r"^[A-Za-z]:")
 RE_UNIDADE_REL = re.compile(r"(?i)(?<![\w$])[a-z]:(?![/\\])")  # `C:rel` = `rel` (cwd da unidade): variante a mais
@@ -75,11 +68,13 @@ RE_REDE = re.compile(r"(?i)^//(?![?.]/[a-z]:(/|$))")
 RE_REDE_RUIM = re.compile(r"(?i)^//([?.]/(?!unc/|[a-z]:(/|$))|([?.]/unc/)?(localhost|127\.[\d.]+|\[?[0:]*:1\]?)(/|$)"
                           r"|([?.]/unc/)?[^/]+/[^/]*\$(/|$))|^/\?\?/(?![a-z]:(/|$))|^/proc/(?!cygdrive/)")
 FIM_LIB = "/\\ \t\n'\""  # depois do liberado: separador, espaço, aspas ou fim (dadosx/ não é dados/)
-# com sandbox o QA confia nos relatórios em <fonte>/.hyperframes/ (com `.` ou ` ` no fim, no Windows): só o Bash do
-# hyperframes grava lá. Pelo gancho, não por regra: `Write(**/.hyperframes/**)` não barrou; `Edit(...)` cala o sandbox.
+# com sandbox o QA confia nos relatórios em <fonte>/.hyperframes/ (com `.` ou ` ` no fim, no Windows): só o Bash do hyperframes
+# grava lá. Pelo gancho, não por regra: `Write(**/.hyperframes/**)` não barrou; `Edit(...)` cala o sandbox.
 SCRIPTS_ESTUDIO = "qa_video qa_imagem reserva_slides video_ou_reserva fontes anuncio fotos montar".split()  # bash-estudio.json
 RE_HF = re.compile(r"(^|/)\.hyperframes[. ]*(/|$)")
 MOTIVO_HF = "relatório do hyperframes (.hyperframes/) só o próprio hyperframes grava"
+WIN_WSL, SEGREDOS_WSL = (".claude", ".ssh", "appdata", ".aws", ".config", ".gnupg"), (".env*", "*.pem", "*.key")  # sandbox
+RE_WIN_WSL = re.compile(r"(?i)^/mnt/[a-z]/(windows|users/[^/]+/(%s))(/|$)" % "|".join(map(re.escape, WIN_WSL)))
 
 
 def _dobrado(texto):
@@ -113,8 +108,7 @@ def _barra(texto, sem_caixa):
 
 
 def _win_limpo(caminho):
-    """Como o Win32 lê: sem prefixo `\\\\?\\`/`\\\\.\\`, sem fluxo NTFS (`x::$DATA`, `x:fluxo`, em qualquer pedaço)
-    e sem pontos/espaços no fim de cada pedaço (`CLAUDE.md.` = `CLAUDE.md`); `.` e `..` ficam. `\\` vira `/`."""
+    """Como o Win32 lê: sem prefixo `\\\\?\\`/`\\\\.\\`, fluxo NTFS (`x::$DATA`) nem pontos/espaços no fim do pedaço."""
     m = RE_PREFIXO_WIN.match(caminho)
     t = (("//" if m.group(1) else "") + caminho[m.end():] if m else caminho).replace("\\", "/")
     unidade, t = (t[:2], t[2:]) if RE_UNIDADE.match(t) else ("", t)
@@ -123,26 +117,22 @@ def _win_limpo(caminho):
 
 
 def caminho_comparavel(caminho, sem_caixa, nt=False):
-    """Forma única de comparar caminho (da ferramenta e protegidos/liberados): `\\` vira `/`, `.` e `..` resolvidos
-    sem o os.path da plataforma, minúsculas se o disco não diferencia; `nt=True`: antes o _win_limpo, e sem caixa."""
+    """Forma única de comparar: `\\`->`/`, `..` resolvido (posixpath), minúsculas se sem caixa; nt: _win_limpo."""
     if nt:
         caminho, sem_caixa = _win_limpo(caminho), True
     return posixpath.normpath(_barra(caminho, sem_caixa))
 
 
 def _reais_win(caminho, cwd, realpath=None):
-    """Windows: nome curto 8.3 (`CLAUDE~1` = `.claude`). O realpath do Windows expande a parte que existe;
-    para folha que ainda não existe, também o realpath da pasta + a folha. Erro só tira a forma."""
+    """Windows, 8.3 (`CLAUDE~1` = `.claude`): realpath do caminho e da pasta + folha. Erro só tira a forma."""
     realpath = realpath or os.path.realpath
     alvo = _win_limpo(ntpath.join(cwd if isinstance(cwd, str) else "", caminho))
     if RE_REDE.match(caminho.replace("\\", "/")) or alvo.startswith("//"):
         return []  # rede ou dispositivo: nunca vai à rede (decidir já pergunta/nega pelo _escondido)
     out = []
     for fazer in (lambda: realpath(alvo), lambda: ntpath.join(realpath(ntpath.dirname(alvo)), ntpath.basename(alvo))):
-        try:
+        with contextlib.suppress(OSError, ValueError):
             out.append(fazer())
-        except (OSError, ValueError):
-            pass
     return out
 
 
@@ -189,9 +179,8 @@ def _palavras_win(t):
 
 
 def _bash_win(norm, cwd="", realpath=None):
-    """Windows, sobre o _bash_comparavel: /c/, /mnt/c/, /cygdrive/c/ e //c/ viram `c:/`; soma cada palavra como o
-    Win32 lê (fluxo NTFS, pontos/espaços no fim do pedaço) e, com nome curto 8.3, a forma longa (realpath). Devolve
-    (texto, solto): solto = pasta 8.3 (`X~1/`) que o realpath não expandiu (base fora do cwd: `~`, `cd`, espaço)."""
+    """Windows: /c/, /mnt/c/, /cygdrive/c/, //c/ viram `c:/`; soma cada palavra como o Win32 lê e, com 8.3, a forma
+    longa (realpath). (texto, solto): solto = pasta `X~1/` que o realpath não expandiu (base fora do cwd)."""
     t = RE_UNIDADE_BASH.sub(lambda m: m.group(1) + m.group(2).lower() + ":", norm)
     comido = re.sub(r"(?<=[^\s/.=<>;|&(])[. ]+(?=/)", "", t)  # `.claude. /x` (aspas já saíram); variante, não troca
     limpas = list(dict.fromkeys(_win_limpo(w) for w in _palavras_win(t) + _palavras_win(comido)))
@@ -212,8 +201,7 @@ def _disfarcado(norm, conf, forma):
         if (tok[m.start()] in "$`" and "/" in tok[m.start():]  # $X/y, `pwd`/y: o shell decide o caminho
                 or (fixo.startswith("/") or RE_UNIDADE.match(fixo)) and any(p.startswith(fixo) for p in prots)):
             return True
-        if ultimo and any(n.startswith(ultimo) for n in NOMES_CONFIG + DONO) or re.search(r"(?i)\.(claude|tune-up)/",
-                                                                                         fixo):
+        if ultimo and any(n.startswith(ultimo) for n in NOMES_CONFIG + DONO) or re.search(r"(?i)\.(claude|tune-up)/", fixo):
             return True
     return False
 
@@ -226,11 +214,9 @@ def _resolvidos(norm, cwd, sc):
 
 
 def _protegido_normal(texto, conf, comando, cwd="", nt=False, realpath=None):
-    """Mesma checagem com `\\` -> `/` (e `..` resolvido se for caminho). Só soma proteção. No Bash: aspas, `//`, `/./`,
-    escape `\\x` e curinga/variável não disfarçam; com `..` a exceção `dados` não vale; palavra relativa também é
-    conferida contra o cwd da sessão (se veio). `nt=True` soma as formas do Windows (_win_limpo, _bash_win, protegido
-    sem unidade: `\\Users\\..`, `-o/c/..`, `{x,/c/..}`; `%VAR%/` e `!VAR!/` do cmd) às de sempre, nunca no lugar."""
-    sc = nt or _sem_caixa(texto) or _sem_caixa(cwd)
+    """Mesma checagem com `\\` -> `/` e `..` resolvido; só soma. Bash: aspas, `//`, `/./`, `\\x`, curinga/variável não disfarçam; com `..` a exceção `dados` cai; relativo
+    vale contra o cwd. `nt=True` soma as formas do Windows (_win_limpo, _bash_win, sem unidade: `\\Users\\..`, `-o/c/..`, `{x,/c/..}`; `%VAR%/`, `!VAR!/`), nunca no lugar."""
+    sc = nt or conf.get("wsl") is True or _sem_caixa(texto) or _sem_caixa(cwd)  # WSL: /mnt/<letra>/ sem caixa
     forma = lambda p: caminho_comparavel(p, sc)  # noqa: E731
     win = lambda p: caminho_comparavel(p, True, True)  # noqa: E731
     if not comando:
@@ -246,8 +232,7 @@ def _protegido_normal(texto, conf, comando, cwd="", nt=False, realpath=None):
         return True
     for n in base if nt else ():  # realpath só se o texto cru não decidiu
         norm, solto = _bash_win(n, cwd, realpath)
-        if solto or re.search(r"%[^%\s/]+%/|![^!\s/]+!/", norm) or visto(norm, win) or visto(
-                norm, lambda p: RE_UNIDADE.sub("", win(p))):
+        if solto or re.search(r"%[^%\s/]+%/|![^!\s/]+!/", norm) or visto(norm, win) or visto(norm, lambda p: RE_UNIDADE.sub("", win(p))):
             return True
     return False
 
@@ -269,9 +254,8 @@ def _escreve(cmd, verbos):
 
 def _composto_ou_script(cmd, verbos):
     """Metacaractere de shell, código inline, heredoc ou script executado (gravado antes ou não)."""
-    return bool(META_BASH.search(cmd)) or any(
-        v in INTERPRETES or w.startswith(("./", ".\\", "/", "~")) or RE_UNIDADE.match(w)
-        or re.search(r"(?i)\.(sh|bash|zsh|py|js|mjs|pl|rb|php|ps1|bat|cmd)$", w) for w, v in verbos)
+    return bool(META_BASH.search(cmd)) or any(v in INTERPRETES or w.startswith(("./", ".\\", "/", "~")) or RE_UNIDADE.match(w)
+                                              or re.search(r"(?i)\.(sh|bash|zsh|py|js|mjs|pl|rb|php|ps1|bat|cmd)$", w) for w, v in verbos)
 
 
 def _casa(regra, ferramenta, entrada):
@@ -288,10 +272,8 @@ def _casa(regra, ferramenta, entrada):
 def _em_hyperframes(caminho, cwd):
     """Pelo texto (`..` resolvido, sem caixa) e pelo caminho real (link simbólico para dentro também vale)."""
     alvos = [caminho]
-    try:
+    with contextlib.suppress(OSError, ValueError):
         alvos.append(os.path.realpath(os.path.join(cwd if isinstance(cwd, str) else "", caminho)))
-    except (OSError, ValueError):
-        pass
     return any(RE_HF.search(caminho_comparavel(_dobrado(a), True)) for a in alvos)
 
 
@@ -306,32 +288,57 @@ def _escondido(ferramenta, entrada, nt):
 
 def _shell_win(cmd, verbos):
     """Windows, no Bash: chama cmd, PowerShell, WSL (pelo nome, pelo caminho ou %COMSPEC%) ou roda .bat/.cmd."""
-    return any(RE_SHELL_WIN.search(t) for t in [cmd] + [_bash_comparavel(cmd, True, e) for e in (False, True)]) or any(
-        re.search(r"(?i)\.(bat|cmd)$", w) for w, _ in verbos)
+    return any(RE_SHELL_WIN.search(t) for t in [cmd] + [_bash_comparavel(cmd, True, e) for e in (False, True)]) or any(re.search(r"(?i)\.(bat|cmd)$", w) for w, _ in verbos)
 
 
 def _sem_estudio(cmd, conf):
-    """Com sandbox: sem o binário exato do Estúdio (`exe`) ou, depois de `python3 -I [-B] `, `<py>` + script do
-    Estúdio. Só para a checagem de caminho protegido; o resto segue."""
+    """Com sandbox, só p/ checar caminho: tira o `exe` do Estúdio ou `<py>`+script após `python3 -I [-B] `."""
     for exe in (conf.get("exe") or []) if conf.get("sb") else []:
         if isinstance(exe, str) and exe and cmd.startswith(exe + " "):
             return cmd[len(exe):]
     py = conf.get("py") if conf.get("sb") else None
-    m = re.match(r"python3 -I (-B )?(%s(%s)\.py)(?= |\Z)" % (re.escape(py), "|".join(SCRIPTS_ESTUDIO)), cmd) \
-        if isinstance(py, str) and py else None
+    m = isinstance(py, str) and py and re.match(r"python3 -I (-B )?(%s(%s)\.py)(?= |\Z)" % (re.escape(py), "|".join(SCRIPTS_ESTUDIO)), cmd)
     return cmd[:m.start(2)] + cmd[m.end(2):] if m else cmd
 
 
 def decidir(conf, ferramenta, entrada, cwd="", nt=None, realpath=None):
-    """(decisão, motivo) ou None. `cwd`: o da sessão (entrada do gancho). `nt`/`realpath` (testes): Windows ou não e o
-    realpath do nome curto 8.3. PowerShell: nega sempre. O _escondido só sobe a decisão e vale antes do `permitir`."""
+    """(decisão, motivo) ou None. cwd: o da sessão; nt/realpath: testes. _escondido só sobe a decisão (antes do permitir)."""
     if ferramenta == "PowerShell":
         return "deny", MOTIVO_PS
     nt, forte = os.name == "nt" if nt is None else nt, conf.get("forte") if conf.get("forte") in DECISOES else "deny"
     entrada, cwd = entrada if isinstance(entrada, dict) else {}, cwd if isinstance(cwd, str) else ""
+    if conf.get("wsl") is True and _wsl(conf, ferramenta, entrada, cwd):  # antes do resto e do `permitir`
+        return "deny", "no WSL ficam de fora: nome curto 8.3 (X~1), programa do Windows (.exe, cmd...), segredo (.env...) e curinga que chegue a eles"
     r = _decidir(conf, ferramenta, entrada, cwd, nt, realpath, forte)
-    return (forte, "caminho que a trava não vê") if (r is None or r[0] != "deny") and _escondido(
-        ferramenta, entrada, nt) else r
+    return (forte, "caminho que a trava não vê") if (r is None or r[0] != "deny") and _escondido(ferramenta, entrada, nt) else r
+
+
+def _wsl(conf, ferramenta, entrada, cwd):
+    """WSL (/mnt/<letra>/ = disco do Windows): nome 8.3, programa ou segredo do Windows e segredo da sessão, sem caixa, no Bash, no
+    caminho e no glob do Glob/Grep, com curinga e `{a,b}`. 2ª camada: as barreiras são o denyRead do sandbox e o interop desligado."""
+    cmd, g = entrada.get("command"), entrada.get({"Glob": "pattern", "Grep": "glob"}.get(ferramenta, ""))
+    cam = [v for k, v in entrada.items() if k in ("file_path", "notebook_path", "path") and isinstance(v, str)]
+    ts = [x for t in cam + [cmd] * isinstance(cmd, str) for x in [t] + [_bash_comparavel(t, True, e) for e in (False, True)] + [_resolvidos(t, cwd, True)]]
+    pal = [w for t in [_bash_comparavel(cmd, True, e) for e in (False, True) if isinstance(cmd, str)] + [g] * isinstance(g, str) for w in re.split(r"[\s=<>;|&()`]+", t)]
+    for _ in range(64):  # `{a,b}` do bash expandido (passou de ~1 MB: `/*`, que nega); o que sobra (`{a..z}`) vale `*`
+        ms = [(w, re.search(r"\{([^{}]*,[^{}]*)\}", w)) for w in pal]
+        pal = ["/*"] if sum(len(w) * (m.group(1).count(",") + 1 if m else 1) for w, m in ms) > 10 ** 6 else [
+            x for w, m in ms for x in ([w[:m.start()] + alt + w[m.end():] for alt in m.group(1).split(",")] if m else [re.sub(r"\{[^{}]*\}", "*", w)])]
+    raiz = next((p.lower()[:-21].split("/") for p in conf.get("prot") or [] if p.endswith("/.tune-up/painel.json")), None)
+    ped = [c for p in cam + pal for q in [p.replace("\\", "/").split("/")] for c in [x for x in q[:-1] if x.strip("*")] + q[-1:]]
+    base = entrada["path"] if ferramenta in ("Glob", "Grep") and entrada.get("path") in cam else cwd  # `~`: 1 ou 2 níveis
+    cur = [posixpath.normpath(posixpath.join(base or "/", re.sub(r"^~[^/]*", "/*/*", p))).lower().split("/") for p in pal if re.search(r"[*?[]", p)]
+    return (any(RE_CURTO.search(t) for t in ts) or any(_cruza(c, s) for c in ped for s in SEGREDOS_WSL) or isinstance(cmd, str) and _shell_win(cmd, _verbos(cmd))
+            or any(RE_WIN_WSL.match(posixpath.normpath(w)) for t in ts + pal for w in re.split(r"[\s=<>;|&()]+", t) if w[:1] == "/")
+            or any(_cruza(p.rsplit("/", 1)[-1], x) for p in pal for x in ("cmd", "powershell", "pwsh", "wsl", "*.exe", "*.bat", "*.cmd", "*.com", "*.ps1"))
+            or any(_cruza(a[1], "mnt") and (not raiz or a[:len(raiz)] != raiz or len(a) > 5 and _cruza(a[3], "users") and any(_cruza(a[5], x) for x in WIN_WSL)) for a in cur))
+
+
+def _cruza(a, b):
+    """Algum nome (até 255) casa o glob `a` e o `b` (`x`, `x*` ou `*x`)? `[..]` vale `?`, sem caixa; `*a` contra `.x` (find, rg -g): `.x` puro ou o resto de `a`."""
+    a, b, r = (re.sub(r"\[[^\]/]*\]?", "?", x.lower()) for x in (a, b, a.lstrip("*?") if b[:1] == "." else a))  # `*nv`, `*.env.l` sim; `*.png` não
+    return re.search(r"[*?]", a) is not None if len(a) > 255 else any(fnmatch.fnmatchcase(b.strip("*"), x) for x in [a] + (
+        [r[:k] if b[-1:] == "*" else r[k:] for k in range(len(r) + 1)] if "*" in (b[:1], b[-1:]) else [r]))
 
 
 def _decidir(conf, ferramenta, entrada, cwd, nt, realpath, forte):
@@ -339,10 +346,8 @@ def _decidir(conf, ferramenta, entrada, cwd, nt, realpath, forte):
         caminho = str(entrada.get("file_path") or entrada.get("notebook_path") or "")
         if caminho and conf.get("sb") and any(_em_hyperframes(c, cwd) for c in [caminho] + [_win_limpo(caminho)] * nt):
             return "deny", MOTIVO_HF  # nem "ask": o dono não deve aprovar relatório forjado
-        if caminho and (_protegido(caminho, conf) or _protegido(os.path.normpath(caminho), conf)
-                        or _protegido_normal(caminho, conf, False, nt=nt)
-                        or nt and any(_protegido_normal(r, conf, False, nt=True)
-                                      for r in _reais_win(caminho, cwd, realpath))):
+        if caminho and (_protegido(caminho, conf) or _protegido(os.path.normpath(caminho), conf) or _protegido_normal(caminho, conf, False, nt=nt)
+                        or nt and any(_protegido_normal(r, conf, False, nt=True) for r in _reais_win(caminho, cwd, realpath))):
             return forte, "mexer nas regras do Claude ou do painel"
     if ferramenta in FERR_COMANDO:
         cmd = entrada.get("command")
@@ -368,9 +373,8 @@ def _decidir(conf, ferramenta, entrada, cwd, nt, realpath, forte):
 
 RE_SESSAO_GANCHO = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 FERR_PERGUNTA = "AskUserQuestion"
-MOTIVO_PERGUNTA = ("esta sessão roda no chat do painel, sem terminal. Não use AskUserQuestion: escreva a pergunta "
-                   "como texto na sua resposta (com as opções numeradas, a recomendada primeiro) e TERMINE a vez. "
-                   "O dono responde pelo chat e a conversa continua")
+MOTIVO_PERGUNTA = ("esta sessão roda no chat do painel, sem terminal. Não use AskUserQuestion: escreva a pergunta como texto na sua "
+                   "resposta (com as opções numeradas, a recomendada primeiro) e TERMINE a vez. O dono responde pelo chat e a conversa continua")
 
 
 def limpar_perguntas(entrada):
@@ -380,14 +384,13 @@ def limpar_perguntas(entrada):
         if not isinstance(q, dict) or not isinstance(q.get("question"), str) or not q["question"].strip():
             continue
         opcoes = [{"rotulo": o["label"].strip()[:120], "descricao": str(o.get("description") or "").strip()[:300]}
-                  for o in q.get("options") or [] if isinstance(o, dict) and isinstance(o.get("label"), str)
-                  and o["label"].strip()]
+                  for o in q.get("options") or [] if isinstance(o, dict) and isinstance(o.get("label"), str) and o["label"].strip()]
         out.append({"pergunta": q["question"].strip()[:500], "cabecalho": str(q.get("header") or "").strip()[:40],
                     "multipla": q.get("multiSelect") is True, "opcoes": opcoes[:6]})
     return out[:4]
 
 
-def guardar_pergunta(pasta, sessao_id, entrada):
+def guardar_pergunta(pasta, sessao_id, entrada, win=False):
     """Grava <pasta>/<sessionId>.json (0600, troca atômica). Falha aqui nunca libera a ferramenta."""
     perguntas = limpar_perguntas(entrada)
     if not perguntas or not isinstance(sessao_id, str) or not RE_SESSAO_GANCHO.match(sessao_id):
@@ -398,15 +401,15 @@ def guardar_pergunta(pasta, sessao_id, entrada):
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0), 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump({"perguntas": perguntas}, f, ensure_ascii=False)
-        _insistir(lambda: os.replace(tmp, os.path.join(pasta, sessao_id + ".json")))
+        _insistir(lambda: os.replace(tmp, os.path.join(pasta, sessao_id + ".json")), win)
         return True
     except OSError:
         return False
 
 
-def _insistir(fazer):
-    """Windows: arquivo aberto por outro dá PermissionError por um instante (como registro._insistir)."""
-    limite = time.monotonic() + (2 if os.name == "nt" else 0)
+def _insistir(fazer, win=False):
+    """Windows (ou disco dele pelo WSL, `win`): arquivo aberto por outro dá PermissionError por um instante."""
+    limite = time.monotonic() + (2 if win or os.name == "nt" else 0)
     while True:
         try:
             return fazer()
@@ -416,12 +419,10 @@ def _insistir(fazer):
             time.sleep(0.05)
 
 
-def esquecer_pergunta(pasta, sessao_id):
+def esquecer_pergunta(pasta, sessao_id, win=False):
     if isinstance(sessao_id, str) and RE_SESSAO_GANCHO.match(sessao_id):
-        try:
-            _insistir(lambda: os.unlink(os.path.join(pasta, sessao_id + ".json")))
-        except OSError:
-            pass
+        with contextlib.suppress(OSError):
+            _insistir(lambda: os.unlink(os.path.join(pasta, sessao_id + ".json")), win)
 
 
 def principal(argv, stdin, stdout):
@@ -433,16 +434,15 @@ def principal(argv, stdin, stdout):
         resposta = decidir(conf, str(dados.get("tool_name") or ""), dados.get("tool_input") or {}, dados.get("cwd"))
         if isinstance(conf.get("perg"), str) and conf["perg"]:
             if dados.get("tool_name") == FERR_PERGUNTA:
-                guardar_pergunta(conf["perg"], dados.get("session_id"), dados.get("tool_input") or {})
+                guardar_pergunta(conf["perg"], dados.get("session_id"), dados.get("tool_input") or {}, conf.get("wsl") is True)
                 resposta = "deny", MOTIVO_PERGUNTA
             else:  # usou outra ferramenta: seguiu em frente, a pergunta antiga não vale mais
-                esquecer_pergunta(conf["perg"], dados.get("session_id"))
+                esquecer_pergunta(conf["perg"], dados.get("session_id"), conf.get("wsl") is True)
     except Exception as erro:  # nunca libera no escuro
         resposta = falha, "a trava do painel falhou: " + type(erro).__name__
     if resposta:
-        stdout.write(json.dumps({"hookSpecificOutput": {
-            "hookEventName": "PreToolUse", "permissionDecision": resposta[0],
-            "permissionDecisionReason": "Trava do painel: " + resposta[1]}}, ensure_ascii=False))
+        stdout.write(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": resposta[0],
+                                                         "permissionDecisionReason": "Trava do painel: " + resposta[1]}}, ensure_ascii=False))
     return 0
 
 
