@@ -39,7 +39,7 @@ function New-Maquina {
         Admin = $false; ListaCodigo = 0; Terminais = New-Object System.Collections.ArrayList; TerminalAbre = $true; LoginEm = $null
         # Fake distro: Conf = wsl.conf on disk ('on' = interop on), Interop = what the running distro has.
         D = @{ Raiz = $false; Padrao = 'root'; Conf = 'on'; Interop = $true; Plugin = ''; Claude = $false; Auth = $true
-            MedirCodigo = 0; MedirSaida = ''; Sessao = 'ok'; Marca = $false; Codigos = @{}; TesteClaude = $null; AgentsCodigo = 0; AgentsSaida = ''; Verificar = 'RELATORIO-VERIFICAR'
+            MedirCodigo = 0; BgCodigo = 0; M9Mutilar = $false; MedirSaida = ''; Sessao = 'ok'; Marca = $false; Codigos = @{}; TesteClaude = $null; AgentsCodigo = 0; AgentsSaida = ''; Verificar = 'RELATORIO-VERIFICAR'
             Parcial = $false }   # Parcial: a half-failed --usuario left --verificar failing
     }
 }
@@ -60,7 +60,12 @@ function Invoke-DistroFalsa {
     # -Medir: printf echoes its text, medir.sh answers from D.MedirSaida, claude --bg prints a session id.
     if ($Argv[$i + 1] -eq '/usr/bin/printf') { $r.Saida = $Argv[$i + 3] }
     if ($cmd -like '/bin/bash /usr/local/lib/tune-up/medir.sh *') { $r.Codigo = $D.MedirCodigo; $r.Saida = $D.MedirSaida }
-    if ($cmd -like '/usr/local/bin/tune-up-exec * --bg *') { $r.Saida = 'backgrounded ' + [char]0xB7 + ' abc123def' }
+    if ($cmd -like '/usr/local/bin/tune-up-exec * --bg *') { $r.Saida = 'backgrounded ' + [char]0xB7 + ' abc123def'; $r.Codigo = $D.BgCodigo }
+    # M9 byte check: python prints the hex of its argument bytes; M9Mutilar fakes a console that turned non-ASCII into '?'.
+    if ($Argv[$i + 1] -eq '/usr/bin/python3') {
+        $txt = $Argv[-1]; if ($D.M9Mutilar) { $txt = $txt -replace '[^\x00-\x7f]', '?' }
+        $r.Saida = (([Text.UTF8Encoding]::new($false)).GetBytes($txt) | ForEach-Object { '{0:x2}' -f $_ }) -join ''
+    }
     switch -Exact ($cmd) {
         '/usr/bin/test -x /usr/local/bin/tune-up-exec' { if (-not $D.Raiz) { $r.Codigo = 1 } }
         '/usr/local/bin/node --version' { if ($D.Raiz) { $r.Saida = "v$NodeVersaoReal" } else { $r.Codigo = 127 } }

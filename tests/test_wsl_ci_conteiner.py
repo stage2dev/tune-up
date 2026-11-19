@@ -1,6 +1,7 @@
 """The --verificar gate of scripts/wsl/tests/ci_conteiner.sh (criterion C5), run for real with bash (unittest, stdlib)."""
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -32,6 +33,7 @@ def checar(texto, codigo):
         os.unlink(f.name)
 
 
+@unittest.skipIf(sys.platform == "win32", "needs bash")
 class GateVerificar(unittest.TestCase):
     def test_relatorio_bom_passa_mesmo_com_sandbox_faltando(self):
         code, out = checar(BOM, 1)

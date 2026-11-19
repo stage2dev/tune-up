@@ -184,7 +184,8 @@ Describe 'Live-session lock' {
     }
 
     It 'only working/blocked/busy rows are live (<Nome>)' -ForEach @(
-        @{ Nome = 'done and stopped'; Saida = '[{"state":"done","status":"idle"},{"state":"stopped"},{"state":"completed"}]'; N = 0 }
+        @{ Nome = 'done and stopped'; Saida = '[{"state":"done"},{"state":"stopped"},{"state":"completed"},{"state":"finished","status":"stale"}]'; N = 0 }
+        @{ Nome = 'done/completed/finished + idle is an open window'; Saida = '[{"state":"done","status":"idle"},{"state":"completed","status":"IDLE"},{"state":"finished","status":"idle"}]'; N = 3 }
         @{ Nome = 'non-object rows'; Saida = '[1,"x",null]'; N = 0 }
         @{ Nome = 'working'; Saida = '[{"state":"working"},{"state":"done"}]'; N = 1 }
         @{ Nome = 'blocked and waiting'; Saida = '[{"state":"blocked"},{"state":"done","status":"waiting"}]'; N = 2 }

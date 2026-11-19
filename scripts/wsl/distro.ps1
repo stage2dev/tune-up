@@ -109,6 +109,8 @@ function Test-LinhaViva {
     }
     if ($st -eq 'blocked' -or $ss -eq 'waiting' -or $ss -eq 'busy') { return $true }
     if ($st -in 'working', 'running', 'busy', 'active') { return $true }
+    # done/completed/finished + idle is an open window waiting at the prompt (painel/README.md): terminate/unregister would close it.
+    if ($st -in 'done', 'completed', 'finished' -and $ss -eq 'idle') { return $true }
     if ($st -in 'done', 'completed', 'finished', 'stopped', 'killed', 'failed', 'error', 'exited') { return $false }
     return ($ss -ne 'idle')
 }

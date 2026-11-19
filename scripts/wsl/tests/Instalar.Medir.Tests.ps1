@@ -86,6 +86,59 @@ Describe '-Medir' {
         (Get-Resumo | Where-Object { $_ -match '^M2 ' }) | Should -Match 'M2 \| OK'
     }
 
+    It 'M5 PARE (code 9) does not start M1/M2: no --bg, recorded as blocked by M5 even when answering s' {
+        $global:TU.Resposta = 's'
+        $global:TU.D.MedirCodigo = 9
+        $global:TU.D.MedirSaida = 'M5: FALHOU - PARE: cmd.exe RODOU'
+        Invoke-MedirTeste | Should -Be 1
+        @($global:TU.Argvs | Where-Object { $_ -contains '--bg' }).Count | Should -Be 0
+        $global:TU.Ancoras.Count | Should -Be 0
+        ($global:TU.Msgs -join "`n") | Should -Match 'M1: PULADO - bloqueado pelo M5'
+        ($global:TU.Msgs -join "`n") | Should -Match 'M2: PULADO - bloqueado pelo M5'
+    }
+
+    It 'a failed claude --bg launch is NAO MEDIDO with the reason and no consequence text' {
+        $global:TU.Resposta = 's'
+        $global:TU.D.BgCodigo = 1
+        Invoke-MedirTeste | Should -Be 0
+        foreach ($n in 1, 2) {
+            $l = Get-Resumo | Where-Object { $_ -match "^M$n " }
+            $l | Should -Match "M$n \| NAO MEDIDO"
+            $l | Should -Match 'claude --bg'
+            $l | Should -Not -Match 'Consequência'
+            $l | Should -Not -Match 'FALHOU'
+        }
+    }
+
+    It 'an unreadable agents list is NAO MEDIDO with no consequence text' {
+        $global:TU.Resposta = 's'
+        $global:TU.D.AgentsCodigo = 1
+        Invoke-MedirTeste | Should -Be 0
+        foreach ($n in 1, 2) {
+            $l = Get-Resumo | Where-Object { $_ -match "^M$n " }
+            $l | Should -Match "M$n \| NAO MEDIDO"
+            $l | Should -Not -Match 'Consequência'
+            $l | Should -Not -Match 'FALHOU'
+        }
+    }
+
+    It 'a done+idle row (open window at the prompt) stays INCONCLUSIVO, never OK' {
+        $global:TU.Resposta = 's'
+        $global:TU.D.AgentsSaida = '[{"id":"abc123def456","state":"done","status":"idle","pid":42}]'
+        Invoke-MedirTeste | Should -Be 0
+        (Get-Resumo | Where-Object { $_ -match '^M1 ' }) | Should -Match 'M1 \| INCONCLUSIVO'
+    }
+
+    It 'M9 compares UTF-8 bytes through python in the distro: accented path OK, a console-mangled return FALHOU' {
+        Invoke-MedirTeste | Should -Be 0
+        @($global:TU.Argvs | Where-Object { $_ -contains '/usr/bin/python3' -and $_ -contains '-I' -and $_ -contains 'C:\Users\João Silva\x' }).Count | Should -Be 1
+        (Get-Resumo | Where-Object { $_ -match '^M9 ' }) | Should -Match 'M9 \| OK'
+        New-Maquina; Use-MaquinaFalsa; Invoke-Pronto; $global:TU.D.MedirSaida = $script:SaidaSh
+        $global:TU.D.M9Mutilar = $true
+        Invoke-MedirTeste | Should -Be 0
+        (Get-Resumo | Where-Object { $_ -match '^M9 ' }) | Should -Match 'M9 \| FALHOU'
+    }
+
     It 'the summary lists M1..M9 and the M9 round trip records the refused texts' {
         Invoke-MedirTeste | Should -Be 0
         (Get-Resumo | ForEach-Object { $_.Substring(0, 2) }) -join ',' | Should -Be 'M1,M2,M3,M4,M5,M6,M7,M8,M9'

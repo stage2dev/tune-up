@@ -76,6 +76,8 @@ function Get-EstadoSessao {
         if ($i -and ($i.StartsWith($Id) -or $Id.StartsWith($i))) {
             Write-Log ('sessao {0}: state={1} status={2} pid={3}' -f $Id, $st, $ss, $pid_)
             if ($st -in 'failed', 'error', 'killed', 'stopped', 'exited') { return 'morreu' }
+            # Own rule (Test-LinhaViva counts done+idle as live for the lock): a finished turn never proves survival.
+            if ($st -in 'done', 'completed', 'finished' -and $ss.ToLowerInvariant() -eq 'idle') { return 'inconclusivo' }
             # A row with neither status nor pid is the CLI's stale row of a dead process (painel/lancador.py sem_processo).
             if ((Test-LinhaViva $l) -and ($ss -or $pid_)) { return 'ok' }
             if (Test-LinhaViva $l) { return 'morreu' }
@@ -97,12 +99,13 @@ function Measure-Sessao {
     try {
         if ($ComAncora) { $ancora = Start-Ancora }
         $id = Start-SessaoMedida -Nome ('medir-m{0}' -f $N)
-        if (-not $id) { Add-Medida $N 'FALHOU' 'não consegui lançar a sessão de teste (claude --bg); confira o login com -Login'; return }
+        if (-not $id) { Add-Medida $N 'NAO MEDIDO' 'não consegui lançar a sessão de teste (claude --bg); confira o login com -Login'; return }
         Write-Mensagem 'Esperando 120 segundos depois que o wsl.exe saiu...'
         Wait-Segundos 120
         $e = Get-EstadoSessao -Id $id
         if ($e -eq 'inconclusivo') { Add-Medida $N 'INCONCLUSIVO' 'a sessão já tinha terminado a tarefa (done/idle) 120 s depois; não dá para saber se sobreviveu, rode -Medir de novo' }
         elseif ($e -eq 'ok') { Add-Medida $N 'OK' ('a sessão continuou em claude agents 120 s depois{0}' -f $(if ($ComAncora) { ' (com âncora)' } else { ' (sem âncora)' })) }
+        elseif ($e -eq 'sem-resposta') { Add-Medida $N 'NAO MEDIDO' 'não consegui ler a lista de sessões (claude agents) 120 s depois; rode -Medir de novo' }
         else { Add-Medida $N 'FALHOU' ('a sessão não sobreviveu 120 s depois ({0}){1}' -f $e, $(if ($ComAncora) { ' mesmo com âncora' } else { ' sem âncora' })) }
     } finally {
         Stop-Ancora $ancora
@@ -114,10 +117,13 @@ function Measure-Sessao {
 function Measure-Argv {
     $bom = New-Object Text.UTF8Encoding $false
     $erros = 0
+    # The distro prints the hex of the bytes it received (no console decoding in between); compared with the UTF-8 hex computed here.
+    $py = 'import sys;print(sys.argv[1].encode(''utf-8'',''surrogateescape'').hex())'
     foreach ($t in $script:TextosM9) {
-        $r = Invoke-NaDistro '' @('/usr/bin/printf', '%s\n', $t)
-        $volta = ($r.Saida -replace "`r?`n\z", '')
-        $igual = ($r.Codigo -eq 0) -and (([BitConverter]::ToString($bom.GetBytes($volta))) -eq ([BitConverter]::ToString($bom.GetBytes($t))))
+        $r = Invoke-NaDistro '' @('/usr/bin/python3', '-I', '-c', $py, $t)
+        $volta = "$($r.Saida)".Trim().ToLowerInvariant()
+        $esperado = (($bom.GetBytes($t) | ForEach-Object { '{0:x2}' -f $_ }) -join '')
+        $igual = ($r.Codigo -eq 0) -and ($volta -eq $esperado)
         Write-Detalhe ('M9: {0} -> {1}' -f $t, $(if ($igual) { 'bytes iguais' } else { 'DIFERENTE' }))
         if (-not $igual) { $erros++ }
     }
@@ -169,9 +175,15 @@ function Invoke-Medir {
     }
     Measure-Windows
     Measure-Argv
-    Write-Mensagem 'As medições M1 e M2 usam a sua conta do Claude e gastam alguns tokens.'
-    $resp = "$(Read-Resposta 'Rodar M1 e M2 agora? (s/N)')".Trim().ToLowerInvariant()
-    if ($resp -in 's', 'sim') {
+    $resp = ''
+    if (-not $pare) {
+        Write-Mensagem 'As medições M1 e M2 usam a sua conta do Claude e gastam alguns tokens.'
+        $resp = "$(Read-Resposta 'Rodar M1 e M2 agora? (s/N)')".Trim().ToLowerInvariant()
+    }
+    if ($pare) {
+        Add-Medida 1 'PULADO' 'bloqueado pelo M5'
+        Add-Medida 2 'PULADO' 'bloqueado pelo M5'
+    } elseif ($resp -in 's', 'sim') {
         Measure-Sessao -N 1
         Measure-Sessao -N 2 -ComAncora
     } else {
