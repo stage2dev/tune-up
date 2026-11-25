@@ -4,6 +4,9 @@ Every new rule goes in through `/tune-up:learn`: memory + a change here + a test
 
 ## Unreleased
 
+- Panel: `max_execucoes` defaults to 2 and the cap also counts busy Claude sessions opened outside the panel in the project (host sessions only), without double counting. Over the cap, a new launch or reply gets a 409 that says how many are running; nothing is stopped. If the CLI listing fails, only the panel registry counts.
+- Panel: cost per session in the Agents screen and `GET /api/custo` (tokens, max context, % per model and estimated US$ from a fixed price table; host transcripts only).
+
 ## 2.27.0
 
 Windows installer through WSL2, Part B: the panel bridge. `tune-up-studio` 0.6.0.

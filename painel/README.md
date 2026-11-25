@@ -45,7 +45,7 @@ Tipos em `contrato/api.d.ts` (`PainelJson`). Caminho relativo vale a partir da r
 | `repo` | a raiz, se tiver `.git`; senão a 1ª subpasta com `.git` |
 | `plans_dir` | `<repo>/.planning` (se tiver `phases/`), senão `<raiz>/.planning` |
 | `claude_bin` | `claude` |
-| `max_execucoes` | 3 (1 a 10) |
+| `max_execucoes` | 2 (1 a 10). Conta também as sessões do Claude ocupadas neste projeto abertas fora do painel |
 | `pular_permissoes` | `false`. Com `true`, toda sessão sai com `--dangerously-skip-permissions`: os pedidos comuns de permissão somem, mas as regras de negar e o gancho de cada ação continuam valendo (medido no CLI 2.1.322). Uma regra que "pergunta" ainda para a sessão em "precisa de você". |
 | `porta` | 8787 |
 | `guarda` | `guarda.py` do plugin tune-up achado em `~/.claude/plugins/installed_plugins.json`; sem plugin, segue com aviso |
@@ -147,7 +147,7 @@ O catálogo é `acoes/dev.json` do núcleo (grupo `dev`: Rodar Parte, Planejar f
 - Disparo: `claude --bg -n "NOME" [--model M] [--effort E] --settings <travas> "PROMPT"` com lista de argumentos, sem shell, `cwd` = raiz e **sem modo que pula permissão** (a não ser com `pular_permissoes`). Rodar Parte usa o nome `Fase N Parte X`, que o leitor liga à Parte.
 - Regras-objeto de `negar`/`permitir` aceitam regex de até 1000 caracteres (no JSON; dá para escrever lista do que pode com lookahead negativo, ex. `mcp__servidor__(?!(get_\\w+|list_\\w+)$).*`).
 - Ação de risco `codigo` ou `credito` sempre pede confirmação na tela.
-- A mesma ação com os mesmos campos rodando dá 409; passar do teto (`max_execucoes`, contando "rodando" e "precisa de você") também dá 409.
+- A mesma ação com os mesmos campos rodando dá 409; passar do teto (`max_execucoes`) também dá 409, com a mensagem dizendo quantas rodam. O teto conta as execuções do painel ("rodando" e "precisa de você") mais as sessões ocupadas abertas fora dele na raiz ou abaixo dela (`vagas.py`; só as da máquina, não as da distro WSL), sem contar a mesma duas vezes. Só recusa o disparo novo: nada é parado. Se a lista do CLI falhar, conta só o registro.
 - Registro em `<pacote>/dados/execucoes.json` (pasta 0700, arquivo 0600, escrita atômica, trava de arquivo). Na subida, se só existir o registro da versão antiga (`<painel>/dados/execucoes.json`, do mesmo projeto), ele é copiado uma vez, com aviso em `/api/estado`.
 
 ### Travas da sessão (`travas.py`)
@@ -231,6 +231,7 @@ Tipos exatos em `contrato/api.d.ts`.
 | `GET /api/sessao` | token, nome do projeto, versão |
 | `GET /api/estado` | projeto, fases, Partes, PRs, sessões e avisos (inclusive os da configuração) |
 | `GET /api/agentes[?sessao=<id>&todos=1]` | sessões do Claude neste projeto e os sub-agentes delas (`agentes.montar`) |
+| `GET /api/custo?sessao=<uuid>` | por sessão (repita `sessao`, até 60): tokens, contexto máximo, % por modelo e US$ estimado por uma tabela fixa de preços; só leitura, só conversas da máquina (não as da distro WSL) |
 | `GET /api/acoes` | catálogo de botões |
 | `POST /api/execucoes` | roda uma ação (201, 400, 409) |
 | `GET /api/execucoes` | execuções, mais novas primeiro |
