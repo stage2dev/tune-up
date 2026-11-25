@@ -2,7 +2,7 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
-## Unreleased
+## 2.29.0
 
 Short plan (lean mode, Part D).
 
