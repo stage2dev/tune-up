@@ -21,6 +21,7 @@ from .agent import ev_agent
 from .bash import ev_bash
 from .config import TESTE, carregar_config, confiar
 from .info import roda_info
+from .revisao import roda_revisao
 from .rota import roda_rota, rota_erro
 from .mensagens import definir_idioma, msg
 from .escrita import ev_escrita
@@ -56,6 +57,9 @@ def main():
         except Exception as e:
             log_erro(evento, "%s: %s" % (type(e).__name__, e))
             print(json.dumps(rota_erro(e)))
+        return
+    if evento in ("review-save", "review-pending"):  # any error still prints fail-closed JSON
+        roda_revisao(evento, sys.argv[2:])
         return
     try:
         bruto = sys.stdin.read()
