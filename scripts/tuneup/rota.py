@@ -36,6 +36,10 @@ def _barra(p):
     return p.replace("\\", "/")
 
 
+def raizes_de(raiz):
+    return {_barra(raiz).lower().rstrip("/"), _barra(os.path.realpath(raiz)).lower().rstrip("/")}
+
+
 def relativo(caminho, raizes):
     """Path relative to the repo root when absolute and inside it; `/` separators, no leading
     `./`, lowercase. The host's os.path is not used for the separator (a Windows path works
@@ -202,7 +206,7 @@ def rota(files, diff_file, failed, cfg, raiz, text_file=None):
     gl = globs_efetivos(cfg)
     risco, seg, banco = gl["risk_globs"], gl["security_globs"], gl["database_globs"]
     files = limpar(files)
-    raizes = {_barra(raiz).lower().rstrip("/"), _barra(os.path.realpath(raiz)).lower().rstrip("/")}
+    raizes = raizes_de(raiz)
     rels = [(f, [relativo(x, raizes) for x in candidatos(f)]) for f in files]
     why, executor, rev, risco_glob = [], SONNET, {"failures"}, None
     if not files:
@@ -267,15 +271,25 @@ def rota_erro(e):
             "model": "opus", "scores": {}, "source": "fixed"}
 
 
+def parte_erro(e):
+    return {"part": True, "risk": True, "reviewers": list(ORDEM), "model": "opus", "effort": "high",
+            "lines": None, "chunks": 1, "why": ["error (%s): route up" % type(e).__name__]}
+
+
 def roda_rota(argv):
     """Always prints one JSON line; any error routes up."""
+    parte = "--part" in argv
     try:
         if TESTE and os.environ.get("TUNEUP_FAKE_EXCECAO") == "1":
             raise RuntimeError("simulated exception")
-        files, diff, failed, texto = ler_args(argv)
         cwd = os.getcwd()
-        saida = rota(files, diff, failed, carregar_config(cwd), toplevel(cwd), texto)
+        if parte:
+            from .rota_parte import rota_parte_args  # here: it imports this module
+            saida = rota_parte_args(argv, carregar_config(cwd), toplevel(cwd))
+        else:
+            files, diff, failed, texto = ler_args(argv)
+            saida = rota(files, diff, failed, carregar_config(cwd), toplevel(cwd), texto)
     except Exception as e:
         log_erro("rota", "%s: %s" % (type(e).__name__, e))
-        saida = rota_erro(e)
-    print(json.dumps(saida, ensure_ascii=False))
+        saida = parte_erro(e) if parte else rota_erro(e)
+    print(json.dumps(saida, ensure_ascii=parte))  # Part: ASCII, so printing a path cannot fail

@@ -18,6 +18,8 @@
   "security_globs": ["**/*auth*", "**/*webhook*", "**/*secret*", "**/*token*", "**/*payment*",
                      "**/hooks/**", "**/*guard*", "**/*permission*", "**/*upload*"],
   "database_globs": ["**/*.sql", "**/migrations/**"],
+  "front_globs": [],
+  "globs_off": [],
   "router": {"enabled": false, "max_chars": 6000,
              "thresholds": {"mechanical": 0.6, "risk": 0.5, "hard": 0.6, "visual": 0.5},
              "visual_agent": "", "hard_agent": ""}

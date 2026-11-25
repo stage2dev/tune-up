@@ -91,6 +91,21 @@ class TestInfo(Base):
         self.assertEqual(i["security_globs"], padrao["security_globs"] + ["**/*crypto*"])
         self.assertEqual(i["risk_globs"], padrao["risk_globs"])
 
+    def test_front_globs_e_globs_off(self):
+        i = self.info()
+        self.assertEqual((i["front_globs"], i["globs_off"]), ([], []))
+        c = os.path.join(self.cwd, ".tune-up", "config.json")
+        os.makedirs(os.path.dirname(c))
+        with open(c, "w", encoding="utf-8") as f:
+            json.dump({"front_globs": ["**/*", "src/**"], "globs_off": ["**/hooks/**"]}, f)
+        nc = self.info()  # not trusted
+        self.assertEqual((nc["front_globs"], nc["globs_off"]), ([], []))
+        self.confiar(c)
+        novo = self.info()
+        self.assertEqual((novo["front_globs"], novo["globs_off"]), (["src/**"], ["**/hooks/**"]))
+        for k in ("risk_globs", "security_globs", "database_globs"):  # still the per-item lists
+            self.assertEqual(novo[k], i[k])
+
     def test_project_md_e_legado(self):
         perfil = os.path.join(self.cwd, ".tune-up")
         os.makedirs(perfil)
