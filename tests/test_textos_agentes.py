@@ -18,7 +18,8 @@ REVIEWERS = ["agents/reviewer-failures.md", "agents/reviewer-database.md",
 SEARCH = EXECUTORS + REVIEWERS + ["agents/checker.md", "agents/writer.md",
                                   "agents/mapper.md"]
 
-CAP = ("Final report: at most ~25 lines (~1.5k tokens), telegraphic; longer detail goes to a file "
+CAP = ("Final report: at most ~25 lines (~1.5k tokens), telegraphic (no preamble, "
+       "do not repeat the order, fragments are fine); longer detail goes to a file "
        "in the scratchpad, cited by its absolute path. CRITICAL/HIGH findings are never cut.")
 CAPPED = [f"agents/{n}.md" for n in (
     "executor-sonnet", "executor-opus", "executor-hard", "reviewer-failures", "reviewer-database",
@@ -152,6 +153,18 @@ class TextosAgentes(unittest.TestCase):
             self.assertIn(CAP, read(f), f)
         allm = {f"agents/{p.name}" for p in (ROOT / "agents").glob("*.md")} - {"agents/persona.md"}
         self.assertEqual(allm, set(CAPPED))
+
+    def test_reuse_rule(self):
+        self.assertIn("REUSE: existing functions", read("agents/mapper.md"))
+        w = read("templates/work-order.md")
+        self.assertIn("REUSE (from the mapper;", w)
+        self.assertIn("look for an existing one (REUSE first, then rg)", w)
+        for f in EXECUTORS + ["agents/executor-hard.md"]:
+            self.assertIn("look for an existing one (REUSE first, then rg); reuse or extend it", read(f), f)
+            self.assertIn("what was reused, or why none", read(f), f)
+        self.assertIn("and REUSE per item", read("skills/part/SKILL.md"))
+        r = read("agents/reviewer-failures.md")
+        self.assertIn("11. Business logic copied from something that already exists: HIGH when the copies already diverge or must change together; any other duplication is MEDIUM.", r)
 
 
 class ComandosDaRevisao(PromptBase):

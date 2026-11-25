@@ -22,7 +22,7 @@ Rules (they override default behavior):
 
 ## Output
 
-Final report: at most ~25 lines (~1.5k tokens), telegraphic; longer detail goes to a file in the scratchpad, cited by its absolute path. CRITICAL/HIGH findings are never cut.
+Final report: at most ~25 lines (~1.5k tokens), telegraphic (no preamble, do not repeat the order, fragments are fine); longer detail goes to a file in the scratchpad, cited by its absolute path. CRITICAL/HIGH findings are never cut.
 
 ## What I looked at
 - file or screen, one per line

@@ -32,7 +32,7 @@ You review a PLAN, not code. Find what would make the plan fail, leak data, writ
 
 ## Answer
 
-Final report: at most ~25 lines (~1.5k tokens), telegraphic; longer detail goes to a file in the scratchpad, cited by its absolute path. CRITICAL/HIGH findings are never cut.
+Final report: at most ~25 lines (~1.5k tokens), telegraphic (no preamble, do not repeat the order, fragments are fine); longer detail goes to a file in the scratchpad, cited by its absolute path. CRITICAL/HIGH findings are never cut.
 
 Numbered list, worst first: **CRITICAL|HIGH|MEDIUM|LOW - title.** Proof (`file:line` or URL). -> Proposed fix (1-3 lines, decidable). Group LOW in one item. Mark "pre-existing" when the problem is already on the base and does not come from the plan. Reply in the language of the request.
 

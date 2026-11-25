@@ -204,7 +204,6 @@ class TestTextos(unittest.TestCase):
     def test_ordem(self):
         self.tem("templates/work-order.md", "ALWAYS the pitfall skills and the side skills",
                  '(Empty: write "none" and the reason.)', "LIBRARY DOC (optional")
-        self.assertNotIn("REUSE", ler("templates/work-order.md"))
 
     def test_plano(self):
         self.tem("skills/plan/SKILL.md", "Only for an item whose files match NO `side_skills` glob",
