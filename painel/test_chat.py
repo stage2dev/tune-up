@@ -108,7 +108,7 @@ class TesteCatalogoChat(Base):
         self.assertEqual([a["id"] for a in niveis],
                          ["chat.pergunta", "chat.simples", "chat.moderado", "chat.completo", "chat.marketing"])
         por_id = {a["id"]: a for a in niveis}
-        self.assertEqual(por_id["chat.completo"]["modelos"], ["fable", "opus"])
+        self.assertEqual(por_id["chat.completo"]["modelos"], ["opus"])
         self.assertEqual(por_id["chat.simples"]["modelos"], ["opus"])
         self.assertTrue(por_id["chat.simples"]["confirmar"] and por_id["chat.moderado"]["confirmar"])
         self.assertEqual(por_id["chat.completo"]["risco"], "rascunho")  # só plano: não mexe em código

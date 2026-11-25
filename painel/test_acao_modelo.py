@@ -4,9 +4,11 @@ Nada chama o claude de verdade: o CLI é falso.
 """
 import json
 import os
+import shutil
 import unittest
 
 import catalogo
+import lancador
 import test_chat
 
 DEV = {"id": "dev.teste", "grupo": "dev", "titulo": "Teste", "risco": "codigo", "prompt": "/x {t}",
@@ -52,6 +54,31 @@ class TesteModeloEsforcoEmQualquerAcao(test_chat.Base):
         cmd = self.bg()[0]
         self.assertEqual(cmd[cmd.index("--effort") + 1], "max")
         self.assertNotIn("effortLevel", json.dumps(cmd))  # esforço vai só pela opção, não pelo --settings
+
+    def real(self):
+        shutil.rmtree(os.path.join(self.tmp, "acoes"))
+        shutil.copytree(os.path.join(test_chat.AQUI, "acoes"), os.path.join(self.tmp, "acoes"))
+        acoes, _ = catalogo.carregar_catalogo(os.path.join(test_chat.AQUI, "acoes"))
+        return {a["id"]: a for a in acoes}
+
+    def test_acoes_de_dev_reais_saem_com_opus_high(self):
+        self.real()
+        estado = {"fases": [{"numero": "187", "partes": [{"id": "C", "status": "pendente"}]}]}
+        for aid, params in (("dev.rodar-parte", {"fase": "187", "parte": "C"}), ("dev.planejar-fase", {"ideia": "algo"})):
+            lc = lancador.Lancador(test_chat.cfg_teste(self.tmp), lambda: estado, rodar=self.cli,
+                                   relogio=lambda: self.t[0])
+            lc.iniciar(aid, params)
+            cmd = self.bg()[-1]
+            self.assertEqual((cmd[cmd.index("--model") + 1], cmd[cmd.index("--effort") + 1]), ("opus", "high"), aid)
+
+    def test_nenhuma_acao_real_cai_em_fable(self):
+        por_id = self.real()
+        self.cli.sonda = test_chat.SONDA_CAIU  # a sonda responde "não sei"
+        lc = self.lanc()
+        for aid, a in por_id.items():
+            self.assertFalse([m for m in a.get("modelos") or [] if "fable" in m], aid)
+            self.assertNotIn("fable", lc.modelos.escolher(a.get("modelos") or [])[0], aid)
+        self.assertEqual((por_id["chat.completo"]["modelos"], por_id["chat.completo"]["esforco"]), (["opus"], "xhigh"))
 
 
 if __name__ == "__main__":
