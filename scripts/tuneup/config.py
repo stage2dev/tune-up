@@ -23,7 +23,8 @@ ALIASES = {"branch_principal": "main_branches", "merge_pelo_claude": "claude_may
 
 AFROUXAM = ("claude_may_merge", "commit_on_main", "main_branches", "synced_roots",
             "free_repos", "research_free_paths", "supabase_guard", "line_limit",
-            "line_limit_exclude", "router", "front_globs", "globs_off")
+            "line_limit_exclude", "router", "front_globs", "globs_off",
+            "skills_by_glob")
 RE_QUANT_ANINHADO = re.compile(r"\([^)]*[+*][^)]*\)[+*{]")
 LIMITE_TEXTO = 120
 
@@ -164,7 +165,7 @@ def regras_validas(regras, invalidas=None):
 
 LISTAS_STR = ("main_branches", "synced_roots", "free_repos", "research_free_paths",
               "risk_globs", "security_globs", "database_globs", "front_globs", "globs_off")
-BOOLS = ("claude_may_merge", "commit_on_main", "supabase_guard")
+BOOLS = ("claude_may_merge", "commit_on_main", "supabase_guard", "auto_prepare")
 TEXTOS = ("project", "language", "plans_dir", "workflow_generic")
 NIVEL_GENERICO = {"off": 0, "warn": 1, "block": 2}  # unknown value = warn
 
@@ -202,7 +203,7 @@ def tipos_validos(dados, origem, invalidas):
             ok = isinstance(v, int) and not isinstance(v, bool)
         elif k == "line_limit_exclude":
             ok = isinstance(v, list) and all(isinstance(x, str) for x in v)
-        elif k == "router":
+        elif k in ("router", "skills_by_glob"):
             ok = isinstance(v, dict)
         if not ok:
             log_erro("config", "key %s discarded in %s (wrong type: %s)"
@@ -249,6 +250,36 @@ def router_mesclado(base, novo):
             v = t
         out[k] = v
     return out if router_valido(out) else None
+
+
+RE_SKILL = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")  # NAME_RE of ecc_catalog.py: no separator in it
+LIMITE_SKILLS_GLOBS = 50  # project entries of `skills_by_glob`
+
+
+def skills_glob_valido(g, skills):
+    """One `skills_by_glob` entry. A glob without a letter or digit outside brackets matches
+    everything (same rule as `front_globs`)."""
+    from .rota_parte import RE_COLCHETE  # here: only a project that sets the key pays this import
+    return 0 < len(g) <= LIMITE_TEXTO and g.isprintable() and \
+        any(c.isalnum() for c in RE_COLCHETE.sub("", g.replace("\\", "/"))) and \
+        isinstance(skills, list) and len(skills) <= 2 and \
+        all(isinstance(s, str) and RE_SKILL.fullmatch(s) for s in skills)
+
+
+def skills_mescladas(base, novo, invalidas):
+    """Project entries over the default, per glob ([] turns that glob off); a bad one is dropped."""
+    out = dict(base) if isinstance(base, dict) else {}
+    ruins = []
+    for n, (g, skills) in enumerate(novo.items()):
+        if n < LIMITE_SKILLS_GLOBS and skills_glob_valido(g, skills):
+            out[g] = skills
+        else:
+            ruins.append(g[:LIMITE_TEXTO])
+    if ruins:
+        log_erro("config", "skills_by_glob: %d entries discarded (bad glob or names, or over %d): %r"
+                 % (len(ruins), LIMITE_SKILLS_GLOBS, ruins[:5]))
+        invalidas.add("skills_by_glob")
+    return out
 
 
 def ler_config_projeto(perfil):
@@ -334,6 +365,8 @@ def carregar_config(cwd):
                     log_erro("config", "router block invalid, using the default")
                     invalidas.add(k)
                     continue
+            if k == "skills_by_glob":
+                v = skills_mescladas(cfg.get(k), v, invalidas)
             if isinstance(v, list) and (k in LISTAS_SOMAM or k.endswith("_phrases")):
                 cfg[k] = list(cfg.get(k) or []) + v
             else:

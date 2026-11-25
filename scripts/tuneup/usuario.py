@@ -23,7 +23,8 @@ DEFAULT_MODELS = {
     "reviewer-security": {"model": "opus", "effort": "high"},
 }
 DEFAULTS = {"language": "en", "owner": "", "reply_style": "plain", "forbidden_subagent_models": ["fable"],
-            "fable_agents": [], "names_override": {}, "protected_paths": [], "tools": {}, "plugin_source": None}
+            "fable_agents": [], "names_override": {}, "protected_paths": [], "tools": {}, "plugin_source": None,
+            "auto_prepare": True}
 _CACHE = {}
 RE_MODELO = re.compile(r"[A-Za-z0-9._:-]{1,64}")
 # Same pattern as config.RE_AGENTE (importing config here would be a cycle: config -> mensagens -> usuario).
@@ -144,6 +145,7 @@ def ler_usuario():
         u["tools"] = {k: bool(v) for k, v in bruto["tools"].items() if isinstance(k, str)}
     if isinstance(bruto.get("plugin_source"), str) and bruto["plugin_source"].strip():
         u["plugin_source"] = bruto["plugin_source"].strip()
+    u["auto_prepare"] = bruto.get("auto_prepare", True) is True  # anything else is off: it installs plugins
     u["models"] = _models(bruto.get("models"))
     _CACHE[caminho] = (u, existe)
     return _CACHE[caminho]

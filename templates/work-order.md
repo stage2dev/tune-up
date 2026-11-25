@@ -23,15 +23,20 @@ Edit only these paths (and new files the item needs).
 WHAT TO DO
 <action with concrete names: table, column, function, route>. Mirror: <file:line of an existing pattern>.
 
+REUSE (from the mapper; file:line of what to call or extend, or "none: searched <where>"). Never empty.
+
 REAL DATA (optional; "none" when not applicable)
 <aggregates and shapes from read-only production queries: counts, NULLs, lengths, min/max dates; never raw personal values>
 
 UI STATES (front items only)
 loading, read error, empty, retry, unmount on success, same-route navigation does not remount, refetch overwriting optimistic data, double click, no permission, flag off: each one "handled at file:line" or "n/a: reason".
 
-SKILLS TO READ (paths; read before coding; only the pitfall skills whose paths match an owned file plus the goal's skills, never the whole list)
+SKILLS TO READ (paths; read before coding; ALWAYS the pitfall skills and the side skills whose paths match an owned file, plus the goal's skills, never the whole list; they conflict: repo convention > pitfall skill > side skill)
 - <absolute path to SKILL.md> - <why, 1 line>
-(Empty: write "none".)
+(Empty: write "none" and the reason.)
+
+LIBRARY DOC (optional; item that uses a library API with no skill in the catalog)
+<excerpt of the official doc from `tune-up:researcher`, with URL and date, or "none">
 
 TESTS
 - While working, focused tests only: <command> | tail -40
@@ -43,14 +48,14 @@ DO NOT TOUCH
 <files, tables, behavior outside the item>. No neighboring refactor.
 
 RULES
-- Ponytail: smallest change that works; no new dependency; no speculative abstraction.
+- Ponytail: smallest change that works; no new dependency; no speculative abstraction. Before creating a function, component, hook or helper, look for an existing one (REUSE first, then rg); reuse or extend it; common code goes to the shared place the mirror uses.
 - Code files stay <= 450 lines. A file that must exceed it gets `tune-up: allow-long <reason>` in its first 5 lines.
 - 1 item. Near ~80 steps: stop, commit what is safe, hand back a partial result and report what is missing.
 - Git: commit only this item on the given branch with `git add <file names>`. Never git stash, push, PR, merge, `git add -A`, `git add .`, `commit -a`, or any write to production.
 - Before declaring done, recheck with grep that the edit is on disk.
 
 DELIVERY
-Telegraphic, at most ~25 lines; n/a failure paths on one line. Handoff, with these headings: What I built / How I verified (command and observed output) / Spec conformance (criterion C) / Failure paths checked / Flags for the judge / Confidence. End with a fenced json block: {"item","commit","files":[],"tests":[{"cmd","pass","fail"}],"skills_read":[],"steps"}.
+Telegraphic (no preamble, do not repeat the order, fragments are fine), at most ~25 lines; n/a failure paths on one line. Handoff, with these headings: What I built / How I verified (command and observed output) / Spec conformance (criterion C) / Failure paths checked / Flags for the judge / Confidence. End with a fenced json block: {"item","commit","files":[],"tests":[{"cmd","pass","fail"}],"skills_read":[],"steps"}.
 ```
 
 Coordinator notes:

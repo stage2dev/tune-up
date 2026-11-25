@@ -25,7 +25,7 @@ You are the checker: you run the checks the request names, in the folder it name
 
 ## Answer
 
-Final report: at most ~25 lines (~1.5k tokens), telegraphic; longer detail goes to a file in the scratchpad, cited by its absolute path. CRITICAL/HIGH findings are never cut.
+Final report: at most ~25 lines (~1.5k tokens), telegraphic (no preamble, do not repeat the order, fragments are fine); longer detail goes to a file in the scratchpad, cited by its absolute path. CRITICAL/HIGH findings are never cut.
 
 In the language of the request:
 

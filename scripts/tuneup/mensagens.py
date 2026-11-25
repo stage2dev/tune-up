@@ -80,6 +80,24 @@ CATALOG = {
         "protected_paths_ignorados": "tune-up: user.json protected_paths ignored (not absolute or not "
                                      "text): %s",
         "erros_hooks": "tune-up: %d hook errors since the last session; see %s",
+        "prep_anuncio": "tune-up: downloading in the background, from GitHub at pinned commits, what is missing of "
+                        "%s. ECC stays disabled, Ponytail is limited in subagents, Caveman starts off. What you "
+                        "already have is not touched. Turn off: \"auto_prepare\": false in %s.",
+        "prep_pronto": "tune-up ready; open a new session.",
+        "prep_fora": " Not installed, a marketplace with this name is already registered from another source: %s.",
+        "prep_falhou": "tune-up: preparation incomplete (%s). It tries again at each session start; "
+                       "turn off: \"auto_prepare\": false in %s.",
+        "prep_m_missing": "not found in PATH",
+        "prep_m_state": "preparo.json next to user.json is unreadable, delete it",
+        "prep_m_list": "`claude plugin list` failed",
+        "prep_m_add": "download failed (no network or timeout)",
+        "prep_m_commit": "the downloaded commit is not the pinned one, not installed",
+        "prep_m_limit": "its limit could not be written first, not installed",
+        "prep_m_install": "install failed",
+        "prep_m_disable": "could not be disabled, uninstalled",
+        "prep_m_left": "could not be undone, run `claude plugin uninstall` for it",
+        "prep_m_catalog": "skills catalog failed",
+        "prep_m_error": "unexpected error, see preparo.resultado.json",
         "sem_git_bash": "tune-up: Git Bash was not found, so the tune-up guards are OFF in this session. "
                         "Install Git for Windows or set CLAUDE_CODE_GIT_BASH_PATH to its bash.exe, then reopen Claude Code.",
         # confiar / main
@@ -173,6 +191,24 @@ CATALOG = {
         "protected_paths_ignorados": "tune-up: protected_paths do user.json ignorado (não absoluto ou "
                                      "não é texto): %s",
         "erros_hooks": "tune-up: %d erros nos hooks desde a última sessão; veja %s",
+        "prep_anuncio": "tune-up: baixando em segundo plano, do GitHub em commits fixos, o que falta de "
+                        "%s. O ECC fica desligado, o Ponytail fica limitado nos subagentes, o Caveman começa "
+                        "desligado. O que você já tem não muda. Para desligar: \"auto_prepare\": false em %s.",
+        "prep_pronto": "tune-up pronto; abra uma sessão nova.",
+        "prep_fora": " Não instalado, já existe um marketplace com este nome vindo de outra fonte: %s.",
+        "prep_falhou": "tune-up: preparo incompleto (%s). Tenta de novo a cada início de sessão; "
+                       "para desligar: \"auto_prepare\": false em %s.",
+        "prep_m_missing": "não encontrado no PATH",
+        "prep_m_state": "o preparo.json ao lado do user.json está ilegível, apague-o",
+        "prep_m_list": "`claude plugin list` falhou",
+        "prep_m_add": "download falhou (sem rede ou tempo esgotado)",
+        "prep_m_commit": "o commit baixado não é o fixado, não instalado",
+        "prep_m_limit": "não consegui gravar antes o limite dele, não instalado",
+        "prep_m_install": "instalação falhou",
+        "prep_m_disable": "não consegui desligar, desinstalado",
+        "prep_m_left": "não consegui desfazer, rode `claude plugin uninstall` para ele",
+        "prep_m_catalog": "o catálogo de skills falhou",
+        "prep_m_error": "erro inesperado, veja o preparo.resultado.json",
         "sem_git_bash": "tune-up: Git Bash não foi encontrado, então as travas do tune-up estão DESLIGADAS nesta sessão. "
                         "Instale o Git for Windows ou defina CLAUDE_CODE_GIT_BASH_PATH com o bash.exe dele e reabra o Claude Code.",
         "confiar_falhou": "tune-up: não consegui confiar o perfil (%s)",

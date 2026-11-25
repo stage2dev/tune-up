@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Merge env flags and the default model into Claude Code's settings.json, and nothing else.
+"""Merge env flags and the default model into Claude Code's settings.json, and nothing else
+(drop_plugin, only for tune-up's preparation: takes one id out of enabledPlugins, with the same safe write).
 
 Usage: settings_merge.py [--set-env KEY=VALUE ...] [--set-model opus] [--path FILE]
 At least one of --set-env / --set-model is required. The only model the plugin
@@ -139,6 +140,22 @@ def merge(path, wanted, model=None):
             raise MergeError("read-back check failed for %s; restore %s" % (path, result.get("backup", "it")))
     result["written"] = True
     return result
+
+
+def drop_plugin(path, plugin):
+    """Take one id out of enabledPlugins (backup, atomic, read back). False when it is not there."""
+    path = os.path.realpath(os.path.expanduser(path))
+    data, st = load(path)
+    enabled = data.get("enabledPlugins")
+    if not isinstance(enabled, dict) or plugin not in enabled:
+        return False
+    expected = dict(data, enabledPlugins={k: v for k, v in enabled.items() if k != plugin})
+    bak = backup(path)
+    write_atomic(path, expected, st)
+    with open(path, encoding="utf-8") as fh:
+        if json.load(fh) != expected:
+            raise MergeError("read-back check failed for %s; restore %s" % (path, bak))
+    return True
 
 
 def main(argv=None):

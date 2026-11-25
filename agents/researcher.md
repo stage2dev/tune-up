@@ -21,7 +21,7 @@ You establish the external contract a plan depends on. The request brings number
 
 ## Answer (per question)
 
-Final report: at most ~25 lines (~1.5k tokens), telegraphic; longer detail goes to a file in the scratchpad, cited by its absolute path. CRITICAL/HIGH findings are never cut.
+Final report: at most ~25 lines (~1.5k tokens), telegraphic (no preamble, do not repeat the order, fragments are fine); longer detail goes to a file in the scratchpad, cited by its absolute path. CRITICAL/HIGH findings are never cut.
 
 - **Answer:** the fact, short.
 - **Quote:** short literal excerpt (say if it came from a WebFetch summary).
