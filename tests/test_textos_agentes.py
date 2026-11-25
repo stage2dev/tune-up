@@ -156,8 +156,14 @@ class TextosAgentes(unittest.TestCase):
                   "scripts/guarda.py rota --part --files", "`front_globs`",
                   "ONLY with an external dependency", "Never a third"):
             self.assertIn(s, plan, s)
+        for s in ("ALSO needs: at least one listed file, no external dependency",
+                  "production SQL or data, owner/dashboard/env step, external sending",
+                  "run the FULL round 1 of Step 6 over the whole plan",
+                  "A HIGH still open after the writer's fix -> `names.need_you`"):
+            self.assertIn(s, plan, s)
         goal = read("templates/phase/goal.md")
         self.assertIn("Opus", goal)
+        self.assertIn("also lists a file, has no external dependency", goal)
         self.assertIn("MEDIUM/LOW/pre-existing -> `{{names.later}}`", goal)
         self.assertIn("Round 2 only after a CRITICAL", goal)
         self.assertIn("Round 2 (only after a CRITICAL)", read("templates/phase/plan-review.md"))

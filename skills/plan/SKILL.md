@@ -68,18 +68,18 @@ One `tune-up:writer` writes from the brief + maps, each file named by `names` an
 
 ## Step 6 - Plan review (Opus, high)
 
-ONE round, always, EXCEPT a plan with ONE Part whose files are all front (`front_globs`) or plain text. Proof, never by eye: plain text = documentation or copy files only (`.md`/`.txt` docs, changelog), never a skill, agent, prompt, template, config or code file. Every other planned file, new ones included, goes to `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py rota --part --files <files>` (no diff yet): exempt only when `why` is nothing but `no diff: cannot rule risk out` plus `globs_off`/`front_globs entry rejected` notes. Only plain text files: no call. Any other `why`, an error, no JSON, or an item that also changes an unlisted file = review. Skipped: the goal's plan review section and progress say "not reviewed: <reason>"; no `names.plan_review` file.
+ONE round, always, EXCEPT a plan with ONE Part whose files are all front (`front_globs`) or plain text. Proof, never by eye: plain text = documentation or copy files only (`.md`/`.txt` docs, changelog), never a skill, agent, prompt, template, config or code file. Every other planned file, new ones included, goes to `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py rota --part --files <files>` (no diff yet): exempt only when `why` is nothing but `no diff: cannot rule risk out` plus `globs_off`/`front_globs entry rejected` notes. The exemption ALSO needs: at least one listed file, no external dependency, and no item acting outside the files (production SQL or data, owner/dashboard/env step, external sending); else review. Only plain text files: no call. Any other `why`, an error, no JSON, or an item that also changes an unlisted file = review. Skipped: the goal's plan review section and progress say "not reviewed: <reason>"; no `names.plan_review` file.
 
 1. Round 1: `tune-up:plan-reviewer` with the base, the paths of the goal (and research, if any) and your main worry. Save as `names.plan_review` (template `plan-review.md`).
 2. For each finding decide the fix in `<scratchpad>/<phase>/fixes-round1.md`; verify doubtful proofs yourself.
-3. The writer applies all and records a "Plan review" section in the goal document. You confirm each HIGH closed in the goal (reread + grep) and write it down.
+3. The writer applies all and records a "Plan review" section in the goal document. You confirm each HIGH closed in the goal (reread + grep) and write it down. A HIGH still open after the writer's fix -> `names.need_you` with the exact ask (no round 2 without a CRITICAL).
 4. Round 2 ONLY when round 1 had a CRITICAL: the reviewer checks ONLY that each CRITICAL/HIGH closed, plus new ones. CRITICAL/HIGH still open after that -> `names.need_you` with the exact ask. Never a third. MEDIUM/LOW: you apply or they go to `names.later`.
 
 ## Step 7 - Owner decisions
 
 - `AskUserQuestion`, up to 4 questions only the owner can decide; recommended first, "(Recommended)" and why in one line. Nothing the code can answer.
 - Answers go under the `names.decisions_heading` heading in goal and progress. `names.open_questions` keeps only what stays open.
-- A decision that adds an item or changes the design: quick map + measurement -> brief -> writer -> focused review of that item only (if the plan is not exempt; a new item can end the exemption: rerun the check).
+- A decision that adds an item or changes the design: quick map + measurement -> brief -> writer -> focused review of that item only (if the plan is not exempt; a new item can end the exemption: rerun the check; when the rerun ends the exemption, run the FULL round 1 of Step 6 over the whole plan and replace the "not reviewed" lines in goal and progress; an already reviewed plan keeps the focused review of the new item only).
 
 ## Step 8 - Final check
 
