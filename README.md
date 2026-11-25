@@ -110,12 +110,12 @@ idea ──> talk ──> new-project / design
     │        │         │
     │        │         └─ commit + PR with an honest body
     │        └─ ONE Part per conversation, then it stops
-    └─ goal + progress + research + plan review
+    └─ goal + progress (+ research if external) + plan review
 ```
 
 - `talk`: interview, brainstorm and a debate between personas; produces project documents, never code.
 - `new-project` / `design`: scaffold from the vision; design tokens and a static prototype.
-- `plan`: a phase plan. A small idea becomes a one-part plan.
+- `plan`: a phase plan. A small idea becomes a one-part plan (one mapper, research and later documents optional, one plan review round).
 - `part`: runs one Part item by item, reviewed once at the end (plus right after a base item), with a gate, then stops.
 - `ship`: commit and PR. The merge is yours, not Claude's (unless your profile says otherwise).
 - `learn`: records a new rule (memory, project or user rules, or the plugin source) with a test and a changelog line.
@@ -130,7 +130,7 @@ All commands are `/tune-up:<name>`.
 | `talk` | Talk mode: interview, brainstorm and persona debate that turn an idea into documents; no code. |
 | `new-project` | Creates a project folder with git, docs, plans, tests, CI and agent rules from the vision. You choose the stack. |
 | `design` | Builds the design system (`DESIGN.md` with tokens) and a static HTML prototype from it. |
-| `plan` | Builds a phase plan (goal, progress, research, plan review). |
+| `plan` | Builds a phase plan (goal, progress, plan review; research only with an external dependency). |
 | `part` | Runs ONE Part of a planned phase, reviewed once at the end, with a gate, then stops. |
 | `research` | Research that changes NOTHING; ends in numbered questions. |
 | `investigate` | Investigates a bug or failure: read-only first, cause with proof, smallest fix. |

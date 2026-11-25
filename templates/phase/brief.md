@@ -1,9 +1,9 @@
 # Coordinator brief - Phase NNN (for the writer)
 
 Folder: `<absolute path of the phase folder>`. Base: `origin/<main>` <hash>.
-Templates: `<absolute path of templates/phase/>` (goal.md, research.md, progress.md, later.md).
+Templates: `<absolute path of templates/phase/>` (goal.md, progress.md; research.md only with an external dependency; later.md only when there is already something for it).
 Inputs: `<absolute paths of map-*.md, research-*.md, original-request.md>`.
-Output names: `{{names.goal}}`, `{{names.research}}`, `{{names.progress}}`, `{{names.later}}` (from `info`).
+Output names: `{{names.goal}}`, `{{names.progress}}`, plus `{{names.research}}` (only with an external dependency) and `{{names.later}}` (only if there is content) (from `info`).
 Limit: goal <= <N> lines; progress <= 40.
 
 ## 1. Target sentence and today/after table

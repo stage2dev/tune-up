@@ -148,6 +148,43 @@ class TextosAgentes(unittest.TestCase):
                              pathlib.Path(f).read_text(encoding="utf-8"), f)
 
 
+    def test_short_plan_texts(self):
+        plan = read("skills/plan/SKILL.md")
+        self.assertNotIn("Max 2 rounds", plan)
+        self.assertNotIn("2 to 4", plan)
+        for s in ("1 or 2 `tune-up:mapper`", "Round 2 ONLY when round 1 had a CRITICAL",
+                  "scripts/guarda.py rota --part --files", "`front_globs`",
+                  "ONLY with an external dependency", "Never a third"):
+            self.assertIn(s, plan, s)
+        for s in ("ALSO needs: at least one listed file, no external dependency",
+                  "production SQL or data, owner/dashboard/env step, external sending",
+                  "run the FULL round 1 of Step 6 over the whole plan",
+                  "A HIGH still open after the writer's fix -> `names.need_you`"):
+            self.assertIn(s, plan, s)
+        goal = read("templates/phase/goal.md")
+        self.assertIn("Opus", goal)
+        self.assertIn("also lists a file, has no external dependency", goal)
+        self.assertIn("MEDIUM/LOW/pre-existing -> `{{names.later}}`", goal)
+        self.assertIn("Round 2 only after a CRITICAL", goal)
+        self.assertIn("Round 2 (only after a CRITICAL)", read("templates/phase/plan-review.md"))
+        nc = "new conversation; never continue another Part's session"
+        for f in ("templates/phase/goal.md", "templates/phase/progress.md"):
+            text = read(f)
+            self.assertIn(nc, text, f)
+            tail = ' - follow /tune-up:part. Stop when: "{{names.part_closed}}"'
+            self.assertTrue(any(nc in l and l.index(nc) < l.index(tail)
+                                for l in text.splitlines() if tail in l), f)
+        self.assertIn("One Part per NEW conversation; " + "never continue another Part's session",
+                      read("templates/phase/progress.md"))
+        for f in ("skills/plan/SKILL.md", "skills/part/SKILL.md", "skills/handoff/SKILL.md"):
+            self.assertIn(nc, read(f), f)
+        self.assertIn(nc + ") - follow /tune-up:part. Stop when:", plan)
+
+    def test_part_creates_later_when_missing(self):
+        part = read("skills/part/SKILL.md")
+        self.assertIn("create it from `${CLAUDE_PLUGIN_ROOT}/templates/phase/later.md`", part)
+        self.assertIn("no later document = nothing open to copy", part)
+
     def test_report_cap(self):
         for f in CAPPED:
             self.assertIn(CAP, read(f), f)

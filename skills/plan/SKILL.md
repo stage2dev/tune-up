@@ -1,8 +1,8 @@
 ---
 name: plan
-description: Builds a phase plan (goal, progress, research, Opus plan review). Use for "plan", "plan this", "adapt this plan", "planejar", "crie o plano", "monte a fase", or a pasted outside plan. Small idea becomes a 1-part plan.
+description: Builds a phase plan (goal, progress, Opus plan review; research only with an external dependency). Use for "plan", "plan this", "adapt this plan", "planejar", "crie o plano", "monte a fase", or a pasted outside plan. Small idea becomes a 1-part plan.
 argument-hint: "<request, topic or pasted plan>"
-allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info)
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py rota:*)
 ---
 
 # Phase plan
@@ -45,14 +45,14 @@ Template and review-loop rules: see "Workflow scripts" in the `part` skill.
 4. Number the phase: `ls <plans_dir>/phases | sort -t- -k1,1n | tail -5` right BEFORE `mkdir` (parallel sessions collide). Folder `NNN-short-kebab/`.
 5. Pasted request: save a verbatim copy as `ORIGINAL-REQUEST.md`. Outside plans are adapted to this format, never executed as they came.
 6. If the profile mandates synced folders, run `chmod u+w` (macOS/Linux; on Windows `attrib -r`) in the SAME command as `mkdir`.
-7. Small idea (one behavior, few files): plan ONE part with few items; skip extra mappers and the second review round.
+7. Small idea (one behavior, few files): plan ONE part with few items; ONE mapper.
 
 ## Step 2 - Research (one message, all parallel)
 
-- 2 to 4 `tune-up:mapper`, one theme each. Each request has: base (worktree + hash), numbered questions, "answer with file:line".
+- 1 or 2 `tune-up:mapper`, one theme each; a wide plan splits the questions between the two, never a third. Each request has: base (worktree + hash), numbered questions, "answer with file:line".
 - 1 `tune-up:researcher` if there is an external dependency: numbered questions plus the "decisive question" (the one that can kill the plan). Ask for URL, date, status.
 - You: read-only production queries to measure what the plan assumes (how many, who, since when). A measured number beats a guess.
-- Collect everything in scratchpad files (`map-*.md`, `research-*.md`).
+- Collect everything in scratchpad files (`map-*.md`, `research-*.md`). The maps stay there: what matters from them goes to the goal (conclusions with file:line), since the research document no longer always exists.
 
 ## Step 3 - Coordinator brief
 
@@ -64,20 +64,22 @@ For each item, the entries of `info.side_skills` whose `paths` globs match the a
 
 ## Step 5 - Write
 
-One `tune-up:writer` writes from the brief + maps, each file named by `names` and shaped by the template in `${CLAUDE_PLUGIN_ROOT}/templates/phase/`: `goal.md` -> `names.goal`; `research.md` -> `names.research` (suffix the date); `progress.md` -> `names.progress`; `later.md` -> `names.later`. It returns ambiguities: resolve all in the brief and apply in one round.
+One `tune-up:writer` writes from the brief + maps, each file named by `names` and shaped by the template in `${CLAUDE_PLUGIN_ROOT}/templates/phase/`: ALWAYS `goal.md` -> `names.goal` and `progress.md` -> `names.progress`. `research.md` -> `names.research` (suffix the date) ONLY with an external dependency (the researcher ran); `later.md` -> `names.later` ONLY when there is already something to put in it. Without `names.research`, goal and progress do not reference it (measured numbers and file:line proofs stay in the goal). It returns ambiguities: resolve all in the brief and apply in one round.
 
 ## Step 6 - Plan review (Opus, high)
 
-1. Round 1: `tune-up:plan-reviewer` with the base, the paths of goal/research and your main worry. Save as `names.plan_review` (template `plan-review.md`).
+ONE round, always, EXCEPT a plan with ONE Part whose files are all front (`front_globs`) or plain text. Proof, never by eye: plain text = documentation or copy files only (`.md`/`.txt` docs, changelog), never a skill, agent, prompt, template, config or code file. Every other planned file, new ones included, goes to `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py rota --part --files <files>` (no diff yet): exempt only when `why` is nothing but `no diff: cannot rule risk out` plus `globs_off`/`front_globs entry rejected` notes. The exemption ALSO needs: at least one listed file, no external dependency, and no item acting outside the files (production SQL or data, owner/dashboard/env step, external sending); else review. Only plain text files: no call. Any other `why`, an error, no JSON, or an item that also changes an unlisted file = review. Skipped: the goal's plan review section and progress say "not reviewed: <reason>"; no `names.plan_review` file.
+
+1. Round 1: `tune-up:plan-reviewer` with the base, the paths of the goal (and research, if any) and your main worry. Save as `names.plan_review` (template `plan-review.md`).
 2. For each finding decide the fix in `<scratchpad>/<phase>/fixes-round1.md`; verify doubtful proofs yourself.
-3. The writer applies all and records a "Plan review" section in the goal document.
-4. Round 2: reviewer checks ONLY that each CRITICAL/HIGH closed, plus new ones. New MEDIUM: you apply. Max 2 rounds; CRITICAL/HIGH left after round 2 -> `names.need_you` with the exact ask.
+3. The writer applies all and records a "Plan review" section in the goal document. You confirm each HIGH closed in the goal (reread + grep) and write it down. A HIGH still open after the writer's fix -> `names.need_you` with the exact ask (no round 2 without a CRITICAL).
+4. Round 2 ONLY when round 1 had a CRITICAL: the reviewer checks ONLY that each CRITICAL/HIGH closed, plus new ones. CRITICAL/HIGH still open after that -> `names.need_you` with the exact ask. Never a third. MEDIUM/LOW: you apply or they go to `names.later`.
 
 ## Step 7 - Owner decisions
 
 - `AskUserQuestion`, up to 4 questions only the owner can decide; recommended first, "(Recommended)" and why in one line. Nothing the code can answer.
 - Answers go under the `names.decisions_heading` heading in goal and progress. `names.open_questions` keeps only what stays open.
-- A decision that adds an item or changes the design: quick map + measurement -> brief -> writer -> focused review of that item only.
+- A decision that adds an item or changes the design: quick map + measurement -> brief -> writer -> focused review of that item only (if the plan is not exempt; a new item can end the exemption: rerun the check; when the rerun ends the exemption, run the FULL round 1 of Step 6 over the whole plan and replace the "not reviewed" lines in goal and progress; an already reviewed plan keeps the focused review of the new item only).
 
 ## Step 8 - Final check
 
@@ -85,6 +87,6 @@ Reread risky items yourself (database, trigger, access rules, external sending).
 
 ## Step 9 - Close
 
-1. Progress document: state, decisions, next owner action, `/goal` commands for ready Parts, each ending with ` - follow /tune-up:part. Stop when: "<names.part_closed>" in progress OR you wrote <names.need_you> OR 40 turns.`
+1. Progress document: state, decisions, next owner action, `/goal` commands for ready Parts, each ending with `(new conversation; never continue another Part's session) - follow /tune-up:part. Stop when: "<names.part_closed>" in progress OR you wrote <names.need_you> OR 40 turns.`
 2. If the project has a Claude memory, record a short note there (facts that change everything, Parts, decisions).
 3. Short plain answer: the finding that changed the plan, what is decided, what depends on whom, the Part commands. Say nothing was committed.
