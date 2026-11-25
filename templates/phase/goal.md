@@ -84,7 +84,7 @@ A Part = 1-2 waves, up to ~8 items or 2 L items; a wave that depends on the owne
 
 ## Execution, review and gate
 
-Models and effort per role come from `info` (`models`). Defaults: coordinator = main session, highest effort; reviewers = opus, high; mapper, checker, skill-finder = haiku, medium; executor-sonnet, executor-opus, writer = sonnet/opus/sonnet, medium.
+Models and effort per role come from `info` (`models`). Defaults: coordinator = main session, Opus, high effort, by default; Fable only when the owner opened the session in Fable; never switch to it yourself; reviewers = opus, high; mapper, checker, skill-finder = haiku, medium; executor-sonnet, executor-opus, writer = sonnet/opus/sonnet, medium.
 
 - `tune-up:executor-sonnet` for simple items: <list>. `tune-up:executor-opus` for database, money, auth, external sending, concurrency: <list>.
 - Reviewers, up to 3 per item: `tune-up:reviewer-failures` always; `tune-up:reviewer-database` for migration/trigger/access rules/RPC/SQL; `tune-up:reviewer-security` for auth, token, personal data, payment, webhook, sending. Only CRITICAL/HIGH from the diff goes back (NEW executor, max 2 rounds); MEDIUM/LOW -> `{{names.later}}`.

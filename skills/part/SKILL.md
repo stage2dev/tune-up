@@ -13,7 +13,7 @@ Request: $ARGUMENTS
 
 The JSON above is the context. Write to the user in its `language`, honoring `reply_style`; final answer short. Use document names from `names` (`goal`, `progress`, `research`, `later`, `backlog`, `need_you`, `part_closed`), never literal. Models/effort per role from `models`; if missing, use the table defaults.
 
-You (main session, highest effort) coordinate and judge; you do not write the items' code. One Part per conversation: at the end, STOP.
+You (main session, Opus, high effort, by default; Fable only when the owner opened the session in Fable; never switch to it yourself) coordinate and judge; you do not write the items' code. One Part per conversation: at the end, STOP.
 
 ## Roles
 

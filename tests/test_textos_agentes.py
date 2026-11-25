@@ -60,6 +60,21 @@ class TextosAgentes(unittest.TestCase):
         self.assertLess(n, 100)
         self.assertIn("at most 3 MEDIUM", read("skills/part/SKILL.md"))
 
+    def test_coordinator_defaults_to_opus(self):
+        import glob
+        files = ["skills/part/SKILL.md", "skills/plan/SKILL.md",
+                 "templates/phase/goal.md"]
+        for f in files:
+            text = read(f)
+            self.assertNotIn("highest effort", text, f)
+            lines = [l for l in text.splitlines() if "main session" in l]
+            self.assertTrue(any("Opus, high effort, by default" in l and
+                                "Fable only when the owner opened the session in Fable" in l
+                                for l in lines), f)
+        for f in glob.glob(str(ROOT / "skills/*/SKILL.md")):
+            self.assertNotIn("highest effort",
+                             pathlib.Path(f).read_text(encoding="utf-8"), f)
+
 
 if __name__ == "__main__":
     unittest.main()
