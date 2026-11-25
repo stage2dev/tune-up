@@ -5,8 +5,8 @@ anything else, or anything this module cannot read, is risk.
 """
 import re
 
-from .rota import (ORDEM, PADROES, PALAVRAS, RE_HUNK, _barra, _primeiro, candidatos, casa,
-                   globs_efetivos, ler_args, limpar, raizes_de, relativo, tem_diff)
+from .rota import (ORDEM, PADROES, PALAVRAS, RE_HUNK, ZERO, _barra, _normal, _primeiro, candidatos,
+                   casa, globs_efetivos, ler_args, limpar, raizes_de, relativo, tem_diff)
 from .sessao import log_erro
 
 TAMANHO_PEDACO = 1500  # changed lines one reviewer reads
@@ -17,6 +17,7 @@ PALAVRAS_RESTO = tuple(k for k in PALAVRAS if k not in ("../", "..\\")) + (
     "service_role", "dangerouslysetinnerhtml")
 RE_COLCHETE = re.compile(r"\[!?\]?[^\]]*\]")  # as fnmatch reads it: a first `]` is literal
 NEUTRAS = ("index ", "new file mode ", "deleted file mode ", "old mode ", "new mode ", "\\ ")
+MODOS_RUINS = (" 120000", " 160000")  # symlink, submodule: the hunk does not show what it points to
 
 
 def front_globs(cfg):
@@ -60,10 +61,11 @@ def _cabecalho_git(linha):
 
 
 def ler_diff(texto):
-    """(paths in the file headers, [(`+` or `-`, text)], numbers of the lines it cannot read).
+    """(paths in the file headers, [(`+` or `-`, text)], numbers of the lines it cannot read, the
+    header paths that have a changed line in a hunk).
     Split on `\\n` only: a form feed or U+2028 inside a line does not start another one. Inside a
     hunk (counted from its `@@` header) nothing is a header; outside, only known lines pass."""
-    caminhos, mudadas, ruins = [], [], []
+    caminhos, mudadas, ruins, com_hunk, atual = [], [], [], set(), ""
     velho = novo = 0
     linhas = texto.split("\n")
     if linhas[-1] == "":
@@ -78,6 +80,9 @@ def ler_diff(texto):
             if sinal in ("+", "-", " ", "", "\r") and velho >= 0 and novo >= 0:
                 if sinal in ("+", "-"):
                     mudadas.append((sinal, linha[1:]))
+                    com_hunk.add(atual)
+                    if linha.startswith("Subproject commit ", 1):
+                        ruins.append(n)
                 continue
             ruins.append(n)  # the counts lie: read the rest as outside a hunk
             velho = novo = 0
@@ -92,16 +97,40 @@ def ler_diff(texto):
             if p is None:
                 ruins.append(n)
                 p = linha.split(" ", 1)[1]  # raw: its pieces can still match database_globs
+            atual = p or atual
             if p and p not in caminhos:
                 caminhos.append(p)
         else:
             if sinal in ("+", "-"):
                 mudadas.append((sinal, linha[1:]))
-            if linha and not linha.startswith(NEUTRAS):
+            if linha and not linha.startswith(NEUTRAS) or linha.endswith(MODOS_RUINS):
                 ruins.append(n)
     if velho > 0 or novo > 0:
         ruins.append(len(linhas))  # truncated
-    return caminhos, mudadas, ruins
+    return caminhos, mudadas, ruins, com_hunk
+
+
+def _exato(caminho, raizes):
+    """`relativo` without losing the letter case (A.tsx and a.tsx are two files)."""
+    rel, p = relativo(caminho, raizes), _barra(caminho)
+    fim = p[len(p) - len(rel):]
+    return fim if fim.lower() == rel else rel
+
+
+def fora_do_diff(files, do_diff, com_hunk, raizes):
+    """(`--files` or header paths without a hunk, header paths that are not in `--files`). An
+    argument is one path or, when that is not in the diff, several in one string."""
+    com_hunk = {_exato(p, raizes) for p in com_hunk}
+    citados, sem = set(), []
+    for f in files:
+        ps = [_exato(f, raizes)]
+        if ps[0] not in com_hunk:
+            ps = [_exato(p, raizes) for p in map(_normal, re.split(r"[\s,;|]+", f.translate(ZERO))) if p] or ps
+        citados.update(ps)
+        sem += [p for p in ps if p not in com_hunk and p not in sem]
+    do_diff = [_exato(p, raizes) for p in do_diff]
+    sem += [p for p in do_diff if p not in com_hunk and p not in sem]
+    return sem, [p for p in do_diff if p not in citados]
 
 
 def motivo_fora(rel, front, gl):
@@ -117,12 +146,16 @@ def motivo_fora(rel, front, gl):
     return None
 
 
+def _mais(lista):
+    return " (+%d more)" % (len(lista) - 1) if len(lista) > 1 else ""
+
+
 def rota_parte(files, diff_file, cfg, raiz):
     front, rejeitados = front_globs(cfg)
     gl, tirados = globs_parte(cfg)
     risco, notas = [], ["globs_off: %s is off in Part mode" % g for g in tirados]
     notas += ["front_globs entry rejected (matches everything): %s" % g for g in rejeitados]
-    caminhos, mudadas, linhas = limpar(files), [], None
+    caminhos, mudadas, linhas, raizes = limpar(files), [], None, raizes_de(raiz)
     if not caminhos:
         risco.append("no files: no information")
     if diff_file is None:
@@ -130,23 +163,30 @@ def rota_parte(files, diff_file, cfg, raiz):
     else:
         try:
             with open(diff_file, "rb") as f:
-                texto = f.read().decode("utf-8")
-        except (OSError, ValueError) as e:
+                bruto = f.read()
+        except OSError as e:
             risco.append("diff unreadable (%s)" % type(e).__name__)
         else:
-            do_diff, mudadas, ruins = ler_diff(texto)
+            texto = bruto.decode("utf-8", "replace")
+            do_diff, mudadas, ruins, com_hunk = ler_diff(texto)
             linhas = len(mudadas)
+            if texto.encode("utf-8") != bruto:  # still counted: a big Part is still split
+                risco.append("diff is not UTF-8")
+                linhas = linhas or None
+            for motivo, ps in zip(("no hunk in the diff", "in the diff but not in --files"),
+                                  fora_do_diff(caminhos, do_diff, com_hunk, raizes)):
+                if ps:
+                    risco.append("%s: %s" % (motivo, ps[0]) + _mais(ps))
             caminhos += [p for p in do_diff if p not in caminhos]
             if not tem_diff(texto):
                 risco.append("diff file has no diff content")
             if ruins:
                 risco.append("diff line %d cannot be read (use plain `git diff --no-renames`)"
                              % ruins[0])
-    raizes = raizes_de(raiz)
     rels = [(p, [relativo(c, raizes) for c in candidatos(p)]) for p in caminhos]
     fora = [m for m in (motivo_fora(r, front, gl) for r in rels) if m]
     if fora:
-        risco.append(fora[0] + (" (+%d more)" % (len(fora) - 1) if len(fora) > 1 else ""))
+        risco.append(fora[0] + _mais(fora))
     baixas = [("added" if s == "+" else "removed", t.lower()) for s, t in mudadas]
     # outside the front (already risk) the general words only inform the reviewers
     for k in PALAVRAS_RESTO if fora else PALAVRAS_FRENTE:

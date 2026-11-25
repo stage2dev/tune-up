@@ -5,7 +5,7 @@ import re
 from .bash_parse import TEXTO_PS, analisar_git, junta_dir, posicionais
 from .caminhos import NT, nome
 from .config import achar_perfil, home_real
-from .escrita import RAIZ_PLUGIN, alvos_de_escrita, contem_protegida, raizes_protegidas, tar_extrai, valor_de
+from .escrita import RAIZ_PLUGIN, alvos_de_escrita, contem_protegida, protecao_da_guarda, raizes_protegidas, tar_extrai, valor_de
 
 RE_EXECUTOR = re.compile(
     r"(?<![\w.-])(python[\d.]*|py|exec|xargs|node|nodejs|perl|ruby|deno|bun|osascript)(?![\w-])")
@@ -14,6 +14,7 @@ RE_EXECUTOR_NT = re.compile(r"(?<![\w.-])(wsl|setx)(?![\w-])")
 RE_CAMINHO = re.compile(r"\S*[/.]\S*")  # a path-like word: its name is not a trust word
 RE_ATRIBUI = re.compile(r"[A-Za-z_]\w*=")
 RE_CONFIAR = re.compile(r"guarda\.py|perfis_confiaveis|(?<![\w-])(tuneup|confiar|trust)(?![\w-])")
+RE_META = re.compile(r"[;&|<>$`()\n\\{}*?\[~]")  # operators, redirection, expansion, globs
 SAIDAS_NULAS = {"/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty"}
 
 
@@ -198,20 +199,46 @@ def _resto_da_guarda(toks):
     return None
 
 
+def _palavras_da_guarda(cmd):
+    """The words after this plugin's guarda.py in a single plain command; [] for anything else."""
+    import shlex
+    if RE_META.search(cmd):
+        return []
+    try:
+        return _resto_da_guarda(shlex.split(cmd)) or []
+    except ValueError:
+        return []
+
+
+def _cita_confiar(palavras):
+    return any(p.casefold() in ("trust", "confiar") for p in palavras)
+
+
+def chamada_revisao(cmd, cwd):
+    """`<launcher as in chamada_info> review-save|review-pending` with only their own options, each
+    once and with a value: the first only creates a new `review-part-*.json` in `--dir` (a
+    protected folder is not exempt), the second only reads. Same refusals as chamada_rota."""
+    resto = _palavras_da_guarda(cmd)
+    nomes = {"review-save": ("--dir", "--lens", "--chunk", "--round", "--answer-file"),
+             "review-pending": ("--file", "--part")}.get(resto[0] if resto else "")
+    a = resto[1:]
+    if not nomes or len(a) % 2 or _cita_confiar(resto):
+        return False
+    opcoes = dict(zip(a[::2], a[1::2]))
+    if len(opcoes) * 2 != len(a) or not set(opcoes) <= set(nomes) or \
+            any(not v or v.startswith("-") for v in opcoes.values()):
+        return False
+    return not protecao_da_guarda(junta_dir(cwd, opcoes.get("--dir", "/")), cwd)
+
+
 def chamada_rota(cmd):
-    """`<launcher as in chamada_info> rota` with only `--files <paths>`, `--diff-file <path>`,
+    """`<launcher as in chamada_info> rota` with only `--part`, `--files <paths>`, `--diff-file <path>`,
     `--failed sonnet|opus` and one `--text-file <path>` whose base name ends `.rota.txt` (no
     `..`, dotfile or dot-folder): rota only reads and prints JSON, and only that file can reach
     the router's scorer. Same refusals as chamada_contas (operators, redirection, expansion,
     backslash, braces, globs, `~`)."""
-    import shlex
-    if re.search(r"[;&|<>$`()\n\\{}*?\[~]", cmd):
-        return False
-    try:
-        resto = _resto_da_guarda(shlex.split(cmd))
-    except ValueError:
-        return False
-    if not resto or resto[0] != "rota":
+    resto = _palavras_da_guarda(cmd)
+    if resto[:1] != ["rota"] or "--part" in resto and _cita_confiar(resto):
         return False
     i, args, texto = 1, resto, 0
     while i < len(args):
@@ -221,6 +248,8 @@ def chamada_rota(cmd):
                 i += 1
         elif args[i] == "--diff-file" and i + 1 < len(args) and not args[i + 1].startswith("-"):
             i += 2
+        elif args[i] == "--part":
+            i += 1
         elif args[i] == "--failed" and args[i + 1:i + 2] in (["sonnet"], ["opus"]):
             i += 2
         elif (args[i] == "--text-file" and not texto and i + 1 < len(args)
@@ -243,7 +272,7 @@ def chamada_contas(cmd):
     folder whose `.tune-up/mkt/` is written) is not exempt and goes through the normal rules.
     Braces, globs and `~` are refused too: the shell could rebuild them into `--raiz <dir>`."""
     import shlex
-    if re.search(r"[;&|<>$`()\n\\{}*?\[~]", cmd):
+    if RE_META.search(cmd):
         return False
     try:
         toks = shlex.split(cmd)

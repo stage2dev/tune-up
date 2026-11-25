@@ -25,7 +25,7 @@
 
 - Read only `{{names.goal}}`, this file and the code. `{{names.research}}` is for consultation.
 - One Part per conversation. On closing, write the closed marker here with the next command and STOP.
-- A `{{names.review_pending}}` line for your Part = run that review first.
+- A pending-review line for your Part = run that review first.
 - Recheck the cited lines against today's `origin/<main>` before starting.
 - Writing SQL in production, sending messages and any external action: only with the owner's explicit request in the turn.
 - Effort: orchestrating session Opus, high effort, by default (Fable only when the owner opened the session in Fable); reviewers `high`; all other agents `medium` (per `info`).

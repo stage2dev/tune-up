@@ -114,7 +114,9 @@ class TestParteCaminhos(ParteBase):
 
     def test_caminho_windows(self):
         self.baixo(["src\\A.tsx"], front_globs=["src/**"])
-        self.baixo(["src\\A.tsx", "/repo/src/B.ts"])
+        d = git_diff("src/A.tsx") + git_diff("src/B.ts")
+        self.baixo(["src\\A.tsx", "/repo/src/B.ts"], d)
+        self.risco(["src\\A.tsx", "/repo/src/B.ts"])  # B.ts is not in the diff
         self.risco(["src\\hooks\\useX.ts"])
 
     def test_lista_vazia_e_risco(self):
@@ -152,21 +154,55 @@ class TestParteDiff(ParteBase):
             self.risco(diff=d)
 
     def test_arquivo_do_diff_fora_da_lista(self):
-        self.baixo(diff=git_diff("src/A.tsx") + git_diff("src/B.ts", ("-a", "+b"), 3))
+        ab = git_diff("src/A.tsx") + git_diff("src/B.ts", ("-a", "+b"), 3)
+        self.baixo(["src/A.tsx", "src/B.ts"], ab)
+        self.assertIn("in the diff but not in --files: src/B.ts", self.risco(diff=ab)["why"])
         r = self.risco(diff=git_diff("src/A.tsx") + git_diff("app/x.py"))
         self.assertIn("not in front_globs: app/x.py", r["why"])
         for cab in ("diff --git a/app/x.py b/app/x.py\n", "--- a/app/x.py\n", "+++ b/app/x.py\n"):
             self.risco(diff=git_diff("src/A.tsx") + cab)  # each header counts alone
+
+    def test_caminho_sem_hunk_e_risco(self):
+        fs = ["src/A.tsx", "src/B.tsx", "src/Session.ts"]
+        a, b = git_diff("src/A.tsx"), git_diff("src/B.tsx")
+        tudo = a + b + git_diff("src/Session.ts")
+        for args in (fs, ["src/A.tsx src/B.tsx", "./src/Session.ts"], ["src/A.tsx, src/B.tsx; src/Session.ts"],
+                     ["/repo/src/A.tsx", "src\\B.tsx", "src/Session.ts"]):
+            self.baixo(args, tudo)
+            self.assertIn("no hunk in the diff: src/B.tsx (+1 more)", self.risco(args, a)["why"])
+        so_cabecalho = "diff --git a/src/B.tsx b/src/B.tsx\n"
+        for resto in (so_cabecalho, so_cabecalho + "new file mode 100644\nindex 000..e69\n",
+                      so_cabecalho + "old mode 100644\nnew mode 100755\n", git_diff("src/B.tsx", (), 2)):
+            for d in (a + resto, resto + a):
+                self.assertIn("no hunk in the diff: src/B.tsx", self.risco(fs[:2], d)["why"], d)
+        self.risco(["src/A.tsx", "src/a.tsx"], a)  # two files where case matters
+        self.risco(["src/A.tsx", ","], a)
+
+    def test_symlink_e_submodulo_sao_risco(self):
+        d = git_diff("src/A.tsx")
+        for modo in ("120000", "160000"):
+            for tipo in ("new file", "deleted file", "old", "new"):
+                self.risco(diff=d.replace("index", "%s mode %s\nindex" % (tipo, modo)))
+            self.risco(diff=d.replace("222 100644", "222 " + modo))  # changed target: no mode line
+        self.risco(diff=git_diff("src/A.tsx", ("-Subproject commit 1", "+Subproject commit 2")))
+
+    def test_diff_que_nao_e_utf8_conta_as_linhas(self):
+        p = os.path.join(self.tmp, "l.patch")
+        with open(p, "wb") as f:
+            f.write(git_diff("src/A.tsx", ("+x",) * 3999 + ("+caf\xe9",)).encode("latin-1"))
+        r = P.rota_parte(["src/A.tsx"], p, dict(PADRAO, front_globs=FRONT), "/repo")
+        self.assertEqual((r["risk"], r["lines"], r["chunks"]), (True, 4000, 3))
+        self.assertIn("diff is not UTF-8", r["why"])
 
     def test_arquivo_novo_apagado_e_com_espaco(self):
         novo = git_diff("src/N.tsx").replace("--- a/src/N.tsx", "--- /dev/null").replace(
             "index", "new file mode 100644\nindex")
         fim = git_diff("src/F.tsx", ("-x",)).replace("+++ b/src/F.tsx", "+++ /dev/null").replace(
             "index", "deleted file mode 100644\nindex")
-        self.baixo(diff=novo + fim + "\\ No newline at end of file\n")
+        self.baixo(["src/N.tsx", "src/F.tsx"], novo + fim + "\\ No newline at end of file\n")
         esp = git_diff("src/a src/b.tsx").replace("b.tsx\n@@", "b.tsx\t\n@@")
-        self.assertEqual(P.ler_diff(esp), (["src/a src/b.tsx"], [("+", "const x = 1")], []))
-        self.baixo(diff=esp)
+        self.assertEqual(P.ler_diff(esp), (["src/a src/b.tsx"], [("+", "const x = 1")], [], {"src/a src/b.tsx"}))
+        self.baixo(["src/a src/b.tsx"], esp)
         self.baixo(diff=git_diff("src/A.tsx", ("-a", "+b"), 2).replace("\n", "\r\n"))
 
     def test_cabecalho_ilegivel_e_risco(self):
@@ -203,8 +239,9 @@ class TestParteDiff(ParteBase):
         self.assertEqual(set(P.PALAVRAS_FRENTE), {
             "supabase.auth", "service_role", ".rpc(", "functions.invoke", "dangerouslysetinnerhtml",
             "innerhtml", "import.meta.env", "localstorage", "password", "secret"})
-        self.baixo(diff=git_diff("src/A.tsx", ("+auth token eval hmac signature permission ../ ..\\",))
-                   + " localStorage\n".join(git_diff("src/B.tsx", (), 1).split(" c\n")))  # context line
+        self.baixo(["src/A.tsx", "src/B.tsx"],
+                   git_diff("src/A.tsx", ("+auth token eval hmac signature permission ../ ..\\",))
+                   + " localStorage\n".join(git_diff("src/B.tsx", contexto=1).split(" c\n")))  # context line
         for sep in ("\u2028", "\x0c", "\r", "\x85"):  # not line ends for git: the tail is still scanned
             self.baixo(diff=git_diff("src/A.tsx", ("+a" + sep + "b",)))
             r = self.risco(diff=git_diff("src/A.tsx", ("+a" + sep + "localStorage",)))

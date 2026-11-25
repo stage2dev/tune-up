@@ -1,6 +1,7 @@
 """Tests for `guarda.py review-save` and `review-pending`. Run: python3 -m unittest tests.test_revisao"""
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -15,6 +16,7 @@ from tuneup import revisao as V  # noqa: E402
 
 RAIZ = os.path.dirname(os.path.dirname(SCRIPT))
 RECUSA = {"ok": False, "lens_ran": False}
+USO = {"ok": False, "usage": True, "lens_ran": None}
 
 
 def achado(**kw):
@@ -25,6 +27,11 @@ def achado(**kw):
 
 def bloco(d):
     return "```json\n%s\n```\n" % (d if isinstance(d, str) else json.dumps(d, ensure_ascii=False))
+
+
+def resposta(d, veredito=None):
+    """A whole reviewer answer: the json block, then the Verdict line."""
+    return bloco(d) + "Verdict: %s\n" % (veredito or d["verdict"])
 
 
 class CLI(Base):
@@ -65,6 +72,12 @@ class TestReviewSave(CLI):
         self.assertIn(erro, r["error"])
         self.assertLess(len(r["error"]), 120)
 
+    def uso(self, r, erro=""):
+        self.assertEqual({k: r[k] for k in USO}, USO, r)
+        self.assertEqual(set(r), set(USO) | {"error"})
+        self.assertIn(erro, r["error"])
+        self.assertLess(len(r["error"]), 120)
+
     def lido(self, r):
         with open(r["path"], "rb") as f:
             return json.loads(f.read().decode("utf-8"))
@@ -72,7 +85,7 @@ class TestReviewSave(CLI):
     def test_resposta_inteira_com_bloco(self):
         fs = [achado(), achado(sev="critical", introduced=False), achado(sev="Low", line=None, proof="suspected"),
               achado(sev="MEDIUM", proof="observed", title="ação")]
-        r = self.salvar("## Findings\nprose\n" + bloco({"verdict": "REJECT", "findings": fs}) + "done.\n")
+        r = self.salvar("## Findings\nprose\n" + resposta({"verdict": "REJECT", "findings": fs}) + "done.\n")
         self.assertEqual(r, {"ok": True, "lens_ran": True, "rejected": True, "blocking": 1,
                              "counts": {"CRITICAL": 1, "HIGH": 1, "MEDIUM": 1, "LOW": 1},
                              "path": os.path.join(self.dir, "review-part-security-all-1.json")})
@@ -84,7 +97,7 @@ class TestReviewSave(CLI):
     def test_modo_0600(self):
         if IS_WIN:
             self.skipTest(SEM_MODOS)
-        r = self.salvar(bloco({"verdict": "approve", "findings": []}))
+        r = self.salvar(resposta({"verdict": "approve", "findings": []}))
         self.assertEqual(stat.S_IMODE(os.stat(r["path"]).st_mode), 0o600)
 
     def test_json_puro_e_bom(self):
@@ -95,25 +108,96 @@ class TestReviewSave(CLI):
 
     def test_vale_o_ultimo_bloco(self):
         a, b = {"verdict": "reject", "findings": [achado()]}, {"verdict": "approve", "findings": []}
-        extra = "```bash\nls\n```\n" + bloco({"item": "x"}) + bloco("{not json")
-        r = self.salvar(bloco(a) + bloco(b) + extra)
-        self.assertEqual((r["rejected"], r["blocking"]), (False, 0))
+        r = self.salvar("quoted:\n" + bloco(b) + "```bash\nls\n```\n" + resposta(a, "REJECTED - 0 CRITICAL, 1 HIGH"))
+        self.assertEqual((r["rejected"], r["blocking"]), (True, 1))
         # an unbalanced fence earlier does not hide the block; a fence inside a title does not cut it
-        r = self.salvar("```\nopen\n" + bloco({"verdict": "reject", "findings": [achado(title="``` x")]}), rodada="2")
+        r = self.salvar("```\nopen\n" + resposta({"verdict": "reject", "findings": [achado(title="``` x")]}), rodada="2")
         self.assertEqual((r["ok"], r["blocking"]), (True, 1))
-        # an invalid last block is not replaced by an older valid one
-        self.recusa(self.salvar(bloco(b) + bloco({"verdict": "", "findings": []}), rodada="3"), "verdict")
+        r = self.salvar("```\n%s\n```\nVerdict: reject" % json.dumps(a), rodada="3")  # no `json` after the fence
+        self.assertEqual((r["ok"], r["blocking"]), (True, 1))
+        # a last block that is broken, cut or not the findings is never replaced by an older valid one
+        fim, inteiro = "Verdict: approve\n", json.dumps(a)
+        for ultimo in (bloco("{not json"), bloco({"item": "x"}), "```json\n" + inteiro, "```json\n" + inteiro[:60],
+                       "```json\n%s\n```json\n" % inteiro, "```json\n%s\n```bash\n" % inteiro,
+                       "```\n%s\n```\n" % inteiro[:60] , "```\n{\"findings\": [1,\n```\n", inteiro + "\n",
+                       "~~~json\n%s\n~~~\n" % inteiro, "- ```json\n%s\n```\n" % inteiro, "```JSON\n{}\n```\n"):
+            self.recusa(self.salvar(bloco(b) + ultimo + fim, rodada="4"), "last block")
+        self.recusa(self.salvar(bloco(b) + bloco({"verdict": "", "findings": []}) + fim, rodada="4"), "verdict is not")
+        self.assertEqual(len(os.listdir(self.dir)), 3)
+
+    def test_linha_verdict_confere_com_o_json(self):
+        ok = {"verdict": "approve", "findings": []}
+        um = {"verdict": "reject", "findings": [achado(), achado(introduced=False), achado(sev="LOW")]}
+        self.recusa(self.salvar(bloco(ok)), "Verdict")
+        self.recusa(self.salvar("Verdict: approve\n" + bloco(ok)), "Verdict")  # only before the block
+        for d, linha in ((ok, "REJECTED - 1 CRITICAL, 0 HIGH"), (ok, "REJECTED"), (ok, "APPROVED - 1 CRITICAL"),
+                         (ok, "APPROVED, HIGH: 2"), (ok, "BLOCKED"), (ok, "not approved"), (ok, "APPROVED | REJECTED"),
+                         (ok, ""), (um, "APPROVED WITH FIXES - 0 CRITICAL, 1 HIGH"), (um, "REJECTED - 0 HIGH"),
+                         (um, "REJECTED - 3 HIGH"), (um, "REJECTED - 1 CRITICAL, 1 HIGH"),
+                         (ok, "APPROVED\nVerdict: REJECTED"), (ok, "REJECTED\nVerdict: APPROVED")):
+            self.recusa(self.salvar(bloco(d) + "Verdict: " + linha), "Verdict")
+        self.assertEqual(os.listdir(self.dir), [])
+        for i, (d, linha) in enumerate((
+                (ok, "Verdict: APPROVED WITH FIXES - 0 CRITICAL, 0 HIGH, 2 MEDIUM"), (ok, "**Verdict:** APPROVED"),
+                (ok, "`Verdict: APPROVED - 0 CRITICAL, 0 HIGH, 0 MEDIUM`\r\nlast words"), (um, "Verdict: REJECTED"),
+                (um, "> Verdict: REJECTED - 0 CRITICAL, 2 HIGH, 0 MEDIUM"),  # all of them
+                (um, "Verdict: **REJECTED** - **0** CRITICAL, **1** HIGH (1 pre-existing)"))):  # only the introduced
+            r = self.salvar(bloco(d) + linha, chunk="ok%d" % i)
+            self.assertEqual((r["ok"], r.get("rejected")), (True, d is um), linha)
+
+    def test_verdict_dos_agentes_passa(self):
+        for lens in V.LENSES:
+            with open(os.path.join(RAIZ, "agents", "reviewer-%s.md" % lens), encoding="utf-8") as f:
+                formas = re.search(r"`Verdict: (.*?) - N CRITICAL", f.read()).group(1).split(" | ")
+            self.assertEqual([V.aprovado(x + " - 0 CRITICAL, 0 HIGH, 0 MEDIUM") for x in formas], [True, True, False])
+
+    def test_so_chaves_conhecidas(self):
+        d = {"verdict": "approve", "findings": [achado(extra="x", sev="LOW")], "path": "/etc", "lens": "database"}
+        lido = self.lido(self.salvar(resposta(d)))
+        self.assertEqual(lido, {"verdict": "approve", "findings": [achado(sev="LOW")], "lens": "security",
+                                "chunk": "all", "round": 1})
+
+    def test_answer_file(self):
+        arq, ok = os.path.join(self.tmp, "my answer.md"), {"verdict": "approve", "findings": []}
+
+        def de(arquivo, rodada="1"):
+            return self.cli("review-save", "--dir", self.dir, "--lens", "security", "--chunk", "all", "--round", rodada,
+                            "--answer-file", arquivo, entrada="Verdict: ignored stdin")
+
+        def escreve(texto):
+            with open(arq, "wb") as f:
+                f.write(texto.encode("utf-8"))
+        escreve("prose\nEND\n" + resposta(ok))
+        self.assertEqual(self.lido(de(arq))["verdict"], "approve")
+        for p in (os.path.join(self.tmp, "missing"), self.dir, "my answer.md"):
+            self.uso(de(p, "2"), "answer file")
+        if not IS_WIN:
+            fifo = os.path.join(self.tmp, "fifo")
+            os.mkfifo(fifo)
+            self.uso(de(fifo, "2"), "answer file")  # would block
+            if os.geteuid():
+                os.chmod(arq, 0)
+                self.uso(de(arq, "2"), "PermissionError")
+                os.chmod(arq, 0o600)
+        escreve(" " * (V.MAX_BYTES + 1))
+        self.recusa(de(arq, "2"), "too large")
+        escreve("")
+        self.recusa(de(arq, "2"))
 
     def test_verdict_recusado(self):
         for i, (v, esp) in enumerate((("Reject: x", True), ("needs changes", True), ("REWORK", True),
-                                      ("approve", False), ("not rejected", False))):
-            r = self.salvar(bloco({"verdict": v, "findings": []}), chunk="v%d" % i)
+                                      ("approve", False), ("not rejected", True), ("**REJECTED**", True),
+                                      ("Verdict: REJECTED", True), ("FAIL", True), ("BLOCKED", True), ("not approved", True),
+                                      ("approved, but rework", True), ("APPROVED", False), ("approve with notes", False),
+                                      ("APPROVED WITH FIXES - 0 CRITICAL, 0 HIGH, 3 MEDIUM", False), ("Aprovado", False),
+                                      ("aprovado com correções", False), ("**Approved**", False), ("x", True))):
+            r = self.salvar(resposta({"verdict": v, "findings": []}), chunk="v%d" % i)
             self.assertEqual(r["rejected"], esp, v)
 
     def test_introduced_ausente_conta_e_preexistente_nao_bloqueia(self):
         sem = achado()
         del sem["introduced"]
-        r = self.salvar(bloco({"verdict": "approve", "findings": [sem, achado(introduced=False)]}))
+        r = self.salvar(resposta({"verdict": "approve", "findings": [sem, achado(introduced=False)]}))
         self.assertEqual((r["blocking"], r["counts"]["HIGH"]), (1, 2))
         self.assertIs(self.lido(r)["findings"][0]["introduced"], True)
 
@@ -145,10 +229,10 @@ class TestReviewSave(CLI):
         self.assertTrue(self.salvar(ok + " " * (V.MAX_BYTES - len(ok)))["ok"])
 
     def test_nome_unico_por_rodada(self):
-        a, b = bloco({"verdict": "reject", "findings": [achado()]}), bloco({"verdict": "approve", "findings": []})
+        a, b = resposta({"verdict": "reject", "findings": [achado()]}), resposta({"verdict": "approve", "findings": []})
         um, dois = self.salvar(a), self.salvar(b, rodada="2")
         self.assertNotEqual(um["path"], dois["path"])
-        self.recusa(self.salvar(b), "already exists")
+        self.uso(self.salvar(b), "already exists for this lens, chunk and round: use the next --round")
         self.assertEqual(self.lido(um)["verdict"], "reject")  # round 1 untouched
         self.assertTrue(self.salvar(a, lens="failures")["ok"])
         self.assertTrue(self.salvar(a, chunk="item-b1")["ok"])
@@ -161,34 +245,42 @@ class TestReviewSave(CLI):
                 with open(alvo, "w", encoding="utf-8") as f:
                     f.write("keep")
             symlink(alvo, os.path.join(self.dir, "review-part-security-all-%s.json" % rodada))
-            self.recusa(self.salvar(bloco({"verdict": "approve", "findings": []}), rodada=rodada))
+            self.uso(self.salvar(resposta({"verdict": "approve", "findings": []}), rodada=rodada))
             self.assertEqual(os.path.exists(alvo), existe)
         with open(os.path.join(self.tmp, "alvo1.txt"), encoding="utf-8") as f:
             self.assertEqual(f.read(), "keep")
 
     def test_argumentos_ruins(self):
-        ok = bloco({"verdict": "approve", "findings": []})
+        ok = resposta({"verdict": "approve", "findings": []})
         arq = os.path.join(self.tmp, "arq")
         open(arq, "w").close()
         for p in (os.path.join(self.tmp, "missing"), "scratch dir", ".", arq):
-            self.recusa(self.salvar(ok, pasta=p), "dir")
+            self.uso(self.salvar(ok, pasta=p), "dir")
         for lens in ("style", "Security", "../x", "security\n"):
-            self.recusa(self.salvar(ok, lens=lens), "lens")
-        for c in ("A", "../../x", "a/b", "a b", "a" * 31, "a\n", "é", "a.b"):
-            self.recusa(self.salvar(ok, chunk=c), "chunk")
+            self.uso(self.salvar(ok, lens=lens), "lens")
+        for c in ("../../x", "a/b", "a b", "a" * 31, "a\n", "é", "\\a"):
+            self.uso(self.salvar(ok, chunk=c), "chunk")
         for n in ("0", "10", "x", "1\n", "١"):
-            self.recusa(self.salvar(ok, rodada=n), "round")
-        self.recusa(self.cli("review-save", entrada=ok))
-        self.recusa(self.cli("review-save", "--dir", "--lens", "security", entrada=ok))
-        self.recusa(self.cli("review-save", "--dir", self.dir, "--dir", self.dir, entrada=ok))
-        self.recusa(self.cli("review-save", "--out", "x", entrada=ok))
+            self.uso(self.salvar(ok, rodada=n), "round")
+        self.uso(self.cli("review-save", entrada=ok))
+        self.uso(self.cli("review-save", "--dir", "--lens", "security", entrada=ok))
+        self.uso(self.cli("review-save", "--dir", self.dir, "--dir", self.dir, entrada=ok))
+        self.uso(self.cli("review-save", "--out", "x", entrada=ok))
+        self.uso(self.cli("review-save", "--dir", self.dir, "--lens", "security", "--chunk", "a", "--round", "1",
+                          "--answer-file", entrada=ok))
         self.assertEqual(os.listdir(self.dir), [])
+
+    def test_rotulo_de_item_do_plano(self):
+        for dado, nome in (("item-B1", "item-b1"), ("item-0.1", "item-0-1"), ("item_C2", "item-c2")):
+            r = self.salvar(resposta({"verdict": "approve", "findings": []}), chunk=dado)
+            self.assertEqual((os.path.basename(r["path"]), self.lido(r)["chunk"]),
+                             ("review-part-security-%s-1.json" % nome, nome))
 
     def test_pasta_sem_escrita(self):
         if IS_WIN or os.geteuid() == 0:
             self.skipTest(SEM_MODOS)
         os.chmod(self.dir, 0o500)
-        self.recusa(self.salvar(bloco({"verdict": "approve", "findings": []})), "PermissionError")
+        self.uso(self.salvar(resposta({"verdict": "approve", "findings": []})), "PermissionError")
 
     def test_erro_de_escrita_nao_deixa_arquivo(self):
         p = os.path.join(self.dir, "x.json")
@@ -210,7 +302,7 @@ class TestReviewSave(CLI):
             self.assertEqual(f.read(), b"a\nb\n")
 
     def test_excecao_e_import_quebrado_recusam(self):
-        ok = bloco({"verdict": "approve", "findings": []})
+        ok = resposta({"verdict": "approve", "findings": []})
         self.recusa(self.salvar(ok, env={"TUNEUP_FAKE_EXCECAO": "1"}), "RuntimeError")
         self.recusa(self.salvar(ok, script=self.copia_quebrada()), "import failed")
         self.assertEqual(os.listdir(self.dir), [])
@@ -237,9 +329,31 @@ class TestReviewPending(CLI):
                 for extra in ((), ("--part", "B"), ("--part", "b"), ("--part", "Part B"), ("--part", "Parte B")):
                     self.assertEqual(self.pend(texto, *extra), {"pending": True, "lines": [linha.strip()]}, (linha, extra))
 
-    def test_mencao_no_meio_nao_conta(self):
-        t = "- the REVIEW PENDING line is gone\nwrite `REVISÃO PENDENTE` here\n- `REVIEW PENDING` marker\n"
-        self.assertEqual(self.pend(t), {"pending": False, "lines": []})
+    def test_marca_em_qualquer_lugar_da_linha(self):
+        for linha in ("- Part B - REVIEW PENDING - since abc", "- Parte B: REVISÃO PENDENTE desde abc",
+                      "- 25/11: REVISÃO PENDENTE - Parte B", "- `REVISÃO PENDENTE` - Parte B - desde abc",
+                      "| REVIEW PENDING | Part B |", "- [REVIEW PENDING] Part B", "\u26a0\ufe0f REVIEW PENDING - Part B",
+                      "<!-- REVIEW PENDING - Part B -->", "- [x] REVIEW PENDING", "- ~~REVIEW PENDING - Part B~~",
+                      "- the REVIEW PENDING line is gone", "Part A - REVIEW PENDING - Part A - since x",
+                      "- REVIEW PENDING - Part A; Part B", "- REVIEW PENDING - Part A - since a, and Part B",
+                      "- REVIEW PENDING - Part A - since a; REVIEW PENDING", "| Part A | REVIEW PENDING | Part B |"):
+            for extra in ((), ("--part", "B")):
+                self.assertEqual(self.pend("# P\n%s\n" % linha, *extra), {"pending": True, "lines": [linha]}, linha)
+
+    def test_modelo_do_progresso_nao_tem_marca(self):
+        with open(os.path.join(RAIZ, "templates", "phase", "progress.md"), encoding="utf-8") as f:
+            t = f.read()
+        self.assertNotIn("names.review_pending", t)
+        with open(os.path.join(RAIZ, "templates", "names.json"), encoding="utf-8") as f:
+            idiomas = json.load(f)
+        for nomes in idiomas.values():
+            r = re.sub(r"\{\{names\.(\w+)\}\}", lambda m: nomes[m.group(1)], t)
+            self.assertNotIn("{{names.", r)
+            self.assertEqual(self.pend(r), {"pending": False, "lines": []})
+
+    def test_progresso_vazio_e_pendente(self):
+        for texto in ("", " \n\t\n", b"\xef\xbb\xbf"):
+            self.assertEqual(self.pend(texto), {"pending": True, "lines": [], "error": "progress file is empty"})
 
     def test_outra_parte_de_fora_so_com_rotulo_sozinho(self):
         outra = ("- REVIEW PENDING - Part A - since abc (items A1)", "- **REVISÃO PENDENTE** - Parte A2 - desde abc",
@@ -260,6 +374,11 @@ class TestReviewPending(CLI):
     def test_marca_do_usuario(self):
         self.user_json({"language": "es", "names_override": {"review_pending": "REVISIÓN PENDIENTE"}})
         self.assertTrue(self.pend("- REVISIÓN PENDIENTE - Parte B - since abc", "--part", "B")["pending"])
+        for marca in ("* REVISAR", "[ ] REVISAR", "- REVISAR", "1. REVISAR", "\u23f3 REVISAR", "***"):
+            self.user_json({"language": "es", "names_override": {"review_pending": marca}})
+            for linha in ("- %s - Parte B - desde abc" % marca, "Parte B: " + marca):
+                self.assertTrue(self.pend(linha)["pending"], linha)
+            self.assertFalse(self.pend("# ok")["pending"], marca)
 
     def test_duvida_e_pendente(self):
         bom = self.progresso("# ok\n")

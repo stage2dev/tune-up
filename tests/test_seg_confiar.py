@@ -2,6 +2,7 @@
 H2b, 21/10). Run: python3 -m unittest discover -s tests -q"""
 import json
 import os
+import shutil
 import unittest
 from base import SCRIPT, PromptBase, mkdtemp, rmtree, sh_path, symlink
 
@@ -135,6 +136,40 @@ class TestRotaSoLeitura(PromptBase):
                              ".env", "notes.txt", "~/x.rota.txt", "../x.rota.txt", ".ssh/x.rota.txt",
                              "{a,b}.rota.txt", "*.rota.txt", "/a/.ssh/x.rota.txt", ".rota.txt",
                              "x.rota.txt.bak", "x.rota.tx?", "[x].rota.txt")):
+            self.assertIsNotNone(self.bash(ruim), ruim)
+
+
+class TestRevisaoDaParte(PromptBase):
+    """The part and ship skills' own guarda.py calls pass the Bash guard; anything around them asks."""
+    def test_forma_exata_passa_resto_pergunta(self):
+        r = sh_path(os.path.dirname(os.path.dirname(SCRIPT)))
+        g = 'sh "%s/scripts/py" scripts/guarda.py ' % r
+        s = sh_path(self.tmp)
+        salva = g + "review-save --dir '%s' --lens failures --chunk item-B1 --round 1" % s
+        pend = g + "review-pending --file '%s/my PROGRESS.md' --part B" % s
+        rota = g + "rota --part --files src/A.tsx 'src/b c.tsx' --diff-file %s/d.patch" % s
+        oks = [salva, salva + " --answer-file '%s/a.md'" % s, pend, g + "review-pending --file x.md", rota,
+               g + "rota --files src/A.tsx --part --diff-file d.patch", "python3 %s review-pending --file x.md" % sh_path(SCRIPT)]
+        copia, py = os.path.join(self.tmp, "g.py"), 'sh "%s/scripts/py" ' % r
+        shutil.copy(SCRIPT, copia)
+        for modo in ({}, {"modo_pesquisa": True}, {"modo_conversa": True}):
+            self.sessao(**modo)
+            for ok in oks:
+                self.assertIsNone(self.bash(ok), (modo, ok))
+        self.sessao()
+        ruins = [c + x for c in (salva, pend, rota) for x in (
+            "; rm x", " && rm x", " | tee x", " & rm x", " > x", " >> x", " < x", " $(id)", " `id`", "\nrm x", " trust",
+            " confiar", " --trust", " <<'END'\nx\nEND")]
+        ruins += [g + "trust c.json", g + "confiar c.json", g + "trust review-save", g + "review-save trust c.json",
+                  g + "review-pending confiar", g + "review-pending --file trust", g + "review-save --dir /x --lens trust",
+                  g + "rota --part --files trust", g + "rota --part trust", g + "rota --part --x", g + "rota --part --part=1",
+                  g + "review-save --dir /x --dir /y", g + "review-save --out /x", g + "review-save --dir", g + "review-pendin",
+                  g + "review-pending --file --part", g + "review-save --dir $HOME/x", g + "review-save --dir ~/x",
+                  salva.replace(s, r), salva.replace(s, r + "/scripts"), "FOO=1 " + salva, "cd /tmp && " + salva,
+                  py + "%s review-save --dir %s" % (sh_path(copia), s), "python3 %s trust c.json" % sh_path(copia),
+                  py + "./scripts/guarda.py review-pending --file x", 'sh "%s/../%s/scripts/py" scripts/guarda.py '
+                  "review-pending --file x" % (r, os.path.basename(r))]
+        for ruim in ruins:
             self.assertIsNotNone(self.bash(ruim), ruim)
 
 

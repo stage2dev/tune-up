@@ -10,8 +10,10 @@ Uso: python3 guarda.py <prompt|inicio|bash|agent|escrita|prod|pos_bash>
                                              (JSON da revisão da Parte: risk/reviewers/model/effort/chunks;
                                              erro = todas as lentes; não lê stdin)
      python3 guarda.py review-save --dir <pasta absoluta> --lens failures|security|database --chunk <rótulo> --round <1-9>
-                                             (resposta do revisor no stdin; grava review-part-*.json;
-                                             erro = {"ok": false, "lens_ran": false})
+                                             [--answer-file <arquivo absoluto>]
+                                             (resposta do revisor no arquivo ou no stdin; grava review-part-*.json;
+                                             resposta ruim = {"ok": false, "lens_ran": false}; erro de uso =
+                                             {"ok": false, "usage": true, "lens_ran": null})
      python3 guarda.py review-pending --file <progresso> [--part <X>]
                                              (JSON pending/lines; erro = pendente; não lê stdin)
 Lê o JSON do hook no stdin, escreve JSON no stdout quando há decisão.
