@@ -15,6 +15,13 @@ REVIEWERS = ["agents/reviewer-failures.md", "agents/reviewer-database.md",
 SEARCH = EXECUTORS + REVIEWERS + ["agents/checker.md", "agents/writer.md",
                                   "agents/mapper.md"]
 
+CAP = ("Final report: at most ~25 lines (~1.5k tokens), telegraphic; longer detail goes to a file "
+       "in the scratchpad, cited by its absolute path. CRITICAL/HIGH findings are never cut.")
+CAPPED = [f"agents/{n}.md" for n in (
+    "executor-sonnet", "executor-opus", "executor-hard", "reviewer-failures", "reviewer-database",
+    "reviewer-security", "mapper", "checker", "writer", "researcher", "plan-reviewer", "visual",
+    "skill-finder")]
+
 
 class TextosAgentes(unittest.TestCase):
     def test_search_rules(self):
@@ -77,6 +84,13 @@ class TextosAgentes(unittest.TestCase):
         for f in glob.glob(str(ROOT / "skills/*/SKILL.md")):
             self.assertNotIn("highest effort",
                              pathlib.Path(f).read_text(encoding="utf-8"), f)
+
+
+    def test_report_cap(self):
+        for f in CAPPED:
+            self.assertIn(CAP, read(f), f)
+        allm = {f"agents/{p.name}" for p in (ROOT / "agents").glob("*.md")} - {"agents/persona.md"}
+        self.assertEqual(allm, set(CAPPED))
 
 
 if __name__ == "__main__":

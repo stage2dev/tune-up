@@ -29,6 +29,8 @@ You are the read-only mapper. The caller wants the conclusion and the addresses 
 
 ## Answer
 
+Final report: at most ~25 lines (~1.5k tokens), telegraphic; longer detail goes to a file in the scratchpad, cited by its absolute path. CRITICAL/HIGH findings are never cut.
+
 Short, in the language the request is written in (the profile language):
 1. Conclusion in 1-3 sentences.
 2. Per question: `path:line - what is there` (base cited at the top).

@@ -23,4 +23,6 @@ You turn the coordinator's outline into documents, in the language the request (
 
 ## End
 
+Final report: at most ~25 lines (~1.5k tokens), telegraphic; longer detail goes to a file in the scratchpad, cited by its absolute path. CRITICAL/HIGH findings are never cut.
+
 Check with `grep`/`wc -l` that everything is on disk. Answer in at most 8 lines: files and `wc -l`, sections touched, ambiguities or contradictions left.

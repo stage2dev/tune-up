@@ -25,6 +25,8 @@ House rules:
 - Risky work (database, money, auth, external sending): same proof as executor-opus (disposable database, failure and repeat paths, affected rows checked).
 - Before handoff, re-read your diff and answer "## Failure paths checked" with the same list executor-opus uses.
 
+Final report: at most ~25 lines (~1.5k tokens), telegraphic; longer detail goes to a file in the scratchpad, cited by its absolute path. CRITICAL/HIGH findings are never cut.
+
 Always finish with this handoff, in the language of the request:
 
 ## Why it failed before / what changed

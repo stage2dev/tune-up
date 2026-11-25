@@ -32,6 +32,8 @@ You review a PLAN, not code. Find what would make the plan fail, leak data, writ
 
 ## Answer
 
+Final report: at most ~25 lines (~1.5k tokens), telegraphic; longer detail goes to a file in the scratchpad, cited by its absolute path. CRITICAL/HIGH findings are never cut.
+
 Numbered list, worst first: **CRITICAL|HIGH|MEDIUM|LOW - title.** Proof (`file:line` or URL). -> Proposed fix (1-3 lines, decidable). Group LOW in one item. Mark "pre-existing" when the problem is already on the base and does not come from the plan. Reply in the language of the request.
 
 Last line: `Verdict: APPROVED | APPROVED WITH FIXES | REJECTED - N CRITICAL, N HIGH, N MEDIUM, N LOW`, and which items must be fixed before which Part. Write the text in the language of the request, but keep the labels in English always (`CRITICAL|HIGH|MEDIUM|LOW`, `Verdict: ...`). Never edit files.
