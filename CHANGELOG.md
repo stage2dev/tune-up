@@ -4,6 +4,15 @@ Every new rule goes in through `/tune-up:learn`: memory + a change here + a test
 
 ## Unreleased
 
+Review once per Part (lean mode, Part B).
+
+- Review runs once at the end of a Part over `git diff <base>..HEAD`, plus right after a base item. An item ends when the executor's tests pass and it commits; the coordinator checks the handoff and the diff stat.
+- `guarda.py rota --part` picks the lenses for the whole Part (low risk = `reviewer-failures` only), with `chunks` above 1 past 1500 changed lines. New profile keys `front_globs` and `globs_off`, trusted profile only. Per-item `rota` is unchanged.
+- `guarda.py review-save` and `review-pending`; `/tune-up:ship` refuses the PR while a "REVIEW PENDING" line is in the progress.
+- Fixes grouped by files (up to ~5 findings per opus executor), recheck of the fix diff after a CRITICAL/HIGH, max 2 fixes, then need_you. MEDIUM/LOW never block.
+- Work order, goal and progress templates, README and `workflow-template.js` follow the same regime; agent reports are capped at ~25 lines.
+- Not proven here: not yet run on a real Part.
+
 Opus by default (lean mode, Part A).
 
 - Panel: `dev.rodar-parte`, `dev.planejar-fase` (effort high) and `chat.completo` (effort xhigh) declare `"modelos": ["opus"]`. No core panel action names Fable any more; actions without `modelos` (such as `dev.investigar` and `dev.status`) still inherit the CLI default model; to use Fable, open the session in Fable yourself.

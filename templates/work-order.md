@@ -11,7 +11,7 @@ GOAL
 BASE
 Worktree: <absolute path>. Branch: <name>. Hash of origin/<main>: <hash>.
 
-ROUTE: <`guarda.py rota` output: executor, reviewers, why>. Diverged: <reason, or "no">
+ROUTE: <per-item `guarda.py rota` output: executor, why>. Review: <"end of Part" or "BASE ITEM: reviewed right after">. Diverged: <reason, or "no">
 
 FILES OWNED (current snippets, checked today; total <= 200 lines)
 - <path:first-last line>
@@ -50,9 +50,9 @@ RULES
 - Before declaring done, recheck with grep that the edit is on disk.
 
 DELIVERY
-Handoff, with these headings: What I built / How I verified (command and observed output) / Spec conformance (criterion C) / Failure paths checked / Flags for the judge / Confidence. End with a fenced json block: {"item","commit","files":[],"tests":[{"cmd","pass","fail"}],"skills_read":[],"steps"}.
+Telegraphic, at most ~25 lines; n/a failure paths on one line. Handoff, with these headings: What I built / How I verified (command and observed output) / Spec conformance (criterion C) / Failure paths checked / Flags for the judge / Confidence. End with a fenced json block: {"item","commit","files":[],"tests":[{"cmd","pass","fail"}],"skills_read":[],"steps"}.
 ```
 
 Coordinator notes:
 - The `tune-up:mapper` map is pasted in; the executor does not re-explore what the order already located.
-- Fix round: a NEW order for a new executor: the ORIGINAL order (goal, files owned, skills) + all CRITICAL/HIGH findings from all reviewers + the item's cumulative diff. ONE fix round for all reviewers together.
+- Review runs once per Part (a BASE ITEM is reviewed right after it). Fix round: a NEW order (opus executor) for each group of files, up to ~5 CRITICAL/HIGH findings each, in sequence: the ORIGINAL order (goal, files owned, skills) + the path of the review json to read (the executor reads the findings there) + the cumulative diff of those files. After a CRITICAL/HIGH fix, ALWAYS recheck: only the fix diff + the previous findings. Max 2 fixes, then need_you. MEDIUM/LOW never block: they go to the later document.
