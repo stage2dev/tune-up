@@ -71,6 +71,9 @@ class TextosAgentes(unittest.TestCase):
             self.assertTrue(any("Opus, high effort, by default" in l and
                                 "Fable only when the owner opened the session in Fable" in l
                                 for l in lines), f)
+        prog = read("templates/phase/progress.md")
+        self.assertIn("Opus, high effort, by default", prog)
+        self.assertNotIn("at the highest", prog)
         for f in glob.glob(str(ROOT / "skills/*/SKILL.md")):
             self.assertNotIn("highest effort",
                              pathlib.Path(f).read_text(encoding="utf-8"), f)

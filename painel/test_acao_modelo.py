@@ -75,9 +75,13 @@ class TesteModeloEsforcoEmQualquerAcao(test_chat.Base):
         por_id = self.real()
         self.cli.sonda = test_chat.SONDA_CAIU  # a sonda responde "não sei"
         lc = self.lanc()
+        com_modelos = set()
         for aid, a in por_id.items():
             self.assertFalse([m for m in a.get("modelos") or [] if "fable" in m], aid)
-            self.assertNotIn("fable", lc.modelos.escolher(a.get("modelos") or [])[0], aid)
+            if a.get("modelos"):
+                com_modelos.add(aid)
+                self.assertNotIn("fable", lc.modelos.escolher(a["modelos"])[0], aid)
+        self.assertTrue({"dev.rodar-parte", "dev.planejar-fase", "chat.completo"} <= com_modelos)
         self.assertEqual((por_id["chat.completo"]["modelos"], por_id["chat.completo"]["esforco"]), (["opus"], "xhigh"))
 
 

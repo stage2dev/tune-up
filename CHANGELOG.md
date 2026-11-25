@@ -6,7 +6,7 @@ Every new rule goes in through `/tune-up:learn`: memory + a change here + a test
 
 Opus by default (lean mode, Part A).
 
-- Panel: `dev.rodar-parte`, `dev.planejar-fase` (effort high) and `chat.completo` (effort xhigh) declare `"modelos": ["opus"]`. No core panel action picks Fable any more, not even as a fallback; to use Fable, open the session in Fable yourself.
+- Panel: `dev.rodar-parte`, `dev.planejar-fase` (effort high) and `chat.completo` (effort xhigh) declare `"modelos": ["opus"]`. No core panel action names Fable any more; actions without `modelos` (such as `dev.investigar` and `dev.status`) still inherit the CLI default model; to use Fable, open the session in Fable yourself.
 - `/tune-up:part`, `/tune-up:plan` and the goal template: the coordinator is Opus, high effort, by default; Fable only when the owner opened the session in Fable.
 - `/tune-up:setup` asks for the default model of new sessions (Opus or keep the current one). `settings_merge.py --set-model opus` writes the top-level `model` with a dated backup; "keep" does not touch the file. Users who already ran setup can run only this step.
 - Not proven here: the new setup step was not run live.

@@ -10,8 +10,8 @@ Steps:
   * refuse any key whose name looks like a secret (KEY, TOKEN, SECRET, PASSWORD):
     secrets never go through this script;
   * values already equal -> write nothing;
+  * only with --set-model: a top-level "model" that is not a string -> stop, write nothing;
   * backup <file>.bak-tune-up-<YYYYMMDD-HHMMSS> (never replaces an older backup);
-  * a top-level "model" that is not a string -> stop, write nothing;
   * set only the requested env keys and/or the top-level "model", keep every other key as it was;
   * write a temporary file in the same folder, then os.replace (atomic);
     if the file changed on disk since it was read, stop before replacing;
@@ -68,8 +68,6 @@ def load(path):
         raise MergeError("%s is not a JSON object; nothing written" % path)
     if not isinstance(data.get("env", {}), dict):
         raise MergeError("%s: \"env\" is not an object; nothing written" % path)
-    if not isinstance(data.get("model", ""), str):
-        raise MergeError("%s: \"model\" is not a string; nothing written" % path)
     return data, st
 
 
@@ -114,6 +112,8 @@ def write_atomic(path, data, st):
 def merge(path, wanted, model=None):
     path = os.path.realpath(os.path.expanduser(path))
     data, st = load(path)
+    if model is not None and not isinstance(data.get("model", ""), str):
+        raise MergeError("%s: \"model\" is not a string; nothing written" % path)
     env = dict(data.get("env", {}))
     changed = {k: {"before": env.get(k), "after": v} for k, v in wanted.items() if env.get(k) != v}
     result = {"path": path, "changed": changed, "unchanged": sorted(k for k in wanted if k not in changed)}

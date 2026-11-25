@@ -180,6 +180,16 @@ class SettingsMergeTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(self.read()), {"model": "opus"})
 
+    def test_null_model_env_only_ok(self):
+        self.write('{"model": null}')
+        code, _, _ = self.cli("--set-env", FLAG)
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(self.read()), {"model": None, "env": {"CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1"}})
+        self.write('{"model": null}')
+        code, _, se = self.cli("--set-model", "opus")
+        self.assertEqual(code, 1)
+        self.assertEqual(self.read(), '{"model": null}')
+
     def test_non_string_model_error(self):
         self.write('{"model": 5}')
         code, _, se = self.cli("--set-model", "opus")

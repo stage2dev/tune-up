@@ -9,7 +9,7 @@ allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info
 
 Context: !`sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info`
 
-The JSON above is the current state (`setup_done`, `language`, `owner`, `reply_style`, `tools`, `plugin_source`, `catalog_path`). If it did not load, say so once and continue with defaults. If `setup_done` is true, show the current values and ask whether to redo everything, only the tools step (c), or only the default model step (d2). "Only tools" still runs the close (i).
+The JSON above is the current state (`setup_done`, `language`, `owner`, `reply_style`, `tools`, `plugin_source`, `catalog_path`). If it did not load, say so once and continue with defaults. If `setup_done` is true, show the current values and ask whether to redo everything, only the tools step (c), or only the default model step (d2). "Only tools" still runs the close (i); "only the default model step (d2)" skips the other steps and the close (i), ending with the table line of that step only.
 
 Per tool facts (source, check, install, interactive, privacy, undo) live in `${CLAUDE_PLUGIN_ROOT}/skills/setup/reference.md`. Read only the rows you need.
 
@@ -110,11 +110,11 @@ claude-mem (only if installed now or already present): ask apart, one question: 
 
 A typed `/goal` and every new session inherit the CLI default model, and the phase coordinator is the biggest cost, so this is asked on its own.
 
-1. Read only the `model` key of `~/.claude/settings.json` (print "not set" when missing or the file does not exist).
-2. Already Opus (`opus`, `opus[1m]`, or starts with `claude-opus`): say so in one line and ask nothing.
+1. Read only the `model` key of `~/.claude/settings.json` (print "not set" when missing or the file does not exist). Also check `ANTHROPIC_MODEL` in the environment and in settings `env`: if set, say its value wins over `model` for new sessions and do not edit it; then go on.
+2. Already Opus (`opus`, `opus[1m]`, or starts with `claude-opus`): say so in one line and ask nothing; do not claim sessions run on Opus when `ANTHROPIC_MODEL` says otherwise.
 3. Otherwise AskUserQuestion, one question: "Default model for new sessions?" - `Opus (recommended)` | `Keep the current one (<value or not set>)`. Say in the descriptions that a typed `/goal` and every new session inherit this model. No answer = keep.
 4. Opus: show the before/after of only that key, then `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" skills/setup/scripts/settings_merge.py --set-model opus`. Keep runs nothing: the file is not touched. The model is never changed without this answer. On `error:` show it and go on.
-5. Tell the user: it applies to NEW sessions (open or resumed ones keep their model); `/model` in a session, `--model`, `ANTHROPIC_MODEL` and a project or managed settings `model` win over it (source: https://code.claude.com/docs/en/model-config.md). If `ANTHROPIC_MODEL` is set in the environment or in settings `env`, say its value wins and do not edit it.
+5. Tell the user: it applies to NEW sessions (open or resumed ones keep their model); `/model` in a session, `--model`, `ANTHROPIC_MODEL` and a project or managed settings `model` win over it (source: https://code.claude.com/docs/en/model-config.md).
 6. Undo: put the previous value back in `model`, or restore the dated backup `settings.json.bak-tune-up-<date-time>`.
 
 ## (e) Caveman (only if installed now or already present)
