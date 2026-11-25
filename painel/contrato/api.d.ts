@@ -543,7 +543,7 @@ export interface PainelJson {
   repo?: string;
   plans_dir?: string;
   claude_bin?: string; // padrão "claude"
-  max_execucoes?: number; // 1..10, padrão 3
+  max_execucoes?: number; // 1..10, padrão 2; conta também as sessões ocupadas abertas fora do painel
   pular_permissoes?: boolean; // padrão false; true dispara com --dangerously-skip-permissions (as travas da ação continuam valendo)
   porta?: number; // padrão 8787
   guarda?: string; // guarda.py do tune-up (padrão: plugin achado em ~/.claude/plugins/installed_plugins.json)

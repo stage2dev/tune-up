@@ -2,7 +2,9 @@
 import { Link } from 'react-router';
 import { Bot, ExternalLink, GitBranch, Terminal, Workflow } from 'lucide-react';
 import type { GrupoAgentes, SessaoClaude } from '../../api/agentes';
+import type { EstadoCusto } from '../../api/custo';
 import { Selo } from '../../componentes';
+import { CustoSessao } from './CustoSessao';
 import { contarAtivos, montarArvore, porFase, seloSessao, tempoDesde, TIPO_SESSAO } from './logica';
 import { NoAgente } from './NoAgente';
 import { BotaoRecolher, ChipModelo, MedidorEsforco } from './pecas';
@@ -69,7 +71,7 @@ function Grupo({ g, chave, agora, rec }: { g: GrupoAgentes; chave: string; agora
   );
 }
 
-export function CartaoSessao({ s, agora, rec }: { s: SessaoClaude; agora: number; rec: Recolhimento }) {
+export function CartaoSessao({ s, agora, rec, custo }: { s: SessaoClaude; agora: number; rec: Recolhimento; custo?: EstadoCusto }) {
   const chave = `s:${s.id}`;
   const aberto = !rec.recolhido(chave);
   const corpo = idDom(chave);
@@ -102,6 +104,7 @@ export function CartaoSessao({ s, agora, rec }: { s: SessaoClaude; agora: number
               </Link>
             )}
           </div>
+          {custo && <CustoSessao estado={custo} />}
         </div>
       </header>
       {aberto && (

@@ -26,6 +26,7 @@ import mascara
 import modulos
 import teto
 import trabalho
+import vagas
 from estado_exec import GRACA, OCIOSO, mapear_estado  # noqa: F401
 from modelos import Modelos
 import pergunta
@@ -70,7 +71,7 @@ class Lancador:
         self.registro = Registro(cfg["dados_dir"])
         self._trava = threading.Lock()
         self._trava_agentes = threading.Lock()
-        self._agentes = (0.0, None)
+        self._agentes, self.linhas = (0.0, None), None  # linhas: a lista inteira do host na última busca (vagas.py)
         self._ultimo = {}
         self.modelos = Modelos(cfg, self.rodar, relogio)
 
@@ -102,7 +103,8 @@ class Lancador:
                 lista = json.loads(out) if cod == 0 else None
             except ValueError:
                 lista = None
-            if not isinstance(lista, list):
+            self.linhas = lista if isinstance(lista, list) else None  # falhou: nunca fica a lista velha
+            if self.linhas is None:
                 return None
             dado = {str(a.get("id")): a for a in lista if isinstance(a, dict) and a.get("id")}
             self._agentes = (self.relogio(), dado)
@@ -259,14 +261,13 @@ class Lancador:
         modelo, _fora = self.modelos.escolher(acao.get("modelos") or [])
         esforco = acao.get("esforco") or ""
         with self._trava, self.registro.trava():
-            ativas = [e for e in self.execucoes(forcar=True, travado=True) if e["estado"] in ATIVOS]
+            todas = self.execucoes(forcar=True, travado=True)
+            ativas = [e for e in todas if e["estado"] in ATIVOS]
             igual = [e for e in ativas if e["acao"] == acao_id
                      and json.dumps(e["params"], sort_keys=True, ensure_ascii=False) == chave]
             if igual:
                 raise ErroAcao("Essa ação já está rodando.", 409, igual[0]["id"])
-            if len(ativas) >= self.cfg["max_execucoes"]:
-                raise ErroAcao("Já tem %d rodando ao mesmo tempo. Espere uma acabar ou pare uma."
-                               % len(ativas), 409, ativas[0]["id"])
+            vagas.conferir(self, todas, ativas)
             pasta = trabalho.nova_pasta(self.cfg["dados_dir"], acao)  # None: a ação não usa {trabalho}
             cwd = pasta if acao.get("sandbox") else self.cfg["workspace"]  # sandbox: cwd = pasta de trabalho
             if pasta:  # o id do trabalho fica fora de `valores` (a checagem de duplicata acima não o vê)
@@ -352,10 +353,8 @@ class Lancador:
                     raise ErroAcao("O Claude fez uma pergunta no terminal. Abra a sessão para responder lá.",
                                    409, exec_id)
                 raise ErroAcao("Esta conversa não pode mais ser continuada. Comece uma nova.", 409, exec_id)
-            ativas = [e for e in todas if e["estado"] in ATIVOS]
-            if not ativa and len(ativas) >= self.cfg["max_execucoes"]:  # a que já roda já ocupa a vaga dela
-                raise ErroAcao("Já tem %d rodando ao mesmo tempo. Espere uma acabar ou pare uma."
-                               % len(ativas), 409, ativas[0]["id"])
+            if not ativa:  # a que já roda já ocupa a vaga dela
+                vagas.conferir(self, todas, [e for e in todas if e["estado"] in ATIVOS], exec_id)
             lancador_wsl.manter(self, reg)  # WSL: anchor up before stop/resume, else 409 (session left as is)
             cod, out, err = self.rodar(lancador_wsl.cli(self, reg, "stop", exec_id), ws, 20)
             if cod != 0 and "No job matching" not in err + out:
