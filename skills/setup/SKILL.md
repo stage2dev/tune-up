@@ -9,7 +9,7 @@ allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info
 
 Context: !`sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info`
 
-The JSON above is the current state (`setup_done`, `language`, `owner`, `reply_style`, `tools`, `plugin_source`, `catalog_path`). If it did not load, say so once and continue with defaults. If `setup_done` is true, show the current values and ask whether to redo everything or only the tools step (c).
+The JSON above is the current state (`setup_done`, `language`, `owner`, `reply_style`, `tools`, `plugin_source`, `catalog_path`). If it did not load, say so once and continue with defaults. If `setup_done` is true, show the current values and ask whether to redo everything, only the tools step (c), or only the default model step (d2). "Only tools" still runs the close (i); "only the default model step (d2)" skips the other steps and the close (i), ending with the table line of that step only.
 
 Per tool facts (source, check, install, interactive, privacy, undo) live in `${CLAUDE_PLUGIN_ROOT}/skills/setup/reference.md`. Read only the rows you need.
 
@@ -17,7 +17,7 @@ Per tool facts (source, check, install, interactive, privacy, undo) live in `${C
 
 - Ask with the AskUserQuestion box (max 4 options per question; split longer lists into two questions of the same call). Free text only for the owner name and the language "other".
 - From the moment the language is chosen, every word to the user is in that language.
-- Nothing is installed or written without the user marking or confirming it. Write only to `~/.config/tune-up/`, `~/.claude/skills/` (ECC copies only through `ecc_catalog.py install`), `~/.config/caveman/` and, with its own confirmation, `~/.claude/settings.json` (only through `settings_merge.py`). Graphify's own installer also adds a block to `~/.claude/CLAUDE.md`: declared in its consent line. Editor settings: only `titulo_terminal.py` (step h).
+- Nothing is installed or written without the user marking or confirming it. Write only to `~/.config/tune-up/`, `~/.claude/skills/` (ECC copies only through `ecc_catalog.py install`), `~/.config/caveman/` and, with its own confirmation, `~/.claude/settings.json` (only through `settings_merge.py`: `env` keys and the default `model`). Graphify's own installer also adds a block to `~/.claude/CLAUDE.md`: declared in its consent line. Editor settings: only `titulo_terminal.py` (step h).
 - Run `claude plugin ...` through Bash one call at a time; each call asks permission. Never add an allow rule for it.
 - `gh auth login`, `brew ...`, `winget ...`, any downloaded install script and any login by e-mail or browser: never run them. Give the user the exact `! command` to type.
 - Secrets (API keys, tokens): never ask for them in chat, never put them in a command, argument, file, settings or log, never echo them. Only explain where the user pastes them (step d).
@@ -93,7 +93,7 @@ Show the exact JSON, ask "Save?" (yes / change something). On yes, create `~/.co
 
 ## (d) Settings flags: fast-jev-compaction and claude-mem
 
-Every change to `~/.claude/settings.json` goes through one script (normal permission prompt): `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" skills/setup/scripts/settings_merge.py --set-env KEY=VALUE`. It stops on invalid JSON, saves a dated backup `settings.json.bak-tune-up-<date-time>`, changes only the `env` keys asked, writes atomically and refuses names that look like secrets. Show the before/after of only those `env` keys and ask first. On `error:` show it and skip that flag. Never add a key variable to this file.
+Every change to `~/.claude/settings.json` goes through one script (normal permission prompt): `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" skills/setup/scripts/settings_merge.py --set-env KEY=VALUE`. It stops on invalid JSON, saves a dated backup `settings.json.bak-tune-up-<date-time>`, changes only the `env` keys asked (and, in (d2), the top-level `model`), writes atomically and refuses names that look like secrets. Show the before/after of only those `env` keys and ask first. On `error:` show it and skip that flag. Never add a key variable to this file.
 
 fast-jev-compaction (only if marked):
 
@@ -105,6 +105,17 @@ fast-jev-compaction (only if marked):
 - Tell the user to restart Claude Code (the env flag needs it).
 
 claude-mem (only if installed now or already present): ask apart, one question: "claude-mem sends anonymous usage telemetry to PostHog by default. Turn it off?" On yes: `settings_merge.py --set-env CLAUDE_MEM_TELEMETRY=0` (restart needed too).
+
+## (d2) Default model for sessions
+
+A typed `/goal` and every new session inherit the CLI default model, and the phase coordinator is the biggest cost, so this is asked on its own.
+
+1. Read only the `model` key of `~/.claude/settings.json` (print "not set" when missing or the file does not exist). Also check `ANTHROPIC_MODEL` in the environment and in settings `env`: if set, say its value wins over `model` for new sessions and do not edit it; then go on.
+2. Already Opus (`opus`, `opus[1m]`, or starts with `claude-opus`): say so in one line and ask nothing; do not claim sessions run on Opus when `ANTHROPIC_MODEL` says otherwise.
+3. Otherwise AskUserQuestion, one question: "Default model for new sessions?" - `Opus (recommended)` | `Keep the current one (<value or not set>)`. Say in the descriptions that a typed `/goal` and every new session inherit this model. No answer = keep.
+4. Opus: show the before/after of only that key, then `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" skills/setup/scripts/settings_merge.py --set-model opus`. Keep runs nothing: the file is not touched. The model is never changed without this answer. On `error:` show it and go on.
+5. Tell the user: it applies to NEW sessions (open or resumed ones keep their model); `/model` in a session, `--model`, `ANTHROPIC_MODEL` and a project or managed settings `model` win over it (source: https://code.claude.com/docs/en/model-config.md).
+6. Undo: put the previous value back in `model`, or restore the dated backup `settings.json.bak-tune-up-<date-time>`.
 
 ## (e) Caveman (only if installed now or already present)
 
@@ -131,5 +142,5 @@ AskUserQuestion, one question (in the chosen language): "Do you want the termina
 ## (i) Close
 
 1. Update `~/.config/tune-up/user.json`: only `tools` (from c-f) and `setup_done: true`. Show the two keys before writing.
-2. Ask the user to type `/reload-plugins` (and restart Claude Code if step d changed `env`).
+2. Ask the user to type `/reload-plugins` (and restart Claude Code if step d changed `env` or step d2 changed `model`: the model applies to new sessions).
 3. End with a table in the chosen language: step | done / skipped / failed | note (one line). Include the `!` commands still waiting for the user. If step h ran, note: undo with `/tune-up:terminal-title undo`.

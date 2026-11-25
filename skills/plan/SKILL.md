@@ -13,7 +13,7 @@ Request: $ARGUMENTS
 
 The JSON above is the context. Write to the user in its `language` (final answer short, `reply_style` honored). Use document names from `names` (keys such as `goal`, `research`, `progress`, `plan_review`, `later`, `open_questions`, `need_you`, `part_closed`), never literal. Models and effort per role come from `models`; if a role is missing use the default in the table. If `info` failed, say so and use the defaults.
 
-You (main session, highest effort) coordinate: think, decide, dispatch, check. You do not write the long document or map the code.
+You (main session, Opus, high effort, by default; Fable only when the owner opened the session in Fable; never switch to it yourself) coordinate: think, decide, dispatch, check. You do not write the long document or map the code.
 
 ## Roles
 

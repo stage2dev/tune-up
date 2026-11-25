@@ -61,6 +61,7 @@ What it asks:
 5. Optional: a local checkout of the tune-up source (only if you edit the plugin itself).
 6. Which optional tools to install.
 7. Whether the terminal tab should show the conversation topic.
+8. Whether Opus should be the default model for new sessions (asked only when it is not already; nothing changes without your yes).
 
 It writes `~/.config/tune-up/user.json` only after you confirm the exact JSON.
 
@@ -78,7 +79,7 @@ Optional tools and what leaves your machine:
 | Graphify | Code knowledge graph (PyPI `graphifyy`, two y) | Code extraction is local (no LLM); docs, PDFs and images use the session's model. `graphify install` also adds a short graphify section to `~/.claude/CLAUDE.md`, read in every session (setup says so before installing). | `graphify uninstall` from a folder without a `CLAUDE.md`, then delete the `# graphify` section of `~/.claude/CLAUDE.md` by hand, then `uv tool uninstall graphifyy` |
 | ECC | Large skill collection (`affaan-m/ecc`) | Downloads the repo from GitHub. The plugin stays disabled; the catalog and the copies of up to 15 skills you accept are local. | `claude plugin uninstall ecc@ecc`; delete `~/.config/tune-up/ecc-skills/`, `ecc-agents/`, `skills-catalog.md`, `use-map.json` and the copied folders in `~/.claude/skills/` |
 
-Settings changes (`~/.claude/settings.json`, only the `env` keys above) go through one script that saves a dated backup first, writes atomically and refuses names that look like secrets.
+Settings changes (`~/.claude/settings.json`, only the `env` keys above and, only if you pick Opus, the default `model`) go through one script that saves a dated backup first, writes atomically and refuses names that look like secrets.
 
 ## The flow
 

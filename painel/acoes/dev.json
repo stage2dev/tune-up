@@ -7,6 +7,8 @@
       "descricao": "Faz uma Parte de uma fase já planejada, item por item, com revisão. Para no fim da Parte e abre a PR para você ver.",
       "risco": "codigo",
       "confirmar": true,
+      "modelos": ["opus"],
+      "esforco": "high",
       "prompt": "/tune-up:part {fase} {parte}",
       "nome_sessao": "Fase {fase} Parte {parte}",
       "params": [
@@ -21,6 +23,8 @@
       "descricao": "Transforma uma ideia num plano de fase com Partes, pesquisa e revisão do plano. Não mexe em código.",
       "risco": "rascunho",
       "confirmar": false,
+      "modelos": ["opus"],
+      "esforco": "high",
       "prompt": "/tune-up:plan {ideia}",
       "nome_sessao": "Plano: {ideia}",
       "params": [

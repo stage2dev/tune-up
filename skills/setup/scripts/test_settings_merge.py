@@ -30,8 +30,8 @@ class SettingsMergeTest(unittest.TestCase):
         with open(self.path, encoding="utf-8") as fh:
             return fh.read()
 
-    def run_cli(self, *pairs):
-        argv = []
+    def run_cli(self, *pairs, extra=()):
+        argv = list(extra)
         for p in pairs:
             argv += ["--set-env", p]
         so, se = io.StringIO(), io.StringIO()
@@ -147,6 +147,91 @@ class SettingsMergeTest(unittest.TestCase):
         text = self.read()
         self.assertTrue(re.search(r'^  "env": \{', text, re.M))
         json.loads(text)
+
+    def cli(self, *argv):
+        so, se = io.StringIO(), io.StringIO()
+        with redirect_stdout(so), redirect_stderr(se):
+            try:
+                code = settings_merge.main(list(argv) + ["--path", self.path])
+            except SystemExit as e:
+                code = e.code
+        return code, so.getvalue(), se.getvalue()
+
+    def test_writes_opus_keeps_other_keys(self):
+        orig = {"model": "sonnet", "env": {"A": "1"}, "hooks": {}}
+        self.write(json.dumps(orig))
+        code, so, _ = self.cli("--set-model", "opus")
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(self.read()), dict(orig, model="opus"))
+        self.assertEqual(len(self.backups()), 1)
+        res = json.loads(so)
+        self.assertEqual(res["model"], {"before": "sonnet", "after": "opus", "changed": True})
+        self.assertEqual(res["changed"], {})
+
+    def test_already_opus_no_write(self):
+        self.write('{"model": "opus"}')
+        code, so, _ = self.cli("--set-model", "opus")
+        self.assertEqual(code, 0)
+        self.assertFalse(json.loads(so)["written"])
+        self.assertEqual(self.backups(), [])
+
+    def test_missing_file_only_model(self):
+        code, _, _ = self.cli("--set-model", "opus")
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(self.read()), {"model": "opus"})
+
+    def test_null_model_env_only_ok(self):
+        self.write('{"model": null}')
+        code, _, _ = self.cli("--set-env", FLAG)
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(self.read()), {"model": None, "env": {"CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1"}})
+        self.write('{"model": null}')
+        code, _, se = self.cli("--set-model", "opus")
+        self.assertEqual(code, 1)
+        self.assertEqual(self.read(), '{"model": null}')
+
+    def test_non_string_model_error(self):
+        self.write('{"model": 5}')
+        code, _, se = self.cli("--set-model", "opus")
+        self.assertEqual(code, 1)
+        self.assertIn("error:", se)
+        self.assertEqual(self.read(), '{"model": 5}')
+        self.assertEqual(self.backups(), [])
+
+    def test_both_flags_one_backup(self):
+        self.write('{"model": "sonnet"}')
+        code, _, _ = self.cli("--set-model", "opus", "--set-env", FLAG)
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(self.read()), {"model": "opus", "env": {"CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1"}})
+        self.assertEqual(len(self.backups()), 1)
+
+    def test_env_named_model_not_confused(self):
+        self.write('{"model": "sonnet"}')
+        _, so, _ = self.cli("--set-env", "model=x")
+        res = json.loads(so)
+        self.assertEqual(res["changed"], {"model": {"before": None, "after": "x"}})
+        self.assertNotIn("model", res)
+        self.assertEqual(json.loads(self.read()), {"model": "sonnet", "env": {"model": "x"}})
+
+    def test_refuses_other_models(self):
+        self.write('{"model": "sonnet"}')
+        for m in ("fable", "sonnet", "opus[1m]"):
+            code, _, _ = self.cli("--set-model", m)
+            self.assertNotEqual(code, 0)
+        self.assertEqual(self.read(), '{"model": "sonnet"}')
+        self.assertEqual(self.backups(), [])
+
+    def test_neither_flag_error(self):
+        self.write('{"a": 1}')
+        code, _, _ = self.cli()
+        self.assertNotEqual(code, 0)
+        self.assertEqual(self.read(), '{"a": 1}')
+        self.assertEqual(self.backups(), [])
+
+    def test_skill_keep_runs_nothing_and_only_opus(self):
+        text = open(os.path.join(HERE, "..", "SKILL.md"), encoding="utf-8").read()
+        self.assertIn("Keep runs nothing", text)
+        self.assertEqual(set(re.findall(r"--set-model\s+(\w+)", text)), {"opus"})
 
 
 if __name__ == "__main__":

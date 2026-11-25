@@ -119,7 +119,7 @@ A tela inicial é um chat: a pessoa escreve o pedido e escolhe o **nível**. Cad
 | Só perguntar | sonnet · medium | responde lendo; travado de verdade: Edit/Write negados e, no Bash, escrita em arquivo, git que muda, PR e envio de dados |
 | Ajuste simples | opus · medium | faz a mudança, 1 revisor Opus, abre a PR |
 | Ajuste moderado | opus · high | mini-plano, executores Sonnet/Opus, até 2 revisores Opus por item, uma PR |
-| Mudança completa | fable (reserva opus) · xhigh | `/tune-up:plan` com 2 revisores Opus do plano; commit, push, PR e merge negados por trava (não mexer no código do produto é pedido no prompt); as Partes rodam na tela Fases |
+| Mudança completa | opus · xhigh | `/tune-up:plan` com 2 revisores Opus do plano; commit, push, PR e merge negados por trava (não mexer no código do produto é pedido no prompt); as Partes rodam na tela Fases |
 | Marketing | opus · medium | rascunho em arquivo; nunca posta, anuncia ou gasta |
 
 O pacote do projeto pode acrescentar níveis (ações com `grupo: "chat"`) ou trocar um do núcleo: mesmo `id` e `"substitui": true` (ex.: Marketing com as travas das ferramentas do projeto). Sem `substitui`, id repetido segue ignorado com aviso.

@@ -4,6 +4,15 @@ Every new rule goes in through `/tune-up:learn`: memory + a change here + a test
 
 ## Unreleased
 
+Opus by default (lean mode, Part A).
+
+- Panel: `dev.rodar-parte`, `dev.planejar-fase` (effort high) and `chat.completo` (effort xhigh) declare `"modelos": ["opus"]`. No core panel action names Fable any more; actions without `modelos` (such as `dev.investigar` and `dev.status`) still inherit the CLI default model; to use Fable, open the session in Fable yourself.
+- `/tune-up:part`, `/tune-up:plan` and the goal template: the coordinator is Opus, high effort, by default; Fable only when the owner opened the session in Fable.
+- `/tune-up:setup` asks for the default model of new sessions (Opus or keep the current one). `settings_merge.py --set-model opus` writes the top-level `model` with a dated backup; "keep" does not touch the file. Users who already ran setup can run only this step.
+- Not proven here: the new setup step was not run live.
+
+Panel cap and cost per session (lean mode, Part E).
+
 - Panel: `max_execucoes` defaults to 2 and the cap also counts busy Claude sessions opened outside the panel in the project (host sessions only), without double counting. Over the cap, a new launch or reply gets a 409 that says how many are running; nothing is stopped. If the CLI listing fails, only the panel registry counts.
 - Panel: cost per session in the Agents screen and `GET /api/custo` (tokens, max context, % per model and estimated US$ from a fixed price table; host transcripts only).
 
