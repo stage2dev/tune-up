@@ -1,8 +1,8 @@
 ---
 name: part
-description: Runs ONE Part of an already planned phase item by item, with Opus reviewers and a gate, then STOPS. Use for "Phase NNN Part X", "run the part", "execute part", "rode a parte", "toca a parte", with or without /goal.
+description: Runs ONE Part of an already planned phase item by item, reviewed once at the end by Opus reviewers, with a gate, then STOPS. Use for "Phase NNN Part X", "run the part", "execute part", "rode a parte", "toca a parte", with or without /goal.
 argument-hint: "<NNN> <Part>  e.g. 184 B"
-allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py rota:*), Bash(graphify update .), Bash(command -v graphify)
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py rota:*), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py review-save:*), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py review-pending:*), Bash(graphify update .), Bash(command -v graphify)
 ---
 
 # Run a Part
@@ -23,7 +23,7 @@ You (main session, Opus, high effort, by default; Fable only when the owner open
 | Pick skills for an item | `tune-up:skill-finder` | haiku | medium |
 | Item routed to sonnet by `rota` (simple: screen, text, test, doc) | `tune-up:executor-sonnet` | sonnet | medium |
 | Item routed to opus by `rota` (risky: migration, access rules, RPC, worker, money, auth, sending, concurrency; any doubt) | `tune-up:executor-opus` | opus | medium |
-| Review the diff (the reviewers `rota` lists) | `tune-up:reviewer-failures`, `tune-up:reviewer-database`, `tune-up:reviewer-security` | opus | high |
+| Review the Part diff (the reviewers `rota --part` lists) | `tune-up:reviewer-failures`, `tune-up:reviewer-database`, `tune-up:reviewer-security` | opus | high |
 | Definition of done | `tune-up:checker` | haiku | medium |
 | Edit goal/progress/docs | `tune-up:writer` | sonnet | medium |
 
@@ -40,15 +40,15 @@ You (main session, Opus, high effort, by default; Fable only when the owner open
 - If you orchestrate with the Workflow tool, start from `${CLAUDE_PLUGIN_ROOT}/templates/workflow-template.js`.
 - Every `agent()` carries a literal `agentType` from the table above, plus `model` and `effort`. Never let an agent inherit the session model.
 - A generic agent (no `agentType`, or `general-purpose`) starts with about three times the context of a `tune-up:*` agent. Use one only for work that needs MCP tools, a browser or images, and mark the line above with `// tune-up: allow-generic <reason>`. The guard warns (or blocks, with `"workflow_generic": "block"` in the profile config) otherwise.
-- Each item's `reviewers` in the script args comes from `rota`; empty means `['failures','security']`.
-- Review loop in a script: at most 2 fix rounds per item; after each fix only the reviewers that rejected run again; CRITICAL/HIGH left after the review that follows the second fix -> `names.need_you`, never a third fix.
+- Items run in sequence; base items are reviewed at once (`reviewers` from `rota`, empty means `['failures','security']`). Then a second call with `review` filled from `rota --part` (args in the template header). At most 2 fixes, rechecking only the fix diff; CRITICAL/HIGH left -> `names.need_you`, never a third fix.
 - A `null` result or a "hit your ... limit" reply is an interrupted item: do not relaunch it and do not count it as done; check git before resuming.
 
 ## Step 1 - Understand and check prerequisites
 
 1. Read ONLY the Part's sections, the criteria C and the Execution section of the goal document, plus progress. Research is spot consultation.
 2. Check `origin/<main>`, `gh pr list` and `git status`: another session may have done something unrecorded. A sibling Part closed in the local progress counts as done for the "Parts" table, even if it is not merged; its merge/migration is the owner's prerequisite.
-3. A prerequisite in the "Parts" table that depends on the owner (decision, merge, deploy, migration): say ONCE `names.need_you` + the exact action and STOP (with `/goal`, ask for `/goal clear`). Never "still waiting" in a loop.
+3. Run `review-pending --file <local progress> --part <X>`. Pending for this Part: first run the pending review (Step 4, from the commit in the line), before any new item.
+4. A prerequisite in the "Parts" table that depends on the owner (decision, merge, deploy, migration): say ONCE `names.need_you` + the exact action and STOP (with `/goal`, ask for `/goal clear`). Never "still waiting" in a loop.
 
 ## Step 2 - Base and map
 
@@ -60,18 +60,23 @@ You (main session, Opus, high effort, by default; Fable only when the owner open
 
 Route: run `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py rota --files <the item's owned files>` and follow `executor`; after a failed Sonnet attempt rerun with `--failed sonnet`. ALWAYS write ONLY the item's action line and the base names of the owned files to `<scratchpad>/item-N.rota.txt` (never REAL DATA, pitfalls, diff or file contents) and pass `--text-file` with it; `source` in the answer says whether the router ran (`jev`) or not (`fixed`/`globs`); record suggested (`model`) vs used in progress. You may go UP from the route on your judgement, never down; note any divergence and its reason in progress. Build the work order from `${CLAUDE_PLUGIN_ROOT}/templates/work-order.md` (it carries the `ROUTE:`) and dispatch in background. "Skills to read" ALWAYS includes every entry of `info.pitfall_skills` whose `paths` globs match the absolute path of an owned file (worktree + path, no `:lines` suffix; `**/` also matches zero folders), with or without a catalog, plus the goal's "Skills"; the skill-finder (Step 2) only adds extras. A handoff whose json `skills_read` misses a matched pitfall skill: note it in progress and tell the reviewers, who get the same paths under PITFALLS TO READ. 1 item (or items in the same files). `maxTurns` 220; near ~80 steps the executor stops and hands back a partial result. Database item: the executor proves it on a local database, never production. The executor commits its own item on the Part branch with `git add` by name; push and PR go at the end through `/tune-up:ship`, only with the request above.
 
-## Step 4 - Item review
+## Step 4 - Review once, at the end of the Part
 
-- After the executor commits, write `git diff <base>..<commit>` (no path filter) to `<scratchpad>/diff-item-N.patch` and rerun `rota` with `--diff-file` on it. Call the reviewers it lists (failures always; never fewer than the route), opus, high, ALL in ONE message, each receiving the patch path + criterion C + `PITFALLS TO READ` (the same absolute paths as the executor's pitfall skills).
-- Reviewers end with a fenced json block `{"verdict","findings":[{"sev","file","line","introduced","proof","title"}]}` (proof: observed|read|suspected) and the last line `Verdict: ...`. Route by the json: `introduced` and sev CRITICAL/HIGH goes back; the rest goes to the later document. Missing or invalid json: ask again once.
-- All CRITICAL/HIGH from all reviewers become ONE fix round: a NEW executor gets the ORIGINAL order + the findings + the item's cumulative diff (never SendMessage to the old one). A MEDIUM of 1-3 obvious lines may ride along, never alone.
-- MEDIUM and pre-existing -> the phase `names.later` document (1 line: file:line, finding, reviewer); at most 3 MEDIUM per item in the coordinator's consolidated report (the rest counted, not listed).
-- Next round: only the reviewer(s) that rejected, receiving `PREVIOUS FINDINGS` + the cumulative item diff, marking each finding closed or reopened. Max 2 rounds; CRITICAL/HIGH left or count not dropping -> `names.need_you` and STOP.
-- Record per item in progress: executor, step count and pitfall skills read (from the handoff json, real numbers, not estimates), CRITICAL/HIGH per round (e.g. `HIGH 2->0`, reviewer and 1-line finding each).
+Read `${CLAUDE_PLUGIN_ROOT}/skills/part/review.md` before the first review; it has the commands, formats and prompts.
+
+- Items run WITHOUT a reviewer: the executor runs the item's tests and commits; you check its handoff json and `git diff --stat`, then start the next item. After EVERY item write/update ONE line at the start of progress: `- <names.review_pending> - Part X - since <commit before the first unreviewed item> (items ...)` ("Parte"/"desde" in Portuguese).
+- BASE ITEM: automatic when `rota` WITH `--diff-file` of the item gives `database`, `security`, or opus with why `risk_globs`; the goal's "base item: yes" only ADDS (database/RPC/migration, or an item another item depends on). Review it right after its commit with the reviewers of that route, before any dependent item starts. The route still picks the executor.
+- End of the Part: ONE `tune-up:checker` per side (as the profile splits them; else one call), in the worktree, comparing with main (a pre-existing failure is not yours, but name it). Then review ONCE over `git diff <base>..HEAD` with the reviewers of `rota --part` (never fewer), opus, high, ALL calls in ONE message, saying which base items were already reviewed and at which commit. `chunks` > 1: split by side or item group, plus one reviewer-failures for the boundaries between chunks.
+- Pass every reviewer answer through `review-save`; keep only counts + path + at most 25 lines. `lens_ran` false = that lens did NOT run: ask the same reviewer once; still invalid = `names.need_you`, never counted as approved. `rejected` with `blocking` 0: ask once to justify, then `names.need_you`.
+- Fix CRITICAL/HIGH introduced: groups of up to ~5 findings, executors in SEQUENCE (never parallel), a NEW `tune-up:executor-opus` each (never SendMessage the old one), reading the findings json and the original order. A MEDIUM of 1-3 obvious lines may ride along, never alone. ALWAYS recheck after a CRITICAL/HIGH: only the lenses with one open, over the fix diff + PREVIOUS FINDINGS, each closed or reopened. Max 2 fixes; CRITICAL/HIGH left or count not dropping -> `names.need_you` and STOP.
+- MEDIUM, LOW and pre-existing never block: 1 line each in `names.later`; the report lists at most 3 MEDIUM and counts the rest.
+- DUPLICATION: HIGH only when the copies already diverge or must change together; the rest MEDIUM.
+- Approved: replace the pending line by `review done at <commit>` (without the marker).
+- Record in progress per item: executor, step count and pitfall skills read (from the handoff json, real numbers), and per review the CRITICAL/HIGH per round (e.g. `HIGH 2->0`, lens and 1-line finding).
 
 ## Step 5 - Part gate
 
-1. One `tune-up:checker` per side the Part touched (as the profile splits them; otherwise one call), all in ONE message, in the worktree; each runs the profile's "Definition of done", comparing with main (a pre-existing failure is not yours, but name it).
+1. `review-pending` for this Part must be false; the checker already ran in Step 4.
 2. Criteria C measured (query/command) and written in progress with the result.
 3. Project docs updated if the profile asks.
 4. Migration headed for production: hand over the file and steps; apply only via `/tune-up:migration` on the owner's order.

@@ -67,6 +67,15 @@ class TextosAgentes(unittest.TestCase):
         self.assertLess(n, 100)
         self.assertIn("at most 3 MEDIUM", read("skills/part/SKILL.md"))
 
+    def test_part_review(self):
+        s = read("skills/part/SKILL.md")
+        for k in ["review-save", "review-pending", "rota --part", "in SEQUENCE",
+                  "never counted as approved", "BASE ITEM"]:
+            self.assertIn(k, s, k)
+        r = read("skills/part/review.md")
+        for k in ["PREVIOUS FINDINGS", "fix ONLY", "boundaries between chunks"]:
+            self.assertIn(k, r, k)
+
     def test_coordinator_defaults_to_opus(self):
         import glob
         files = ["skills/part/SKILL.md", "skills/plan/SKILL.md",
