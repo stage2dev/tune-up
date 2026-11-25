@@ -37,7 +37,7 @@ import modulos  # noqa: E402
 import plugins  # noqa: E402
 import servidor_http  # noqa: E402
 import teto  # noqa: E402
-import transcricao  # noqa: E402
+import transcricao, custo  # noqa: E401,E402
 from config import HOSTS_OK, host_permitido  # noqa: E402,F401 - test_leitor chama painel.host_permitido
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
@@ -268,6 +268,7 @@ def fazer_handler(app):
                 return self._json(*app.modulo("acompanhamento"))
             if caminho == "/api/agentes":
                 return self._agentes(query)
+            if caminho == "/api/custo": return self._json(*custo.responder(app.cfg, query.get("sessao") or []))  # noqa: E701
             if caminho == "/api/modulos":
                 return self._json(200, modulos.listar(app.cfg, sonda=app.sonda))
             if caminho == "/api/embutidos":
