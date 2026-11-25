@@ -2,6 +2,10 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## 2.29.1
+
+- Fix: skills run `guarda.py` without `CLAUDE_PLUGIN_DATA` (Claude Code exports it to hooks only), so `info` and `rota` read `~/.cache/tune-up` and ignored the trusted profile (`front_globs`, `globs_off`, `skills_by_glob`). `dir_dados()` now finds the data folder from the install path; outside an install nothing changes.
+
 ## 2.29.0
 
 Short plan (lean mode, Part D).

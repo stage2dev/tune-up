@@ -8,10 +8,25 @@ from .caminhos import dentro  # noqa: F401  (identity-aware; re-exported)
 
 # ---------------------------------------------------------------- dados
 
+def dir_dados_instalado(arquivo):
+    """<x>/plugins/cache/<marketplace>/<plugin>/<version>/... -> <x>/plugins/data/<plugin>-<marketplace>,
+    when that folder exists; else None."""
+    versao = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(arquivo))))
+    plugin = os.path.dirname(versao)
+    market = os.path.dirname(plugin)
+    cache = os.path.dirname(market)
+    plugins = os.path.dirname(cache)
+    if os.path.basename(cache) != "cache" or os.path.basename(plugins) != "plugins":
+        return None
+    id_ = re.sub(r"[^A-Za-z0-9_-]", "-", "%s-%s" % (os.path.basename(plugin), os.path.basename(market)))
+    d = os.path.join(plugins, "data", id_)
+    return d if os.path.isdir(d) else None
+
+
 def dir_dados():
-    base = os.environ.get("CLAUDE_PLUGIN_DATA") or os.path.join(
+    # Claude Code exports CLAUDE_PLUGIN_DATA to hooks only; a skill's Bash must read the same folder
+    return os.environ.get("CLAUDE_PLUGIN_DATA") or dir_dados_instalado(__file__) or os.path.join(
         os.path.expanduser("~"), ".cache", "tune-up")
-    return base
 
 
 def criar_dir(p):
