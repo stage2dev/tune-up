@@ -28,14 +28,14 @@ Legend: **Interactive = no** -> the skill may run it through Bash (each call sti
 
 ## Background preparation (ECC, Ponytail, Caveman)
 
-At SessionStart (startup or resume), when `~/.config/tune-up/pronto.json` does not have the current plugin version, the hook starts one detached run (`scripts/tuneup/preparar.py`) that adds only what is missing of the three rows above.
+At SessionStart (startup or resume), when `~/.config/tune-up/pronto.json` does not have the current plugin version, the hook starts one detached run (`scripts/tuneup/preparar.py` and `preparar_execucao.py`) that adds only what is missing of the three rows above.
 
 - Pins: the tag in the Install column; the clone HEAD must be the commit of that column before and after `install`. Never "latest".
-- Limits before each install: Caveman `{"defaultMode":"off"}` only if its config file does not exist (`XDG_CONFIG_HOME` honoured); `env.PONYTAIL_SUBAGENT_MATCHER` = `^tune-up:executor` only if absent, through `settings_merge.py` (dated backup); ECC with `hooks_enabled=false` and disabled right after (uninstalled if it cannot be disabled). Then the ECC catalog, only if there is none.
+- Limits: before the install, Caveman `{"defaultMode":"off"}` only if its config file does not exist (`XDG_CONFIG_HOME` honoured); `env.PONYTAIL_SUBAGENT_MATCHER` = `^tune-up:executor` only if absent, through `settings_merge.py` (dated backup); by the install options, Ponytail `ledger=false` and ECC `hooks_enabled=false`; ECC is disabled right after (uninstalled if it cannot be disabled). Then the ECC catalog, only if there is none and only from `ecc@ecc` at user scope.
 - Ponytail limit: the main session always gets about 3 KB; the filter only covers subagents, and it fails open (every subagent gets the rules) on an invalid regex or an empty agent type.
-- Not touched: a plugin of that name already installed or already in `enabledPlugins`, a marketplace of that name from another source (said once), a plugin the user uninstalled after a run.
+- Not touched: a plugin of that name already installed at user or managed scope or already in the user's `enabledPlugins` (project and local scope do not count), a marketplace of that name from another source (said once), a plugin recorded in `preparo.json` as installed that the user uninstalled. A record `installing` is a killed run: its plugin and its `enabledPlugins` key are taken out, unless that plugin's marketplace is not our pin.
 - Needs `claude`, `git` and `node` in PATH and network. A failure is one line at the next session start and is retried; no marker is written. Details: `preparo.resultado.json` in the same folder.
-- Off: `"auto_prepare": false` in `user.json` (also in a project `config.json`, even untrusted; a project can never turn it back on). Never runs in CI.
+- Off: `"auto_prepare": false` in `user.json` of the home folder (also in the file `TUNEUP_USER_JSON` points to and in a project `config.json`, even untrusted; neither can turn it back on). State files and the catalog are always in `~/.config/tune-up/`. Outside this control: env (`HOME`, `PATH`...) and hooks in the `.claude/settings.json` of a folder the user trusts. Never runs in CI.
 - Undo: set `auto_prepare` to false, use the Undo column, remove `PONYTAIL_SUBAGENT_MATCHER` from `env` in `settings.json` (or restore the dated backup) and delete `~/.config/caveman/config.json`. To start over: delete `pronto.json`, `preparo.json` and `preparo.resultado.json`.
 - One record per `~/.config/tune-up/`: with several `CLAUDE_CONFIG_DIR`, only the first one is prepared.
 

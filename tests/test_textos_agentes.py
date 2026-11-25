@@ -155,7 +155,9 @@ class TextosAgentes(unittest.TestCase):
         self.assertEqual(allm, set(CAPPED))
 
     def test_reuse_rule(self):
-        self.assertIn("REUSE: existing functions", read("agents/mapper.md"))
+        antes, _, resposta = read("agents/mapper.md").partition("\n## Answer\n")
+        self.assertIn("REUSE: existing functions", resposta)
+        self.assertNotIn("REUSE", antes)
         w = read("templates/work-order.md")
         self.assertIn("REUSE (from the mapper;", w)
         self.assertIn("look for an existing one (REUSE first, then rg)", w)

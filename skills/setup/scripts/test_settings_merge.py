@@ -141,6 +141,21 @@ class SettingsMergeTest(unittest.TestCase):
         self.assertIn("changed on disk", se)
         self.assertEqual(self.read(), '{"other": "writer"}')
 
+    def test_drop_plugin_takes_only_that_id(self):
+        orig = {"enabledPlugins": {"a@a": True, "b@b": True, "c@c": False}, "env": {"X": "1"}, "hooks": {}}
+        self.write(json.dumps(orig))
+        self.assertTrue(settings_merge.drop_plugin(self.path, "b@b"))
+        self.assertEqual(json.loads(self.read()), dict(orig, enabledPlugins={"a@a": True, "c@c": False}))
+        with open(os.path.join(self.tmp, self.backups()[0]), encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh), orig)
+        self.assertFalse(settings_merge.drop_plugin(self.path, "b@b"))  # not there: no write, no backup
+        self.assertEqual(len(self.backups()), 1)
+        self.write("{broken")
+        with self.assertRaises(settings_merge.MergeError):
+            settings_merge.drop_plugin(self.path, "a@a")
+        self.assertEqual(self.read(), "{broken")
+        self.assertFalse(settings_merge.drop_plugin(os.path.join(self.tmp, "none.json"), "a@a"))
+
     def test_output_is_valid_indented_json(self):
         self.write('{"a": 1}')
         self.run_cli(FLAG)

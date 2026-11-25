@@ -14,7 +14,7 @@ PINS = {f["nome"]: f["commit"] for f in preparar.FONTES}
 
 # Stateful `claude plugin`: mundo.json = {"mkts": {name: {...}}, "plugins": {id: {...}}, "quebra": [first words]}
 FAKE_CLAUDE = r'''
-import json, os, sys
+import json, os, signal, sys
 mundo = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mundo.json")
 with open(mundo) as f:
     m = json.load(f)
@@ -26,6 +26,34 @@ def env_tem():
             return "PONYTAIL_SUBAGENT_MATCHER" in json.load(f).get("env", {})
     except OSError:
         return False
+def ligar(pid, valor):
+    """enabledPlugins of the user settings; None removes the key."""
+    p = os.path.join(cfg, "settings.json")
+    try:
+        with open(p) as f:
+            s = json.load(f)
+    except OSError:
+        s = {}
+    e = s.setdefault("enabledPlugins", {})
+    e.pop(pid, None)
+    if valor is not None:
+        e[pid] = valor
+    with open(p, "w") as f:
+        json.dump(s, f)
+def ligados():
+    try:
+        with open(os.path.join(cfg, "settings.json")) as f:
+            return json.load(f).get("enabledPlugins", {})
+    except (OSError, ValueError):
+        return {}
+def morrer(passo):
+    """"key", "record" or "options" in mundo["mata"]: SIGKILL right after that write, of `claude` or of the whole run."""
+    if m.get("mata") == passo and nome == m.get("mata_quem", "ecc"):
+        with open(mundo, "w") as f:
+            json.dump(dict(m, mata=None), f)
+        if m.get("mata_tudo"):
+            os.kill(os.getppid(), signal.SIGKILL)
+        os.kill(os.getpid(), signal.SIGKILL)
 def fim(rc=0):
     with open(mundo, "w") as f:
         json.dump(m, f)
@@ -34,7 +62,8 @@ for q in m["quebra"]:
     if " ".join(a).startswith(q):
         sys.exit(1)
 if a == ["list"]:
-    print(json.dumps([dict(p, id=i) for i, p in m["plugins"].items()]))
+    print(json.dumps([dict({"scope": "user"}, **dict(p, id=i, enabled=ligados().get(i, p["enabled"])))
+                      for i, p in m["plugins"].items()]))
 elif a == ["marketplace", "list"]:
     print(json.dumps([dict(x, name=n) for n, x in m["mkts"].items()]))
 elif a[:2] == ["marketplace", "add"]:
@@ -57,16 +86,23 @@ elif a[0] == "install":
             os.makedirs(os.path.join(cache, "skills", s), exist_ok=True)
             with open(os.path.join(cache, "skills", s, "SKILL.md"), "w") as f:
                 f.write("---\nname: %s\ndescription: x\n---\n" % s)
+    ligar(a[1], True)  # the order of the real CLI: key, record, options
+    morrer("key")
     m["plugins"][a[1]] = {"enabled": True, "installPath": cache}
+    morrer("record")
+    m["opcoes"][a[1]] = a[a.index("--config") + 1] if "--config" in a else None
+    morrer("options")
     if m.get("move"):
         with open(os.path.join(m["mkts"][nome]["installLocation"], ".git", "HEAD"), "w") as f:
             f.write("f" * 40)
 elif a[0] == "disable":
     m["plugins"][a[1]]["enabled"] = False
+    ligar(a[1], False)
 elif a[0] == "uninstall":
     if a[1] not in m["plugins"]:
         fim(1)
     del m["plugins"][a[1]]
+    ligar(a[1], None)
 fim()
 '''
 
@@ -74,17 +110,16 @@ fim()
 class PrepararBase(FakeBin):
     def setUp(self):
         super().setUp()
-        self.cfg, self.conf = os.path.join(self.tmp, "cfg"), os.path.join(self.tmp, "conf")
+        self.cfg, self.conf = os.path.join(self.tmp, "cfg"), os.path.join(self.tmp, ".config", "tune-up")
         os.makedirs(self.cfg)
         os.makedirs(self.conf)
-        self.env.update({"CLAUDE_CONFIG_DIR": self.cfg, "XDG_CONFIG_HOME": os.path.join(self.tmp, "xdg"),
-                         "TUNEUP_USER_JSON": os.path.join(self.conf, "user.json")})
-        for k in ("TUNEUP_TESTE", "CI", preparar.RECURSAO):
+        self.env.update({"CLAUDE_CONFIG_DIR": self.cfg, "XDG_CONFIG_HOME": os.path.join(self.tmp, "xdg")})
+        for k in ("TUNEUP_TESTE", "CI", "TUNEUP_USER_JSON", preparar.RECURSAO):
             self.env.pop(k, None)
         self.usuario({})
         with open(os.path.join(self.tmp, "fake.py"), "w") as f:
             f.write(FAKE_CLAUDE)
-        self.mundo(mkts={}, plugins={}, quebra=[], limites={}, commits=dict(PINS))
+        self.mundo(mkts={}, plugins={}, quebra=[], limites={}, opcoes={}, commits=dict(PINS))
         if not IS_WIN:
             self.fake("claude", 'exec "%s" "%s/fake.py" "$@"' % (sys.executable, self.tmp))
             self.fake("git", 'IFS= read -r x < "$2/HEAD" || :; printf "%s\\n" "$x"')

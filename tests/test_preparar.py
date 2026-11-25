@@ -10,6 +10,7 @@ from unittest import mock
 
 from base import Base, IS_WIN, SCRIPT
 from preparar_fake import PINS, PrepararBase, preparar
+from tuneup import preparar_execucao
 from tuneup.config import carregar_config
 
 NOMES = [f["nome"] for f in preparar.FONTES]
@@ -51,6 +52,7 @@ class TestExecucao(PrepararBase):
         m = self.mundo()
         del m["plugins"]["ponytail@ponytail"]
         self.mundo(plugins=m["plugins"])
+        self.settings({"enabledPlugins": {"ecc@ecc": False, "caveman@caveman": True}})  # as uninstall leaves it
         self.grava("pronto.json", {"version": "0.0.1"})
         antes = self.mexeu()
         self.preparar("t2")
@@ -105,7 +107,7 @@ class TestExecucao(PrepararBase):
         self.assertFalse([c for c in calls if "install ponytail" in c])
         self.assertIn("plugin marketplace remove ponytail --json", calls)
         self.assertIsNone(self.ler("pronto.json"))
-        self.assertIsNone(self.settings())  # the limit is not written for what is not installed
+        self.assertNotIn("env", self.settings())  # the limit is not written for what is not installed
 
     def test_commit_muda_durante_o_install(self):
         self.mundo(move=True)
@@ -166,7 +168,9 @@ class TestExecucao(PrepararBase):
         with open(cave, "w") as f:
             f.write('{"defaultMode":"review"}')
         self.assertTrue(self.preparar()["ok"])
-        self.assertEqual(self.settings(), {"env": {"PONYTAIL_SUBAGENT_MATCHER": "mine", "OTHER": "1"}, "x": 1})
+        self.assertEqual(self.settings(), {"env": {"PONYTAIL_SUBAGENT_MATCHER": "mine", "OTHER": "1"}, "x": 1,
+                                           "enabledPlugins": {"ecc@ecc": False, "ponytail@ponytail": True,
+                                                              "caveman@caveman": True}})
         with open(cave) as f:
             self.assertEqual(f.read(), '{"defaultMode":"review"}')
 
@@ -208,10 +212,10 @@ class TestExecucao(PrepararBase):
         self.fake("claude", "/bin/sleep 60")
         self.grava("preparo.lock", 0)
         ambiente = dict(self.env, PATH=os.path.join(self.tmp, "bin"))
-        with mock.patch.dict(os.environ, ambiente, clear=True), mock.patch.object(preparar, "PRAZO_CMD", 0.3), \
-                mock.patch.object(preparar, "tranca_e_minha", return_value=True):
+        with mock.patch.dict(os.environ, ambiente, clear=True), mock.patch.object(preparar_execucao, "PRAZO_CMD", 0.3), \
+                mock.patch.object(preparar_execucao, "tranca_e_minha", return_value=True):
             t = time.time()
-            rc, _ = preparar.Preparo("x").claude("list")
+            rc, _ = preparar_execucao.Preparo("x").claude("list")
         self.assertIsNone(rc)
         self.assertLess(time.time() - t, 10)
 
@@ -312,8 +316,7 @@ class TestInicio(PrepararBase):
 class TestTranca(Base):
     def setUp(self):
         super().setUp()
-        ambiente = {"TUNEUP_USER_JSON": os.path.join(self.tmp, "conf", "user.json"),
-                    "CLAUDE_PLUGIN_DATA": self.dados}
+        ambiente = {"HOME": self.tmp, "USERPROFILE": self.tmp, "CLAUDE_PLUGIN_DATA": self.dados}
         p = mock.patch.dict(os.environ, ambiente)
         p.start()
         self.addCleanup(p.stop)
@@ -322,7 +325,7 @@ class TestTranca(Base):
         t1 = preparar.trancar()
         self.assertTrue(preparar.tranca_e_minha(t1))
         self.assertIsNone(preparar.trancar())
-        arq = os.path.join(self.tmp, "conf", "preparo.lock")
+        arq = os.path.join(self.tmp, ".config", "tune-up", "preparo.lock")
         velho = time.time() - preparar.TRANCA_VELHA - 5
         os.utime(arq, (velho, velho))
         t2 = preparar.trancar()
@@ -338,10 +341,10 @@ class TestTranca(Base):
                 mock.patch.object(preparar, "lancar", side_effect=OSError("no process")):
             with self.assertRaises(OSError):
                 preparar.ao_iniciar({"source": "startup"}, cfg)
-        self.assertFalse(os.path.exists(os.path.join(self.tmp, "conf", "preparo.lock")))
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, ".config", "tune-up", "preparo.lock")))
 
     def test_cada_motivo_tem_texto(self):
-        with open(preparar.__file__, encoding="utf-8") as f:
+        with open(preparar_execucao.__file__, encoding="utf-8") as f:
             fonte = f.read()
         usados = set(re.findall(r'(?:Falha\(|desfazer\(f, )"(\w+)"\)', fonte)) | {"missing", "state", "error"}
         self.assertEqual(usados, set(preparar.MOTIVOS))

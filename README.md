@@ -38,17 +38,19 @@ New plugins only work after `/reload-plugins` or a new session.
 
 The first session after the install (or after a tune-up update) adds, in the background, what is missing of these three. It says so in one line, the next session says how it ended, and a failure (no network, or `claude`, `git` or `node` missing) is retried at the next session.
 
-| Plugin | From (GitHub) | Pinned commit | Limit, written before the install |
+| Plugin | From (GitHub) | Pinned commit | Limit |
 |---|---|---|---|
-| ECC | `affaan-m/ecc#v2.2.3` | `c05b2d6614f62f6db0047669aa4eefb223d478f9` | Hooks off and the plugin disabled; only the local skills catalog in `~/.config/tune-up/` is read |
-| Ponytail | `DietrichGebert/ponytail#v5.3.3` | `7801d061243d7b753bad0e0b3c057cd250b11755` | `ledger=false`; `PONYTAIL_SUBAGENT_MATCHER=^tune-up:executor` in the `env` of `settings.json` (dated backup), only if you have none |
-| Caveman | `JuliusBrussee/caveman#v4.2.0` | `70f4f34e834893ea9af9f4fc6022266bd56d18b1` | `{"defaultMode":"off"}` in `~/.config/caveman/config.json`, only if you have none |
+| ECC | `affaan-m/ecc#v2.2.3` | `c05b2d6614f62f6db0047669aa4eefb223d478f9` | Hooks off by the install option and the plugin disabled right after; only the local skills catalog in `~/.config/tune-up/` is read |
+| Ponytail | `DietrichGebert/ponytail#v5.3.3` | `7801d061243d7b753bad0e0b3c057cd250b11755` | `ledger=false` by the install option; before the install, `PONYTAIL_SUBAGENT_MATCHER=^tune-up:executor` in the `env` of `settings.json` (dated backup), only if you have none |
+| Caveman | `JuliusBrussee/caveman#v4.2.0` | `70f4f34e834893ea9af9f4fc6022266bd56d18b1` | Before the install, `{"defaultMode":"off"}` in `~/.config/caveman/config.json`, only if you have none |
 
 - A clone that is not at the pinned commit is never installed.
-- What you already have stays as it is: an installed plugin (on or off), a marketplace of the same name from another source, an existing limit. A plugin you uninstall later does not come back.
+- What you already have stays as it is: a plugin installed for your user or by your organization (on or off), a marketplace of the same name from another source, an existing limit. A plugin of the same name in one project's scope does not count. A plugin recorded as installed by tune-up (`preparo.json`) that you uninstall later does not come back; one that was already yours may be installed at a later tune-up update if you remove it.
+- An install that is killed half way is undone, the ECC key in `enabledPlugins` included (dated backup), by that run or by the next one. Until then the session says it is incomplete or says nothing: a dead run holds the lock for 40 minutes.
 - Ponytail limit: the main session always gets about 3 KB of its rules; the matcher only filters subagents, and it fails open (every subagent gets the rules) on an invalid regex or an empty agent type.
 - The default model is never changed this way, and it never runs in CI.
-- Turn off, before or after: `"auto_prepare": false` in `~/.config/tune-up/user.json`. A project `config.json` may also turn it off, even untrusted; no project can turn it back on.
+- Turn off, before or after: `"auto_prepare": false` in `~/.config/tune-up/user.json`. A project `.tune-up/config.json` may also turn it off, even untrusted, but cannot turn it back on; nor can a `TUNEUP_USER_JSON` that points at another file. The marker, the records and the catalog always stay in `~/.config/tune-up/`.
+- Not guaranteed: a folder you trust in Claude Code can set environment variables (`HOME`, `PATH`, `CLAUDE_CONFIG_DIR` and others) or hooks in its own `.claude/settings.json`. That already runs what it wants and is outside this control.
 - Undo: turn it off, then `claude plugin uninstall ecc@ecc`, `ponytail@ponytail` and `caveman@caveman` (one call each), `claude plugin marketplace remove` for `ecc`, `ponytail` and `caveman`, remove `PONYTAIL_SUBAGENT_MATCHER` from `settings.json` and delete `~/.config/caveman/config.json`.
 
 ### Windows: `marketplace add` fails with `EPERM ... rename`
