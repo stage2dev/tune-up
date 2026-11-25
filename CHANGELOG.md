@@ -2,7 +2,7 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
-## Unreleased
+## 2.28.0
 
 Review once per Part (lean mode, Part B).
 
