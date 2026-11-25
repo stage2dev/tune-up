@@ -11,7 +11,7 @@ Base checked: `origin/<main>` <hash> + <external doc, URL>. N citations checked;
 
 **Applied by the coordinator:** <finding -> goal section>.
 
-## Round 2
+## Round 2 (only after a CRITICAL)
 
 - H1 <title> - RESOLVED (<where>) / OPEN (<why>).
 - New: <list or "no CRITICAL/HIGH">.

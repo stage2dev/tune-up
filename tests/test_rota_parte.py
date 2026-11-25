@@ -145,6 +145,15 @@ class TestParteDiff(ParteBase):
             r = P.rota_parte(["src/A.tsx"], d, dict(PADRAO, front_globs=FRONT), "/repo")
             self.assertEqual((r["reviewers"], r["lines"]), (["failures", "security"], None))
 
+    def test_sem_diff_so_front_tem_um_motivo(self):
+        # the plan skill exempts its review only on this exact `why`
+        f = ["src/A.tsx", "src/B.tsx"]
+        self.assertEqual(self.parte(f, diff="")["why"], ["no diff: cannot rule risk out"])
+        r = self.parte(["src/Cart.tsx"], diff="", risk_globs=["**/*cart*"])
+        self.assertIn("risk_globs: src/Cart.tsx matches **/*cart*", r["why"])
+        r = self.parte(["src/A.tsx", "docs/x.md"], diff="")
+        self.assertIn("not in front_globs: docs/x.md", r["why"])
+
     def test_diff_sem_conteudo_e_risco(self):
         for d in ("\n", "diff --git a/src/A.tsx b/src/A.tsx\nold mode 100644\nnew mode 100755\n"):
             self.assertIn("diff file has no diff content", self.risco(diff=d)["why"])

@@ -1,6 +1,6 @@
 # Phase NNN - <Short name>
 
-> Source: <where the request came from, date; "verbatim copy in `ORIGINAL-REQUEST.md`" if pasted>. Code base: `origin/<main>` <hash> (<PR/date>). Numbers measured in production on DD/MM (read only). External docs consulted on YYYY-MM-DD (URLs in `{{names.research}}`).
+> Source: <where the request came from, date; "verbatim copy in `ORIGINAL-REQUEST.md`" if pasted>. Code base: `origin/<main>` <hash> (<PR/date>). Numbers measured in production on DD/MM (read only). External docs consulted on YYYY-MM-DD (URLs in `{{names.research}}`), only if there is an external dependency.
 > No app file was changed while writing this plan.
 
 ## GOAL
@@ -54,11 +54,11 @@ Each is a query or command, with "today: X - target: Y". Never "got better".
 - Validate:
 - Base item: yes/no (only adds; the per-item route already marks database, security and risk_globs items).
 
-## Parts (one context per part)
+## Parts (one PR and one new conversation per Part; never continue another Part's session)
 
 | Part | Waves | Prerequisite | Exit gate | Command |
 |---|---|---|---|---|
-| A | 0 | none | <criteria C green + what is written> | `/goal Phase NNN Part A: Wave 0 of {{names.goal}} (<summary>) - follow /tune-up:part. Stop when: "{{names.part_closed}}" in {{names.progress}} OR you wrote {{names.need_you}} OR 40 turns.` |
+| A | 0 | none | <criteria C green + what is written> | `/goal Phase NNN Part A: Wave 0 of {{names.goal}} (<summary>) (new conversation; never continue another Part's session) - follow /tune-up:part. Stop when: "{{names.part_closed}}" in {{names.progress}} OR you wrote {{names.need_you}} OR 40 turns.` |
 
 A Part = 1-2 waves, up to ~8 items or 2 L items; a wave that depends on the owner is its own Part. On closing each Part the coordinator writes the closed marker in `{{names.progress}}` with the next command and STOPS; the owner opens a new context.
 
@@ -89,11 +89,13 @@ A Part = 1-2 waves, up to ~8 items or 2 L items; a wave that depends on the owne
 Models and effort per role come from `info` (`models`). Defaults: coordinator = main session, Opus, high effort, by default; Fable only when the owner opened the session in Fable; never switch to it yourself; reviewers = opus, high; mapper, checker, skill-finder = haiku, medium; executor-sonnet, executor-opus, writer = sonnet/opus/sonnet, medium.
 
 - `tune-up:executor-sonnet` for simple items: <list>. `tune-up:executor-opus` for database, money, auth, external sending, concurrency: <list>.
-- Review once per Part, not per item: an item ends when the executor's tests pass and it commits (the coordinator checks the handoff and the diff stat). A BASE ITEM (database, security or risk_globs by the per-item route, or marked in the goal) is reviewed right after it. At the end of the Part: one review over `git diff <base>..HEAD` with the lenses of `guarda.py rota --part`: `tune-up:reviewer-failures` always, plus `tune-up:reviewer-security` when the Part is not low risk and `tune-up:reviewer-database` when `database_globs` matches. Only CRITICAL/HIGH goes back, grouped by files (up to ~5 findings per executor, opus, in sequence), with a recheck of the fix diff after each; max 2 fixes, then `{{names.need_you}}`. `tune-up:checker` runs after the last fix, and again after any later one. MEDIUM/LOW/pre-existing -> `{{names.later}}`.
+- Review once per Part, not per item: an item ends when the executor's tests pass and it commits (the coordinator checks the handoff and the diff stat). A BASE ITEM (database, security or risk_globs by the per-item route, or marked in the goal) is reviewed right after it. At the end of the Part: one review over `git diff <base>..HEAD` with the lenses of `guarda.py rota --part`: `tune-up:reviewer-failures` always, plus `tune-up:reviewer-security` when the Part is not low risk and `tune-up:reviewer-database` when `database_globs` matches. Only CRITICAL/HIGH goes back, grouped by files (up to ~5 findings per executor, opus, in sequence), with a recheck of the fix diff after each; max 2 fixes, then `{{names.need_you}}`. `tune-up:checker` runs after the last fix, and again after any later one. MEDIUM/LOW/pre-existing -> `{{names.later}}`. Plan review: one round (round 2 only after a CRITICAL); skipped for a one-Part plan of front or plain text files only.
 - Work order = 1 item, `maxTurns` 220, mapper map pasted, focused test; stop and report near ~80 steps.
 - Production writes (migration, SQL) and any external action: only with the owner's explicit request in the turn.
 - Gate = 0 CRITICAL/HIGH + definition of done (`tune-up:checker` green on the final HEAD compared with main) + the wave's criteria C + project docs updated when the profile asks.
 
 ## Plan review (DD/MM)
+
+One round; "Round 2 only after a CRITICAL"; or: "not reviewed: <reason>".
 
 **Round 1 (opus, high):** N CRITICAL, N HIGH, N MEDIUM, N LOW -> <applied in which sections>. Detail in `{{names.plan_review}}`.

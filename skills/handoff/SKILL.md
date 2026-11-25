@@ -29,7 +29,7 @@ The new text must stand alone: whoever opens it has not read this conversation.
    - What is left to decide (numbered questions, recommended one marked).
 3. **Pasteable block** in the reply, short, in a code block: the opening prompt of the new session pointing at `HANDOFF.md` by absolute path, plus a `/goal` command with an exit condition of ONE Part:
 
-   `/goal <goal of the Part> - finish when the Part is closed in the progress file (marker: names.part_closed) OR when you write names.need_you OR after 40 turns`
+   `/goal <goal of the Part> (new conversation; never continue another Part's session) - finish when the Part is closed in the progress file (marker: names.part_closed) OR when you write names.need_you OR after 40 turns`
 
 4. Update the progress file and the phase memory if they changed in this session.
 

@@ -4,6 +4,13 @@ Every new rule goes in through `/tune-up:learn`: memory + a change here + a test
 
 ## Unreleased
 
+Short plan (lean mode, Part D).
+
+- `plan`: 1 or 2 mappers (one for a small idea); the research and later documents are written only when needed (external dependency; something to put in it).
+- One plan review round; round 2 only after a CRITICAL; skipped for a one-Part plan of front or plain text files, proved with `guarda.py rota --part`.
+- Every generated `/goal` says "new conversation; never continue another Part's session"; the closing tail is unchanged.
+- Not proven here: not yet run on a real plan.
+
 Installed, just works (lean mode, Part C).
 
 - The first session of a plugin version adds in the background what is missing of ECC (disabled), Ponytail (subagent matcher, no ledger) and Caveman (off), from GitHub at pinned commits checked before and after the install. The Caveman config and the Ponytail matcher are written before the install; the install options and ECC's disable come with it or right after. New `scripts/tuneup/preparar.py` and `preparar_execucao.py`; one line when it starts and one when it ends; a failure is retried and leaves no marker. What the user has is not touched; what tune-up installed and the user removed does not come back. Off: `auto_prepare: false` (user or project; `TUNEUP_USER_JSON` cannot turn it back on).
