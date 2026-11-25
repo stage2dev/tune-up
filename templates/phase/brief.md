@@ -28,7 +28,7 @@ Limit: goal <= <N> lines; progress <= 40.
 
 ## 6. Waves and items
 
-For each item: number, size S/M/L, executor (`tune-up:executor-sonnet` or `tune-up:executor-opus`), Action (concrete table/column/function/route names), Mirror, Validate (C#), Skills (from `tune-up:skill-finder`).
+For each item: number, size S/M/L, executor (`tune-up:executor-sonnet` or `tune-up:executor-opus`), Action (concrete table/column/function/route names), Mirror, Validate (C#), Base item yes/no (yes: database, RPC, migration, or an item another item depends on), Skills (from `tune-up:skill-finder`).
 
 ## 7. Parts
 

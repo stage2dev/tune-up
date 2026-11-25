@@ -10,6 +10,7 @@ Review once per Part (lean mode, Part B).
 - `guarda.py rota --part` picks the lenses for the whole Part (low risk = `reviewer-failures` only), with `chunks` above 1 past 1500 changed lines. New profile keys `front_globs` and `globs_off`, trusted profile only. Per-item `rota` is unchanged.
 - `guarda.py review-save` and `review-pending`; `/tune-up:ship` refuses the PR while a "REVIEW PENDING" line is in the progress.
 - Fixes grouped by files (up to ~5 findings per opus executor), recheck of the fix diff after a CRITICAL/HIGH, max 2 fixes, then need_you. MEDIUM/LOW never block.
+- The pending line is written before the first dispatch; only the end review's approval replaces it. The checker runs after the last fix. Every changed path is in exactly one chunk (plus `rest`); an unchanged or invalid commit is interrupted; a reopened finding always blocks; reviewer answers are saved with `--answer-file`.
 - Work order, goal and progress templates, README and `workflow-template.js` follow the same regime; agent reports are capped at ~25 lines.
 - Not proven here: not yet run on a real Part.
 

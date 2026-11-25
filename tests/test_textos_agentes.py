@@ -1,6 +1,9 @@
 """Pins the lean texts of agents, work order and part skill (item E)."""
 import pathlib
+import re
 import unittest
+
+from base import SCRIPT, PromptBase, sh_path
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -76,6 +79,55 @@ class TextosAgentes(unittest.TestCase):
         for k in ["PREVIOUS FINDINGS", "fix ONLY", "boundaries between chunks"]:
             self.assertIn(k, r, k)
 
+    def test_checker_runs_after_the_last_fix(self):
+        s = read("skills/part/SKILL.md")
+        self.assertLess(s.index("END review approved"), s.index("Checker AFTER the last fix"))
+        self.assertNotIn("already ran", s)
+        self.assertIn("run the checker again", s)
+        self.assertIn("the checker green on the final HEAD compared with main", s)
+        for f in ["templates/phase/goal.md", "README.md"]:
+            self.assertIn("checker` runs after the last fix" if f != "README.md" else "checker runs after the last fix", read(f), f)
+            self.assertIn("on the final HEAD compared with main", read(f), f)
+            self.assertNotIn("checker` once", read(f), f)
+            self.assertNotIn("checker runs once", read(f), f)
+
+    def test_pending_line_before_the_first_dispatch(self):
+        s, r = read("skills/part/SKILL.md"), read("skills/part/review.md")
+        self.assertIn("BEFORE the first dispatch of the Part write ONE line", s)
+        self.assertIn("in progress BEFORE call 1", s)
+        self.assertIn("END review approved: only then replace the pending line", s)
+        self.assertIn("its approval never erases the pending line", s)
+        self.assertIn("Written BEFORE the first dispatch", r)
+        self.assertIn("Only the END review's approval replaces it", r)
+        for t in (s, r):
+            self.assertNotIn("after EVERY item", t)
+            self.assertNotIn("After EVERY item", t)
+
+    def test_answers_saved_by_file(self):
+        s, r = read("skills/part/SKILL.md"), read("skills/part/review.md")
+        self.assertNotIn("<<", r)
+        for k in ["--answer-file", "Write tool"]:
+            self.assertIn(k, s, k)
+            self.assertIn(k, r, k)
+        self.assertIn("<S>/answer-<lens>-<chunk>-<round>.txt", r)
+        self.assertIn("the next free number", r)
+        self.assertIn('"usage":true', r)
+        self.assertIn("`usage` true = fix the call", s)
+
+    def test_recheck_and_base_item_rules(self):
+        for f in REVIEWERS:
+            self.assertNotIn("cumulative diff", read(f), f)
+            self.assertIn("same file, title and sev and `introduced:true`", read(f), f)
+            self.assertIn("`line` is an integer or null", read(f), f)
+            self.assertIn("equal the json", read(f), f)
+        self.assertIn("Base item yes/no", read("templates/phase/brief.md"))
+        self.assertIn("NO item starts while it is under review or fix", read("skills/part/SKILL.md"))
+        r = read("skills/part/review.md")
+        self.assertIn("blocks, whatever its `introduced` says", r)
+        self.assertIn("in exactly ONE chunk", r)
+        for c in re.findall(r"git diff (?!--stat)[^`\n]*<(?:base|before fix)>\.\.", r):
+            self.assertIn("--no-ext-diff --ignore-submodules=none", c)
+
     def test_coordinator_defaults_to_opus(self):
         import glob
         files = ["skills/part/SKILL.md", "skills/plan/SKILL.md",
@@ -100,6 +152,26 @@ class TextosAgentes(unittest.TestCase):
             self.assertIn(CAP, read(f), f)
         allm = {f"agents/{p.name}" for p in (ROOT / "agents").glob("*.md")} - {"agents/persona.md"}
         self.assertEqual(allm, set(CAPPED))
+
+
+class ComandosDaRevisao(PromptBase):
+    """Each command of the texts, filled in, passes the plugin's own Bash guard."""
+    def test_guard_lets_the_exact_lines_pass(self):
+        raiz, s = sh_path(str(pathlib.Path(SCRIPT).parent.parent)), sh_path(self.tmp)
+        t = read("skills/part/review.md")
+        cmds = re.findall(r'^(?:sh|git) .*$', t, re.M)
+        self.assertEqual([re.search(r"rota --part|review-\w+|diff", c).group(0) for c in cmds],
+                         ["diff", "rota --part", "review-save", "review-pending"])
+        cmds += re.findall(r'`(sh "\$\{CLAUDE_PLUGIN_ROOT\}[^`]*review-pending[^`]*)`', read("skills/part/SKILL.md"))
+        cmds += re.findall(r'`(sh "\$\{CLAUDE_PLUGIN_ROOT\}[^`]*review-pending[^`]*)`', read("skills/ship/SKILL.md"))
+        self.assertEqual(len(cmds), 6)
+        for c in cmds:
+            for a, b in (("${CLAUDE_PLUGIN_ROOT}", raiz), ("<plugin>", raiz), ("<S>", s), ("<R>", s + "/my plans/review-B"),
+                         ("<names>", "src/A.tsx 'src/b c.tsx'"), ("<X>", "B"), ("<base>", "b" * 7)):
+                c = c.replace(a, b)
+            c = re.sub(r"<absolute path of the LOCAL [^>]*>", s + "/my plans/PROGRESS.md", c)
+            self.assertNotRegex(c, r"<[a-zA-Z]", c)
+            self.assertIsNone(self.bash(c), c)
 
 
 if __name__ == "__main__":
