@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Merge environment flags into Claude Code's settings.json, and nothing else.
+"""Merge env flags and the default model into Claude Code's settings.json, and nothing else.
 
-Usage: settings_merge.py --set-env KEY=VALUE [--set-env KEY=VALUE ...] [--path FILE]
-Default --path: ~/.claude/settings.json.
+Usage: settings_merge.py [--set-env KEY=VALUE ...] [--set-model opus] [--path FILE]
+At least one of --set-env / --set-model is required. The only model the plugin
+ever writes is "opus". Default --path: ~/.claude/settings.json.
 
 Steps:
   * read the file; invalid JSON (or not an object, or "env" not an object) -> stop, write nothing;
@@ -10,7 +11,8 @@ Steps:
     secrets never go through this script;
   * values already equal -> write nothing;
   * backup <file>.bak-tune-up-<YYYYMMDD-HHMMSS> (never replaces an older backup);
-  * set only the requested env keys, keep every other key as it was;
+  * a top-level "model" that is not a string -> stop, write nothing;
+  * set only the requested env keys and/or the top-level "model", keep every other key as it was;
   * write a temporary file in the same folder, then os.replace (atomic);
     if the file changed on disk since it was read, stop before replacing;
   * read it back and check it equals the expected object.
@@ -66,6 +68,8 @@ def load(path):
         raise MergeError("%s is not a JSON object; nothing written" % path)
     if not isinstance(data.get("env", {}), dict):
         raise MergeError("%s: \"env\" is not an object; nothing written" % path)
+    if not isinstance(data.get("model", ""), str):
+        raise MergeError("%s: \"model\" is not a string; nothing written" % path)
     return data, st
 
 
@@ -107,22 +111,28 @@ def write_atomic(path, data, st):
         raise
 
 
-def merge(path, wanted):
+def merge(path, wanted, model=None):
     path = os.path.realpath(os.path.expanduser(path))
     data, st = load(path)
     env = dict(data.get("env", {}))
     changed = {k: {"before": env.get(k), "after": v} for k, v in wanted.items() if env.get(k) != v}
     result = {"path": path, "changed": changed, "unchanged": sorted(k for k in wanted if k not in changed)}
-    if not changed:
+    model_changed = model is not None and data.get("model") != model
+    if model is not None:
+        result["model"] = {"before": data.get("model"), "after": model, "changed": model_changed}
+    if not changed and not model_changed:
         result["written"] = False
         return result
     if st is not None:
         result["backup"] = backup(path)
     else:
         os.makedirs(os.path.dirname(path), exist_ok=True)
-    env.update(wanted)
     expected = dict(data)
-    expected["env"] = env
+    if changed:
+        env.update(wanted)
+        expected["env"] = env
+    if model_changed:
+        expected["model"] = model
     write_atomic(path, expected, st)
     with open(path, encoding="utf-8") as fh:
         if json.load(fh) != expected:
@@ -132,12 +142,15 @@ def merge(path, wanted):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Set env keys in Claude Code settings.json (no secrets).")
-    ap.add_argument("--set-env", action="append", required=True, metavar="KEY=VALUE")
+    ap = argparse.ArgumentParser(description="Set env keys and/or the default model (opus only) in Claude Code settings.json (no secrets).")
+    ap.add_argument("--set-env", action="append", default=[], metavar="KEY=VALUE")
+    ap.add_argument("--set-model", choices=("opus",), help="default session model; only opus is allowed")
     ap.add_argument("--path", default="~/.claude/settings.json", help="settings file (default ~/.claude/settings.json)")
     args = ap.parse_args(argv)
+    if not args.set_env and not args.set_model:
+        ap.error("at least one of --set-env / --set-model is required")
     try:
-        print(json.dumps(merge(args.path, parse_pairs(args.set_env))))
+        print(json.dumps(merge(args.path, parse_pairs(args.set_env), args.set_model)))
     except (MergeError, OSError) as e:
         print("error: %s" % e, file=sys.stderr)
         return 1
