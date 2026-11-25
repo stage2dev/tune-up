@@ -102,8 +102,9 @@ class WorkflowTemplate(unittest.TestCase):
 
 DRIVER = '''
 import fs from 'fs'
+import { pathToFileURL } from 'url'
 const [,, file, scenario, argsJson] = process.argv
-const mod = await import(file)
+const mod = await import(pathToFileURL(file).href)
 const calls = []
 let n = 0
 // A scenario starting with `{` scripts the replies: `commits` (executors, in order) and one list per

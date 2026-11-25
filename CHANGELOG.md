@@ -12,6 +12,7 @@ Review once per Part (lean mode, Part B).
 - Fixes grouped by files (up to ~5 findings per opus executor), recheck of the fix diff after a CRITICAL/HIGH, max 2 fixes, then need_you. MEDIUM/LOW never block.
 - The pending line is written before the first dispatch; only the end review's approval replaces it. The checker runs after the last fix. Every changed path is in exactly one chunk (plus `rest`); an unchanged or invalid commit is interrupted; a reopened finding always blocks; reviewer answers are saved with `--answer-file`.
 - Work order, goal and progress templates, README and `workflow-template.js` follow the same regime; agent reports are capped at ~25 lines.
+- `review-save` also refuses an existing link on Windows, where the exclusive create follows a dangling one. The workflow template tests import by `file://` URL, so they run on Windows.
 - Not proven here: not yet run on a real Part.
 
 Opus by default (lean mode, Part A).

@@ -138,10 +138,15 @@ def gravar(caminho, dados):
     """Exclusive create (never overwrites or follows a link), 0600; nothing left behind on error."""
     flags = (os.O_WRONLY | os.O_CREAT | os.O_EXCL
              | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0))
+    existe = "file already exists for this lens, chunk and round: use the next --round"
+    # shortcut: Windows has no O_NOFOLLOW and O_EXCL follows a dangling link there; a link planted between
+    # this check and the open still passes on Windows, use CreateFileW with FILE_FLAG_OPEN_REPARSE_POINT then
+    if os.path.lexists(caminho):
+        raise Usage(existe)
     try:
         fd = os.open(caminho, flags, 0o600)
     except FileExistsError:
-        raise Usage("file already exists for this lens, chunk and round: use the next --round")
+        raise Usage(existe)
     except OSError as e:
         raise Usage("cannot write in dir (%s)" % type(e).__name__)
     try:
