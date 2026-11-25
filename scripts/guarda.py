@@ -6,6 +6,16 @@ Uso: python3 guarda.py <prompt|inicio|bash|agent|escrita|prod|pos_bash>
      python3 guarda.py confiar|trust <arq>   (não lê stdin)
      python3 guarda.py rota --files <caminho> [...] [--diff-file <patch>] [--failed sonnet|opus] [--text-file <txt>]
                                              (JSON executor/reviewers/why; erro = sobe; não lê stdin)
+     python3 guarda.py rota --part --files <caminho> [...] --diff-file <patch>
+                                             (JSON da revisão da Parte: risk/reviewers/model/effort/chunks;
+                                             erro = todas as lentes; não lê stdin)
+     python3 guarda.py review-save --dir <pasta absoluta> --lens failures|security|database --chunk <rótulo> --round <1-9>
+                                             [--answer-file <arquivo absoluto>]
+                                             (resposta do revisor no arquivo ou no stdin; grava review-part-*.json;
+                                             resposta ruim = {"ok": false, "lens_ran": false}; erro de uso =
+                                             {"ok": false, "usage": true, "lens_ran": null})
+     python3 guarda.py review-pending --file <progresso> [--part <X>]
+                                             (JSON pending/lines; erro = pendente; não lê stdin)
 Lê o JSON do hook no stdin, escreve JSON no stdout quando há decisão.
 Sempre sai com código 0. Exceção interna = não decide nada (fail-open)
 e grava uma linha em <dados>/erros.log.
@@ -49,9 +59,16 @@ except BaseException as _e:
             print(json.dumps({"systemMessage": "tune-up: hooks off (import failed), see %s" % _log}))
         except Exception:
             pass
-    if sys.argv[1:2] == ["rota"]:  # routing never goes down on error: opus + security + database
+    if sys.argv[1:2] == ["rota"] and "--part" in sys.argv:  # Part review: every lens, opus, high
+        print('{"part": true, "risk": true, "reviewers": ["failures", "security", "database"], "model": "opus", '
+              '"effort": "high", "lines": null, "chunks": 1, "why": ["error (import failed): route up"]}')
+    elif sys.argv[1:2] == ["rota"]:  # routing never goes down on error: opus + security + database
         print('{"executor": "tune-up:executor-opus", "reviewers": ["failures", "security", "database"], '
               '"why": ["error (import failed): route up"]}')
+    if sys.argv[1:2] == ["review-save"]:  # fail-closed: the lens did not run
+        print('{"ok": false, "lens_ran": false, "error": "import failed"}')
+    if sys.argv[1:2] == ["review-pending"]:  # fail-closed: ship stops
+        print('{"pending": true, "lines": [], "error": "import failed"}')
     sys.exit(0)  # pacote quebrado: fail-open, não decide nada
 
 

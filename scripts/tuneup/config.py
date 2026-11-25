@@ -23,7 +23,7 @@ ALIASES = {"branch_principal": "main_branches", "merge_pelo_claude": "claude_may
 
 AFROUXAM = ("claude_may_merge", "commit_on_main", "main_branches", "synced_roots",
             "free_repos", "research_free_paths", "supabase_guard", "line_limit",
-            "line_limit_exclude", "router")
+            "line_limit_exclude", "router", "front_globs", "globs_off")
 RE_QUANT_ANINHADO = re.compile(r"\([^)]*[+*][^)]*\)[+*{]")
 LIMITE_TEXTO = 120
 
@@ -163,7 +163,7 @@ def regras_validas(regras, invalidas=None):
 
 
 LISTAS_STR = ("main_branches", "synced_roots", "free_repos", "research_free_paths",
-              "risk_globs", "security_globs", "database_globs")
+              "risk_globs", "security_globs", "database_globs", "front_globs", "globs_off")
 BOOLS = ("claude_may_merge", "commit_on_main", "supabase_guard")
 TEXTOS = ("project", "language", "plans_dir", "workflow_generic")
 NIVEL_GENERICO = {"off": 0, "warn": 1, "block": 2}  # unknown value = warn

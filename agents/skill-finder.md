@@ -21,6 +21,8 @@ The request gives the work item (goal, files, kind of change) and the absolute c
 
 ## Answer
 
+Final report: at most ~25 lines (~1.5k tokens), telegraphic; longer detail goes to a file in the scratchpad, cited by its absolute path. CRITICAL/HIGH findings are never cut.
+
 At most 3 lines, nothing else:
 
 `name | path to SKILL.md | why (1 line)`

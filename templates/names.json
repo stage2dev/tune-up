@@ -17,7 +17,8 @@
     "open_questions": "OPEN QUESTIONS",
     "decisions_heading": "DECISIONS",
     "need_you": "NEED YOU:",
-    "part_closed": "Part {X} closed"
+    "part_closed": "Part {X} closed",
+    "review_pending": "REVIEW PENDING"
   },
   "pt-BR": {
     "vision": "VISAO.md",
@@ -37,6 +38,7 @@
     "open_questions": "OPEN QUESTIONS",
     "decisions_heading": "DECISÕES",
     "need_you": "PRECISO DE VOCÊ:",
-    "part_closed": "Parte {X} fechada"
+    "part_closed": "Parte {X} fechada",
+    "review_pending": "REVISÃO PENDENTE"
   }
 }

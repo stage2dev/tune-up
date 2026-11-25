@@ -63,13 +63,15 @@ Always finish with this handoff, in the language of the request:
 - Met / Partial / Deviations
 
 ## Failure paths checked
-- one line per path above: "checked: file:line" or "n/a: reason"
+- one "checked: file:line" line per path; all n/a paths on ONE line: "n/a: a, b, c - reason"
 
 ## Flags for the judge
 - risks, under-specified spots, what to look at hard
 
 ## Confidence
 - high / medium / low, and why
+
+Final report: at most ~25 lines (~1.5k tokens), telegraphic; longer detail goes to a file in the scratchpad, cited by its absolute path. CRITICAL/HIGH findings are never cut.
 
 Your final message IS the report the planner reads. Write for a skeptic, not to reassure.
 

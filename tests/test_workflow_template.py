@@ -1,4 +1,6 @@
+import json
 import os
+import sys
 import re
 import shutil
 import subprocess
@@ -53,6 +55,14 @@ class WorkflowTemplate(unittest.TestCase):
         self.assertIn("MAX_FIXES = 2", text)
         for r in ("failures", "security", "database"):
             self.assertIn("agentType: 'tune-up:reviewer-%s'" % r, text)
+        self.assertIn("DEFAULT_LENSES = ['failures', 'security']", text)
+
+    def test_design_markers(self):
+        code = code_only(read())
+        self.assertNotIn("pipeline(", code)   # items run in sequence
+        self.assertIn("boundary", code)
+        self.assertIn("PREVIOUS FINDINGS", code)
+        self.assertIn("${before}..${commit}", code)   # recheck sees only the fix diff
 
     def test_no_patch_file_and_reviewer_runs_diff(self):
         text = read()
@@ -73,7 +83,7 @@ class WorkflowTemplate(unittest.TestCase):
                              len(re.findall(r"\bmodel[\"']?\s*[:=]", text)))
 
     def test_size(self):
-        self.assertLessEqual(len(read().splitlines()), 200)
+        self.assertLessEqual(len(read().splitlines()), 240)
 
     def test_node_syntax(self):
         node = shutil.which("node")
@@ -88,6 +98,198 @@ class WorkflowTemplate(unittest.TestCase):
                         + body + "\n}\n")
             r = subprocess.run([node, "--check", p], capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, r.stderr)
+
+
+DRIVER = '''
+import fs from 'fs'
+const [,, file, scenario, argsJson] = process.argv
+const mod = await import(file)
+const calls = []
+let n = 0
+// A scenario starting with `{` scripts the replies: `commits` (executors, in order) and one list per
+// reviewer label (the last one repeats); a reviewer without a list approves.
+const script = scenario.startsWith('{') ? JSON.parse(scenario) : null
+const fake = (prompt, o) => {
+  const t = o.agentType
+  if (t === 'tune-up:checker') return { passed: true }
+  if (script && t.startsWith('tune-up:executor') && script.commits && script.commits.length) return { commit: script.commits.shift(), summary: 's', tests: 't' }
+  if (script && t.startsWith('tune-up:reviewer')) {
+    const q = script[o.label] || [{ verdict: 'approve', findings: [] }]
+    return q.length > 1 ? q.shift() : q[0]
+  }
+  if (t.startsWith('tune-up:executor')) return { commit: (0x1000000 + ++n).toString(16), summary: 's', tests: 't' }
+  const first = !prompt.includes('PREVIOUS FINDINGS')
+  const high = { sev: 'HIGH', file: 'a.py', line: 1, introduced: true, proof: 'p', title: 'bug' }
+  if (scenario === 'null') return null
+  if (scenario === 'clean' || (scenario === 'oneHigh' && !first)) return { verdict: 'approve', findings: [] }
+  return { verdict: 'reject', findings: [high] }
+}
+const agent = async (prompt, o) => { calls.push({ label: o.label, prompt }); return fake(prompt, o) }
+const parallel = fns => Promise.all(fns.map(f => f()))
+const result = await mod.default(JSON.parse(argsJson), agent, parallel, null, () => {}, () => {})
+console.log(JSON.stringify({ result, calls }))
+'''
+
+
+R = "review:failures:all"
+OK = {"verdict": "approve", "findings": []}
+
+
+def H(title, **kw):
+    return dict({"sev": "HIGH", "file": "a.py", "line": 1, "introduced": True, "proof": "read", "title": title}, **kw)
+
+
+def no(*findings):
+    return {"verdict": "reject", "findings": list(findings)}
+
+
+@unittest.skipUnless(shutil.which("node"), "node not on PATH")
+class WorkflowBehaviour(unittest.TestCase):
+    def run_tpl(self, scenario, args):
+        args = dict({"base": "b" * 7}, worktree="/w", **args)
+        scenario = scenario if isinstance(scenario, str) else json.dumps(scenario)
+        with tempfile.TemporaryDirectory() as d:
+            tpl, drv = os.path.join(d, "tpl.mjs"), os.path.join(d, "drv.mjs")
+            body = read().replace("export const meta", "const meta", 1)
+            with open(tpl, "w", encoding="utf-8") as f:
+                f.write("export default async function (args, agent, parallel, pipeline, phase, log) {\n" + body + "\n}\n")
+            with open(drv, "w", encoding="utf-8") as f:
+                f.write(DRIVER)
+            r = subprocess.run([shutil.which("node"), drv, tpl, scenario, json.dumps(args)],
+                               capture_output=True, text=True, encoding="utf-8")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            return json.loads(r.stdout)
+
+    def part(self, **kw):
+        return {"items": [], "review": dict({"commit": "c" * 7, "stat": "x", "reviewers": ["failures"]}, **kw)}
+
+    def review(self, scenario, args):
+        out = self.run_tpl(scenario, args)
+        return out["result"]["review"], [c["label"] for c in out["calls"]], out["calls"]
+
+    def test_no_review_is_pending_never_done(self):
+        out = self.run_tpl("clean", {"items": [{"id": "A", "order": "o"}, {"id": "B", "order": "o"}]})
+        self.assertEqual(out["result"]["review"], "pending")
+        self.assertEqual([i["status"] for i in out["result"]["items"]], ["built", "built"])
+        self.assertIsNone(out["result"]["check"])
+
+    def test_one_high_then_clean_recheck(self):
+        out = self.run_tpl("oneHigh", self.part())
+        r = out["result"]["review"]
+        self.assertEqual((r["status"], r["fixes"]), ("done", 1))
+        fixes = [c for c in out["calls"] if c["label"].startswith("fix")]
+        self.assertEqual(len(fixes), 1)
+        rechecks = [c for c in out["calls"] if "PREVIOUS FINDINGS" in c["prompt"]]
+        self.assertTrue(rechecks)
+        self.assertIn("git diff --no-ext-diff --ignore-submodules=none %s..1000001`" % ("c" * 7), rechecks[0]["prompt"])
+        self.assertNotIn("%s.." % ("b" * 7), rechecks[0]["prompt"])
+
+    def test_leftover_needs_you_after_two_fixes(self):
+        r, labels, _ = self.review({R: [no(H("a"), H("b"), H("c")), no(H("a"), H("b")), no(H("a"))]}, self.part())
+        self.assertEqual((r["status"], r["fixes"], len(r["open"])), ("need_you", 2, 1))
+        self.assertEqual(len([x for x in labels if x.startswith("fix")]), 2)
+
+    def test_count_not_dropping_needs_you(self):
+        r, labels, _ = self.review({R: [no(H("a")), no(H("new"))]}, self.part())
+        self.assertEqual((r["status"], r["fixes"]), ("need_you", 1))
+        self.assertNotIn("check", labels)
+
+    def test_dead_or_limited_reviewer_is_not_called_again(self):
+        for reply in (None, "You've hit your usage limit"):
+            r, labels, _ = self.review({R: [reply, OK]}, self.part())
+            self.assertEqual((r["status"], labels), ("interrupted", [R]), reply)
+
+    def test_invalid_answer_is_asked_once(self):
+        r, labels, _ = self.review({R: [{"verdict": "approve"}, OK]}, self.part())
+        self.assertEqual((r["status"], labels.count(R)), ("done", 2))
+        r, labels, _ = self.review({R: [{"verdict": "approve"}]}, self.part())
+        self.assertEqual((r["status"], labels.count(R)), ("interrupted", 2))
+
+    def test_rejected_without_blocking_is_asked_once(self):
+        pre = no(H("old", introduced=False))
+        r, labels, calls = self.review({R: [pre, OK]}, self.part())
+        self.assertEqual((r["status"], labels.count(R)), ("done", 2))
+        self.assertIn("justify", calls[1]["prompt"])
+        r, labels, _ = self.review({R: [pre]}, self.part())
+        self.assertEqual((r["status"], labels.count(R)), ("need_you", 2))
+        r, _, _ = self.review({R: [pre, None]}, self.part())
+        self.assertEqual(r["status"], "interrupted")
+
+    def test_rejects_matches_the_saved_answer_rule(self):
+        sys.path.insert(0, os.path.join(os.path.dirname(PATH), "..", "scripts"))
+        from tuneup.revisao import aprovado
+        for v in ("approve", "APPROVED", "Approved with fixes - 0 CRITICAL, 0 HIGH, 2 MEDIUM", "aprovado com correções",
+                  "**APPROVED**", "approve\nwith  notes", "approved, 1 high and 2 low", "not approved", "approve?", "approved but blocked",
+                  "reject", "REJECTED", "no", "changes requested", "", "approvedx", "approve e 3 pré-existentes", "approved_"):
+            r, _, _ = self.review({R: [dict(OK, verdict=v)]}, self.part())
+            self.assertEqual(r["status"], "done" if aprovado(v) else "need_you", v)
+
+    def test_reopened_blocks_whatever_introduced_says(self):
+        first = no(H("a"), H("b"))
+        for again in (H(" A ", introduced=False), H("other words", introduced=False, reopened=True),
+                      H("a", sev="MEDIUM", introduced=False)):
+            r, _, calls = self.review({R: [first, dict(OK, findings=[again])]}, self.part())
+            self.assertEqual((r["status"], r["fixes"], len(r["open"])), ("need_you", 2, 1), again)
+        self.assertTrue(any("same file and title, reopened: true and introduced: true" in c["prompt"] for c in calls))
+        r, _, _ = self.review({R: [first, dict(OK, findings=[H("unrelated", introduced=False)])]}, self.part())
+        self.assertEqual((r["status"], len(r["later"])), ("done", 1))
+
+    def test_missing_end_reviewers_is_all_three_lenses(self):
+        for lenses in (None, [], ["typo"]):
+            _, labels, _ = self.review("clean", self.part(reviewers=lenses))
+            self.assertEqual(labels, ["review:%s:all" % l for l in ("failures", "security", "database")] + ["check"], lenses)
+        _, labels, _ = self.review({R: [no(H("a"))]}, self.part(reviewers=["failures", "failures"]))
+        self.assertEqual(labels[:2], [R, "fix1.1:part"])
+
+    def test_bad_end_commit_is_interrupted(self):
+        items = [{"id": "A", "order": "o"}]
+        for name, args in (("missing", self.part(commit=None)), ("HEAD", self.part(commit="HEAD")),
+                           ("base", self.part(commit="b" * 7)), ("long base", self.part(commit="b" * 40)),
+                           ("stale", dict(self.part(), items=items)),
+                           ("moving base", dict(self.part(), base="origin/main"))):
+            r, labels, _ = self.review("clean", args)
+            self.assertEqual(r["status"], "interrupted", name)
+            self.assertFalse([x for x in labels if x.startswith("review") or x == "check"], name)
+        for kw in ({"commit": "1000001"}, {"commit": None}):
+            r, _, _ = self.review("clean", dict(self.part(**kw), items=items))
+            self.assertEqual((r["status"], r["commit"]), ("done", "1000001"))
+
+    def test_unchanged_commit_is_interrupted(self):
+        for bad in ("c" * 7, "c" * 40, "b" * 7, "HEAD", ""):
+            r, labels, _ = self.review({R: [no(H("a")), OK], "commits": [bad]}, self.part())
+            self.assertEqual((r["status"], labels.count(R)), ("interrupted", 1), bad)
+        base = lambda i, b: {"id": i, "order": "o", "base": b, "reviewers": ["failures"]}
+        for commits, want in ((["b" * 7], ["interrupted", "not_run"]), (["a" * 7, "a" * 40], ["built", "interrupted"])):
+            for b in (True, False):
+                out = self.run_tpl({"commits": commits}, {"items": [base("A", b), base("B", b)]})
+                self.assertEqual([i["status"] for i in out["result"]["items"]], want)
+
+    def test_chunks_cover_every_file_once(self):
+        two = [{"id": "front", "paths": ["src/"]}, {"id": "back", "paths": ["api"]}]
+        r, labels, calls = self.review("clean", self.part(chunks=two, files=["src/a.ts", "api/b.py", "apix/c.py", "x.md"]))
+        self.assertEqual(r["status"], "done")
+        self.assertEqual(labels, ["review:failures:%s" % c for c in ("front", "back", "rest", "boundary")] + ["check"])
+        self.assertIn('Only these paths: ["apix/c.py","x.md"]', calls[2]["prompt"])
+        self.assertIn('Only these paths: ["src/a.ts"]', calls[0]["prompt"])
+        _, labels, _ = self.review("clean", self.part(chunks=two, files=["src/a.ts", "api/b.py"]))
+        self.assertNotIn("review:failures:rest", labels)
+        for ok in (1, None, []):
+            self.assertEqual(self.review("clean", self.part(chunks=ok))[1], [R, "check"], ok)
+
+    def test_untrusted_chunks_are_interrupted(self):
+        c = lambda i, *p: {"id": i, "paths": list(p)}
+        f = ["a/1", "a/b/2", "z"]
+        for chunks, files in ((3, f), ("2", f), ([c("x", "a"), c("y", "a/b")], f), ([c("x", "a/1"), c("x", "z")], f),
+                              ([{"paths": ["a"]}, c("y", "z")], f), ([c("", "a")], f), ([c("boundary", "a")], f),
+                              ([c("rest", "a")], f), ([c("x", "nope")], f), ([c("x")], f), ([{"id": "x"}], f),
+                              ([c("x", "a")], None), ([c("x", "a")], [])):
+            r, labels, _ = self.review("clean", self.part(chunks=chunks, files=files))
+            self.assertEqual((r["status"], labels), ("interrupted", []), (chunks, files))
+
+    def test_base_item_rejected_stops_next(self):
+        out = self.run_tpl("neverCloses", {"items": [
+            {"id": "A", "order": "o", "base": True}, {"id": "B", "order": "o"}]})
+        self.assertEqual([i["status"] for i in out["result"]["items"]], ["need_you", "not_run"])
 
 
 if __name__ == "__main__":

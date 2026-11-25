@@ -145,6 +145,7 @@ def pitfall_skills():
 
 def montar_info(cwd=None):
     from .rota import globs_efetivos  # here: rota imports this module
+    from .rota_parte import front_globs
     cwd = os.path.realpath(cwd or os.getcwd())
     usuario, existe = ler_usuario()
     cfg = carregar_config(cwd)
@@ -170,6 +171,8 @@ def montar_info(cwd=None):
         "catalog_path": _fwd(os.path.realpath(catalogo)) if os.path.isfile(catalogo) else None,
         "pitfall_skills": pitfall_skills(),
         **globs_efetivos(cfg),
+        "front_globs": front_globs(cfg)[0],
+        "globs_off": cfg.get("globs_off") or [],
     }
 
 

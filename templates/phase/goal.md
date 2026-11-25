@@ -44,6 +44,7 @@ Each is a query or command, with "today: X - target: Y". Never "got better".
 - Action: <what to do, with concrete names>.
 - Mirror: `<file:line>`.
 - Validate: <C# or command>.
+- Base item: yes/no (only adds; the per-item route already marks database, security and risk_globs items).
 
 ### Wave 1 - <name> -> Part B
 
@@ -51,6 +52,7 @@ Each is a query or command, with "today: X - target: Y". Never "got better".
 - Action:
 - Mirror:
 - Validate:
+- Base item: yes/no (only adds; the per-item route already marks database, security and risk_globs items).
 
 ## Parts (one context per part)
 
@@ -87,10 +89,10 @@ A Part = 1-2 waves, up to ~8 items or 2 L items; a wave that depends on the owne
 Models and effort per role come from `info` (`models`). Defaults: coordinator = main session, Opus, high effort, by default; Fable only when the owner opened the session in Fable; never switch to it yourself; reviewers = opus, high; mapper, checker, skill-finder = haiku, medium; executor-sonnet, executor-opus, writer = sonnet/opus/sonnet, medium.
 
 - `tune-up:executor-sonnet` for simple items: <list>. `tune-up:executor-opus` for database, money, auth, external sending, concurrency: <list>.
-- Reviewers, up to 3 per item: `tune-up:reviewer-failures` always; `tune-up:reviewer-database` for migration/trigger/access rules/RPC/SQL; `tune-up:reviewer-security` for auth, token, personal data, payment, webhook, sending. Only CRITICAL/HIGH from the diff goes back (NEW executor, max 2 rounds); MEDIUM/LOW -> `{{names.later}}`.
+- Review once per Part, not per item: an item ends when the executor's tests pass and it commits (the coordinator checks the handoff and the diff stat). A BASE ITEM (database, security or risk_globs by the per-item route, or marked in the goal) is reviewed right after it. At the end of the Part: one review over `git diff <base>..HEAD` with the lenses of `guarda.py rota --part`: `tune-up:reviewer-failures` always, plus `tune-up:reviewer-security` when the Part is not low risk and `tune-up:reviewer-database` when `database_globs` matches. Only CRITICAL/HIGH goes back, grouped by files (up to ~5 findings per executor, opus, in sequence), with a recheck of the fix diff after each; max 2 fixes, then `{{names.need_you}}`. `tune-up:checker` runs after the last fix, and again after any later one. MEDIUM/LOW/pre-existing -> `{{names.later}}`.
 - Work order = 1 item, `maxTurns` 220, mapper map pasted, focused test; stop and report near ~80 steps.
 - Production writes (migration, SQL) and any external action: only with the owner's explicit request in the turn.
-- Gate = 0 CRITICAL/HIGH + definition of done (`tune-up:checker`) + the wave's criteria C + project docs updated when the profile asks.
+- Gate = 0 CRITICAL/HIGH + definition of done (`tune-up:checker` green on the final HEAD compared with main) + the wave's criteria C + project docs updated when the profile asks.
 
 ## Plan review (DD/MM)
 

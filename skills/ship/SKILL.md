@@ -2,7 +2,7 @@
 name: ship
 description: Commits and opens the PR with an honest body. Use for "push and PR", "commit", "open the PR", "ship it", "entrega", "sobe a PR", "abre a pr". Merge belongs to the owner, never to you (unless the profile says otherwise).
 argument-hint: "[branch or note]"
-allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info)
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py info), Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py review-pending:*)
 ---
 
 # Ship - commit, push and PR
@@ -18,11 +18,12 @@ The JSON above is the context. Write to the user in its `language`, honoring `re
 0. **Request.** Does the owner's message this turn (or the `/goal` condition they wrote) ask for commit/push/PR? If not, write `names.need_you` + the ask and stop.
 1. **Where am I.** `git branch --show-current`, `git fetch`, `git status --short`. Does the branch have an earlier PR? `gh pr view --json state,number`. Merged: the branch is dead. Create a new branch from `origin/<main>`, bring the commits with `cherry-pick`, open a new PR. Never stacked PRs.
 2. **Only what belongs to the task.** Other sessions edit the same repo. `git add` by file name only. Never `git add -A`, `.`, `commit -a` or `git stash`. A file you do not recognize stays out; say which.
-3. **Commits.** Only what is left (the executor already committed the Part's items). One per wave or item when sensible. Short message in the repo's style (`git log --oneline -10`). End with the attribution the environment asks for.
-4. **Gate.** If `tune-up:checker` has not run the profile's definition of done in this state, run it. Compare with main: a pre-existing failure is reported as such.
-5. **PR body.** Write it to a scratchpad file from `${CLAUDE_PLUGIN_ROOT}/templates/pr-body.md`, in the `language`. Deploy order AT THE TOP (SQL/migration -> merge -> backend deploy -> frontend deploy). Say what did NOT run and why.
-6. **Push and PR.** `git push -u origin <branch>` and `gh pr create --base <main> --body-file <file>`. Base is always the main branch.
-7. **After.** Update the phase progress document (PR, state, what depends on the owner).
+3. **Review pending?** When the work is a phase Part (the phase folder has a `names.progress`), run `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" scripts/guarda.py review-pending --file "<absolute path of the LOCAL plans_dir progress document>" --part <X>`. Go on only with `pending: false`. `pending: true`, an `error` or no JSON = STOP: no push, no PR; write `names.need_you` with the pending lines and say the review runs first (`/tune-up:part` resumes it). Only the owner's explicit words this turn to ship without review override it, and then the PR body says so.
+4. **Commits.** Only what is left (the executor already committed the Part's items). One per wave or item when sensible. Short message in the repo's style (`git log --oneline -10`). End with the attribution the environment asks for.
+5. **Gate.** If `tune-up:checker` has not run the profile's definition of done in this state, run it. Compare with main: a pre-existing failure is reported as such.
+6. **PR body.** Write it to a scratchpad file from `${CLAUDE_PLUGIN_ROOT}/templates/pr-body.md`, in the `language`. Deploy order AT THE TOP (SQL/migration -> merge -> backend deploy -> frontend deploy). Say what did NOT run and why.
+7. **Push and PR.** `git push -u origin <branch>` and `gh pr create --base <main> --body-file <file>`. Base is always the main branch.
+8. **After.** Update the phase progress document (PR, state, what depends on the owner).
 
 ## Rules
 
