@@ -2,6 +2,14 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## Unreleased
+
+Installed, just works (lean mode, Part C).
+
+- The first session of a plugin version adds in the background what is missing of ECC (disabled), Ponytail (subagent matcher, no ledger) and Caveman (off), from GitHub at pinned commits checked before and after the install, with the limits written first. New `scripts/tuneup/preparar.py`; one line when it starts and one when it ends; a failure is retried and leaves no marker. What the user has, or removed, is not touched. Off: `auto_prepare: false` (user or project).
+- The ECC skills catalog is generated when there is none.
+- Not proven here: a logged-in interactive session, and Windows.
+
 ## 2.28.0
 
 Review once per Part (lean mode, Part B).

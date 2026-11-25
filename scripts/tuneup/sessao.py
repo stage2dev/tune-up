@@ -167,6 +167,11 @@ def ev_inicio(d, cfg):
     n, log = erros_novos()
     if n:
         sistema.append(msg("erros_hooks", n, log))
+    try:
+        from .preparar import ao_iniciar
+        sistema.extend(ao_iniciar(d, cfg))
+    except Exception as e:  # the preparation never changes the session
+        log_erro("preparar", "%s: %s" % (type(e).__name__, e))
     linhas.extend(sistema)
     if not linhas:
         return None

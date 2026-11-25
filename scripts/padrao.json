@@ -12,6 +12,7 @@
   "research_off_phrases": [],
   "plans_dir": ".planning",
   "supabase_guard": true,
+  "auto_prepare": true,
   "workflow_generic": "warn",
   "risk_globs": ["**/migrations/**", "**/*.sql", "**/auth/**", "**/*auth*", "**/*webhook*",
                  "**/*payment*", "**/*billing*", "**/*worker*", "**/*queue*", "**/hooks/**"],

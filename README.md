@@ -34,6 +34,23 @@ Then, inside Claude Code:
 
 New plugins only work after `/reload-plugins` or a new session.
 
+### What the first session installs by itself
+
+The first session after the install (or after a tune-up update) adds, in the background, what is missing of these three. It says so in one line, the next session says how it ended, and a failure (no network, or `claude`, `git` or `node` missing) is retried at the next session.
+
+| Plugin | From (GitHub) | Pinned commit | Limit, written before the install |
+|---|---|---|---|
+| ECC | `affaan-m/ecc#v2.2.3` | `c05b2d6614f62f6db0047669aa4eefb223d478f9` | Hooks off and the plugin disabled; only the local skills catalog in `~/.config/tune-up/` is read |
+| Ponytail | `DietrichGebert/ponytail#v5.3.3` | `7801d061243d7b753bad0e0b3c057cd250b11755` | `ledger=false`; `PONYTAIL_SUBAGENT_MATCHER=^tune-up:executor` in the `env` of `settings.json` (dated backup), only if you have none |
+| Caveman | `JuliusBrussee/caveman#v4.2.0` | `70f4f34e834893ea9af9f4fc6022266bd56d18b1` | `{"defaultMode":"off"}` in `~/.config/caveman/config.json`, only if you have none |
+
+- A clone that is not at the pinned commit is never installed.
+- What you already have stays as it is: an installed plugin (on or off), a marketplace of the same name from another source, an existing limit. A plugin you uninstall later does not come back.
+- Ponytail limit: the main session always gets about 3 KB of its rules; the matcher only filters subagents, and it fails open (every subagent gets the rules) on an invalid regex or an empty agent type.
+- The default model is never changed this way, and it never runs in CI.
+- Turn off, before or after: `"auto_prepare": false` in `~/.config/tune-up/user.json`. A project `config.json` may also turn it off, even untrusted; no project can turn it back on.
+- Undo: turn it off, then `claude plugin uninstall ecc@ecc`, `ponytail@ponytail` and `caveman@caveman` (one call each), `claude plugin marketplace remove` for `ecc`, `ponytail` and `caveman`, remove `PONYTAIL_SUBAGENT_MATCHER` from `settings.json` and delete `~/.config/caveman/config.json`.
+
 ### Windows: `marketplace add` fails with `EPERM ... rename`
 
 A known Claude Code bug on Windows, not specific to this plugin: Claude Code clones the repo and then renames the folder, and Windows Defender or the Search Indexer may still be holding a file in it. Install from a local clone instead:
@@ -65,7 +82,7 @@ What it asks:
 
 It writes `~/.config/tune-up/user.json` only after you confirm the exact JSON.
 
-Nothing is installed without you marking it. Secrets are never typed in the chat. Commands that need a login or a system installer (`gh auth login`, `brew ...`, `winget ...`) are given to you to type yourself with `!`.
+Setup installs nothing without you marking it (the three plugins of the section above come before it). Secrets are never typed in the chat. Commands that need a login or a system installer (`gh auth login`, `brew ...`, `winget ...`) are given to you to type yourself with `!`.
 
 Optional tools and what leaves your machine:
 
@@ -75,7 +92,7 @@ Optional tools and what leaves your machine:
 | claude-mem | Session memory plugin (`thedotmack/claude-mem`) | Records observations of every session (they can contain code or secrets seen in tool output) and sends them to an AI provider to summarize. Sends anonymous usage telemetry to PostHog by default (setup offers to turn it off with `CLAUDE_MEM_TELEMETRY=0`). Opens a local HTTP worker on 127.0.0.1. | `claude plugin uninstall claude-mem@thedotmack`; data in `~/.claude-mem/` |
 | fast-jev-compaction | Better compaction summaries (`tamaratran/fast-jev-compaction`) | Sends the whole conversation (tool outputs replaced by notes; tool inputs such as commands and edited text, up to 1000 characters each, are sent too) to TypeSafe at every compaction; needs a TypeSafe API key. Relies on an early-access Claude Code feature that may change. The key is pasted only in the `/plugin` panel or in a terminal outside Claude Code, never in the chat. | `claude plugin uninstall fast-jev-compaction@fast-jev-compaction`; remove the `env` flag or restore the dated `settings.json.bak-tune-up-<date-time>` |
 | Caveman | Compression helper (`JuliusBrussee/caveman`) | The plugin has no telemetry (unverified). `/caveman-compress <file>` sends that file to the model. Its separate CLI and "Auto" need an account and are not installed. | `claude plugin uninstall caveman@caveman`; delete `~/.config/caveman/config.json` |
-| Ponytail | "Smallest change" helper (`DietrichGebert/ponytail`) | Keeps a local cost/token ledger in `~/.config/ponytail/`; nothing leaves the machine unless you set its `webhookUrl` (unverified). | `claude plugin uninstall ponytail@ponytail` |
+| Ponytail | "Smallest change" helper (`DietrichGebert/ponytail`) | Keeps a local cost/token ledger in `~/.config/ponytail/` (tune-up installs it with the ledger off); nothing leaves the machine unless you set its `webhookUrl` (unverified). | `claude plugin uninstall ponytail@ponytail` |
 | Graphify | Code knowledge graph (PyPI `graphifyy`, two y) | Code extraction is local (no LLM); docs, PDFs and images use the session's model. `graphify install` also adds a short graphify section to `~/.claude/CLAUDE.md`, read in every session (setup says so before installing). | `graphify uninstall` from a folder without a `CLAUDE.md`, then delete the `# graphify` section of `~/.claude/CLAUDE.md` by hand, then `uv tool uninstall graphifyy` |
 | ECC | Large skill collection (`affaan-m/ecc`) | Downloads the repo from GitHub. The plugin stays disabled; the catalog and the copies of up to 15 skills you accept are local. | `claude plugin uninstall ecc@ecc`; delete `~/.config/tune-up/ecc-skills/`, `ecc-agents/`, `skills-catalog.md`, `use-map.json` and the copied folders in `~/.claude/skills/` |
 
@@ -233,8 +250,8 @@ The panel uses this distro for the studio actions. Details: [`painel/README.md`]
 
 | File | What |
 |---|---|
-| `~/.config/tune-up/user.json` | Personal: `language`, `owner`, `reply_style`, `use_types`, `models`, `forbidden_subagent_models`, `names_override`, `protected_paths`, `plugin_source`, `tools`. Written by `/tune-up:setup`. Delete it to return to the defaults. |
-| `<project>/.tune-up/project.md` and `config.json` | Per project, created by `/tune-up:profile`. `config.json` holds `main_branches`, `plans_dir` (default `.planning`), `free_repos`, `research_free_paths`, `bash_rules`, `line_limit`, `supabase_guard`, `*_phrases`, `front_globs`, `globs_off`, `risk_globs`, `security_globs`, `database_globs`, `skills_by_glob`, `router` and more. |
+| `~/.config/tune-up/user.json` | Personal: `language`, `owner`, `reply_style`, `use_types`, `models`, `forbidden_subagent_models`, `names_override`, `protected_paths`, `plugin_source`, `tools`, `auto_prepare` (default `true`). Written by `/tune-up:setup`. Delete it to return to the defaults. |
+| `<project>/.tune-up/project.md` and `config.json` | Per project, created by `/tune-up:profile`. `config.json` holds `main_branches`, `plans_dir` (default `.planning`), `free_repos`, `research_free_paths`, `bash_rules`, `line_limit`, `supabase_guard`, `auto_prepare`, `*_phrases`, `front_globs`, `globs_off`, `risk_globs`, `security_globs`, `database_globs`, `skills_by_glob`, `router` and more. |
 
 Review regime: an item ends when the executor's tests pass and it commits; the coordinator checks the handoff and the diff stat. A base item (database, security or `risk_globs` by the per-item route, or marked in the goal) is reviewed right after. At the end of the Part one review runs over `git diff <base>..HEAD` with the lenses of `rota --part`. Only CRITICAL/HIGH goes back, grouped by files (up to ~5 findings per opus executor, in sequence), with a recheck of the fix diff; max 2 fixes, then `need_you`. The checker runs after the last fix and must be green on the final HEAD compared with main. MEDIUM/LOW never block: they go to the later document. A reviewer answer is saved with `python3 scripts/guarda.py review-save --dir <dir> --lens <lens> --chunk <label> --round <n> --answer-file <absolute path>` (invalid json counts as a lens that did not run; `usage: true` is a wrong call); `python3 scripts/guarda.py review-pending --file <progress> [--part X]` lists reviews still pending, and `/tune-up:ship` refuses the PR while a "REVIEW PENDING" line is in the progress.
 

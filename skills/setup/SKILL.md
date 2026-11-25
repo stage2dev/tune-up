@@ -17,7 +17,7 @@ Per tool facts (source, check, install, interactive, privacy, undo) live in `${C
 
 - Ask with the AskUserQuestion box (max 4 options per question; split longer lists into two questions of the same call). Free text only for the owner name and the language "other".
 - From the moment the language is chosen, every word to the user is in that language.
-- Nothing is installed or written without the user marking or confirming it. Write only to `~/.config/tune-up/`, `~/.claude/skills/` (ECC copies only through `ecc_catalog.py install`), `~/.config/caveman/` and, with its own confirmation, `~/.claude/settings.json` (only through `settings_merge.py`: `env` keys and the default `model`). Graphify's own installer also adds a block to `~/.claude/CLAUDE.md`: declared in its consent line. Editor settings: only `titulo_terminal.py` (step h).
+- Nothing is installed or written by this skill without the user marking or confirming it (ECC, Ponytail and Caveman may already be there: the background preparation of SessionStart, see `reference.md`). Write only to `~/.config/tune-up/`, `~/.claude/skills/` (ECC copies only through `ecc_catalog.py install`), `~/.config/caveman/` and, with its own confirmation, `~/.claude/settings.json` (only through `settings_merge.py`: `env` keys and the default `model`). Graphify's own installer also adds a block to `~/.claude/CLAUDE.md`: declared in its consent line. Editor settings: only `titulo_terminal.py` (step h).
 - Run `claude plugin ...` through Bash one call at a time; each call asks permission. Never add an allow rule for it.
 - `gh auth login`, `brew ...`, `winget ...`, any downloaded install script and any login by e-mail or browser: never run them. Give the user the exact `! command` to type.
 - Secrets (API keys, tokens): never ask for them in chat, never put them in a command, argument, file, settings or log, never echo them. Only explain where the user pastes them (step d).
@@ -47,7 +47,7 @@ Language "other": translate the `en` values of `${CLAUDE_PLUGIN_ROOT}/templates/
 
 ## (b) Profile
 
-Build `~/.config/tune-up/user.json` (keep keys the user already had, such as `protected_paths` and `names_override`, unless they changed now):
+Build `~/.config/tune-up/user.json` (keep keys the user already had, such as `protected_paths`, `names_override` and `auto_prepare`, unless they changed now):
 
 ```json
 {
@@ -83,7 +83,7 @@ Show the exact JSON, ask "Save?" (yes / change something). On yes, create `~/.co
 ## (c) Tools
 
 1. Detect in one Bash call (read only): `claude plugin list --json`, `command -v gh graphify node uv`, `gh auth status` (exit code only), `test -f ~/.claude/skills/graphify/SKILL.md`. Read the plugin JSON once and match the ids `claude-mem@thedotmack`, `fast-jev-compaction@fast-jev-compaction`, `caveman@caveman`, `ponytail@ponytail`, `ecc@ecc` (and whether each is enabled).
-2. Show a short table: tool | present | enabled.
+2. Show a short table: tool | present | enabled. If the three pinned tools (ECC, Ponytail, Caveman) are missing and `~/.config/tune-up/pronto.json` does not exist, say the background preparation may still be running (`preparo.lock` in that folder) or failed (`preparo.resultado.json`), and that `"auto_prepare": false` in `user.json` turns it off. Never install one of the three while `preparo.lock` exists.
 3. AskUserQuestion ONCE for the missing tools only (multiSelect; split into two questions if more than 4). Each option's description is its privacy line from `reference.md` (what leaves the machine). Nothing marked = nothing installed.
 4. For each marked tool, in the order gh, Graphify, Caveman, Ponytail, claude-mem, fast-jev, ECC, use the install row of `reference.md`:
    - Bash (auto): `claude plugin marketplace add <source>` then `claude plugin install <id> --scope user` (on Windows, `EPERM ... rename`: see the README section "Windows: `marketplace add` fails with `EPERM ... rename`"); `uv tool install graphifyy` then `graphify install` (its consent line says it also adds a short graphify section to `~/.claude/CLAUDE.md`).
@@ -119,12 +119,12 @@ A typed `/goal` and every new session inherit the CLI default model, and the pha
 
 ## (e) Caveman (only if installed now or already present)
 
-- Ask: "Turn Caveman's reply mode off by default? tune-up keeps its own reply style; Caveman stays for compression." On yes, write `~/.config/caveman/config.json` with `{"defaultMode":"off"}`; if the file exists, change only `defaultMode` and show the result first.
+- Ask: "Turn Caveman's reply mode off by default? tune-up keeps its own reply style; Caveman stays for compression." On yes, write `~/.config/caveman/config.json` with `{"defaultMode":"off"}` (the background preparation already wrote it when it installed Caveman: then skip the question); if the file exists, change only `defaultMode` and show the result first.
 - Explain `/caveman-compress <file>`: shortens a memory file (for example `CLAUDE.md`), keeps a backup, and sends that file to the model.
 
 ## (f) ECC (only if marked or already installed)
 
-1. Ask the source (AskUserQuestion): default `affaan-m/ecc` (upstream) | Other (owner/repo or URL).
+1. Ask the source (AskUserQuestion): default `affaan-m/ecc#v2.2.3` (upstream, pinned) | Other (owner/repo or URL).
 2. One Bash call, so ECC is never left on: `claude plugin marketplace add <source> && claude plugin install ecc@ecc --scope user --config hooks_enabled=false && claude plugin disable ecc@ecc`. Check `claude plugin list --json` shows `ecc@ecc` disabled. If it is enabled (install worked, disable failed): say so, offer `claude plugin uninstall ecc@ecc` (one Bash call, normal permission prompt), run it only on yes, then stop this step.
 3. `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py" skills/setup/scripts/ecc_catalog.py --uses <use_types joined by comma>`. It prints JSON with `candidates`, `kept_user_files` and writes `~/.config/tune-up/skills-catalog.md`. On `error:` show it and stop this step.
 4. No use types chosen: skip to step 6. Otherwise call `tune-up:skill-finder` in parallel, one call per kind of use, each with: "kind of use: <kind>; pick from these candidates only: <candidates>; catalog: <absolute catalog path>". Each answer has up to 3 lines `name | path | why`. Merge, drop duplicates and `none`, keep at most 15.

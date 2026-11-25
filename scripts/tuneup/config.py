@@ -165,7 +165,7 @@ def regras_validas(regras, invalidas=None):
 
 LISTAS_STR = ("main_branches", "synced_roots", "free_repos", "research_free_paths",
               "risk_globs", "security_globs", "database_globs", "front_globs", "globs_off")
-BOOLS = ("claude_may_merge", "commit_on_main", "supabase_guard")
+BOOLS = ("claude_may_merge", "commit_on_main", "supabase_guard", "auto_prepare")
 TEXTOS = ("project", "language", "plans_dir", "workflow_generic")
 NIVEL_GENERICO = {"off": 0, "warn": 1, "block": 2}  # unknown value = warn
 
