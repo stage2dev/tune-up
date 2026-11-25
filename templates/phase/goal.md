@@ -34,7 +34,7 @@ Each is a query or command, with "today: X - target: Y". Never "got better".
 
 | Item | Skills to read (name - SKILL.md path - why) |
 |---|---|
-| <n.n> | <up to 3 from `tune-up:skill-finder`, or "none"> |
+| <n.n> | <every `info.side_skills` entry that matches the item's files; no match: up to 3 from `tune-up:skill-finder`, or "none" and the reason> |
 
 ## Waves
 

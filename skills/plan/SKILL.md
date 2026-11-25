@@ -60,7 +60,7 @@ Write `<scratchpad>/<phase>/` brief (name `names.brief`) from `${CLAUDE_PLUGIN_R
 
 ## Step 4 - Skills per item
 
-For each item call `tune-up:skill-finder` (one message, parallel) with the item text and the absolute catalog path (`info.catalog_path`); it returns up to 3 skills (name, SKILL.md path, why). Fill "Skills" in the goal document and "Skills to read" in each work order. No catalog (`catalog_path` empty or the agent answers `none`): leave them empty and say so.
+For each item, the entries of `info.side_skills` whose `paths` globs match the absolute path of one of its files (`**/` also matches zero folders) go straight to "Skills", without calling anyone. Only for an item whose files match NO `side_skills` glob, and with `info.catalog_path` set, call `tune-up:skill-finder` (one message, parallel) with the item text and the absolute catalog path (`info.catalog_path`); it returns up to 3 skills (name, SKILL.md path, why). Fill "Skills" in the goal document and "Skills to read" in each work order. The agent answers `none`: leave them empty and say so. No catalog (`catalog_path` empty) or `info.side_skills_missing` non-empty: the plan warns ONCE, with the missing names and the command that generates it (`/tune-up:setup`, ECC step). Item that uses a library API with no skill in the catalog: `tune-up:researcher` brings the excerpt of the official doc (URL + date) for the order's LIBRARY DOC.
 
 ## Step 5 - Write
 

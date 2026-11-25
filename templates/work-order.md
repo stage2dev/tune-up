@@ -29,9 +29,12 @@ REAL DATA (optional; "none" when not applicable)
 UI STATES (front items only)
 loading, read error, empty, retry, unmount on success, same-route navigation does not remount, refetch overwriting optimistic data, double click, no permission, flag off: each one "handled at file:line" or "n/a: reason".
 
-SKILLS TO READ (paths; read before coding; only the pitfall skills whose paths match an owned file plus the goal's skills, never the whole list)
+SKILLS TO READ (paths; read before coding; ALWAYS the pitfall skills and the side skills whose paths match an owned file, plus the goal's skills, never the whole list; they conflict: repo convention > pitfall skill > side skill)
 - <absolute path to SKILL.md> - <why, 1 line>
-(Empty: write "none".)
+(Empty: write "none" and the reason.)
+
+LIBRARY DOC (optional; item that uses a library API with no skill in the catalog)
+<excerpt of the official doc from `tune-up:researcher`, with URL and date, or "none">
 
 TESTS
 - While working, focused tests only: <command> | tail -40

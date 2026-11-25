@@ -8,7 +8,7 @@ import subprocess
 
 from .caminhos import NT
 from .config import AQUI, carregar_config, plans_relativo
-from .sessao import arquivo_perfil, log_erro
+from .sessao import arquivo_perfil, dentro, log_erro
 from .usuario import caminho_user_json, idioma_efetivo, ler_usuario, modelo_proibido
 
 FERRAMENTAS = ("gh", "graphify", "uv", "node")
@@ -143,6 +143,39 @@ def pitfall_skills():
     return [achadas[n] for n in sorted(achadas)]
 
 
+RE_CATALOGO = re.compile(r"^\| `([^`|]+)` \|", re.M)  # first column, as ecc_install.catalog_names
+LIMITE_CATALOGO = 1024 * 1024
+
+
+def side_skills(cfg, pasta):
+    """`skills_by_glob` resolved in the catalog folder: ([{name, path, paths}] by name, names that
+    are not listed in the catalog or have no regular file inside its ecc-skills folder)."""
+    globs = {}
+    for g, skills in (cfg.get("skills_by_glob") or {}).items():
+        for n in skills:
+            globs.setdefault(n, [])
+            if g not in globs[n]:
+                globs[n].append(g)
+    catalogo, listados = os.path.join(pasta, "skills-catalog.md"), ()
+    try:
+        if os.path.isfile(catalogo):  # not a regular file (a FIFO): never opened
+            with open(catalogo, encoding="utf-8", errors="replace") as f:
+                listados = set(RE_CATALOGO.findall(f.read(LIMITE_CATALOGO)))
+        elif os.path.lexists(catalogo):
+            log_erro("info", "skills-catalog.md is not a regular file: %s" % catalogo)
+    except Exception as e:
+        log_erro("info", "skills-catalog.md unreadable: %r" % (e,))
+    base = os.path.realpath(os.path.join(pasta, "ecc-skills"))
+    achadas, faltam = [], []
+    for n in sorted(globs):
+        real = os.path.realpath(os.path.join(base, n, "SKILL.md"))
+        if n in listados and dentro(real, base) and os.path.isfile(real):
+            achadas.append({"name": n, "path": _fwd(real), "paths": globs[n]})
+        else:
+            faltam.append(n)
+    return achadas, faltam
+
+
 def montar_info(cwd=None):
     from .rota import globs_efetivos  # here: rota imports this module
     from .rota_parte import front_globs
@@ -155,7 +188,9 @@ def montar_info(cwd=None):
               if not modelo_proibido(m.get("model"), usuario["forbidden_subagent_models"])}
     tools = dict(usuario["tools"])
     tools.update({t: bool(shutil.which(t)) for t in FERRAMENTAS})
-    catalogo = os.path.join(os.path.dirname(caminho_user_json()), "skills-catalog.md")
+    pasta = os.path.dirname(caminho_user_json())
+    catalogo = os.path.join(pasta, "skills-catalog.md")
+    lado, faltam = side_skills(cfg, pasta)
     return {
         "language": language,
         "owner": usuario["owner"],
@@ -170,6 +205,8 @@ def montar_info(cwd=None):
         "plugin_source": _fwd(repo_git(usuario["plugin_source"])),
         "catalog_path": _fwd(os.path.realpath(catalogo)) if os.path.isfile(catalogo) else None,
         "pitfall_skills": pitfall_skills(),
+        "side_skills": lado,
+        "side_skills_missing": faltam,
         **globs_efetivos(cfg),
         "front_globs": front_globs(cfg)[0],
         "globs_off": cfg.get("globs_off") or [],
