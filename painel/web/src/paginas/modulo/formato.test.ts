@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { atualizadoHa, caminhoCurto, cortar, dataCurta, diasDesde, ha, linkSeguro, numero, porcento, reais, SEM_DADO } from './formato';
+import { atualizadoHa, caminhoCurto, compacto, cortar, dataCurta, diasDesde, dolares, ha, linkSeguro, numero, porcento, reais, SEM_DADO } from './formato';
 
 const agora = new Date(2026, 10, 10, 15, 0, 0); // 10/11/2026 15:00 local
 
@@ -55,5 +55,25 @@ describe('texto', () => {
     expect(caminhoCurto('/a/b/c/d.md')).toBe('c/d.md');
     expect(cortar('abcdef', 4)).toBe('abc…');
     expect(cortar('abc', 4)).toBe('abc');
+  });
+});
+
+describe('dolares e compacto', () => {
+  it('dolar em pt-BR; sem dado nunca vira zero', () => {
+    expect(dolares(4.1)).toBe('US$ 4,10');
+    expect(dolares(1234.5)).toBe('US$ 1.234,50');
+    expect(dolares(null)).toBe(SEM_DADO);
+    expect(dolares(NaN)).toBe(SEM_DADO);
+  });
+  it('tokens compactos nas bordas', () => {
+    expect(compacto(999)).toBe('999');
+    expect(compacto(1000)).toBe('1 mil');
+    expect(compacto(1500)).toBe('1,5 mil');
+    expect(compacto(230_000)).toBe('230 mil');
+    expect(compacto(999_999)).toBe('1 mi');
+    expect(compacto(1_000_000)).toBe('1 mi');
+    expect(compacto(1_240_000)).toBe('1,2 mi');
+    expect(compacto(550_000_000)).toBe('550 mi');
+    expect(compacto(null)).toBe(SEM_DADO);
   });
 });

@@ -2,6 +2,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useAgentes } from '../../api/agentes';
+import { useCusto } from '../../api/custo';
 import { Erro, EsqueletoPagina, Pagina } from '../../componentes';
 import { useAgora } from '../dev/useAgora';
 import type { Recolhimento } from './CartaoSessao';
@@ -47,6 +48,8 @@ export default function Agentes() {
   }, []);
   const rec = useMemo<Recolhimento>(() => ({ recolhido: (c) => recolhidos.has(c), alternar }), [recolhidos, alternar]);
 
+  // Custo e um extra: se falhar, so a linha do cartao muda; a lista de sessoes nao depende dele.
+  const custo = useCusto(q.data?.sessoes.map((s) => s.sessao_id) ?? []);
   const algoRodando = !!q.data?.sessoes.some((s) => sessaoAtiva(s) || s.agentes_ativos > 0);
   const agora = useAgora(algoRodando);
 
@@ -67,7 +70,7 @@ export default function Agentes() {
           </div>
         )}
         {q.isPlaceholderData && <p role="status" className="text-xs text-[var(--color-text-secondary)]">Buscando {todos ? 'todos os agentes' : 'só os ativos'}…</p>}
-        <VisaoAgentes dados={q.data} agora={agora} rec={rec} todos={todos} />
+        <VisaoAgentes dados={q.data} agora={agora} rec={rec} todos={todos} custo={custo} />
       </div>
     </Pagina>
   );

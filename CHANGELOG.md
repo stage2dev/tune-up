@@ -11,6 +11,11 @@ Opus by default (lean mode, Part A).
 - `/tune-up:setup` asks for the default model of new sessions (Opus or keep the current one). `settings_merge.py --set-model opus` writes the top-level `model` with a dated backup; "keep" does not touch the file. Users who already ran setup can run only this step.
 - Not proven here: the new setup step was not run live.
 
+Panel cap and cost per session (lean mode, Part E).
+
+- Panel: `max_execucoes` defaults to 2 and the cap also counts busy Claude sessions opened outside the panel in the project (host sessions only), without double counting. Over the cap, a new launch or reply gets a 409 that says how many are running; nothing is stopped. If the CLI listing fails, only the panel registry counts.
+- Panel: cost per session in the Agents screen and `GET /api/custo` (tokens, max context, % per model and estimated US$ from a fixed price table; host transcripts only).
+
 ## 2.27.0
 
 Windows installer through WSL2, Part B: the panel bridge. `tune-up-studio` 0.6.0.

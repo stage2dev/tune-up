@@ -316,7 +316,7 @@ class TesteConfigELeitor(unittest.TestCase):
         c = config.carregar(self.tmp)
         self.assertEqual((c["repo"], c["plans_dir"], c["plans_origem"]),
                          (repo, os.path.join(repo, ".planning"), "padrão"))
-        self.assertEqual((c["max_execucoes"], c["claude_bin"], c.nome), (3, "claude", os.path.basename(self.tmp)))
+        self.assertEqual((c["max_execucoes"], c["claude_bin"], c.nome), (2, "claude", os.path.basename(self.tmp)))
 
     def test_arquivo_e_valores_ruins(self):
         os.makedirs(os.path.join(self.tmp, ".tune-up", "meu-pacote", "acoes"))

@@ -92,6 +92,17 @@ class TesteHTTP(unittest.TestCase):
         self.assertEqual(self.pedir("GET", "/api/nada")[0], 404)
         self.assertEqual(self.pedir("GET", "/api/agentes?sessao=../x")[0], 400)
 
+    def test_custo(self):
+        sid = "33333333-3333-4333-8333-333333333333"
+        self.assertEqual(self.pedir("GET", "/api/custo?sessao=" + sid)[0], 200)
+        st, _c, dados = self.pedir("GET", "/api/custo?sessao=" + sid)
+        d = json.loads(dados)
+        self.assertEqual((d["estimativa"], d["sessoes"][0]["encontrada"]), (True, False))
+        self.assertEqual(self.pedir("GET", "/api/custo?sessao=../x")[0], 400)
+        self.assertEqual(self.pedir("GET", "/api/custo?sessao=" + sid + "%0A")[0], 400)
+        self.assertEqual(self.pedir("GET", "/api/custo", cab={"Host": "evil.example"})[0], 421)
+        self.assertEqual(self.pedir("GET", "/api/custo", cab={"Sec-Fetch-Site": "cross-site"})[0], 403)
+
     def test_host_e_origem_no_get(self):
         self.assertEqual(self.pedir("GET", "/api/sessao", cab={"Host": "evil.example"})[0], 421)
         self.assertEqual(self.pedir("GET", "/api/sessao", cab={"Sec-Fetch-Site": "cross-site"})[0], 403)

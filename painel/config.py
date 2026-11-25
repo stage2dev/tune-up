@@ -385,7 +385,7 @@ def carregar(raiz=None, arquivo=None, home=None):
         plans_dir=plans,
         plans_origem=plans_origem,
         claude_bin=claude_bin,
-        max_execucoes=_inteiro(bruto.get("max_execucoes"), 3, 1, 10),
+        max_execucoes=_inteiro(bruto.get("max_execucoes"), 2, 1, 10),
         pular_permissoes=bruto.get("pular_permissoes") is True,
         porta=_inteiro(bruto.get("porta"), 8787, 1024, 65535),
         origens_extras=origens,
