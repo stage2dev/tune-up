@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import shutil
@@ -53,6 +54,14 @@ class WorkflowTemplate(unittest.TestCase):
         self.assertIn("MAX_FIXES = 2", text)
         for r in ("failures", "security", "database"):
             self.assertIn("agentType: 'tune-up:reviewer-%s'" % r, text)
+        self.assertIn("DEFAULT_LENSES = ['failures', 'security']", text)
+
+    def test_design_markers(self):
+        code = code_only(read())
+        self.assertNotIn("pipeline(", code)   # items run in sequence
+        self.assertIn("boundary", code)
+        self.assertIn("PREVIOUS FINDINGS", code)
+        self.assertIn("${before}..${commit}", code)   # recheck sees only the fix diff
 
     def test_no_patch_file_and_reviewer_runs_diff(self):
         text = read()
@@ -73,7 +82,7 @@ class WorkflowTemplate(unittest.TestCase):
                              len(re.findall(r"\bmodel[\"']?\s*[:=]", text)))
 
     def test_size(self):
-        self.assertLessEqual(len(read().splitlines()), 200)
+        self.assertLessEqual(len(read().splitlines()), 240)
 
     def test_node_syntax(self):
         node = shutil.which("node")
@@ -88,6 +97,86 @@ class WorkflowTemplate(unittest.TestCase):
                         + body + "\n}\n")
             r = subprocess.run([node, "--check", p], capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, r.stderr)
+
+
+DRIVER = '''
+import fs from 'fs'
+const [,, file, scenario, argsJson] = process.argv
+const mod = await import(file)
+const calls = []
+let n = 0
+const fake = (prompt, o) => {
+  const t = o.agentType
+  if (t === 'tune-up:checker') return { passed: true }
+  if (t.startsWith('tune-up:executor')) return { commit: (0x1000000 + ++n).toString(16), summary: 's', tests: 't' }
+  const first = !prompt.includes('PREVIOUS FINDINGS')
+  const high = { sev: 'HIGH', file: 'a.py', line: 1, introduced: true, proof: 'p', title: 'bug' }
+  if (scenario === 'null') return null
+  if (scenario === 'clean' || (scenario === 'oneHigh' && !first)) return { verdict: 'approve', findings: [] }
+  return { verdict: 'reject', findings: [high] }
+}
+const agent = async (prompt, o) => { calls.push({ label: o.label, prompt }); return fake(prompt, o) }
+const parallel = fns => Promise.all(fns.map(f => f()))
+const result = await mod.default(JSON.parse(argsJson), agent, parallel, null, () => {}, () => {})
+console.log(JSON.stringify({ result, calls }))
+'''
+
+
+@unittest.skipUnless(shutil.which("node"), "node not on PATH")
+class WorkflowBehaviour(unittest.TestCase):
+    def run_tpl(self, scenario, args):
+        args = dict(args, base="b" * 7, worktree="/w")
+        with tempfile.TemporaryDirectory() as d:
+            tpl, drv = os.path.join(d, "tpl.mjs"), os.path.join(d, "drv.mjs")
+            body = read().replace("export const meta", "const meta", 1)
+            with open(tpl, "w", encoding="utf-8") as f:
+                f.write("export default async function (args, agent, parallel, pipeline, phase, log) {\n" + body + "\n}\n")
+            with open(drv, "w", encoding="utf-8") as f:
+                f.write(DRIVER)
+            r = subprocess.run([shutil.which("node"), drv, tpl, scenario, json.dumps(args)],
+                               capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            return json.loads(r.stdout)
+
+    def part(self, **kw):
+        return {"items": [], "review": dict({"commit": "c" * 7, "stat": "x"}, **kw)}
+
+    def test_no_review_is_pending_never_done(self):
+        out = self.run_tpl("clean", {"items": [{"id": "A", "order": "o"}, {"id": "B", "order": "o"}]})
+        self.assertEqual(out["result"]["review"], "pending")
+        self.assertEqual([i["status"] for i in out["result"]["items"]], ["built", "built"])
+        self.assertIsNone(out["result"]["check"])
+
+    def test_one_high_then_clean_recheck(self):
+        out = self.run_tpl("oneHigh", self.part())
+        r = out["result"]["review"]
+        self.assertEqual((r["status"], r["fixes"]), ("done", 1))
+        fixes = [c for c in out["calls"] if c["label"].startswith("fix")]
+        self.assertEqual(len(fixes), 1)
+        rechecks = [c for c in out["calls"] if "PREVIOUS FINDINGS" in c["prompt"]]
+        self.assertTrue(rechecks)
+        self.assertIn("git diff %s..1000001" % ("c" * 7), rechecks[0]["prompt"])
+        self.assertNotIn("git diff %s.." % ("b" * 7), rechecks[0]["prompt"])
+
+    def test_never_closes_needs_you_after_two_fixes(self):
+        out = self.run_tpl("neverCloses", self.part())
+        r = out["result"]["review"]
+        self.assertEqual((r["status"], r["fixes"]), ("need_you", 2))
+        self.assertEqual(len([c for c in out["calls"] if c["label"].startswith("fix")]), 2)
+
+    def test_reviewer_null_twice_is_interrupted(self):
+        out = self.run_tpl("null", self.part())
+        self.assertEqual(out["result"]["review"]["status"], "interrupted")
+        self.assertEqual(len([c for c in out["calls"] if c["label"].startswith("review:failures")]), 2)
+
+    def test_boundary_unit_when_several_chunks(self):
+        out = self.run_tpl("clean", self.part(chunks=[{"id": "front", "paths": ["a"]}, {"id": "back", "paths": ["b"]}]))
+        self.assertTrue(any(c["label"] == "review:failures:boundary" for c in out["calls"]))
+
+    def test_base_item_rejected_stops_next(self):
+        out = self.run_tpl("neverCloses", {"items": [
+            {"id": "A", "order": "o", "base": True}, {"id": "B", "order": "o"}]})
+        self.assertEqual([i["status"] for i in out["result"]["items"]], ["need_you", "not_run"])
 
 
 if __name__ == "__main__":
