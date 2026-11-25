@@ -1,6 +1,7 @@
 // Parte da tela que so desenha (sem busca): resumo + arvore de sessoes. Testada em render.test.ts.
 import type { RespostaAgentes } from '../../api/agentes';
 import { EstadoVazio } from '../../componentes';
+import { estadoDoCusto, type ContextoCusto } from '../../api/custo';
 import { CartaoSessao, type Recolhimento } from './CartaoSessao';
 import { resumir } from './logica';
 import { FaixaResumo } from './Resumo';
@@ -17,7 +18,7 @@ export function AvisosAgentes({ avisos }: { avisos: string[] }) {
   );
 }
 
-export function VisaoAgentes({ dados, agora, rec, todos }: { dados: RespostaAgentes; agora: number; rec: Recolhimento; todos: boolean }) {
+export function VisaoAgentes({ dados, agora, rec, todos, custo }: { dados: RespostaAgentes; agora: number; rec: Recolhimento; todos: boolean; custo?: ContextoCusto }) {
   if (dados.sessoes.length === 0) {
     return (
       <div className="grid gap-3">
@@ -38,7 +39,7 @@ export function VisaoAgentes({ dados, agora, rec, todos }: { dados: RespostaAgen
       <FaixaResumo r={resumir(dados.sessoes)} />
       <AvisosAgentes avisos={dados.avisos} />
       <div className="grid gap-3">
-        {dados.sessoes.map((s) => <CartaoSessao key={s.id} s={s} agora={agora} rec={rec} />)}
+        {dados.sessoes.map((s) => <CartaoSessao key={s.id} s={s} agora={agora} rec={rec} custo={custo && estadoDoCusto(s.sessao_id, custo)} />)}
       </div>
     </div>
   );

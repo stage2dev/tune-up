@@ -74,6 +74,31 @@ export function reais(v: number | null | undefined): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+/** Dolar estimado: "US$ 4,10". Sem dado nunca vira zero. */
+export function dolares(v: number | null | undefined): string {
+  if (v === null || v === undefined || Number.isNaN(v)) return SEM_DADO;
+  return `US$ ${numero(v, 2)}`;
+}
+
+/** Tokens compactos: 999, "1,2 mil", "230 mil", "1 mi", "1,2 mi", "1,5 bi". */
+export function compacto(v: number | null | undefined): string {
+  if (v === null || v === undefined || Number.isNaN(v)) return SEM_DADO;
+  const dec = (x: number, casas: number) => x.toLocaleString('pt-BR', { maximumFractionDigits: casas });
+  const a = Math.abs(v);
+  if (a < 1000) return numero(v);
+  if (a < 1e6) {
+    const mil = a / 1000;
+    const t = dec(Math.round(mil * (mil < 10 ? 10 : 1)) / (mil < 10 ? 10 : 1), 1);
+    if (!t.startsWith('1.000')) return `${v < 0 ? '-' : ''}${t} mil`;
+    return `${v < 0 ? '-' : ''}1 mi`;
+  }
+  if (a < 1e9) {
+    const t = dec(Math.round(a / 1e5) / 10, 1);
+    return `${v < 0 ? '-' : ''}${t === '1.000' ? '1 bi' : `${t} mi`}`;
+  }
+  return `${v < 0 ? '-' : ''}${dec(Math.round(a / 1e8) / 10, 1)} bi`;
+}
+
 export function porcento(v: number | null | undefined, casas = 0): string {
   if (v === null || v === undefined || Number.isNaN(v)) return SEM_DADO;
   return `${numero(v, casas)}%`;
