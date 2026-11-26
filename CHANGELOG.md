@@ -2,6 +2,10 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## 2.29.1
+
+- Fix: skills run `guarda.py` without `CLAUDE_PLUGIN_DATA` (Claude Code exports it to hooks only), so `info` and `rota` read `~/.cache/tune-up` and ignored the trusted profile. `dir_dados()` now finds the data folder from the install path; outside an install (`--plugin-dir`) nothing changes. Every trusted key now applies in skills too, including `router`. A trust kept only in `~/.cache/tune-up` stops counting: run `confiar` again.
+
 ## 2.29.0
 
 Short plan (lean mode, Part D).
