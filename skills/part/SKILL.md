@@ -33,6 +33,7 @@ You (main session, Opus, high effort, by default; Fable only when the owner open
 - Planning documents (goal, progress, later, research, handoff) live in the LOCAL `<plans_dir>`, the main checkout, as absolute paths. Read and write them only there, never only in the worktree: the worktree copy is invisible to the other sessions and to `/tune-up:status`. Each session writes only its own Part's lines. Before the PR (Step 6), copy the phase files (never the `review-<X>/` folders) from the local folder into the worktree at the same relative path and commit them on the Part branch, so the PR carries them. The local copy stays the source.
 - Commit of an item on the Part branch: yes. Push and PR only if this Part's request (message or `/goal` condition) says push/PR; otherwise leave all ready and write `names.need_you` may I push and open the PR? Branch cut from the day's `origin/<main>`. Merged PR = dead branch: a post-merge fix is a NEW PR from main; never stacked PRs.
 - Never `git stash -u`. `git add` by file name only. Preserve existing changes and untracked files.
+- Every `guarda.py` call (`info`, `rota`, `review-save`, `review-pending`) is ONE plain command, written as shown with the absolute plugin root in place of `${CLAUDE_PLUGIN_ROOT}`/`<plugin>` when it is not set: never `cd`, `;`, `&&`, `|`, `$VAR` or redirection around it. Any other form makes the guard ask the owner, even in bypass mode.
 - Read the project profile (`profile_path`): definition of done, production, pitfalls.
 
 ## Workflow scripts
