@@ -60,11 +60,12 @@ except BaseException as _e:
         except Exception:
             pass
     if sys.argv[1:2] == ["rota"] and "--part" in sys.argv:  # Part review: every lens, opus, high
-        print('{"part": true, "risk": true, "reviewers": ["failures", "security", "database"], "model": "opus", '
-              '"effort": "high", "lines": null, "chunks": 1, "why": ["error (import failed): route up"]}')
+        print('{"part": true, "risk": true, "reviewers": ["failures", "security", "database"], '
+              '"models": {"failures": "opus", "security": "opus", "database": "opus"}, "effort": "high", '
+              '"lines": null, "chunks": 1, "why": ["error (import failed): route up"]}')
     elif sys.argv[1:2] == ["rota"]:  # routing never goes down on error: opus + security + database
         print('{"executor": "tune-up:executor-opus", "reviewers": ["failures", "security", "database"], '
-              '"why": ["error (import failed): route up"]}')
+              '"why": ["error (import failed): route up"], "model": "opus", "scores": {}, "source": "fixed"}')
     if sys.argv[1:2] == ["review-save"]:  # fail-closed: the lens did not run
         print('{"ok": false, "lens_ran": false, "error": "import failed"}')
     if sys.argv[1:2] == ["review-pending"]:  # fail-closed: ship stops

@@ -4,17 +4,19 @@ import os
 import subprocess
 import sys
 import unittest
+from unittest import mock
 
 from base import SCRIPT, Base
 
 sys.path.insert(0, os.path.dirname(SCRIPT))
 from tuneup import rota as R  # noqa: E402
 from tuneup import rota_parte as P  # noqa: E402
+from tuneup import usuario as U  # noqa: E402
 
 with open(os.path.join(os.path.dirname(SCRIPT), "padrao.json"), encoding="utf-8") as _f:
     PADRAO = json.load(_f)
 FRONT = ["src/**", "**/*.tsx"]
-CHAVES = {"part", "risk", "reviewers", "model", "effort", "lines", "chunks", "why"}
+CHAVES = {"part", "risk", "reviewers", "models", "effort", "lines", "chunks", "why"}
 
 
 def git_diff(caminho, mudadas=("+const x = 1",), contexto=0):
@@ -27,6 +29,14 @@ def git_diff(caminho, mudadas=("+const x = 1",), contexto=0):
 
 class ParteBase(Base):
     USER_JSON = None
+
+    def setUp(self):
+        super().setUp()
+        p = mock.patch.dict(os.environ, {"TUNEUP_USER_JSON": os.path.join(self.tmp, "nao.json")})
+        p.start()
+        self.addCleanup(p.stop)
+        U._CACHE.clear()
+        self.addCleanup(U._CACHE.clear)
 
     def arq(self, texto):
         p = os.path.join(self.tmp, "d.patch")
@@ -41,7 +51,8 @@ class ParteBase(Base):
             diff = git_diff("src/A.tsx")
         r = P.rota_parte(list(files), self.arq(diff) if diff else None, c, "/repo")
         self.assertEqual(set(r), CHAVES)
-        self.assertEqual((r["part"], r["model"], r["effort"]), (True, "opus", "high"))
+        self.assertEqual((r["part"], r["effort"]), (True, "high"))
+        self.assertEqual(set(r["models"]), set(r["reviewers"]))
         self.assertTrue(r["why"])
         return r
 
@@ -319,13 +330,45 @@ class TestParteCli(ParteBase):
                 self.confiar(self.config(**{k: ruim}))
                 self.assertEqual((ler()[k], ler()["_invalidas"]), ([], [k]))
 
-    def test_modo_item_nao_muda(self):
+    def test_modo_item_solta_so_o_padrao_desligado(self):
         d = self.arq(git_diff("src/hooks/useX.ts"))
         casos = [("--files", f, "--diff-file", d) for f in ("src/hooks/useX.ts", "src/A.tsx", "app/x.py")]
-        antes = [self.cli(*a) for a in casos]
-        self.confiar(self.config(front_globs=["src/**"], globs_off=["**/hooks/**"]))
-        self.assertEqual([self.cli(*a) for a in casos], antes)
+        c = self.config(front_globs=["src/**"], globs_off=["**/hooks/**"])
+        antes = [self.cli(*a) for a in casos]  # untrusted config: changes nothing
         self.assertEqual((antes[0]["executor"], antes[0]["reviewers"]), (R.OPUS, ["failures", "security"]))
+        self.assertNotIn("globs_off", " ".join(antes[0]["why"]))
+        self.confiar(c)
+        depois = [self.cli(*a) for a in casos]
+        for r in antes[1:]:  # the other files keep their route; only the note is added
+            r["why"].append("globs_off: **/hooks/** is off")
+        self.assertEqual(depois[1:], antes[1:])
+        self.assertEqual(depois[0]["executor"], R.SONNET, depois[0])
+        self.assertIn("globs_off: **/hooks/** is off", depois[0]["why"])
+
+    def test_modo_item_globs_off_em_processo(self):
+        d = self.arq(git_diff("src/hooks/useX.ts"))
+
+        def item(f, **cfg):
+            return R.rota([f], d, None, dict(PADRAO, **cfg), "/repo")
+        r = item("src/hooks/useX.ts", globs_off=["**/hooks/**"])
+        self.assertEqual((r["executor"], r["model"]), (R.SONNET, "sonnet"), r)
+        self.assertEqual(r["why"][-2:], ["no rule fired: sonnet, failures only", "globs_off: **/hooks/** is off"])
+        r = item("src/hooks/useX.ts", globs_off=["**/hooks/**"],
+                 risk_globs=PADRAO["risk_globs"] + ["**/hooks/**"])
+        self.assertEqual(r["executor"], R.OPUS, r)  # the project lists the default too: stays
+        r = item("db/migrations/1.sql", globs_off=["**/*.sql", "**/migrations/**"])
+        self.assertIn("database", r["reviewers"])  # database_globs never off
+
+    def test_modelo_por_lente_e_override(self):
+        d = self.arq(git_diff("app/x.py"))
+        args = ("--part", "--files", "app/x.py", "--diff-file", d)
+        r = self.cli(*args)
+        self.assertEqual(r["models"], {"failures": "sonnet", "security": "opus"}, r)
+        self.user_json({"models": {"reviewer-failures": {"model": "opus"},
+                                   "reviewer-security": {"model": "fable-5"}}})
+        self.assertEqual(self.cli(*args)["models"], {"failures": "opus", "security": "opus"})
+        self.user_json({"models": {"reviewer-failures": {"model": "inherit"}}})
+        self.assertEqual(self.cli(*args)["models"]["failures"], "opus")
 
     def test_erro_sai_no_formato_da_parte(self):
         d = self.arq(git_diff("src/A.tsx"))
@@ -337,8 +380,9 @@ class TestParteCli(ParteBase):
                           (ok + ("--diff-file", d), None), (("--files", "src/A.tsx", "--diff-file", "--part"), None)):
             r = self.cli(*args, env=env)
             self.assertEqual(set(r), CHAVES)
-            self.assertEqual((r["part"], r["risk"], r["reviewers"], r["model"], r["effort"], r["lines"],
-                              r["chunks"]), (True, True, ["failures", "security", "database"], "opus",
+            self.assertEqual((r["part"], r["risk"], r["reviewers"], r["models"], r["effort"], r["lines"],
+                              r["chunks"]), (True, True, ["failures", "security", "database"],
+                                             {"failures": "opus", "security": "opus", "database": "opus"},
                                              "high", None, 1), r)
             self.assertIn("route up", r["why"][0])
         r = self.cli("--part", "--files", "app/\u00e9.py", env={"PYTHONIOENCODING": "ascii"})

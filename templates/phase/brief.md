@@ -28,7 +28,7 @@ Limit: goal <= <N> lines; progress <= 40.
 
 ## 6. Waves and items
 
-For each item: number, size S/M/L, executor (`tune-up:executor-sonnet` or `tune-up:executor-opus`), Action (concrete table/column/function/route names), Mirror, Validate (C#), Base item yes/no (yes: database, RPC, migration, or an item another item depends on), Skills (the matched `info.side_skills`; no match: from `tune-up:skill-finder`).
+For each item: number, size S/M/L, Files (owned paths, existing and new), executor (`tune-up:executor-sonnet` or `tune-up:executor-opus`, as `guarda.py rota --files <the item's files>` answers), Action (concrete table/column/function/route names), Mirror, Validate (C#), Base item yes/no (yes: database, RPC, migration, or an item another item depends on), Skills (the matched `info.side_skills`; no match: from `tune-up:skill-finder`).
 
 ## 7. Parts
 

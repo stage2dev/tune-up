@@ -29,10 +29,14 @@ class TestAgent(AgentBase):
         novo = s["hookSpecificOutput"]["updatedInput"]
         self.assertEqual((novo["model"], novo["effort"], novo["prompt"]), ("opus", "high", "x"))
 
-    def test_revisor_sonnet_avisa(self):
-        s = self.agent({"subagent_type": "revisor-banco", "model": "sonnet", "effort": "high", "prompt": "x"})
-        self.assertEqual(self.decisao(s), "avisar")
-        self.assertIn("opus high", s["hookSpecificOutput"]["additionalContext"])
+    def test_revisor_sonnet_nao_avisa_haiku_avisa(self):
+        for t in ("tune-up:reviewer-failures", "revisor-banco", "tune-up:reviewer-security"):
+            with self.subTest(t=t):
+                self.assertIsNone(self.agent({"subagent_type": t, "model": "sonnet", "effort": "high",
+                                              "prompt": "x"}))
+                s = self.agent({"subagent_type": t, "model": "haiku", "effort": "high", "prompt": "x"})
+                self.assertEqual(self.decisao(s), "avisar")
+                self.assertIn("haiku", s["hookSpecificOutput"]["additionalContext"])
 
     def test_explore_haiku_medium(self):
         self.assertIsNone(self.agent({"subagent_type": "Explore", "model": "haiku", "effort": "medium",
@@ -89,14 +93,15 @@ class TestH2bModelos(AgentBase):
         s = self.rodar("agent", {"tool_name": "Workflow", "tool_input": {"script": "agent({model: 'fable'})"}})
         self.assertEqual(self.decisao(s), "bloquear")
 
-    def test_revisores_novos_e_antigos_opus_high(self):
+    def test_revisores_novos_e_antigos_modelo_high(self):
         for t in ["reviewer-failures", "reviewer-database", "reviewer-security", "plan-reviewer",
                   "tune-up:reviewer-failures", "tune-up:reviewer-database", "tune-up:reviewer-security",
                   "tune-up:plan-reviewer", "silent-failure-hunter", "revisor-banco", "security-reviewer",
                   "database-reviewer"]:
             with self.subTest(t=t):
                 novo = self.agent({"subagent_type": t, "prompt": "x"})["hookSpecificOutput"]["updatedInput"]
-                self.assertEqual((novo["model"], novo["effort"]), ("opus", "high"))
+                m = "sonnet" if t.endswith("reviewer-failures") else "opus"  # failures lens: role table
+                self.assertEqual((novo["model"], novo["effort"]), (m, "high"))
 
     def test_user_json_models_vale_sem_parametro(self):
         self.user_json({"language": "pt-BR", "models": {"mapper": {"model": "sonnet", "effort": "low"}}})

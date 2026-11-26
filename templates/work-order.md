@@ -1,6 +1,6 @@
 # Work order for the executor
 
-One order per item (or items in the same files). Paste the text below into the call to `tune-up:executor-sonnet` or `tune-up:executor-opus`. Never send "read the whole goal": paste only what the item needs; executor and reviewer never read the whole goal or progress document, everything they need is in the order (reviewers: in the order and the patch). Write it in English; the executor reports back in English.
+One order per item (or items in the same files). Paste the text below into the call to `tune-up:executor-sonnet` or `tune-up:executor-opus`, or write it once to `<scratchpad>/order-<n>.md` and pass the line `ORDER FILE: <absolute path>` (Workflow template). Never send "read the whole goal": paste only what the item needs; executor and reviewer never read the whole goal or progress document, everything they need is in the order (reviewers: in the order and the patch). Write it in English; the executor reports back in English.
 
 ```
 ITEM <n.n> - <short title>
@@ -60,4 +60,4 @@ Telegraphic (no preamble, do not repeat the order, fragments are fine), at most 
 
 Coordinator notes:
 - The `tune-up:mapper` map is pasted in; the executor does not re-explore what the order already located.
-- Review runs once per Part (a BASE ITEM is reviewed right after it). Fix round: a NEW order (opus executor) for each group of files, up to ~5 CRITICAL/HIGH findings each, in sequence: the ORIGINAL order (goal, files owned, skills) + the path of the review json to read (the executor reads the findings there) + the cumulative diff of those files. After a CRITICAL/HIGH fix, ALWAYS recheck: only the fix diff + the previous findings. Max 2 fixes, then need_you. MEDIUM/LOW never block: they go to the later document.
+- Review runs once per Part (a BASE ITEM is reviewed right after it). Fix round: a NEW order (sonnet executor; opus for a CRITICAL, a database or security finding, a risky base item or a second fix) for each group of files, up to ~5 CRITICAL/HIGH findings each, in sequence: the ORIGINAL order (its file path, or goal, files owned, skills) + the path of the review json to read (the executor reads the findings there) + the cumulative diff of those files. After a CRITICAL/HIGH fix, ALWAYS recheck: only the fix diff + the previous findings. Max 2 fixes, then need_you. MEDIUM/LOW never block: they go to the later document.
