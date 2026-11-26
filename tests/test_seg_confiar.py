@@ -111,6 +111,17 @@ class TestB1InfoComPontoPonto(unittest.TestCase):
             self.assertFalse(bg.chamada_info("python3 %s/dev/./tune-up/scripts/guarda.py info" % t))
 
 
+class TestNomeParecido(PromptBase):
+    """A project file whose name only ends in `guarda.py` is not the guard."""
+    def test_arquivo_do_projeto_nao_pergunta(self):
+        for ok in (".venv/bin/python -m pytest -q tests/test_perfil_guarda.py",
+                   "python3 app/perfil_guarda.py", "python3 -m pytest tests/test_x-guarda.py::t"):
+            self.assertIsNone(self.bash(ok), ok)
+        for ruim in ("python3 /x/scripts/guarda.py confiar c.json", "python3 guarda.py trust c.json",
+                     "python3 /x/scripts/guarda.py info --files a"):
+            self.assertIsNotNone(self.bash(ruim), ruim)
+
+
 class TestRotaSoLeitura(PromptBase):
     """`guarda.py rota` is read-only: the Bash guard lets the exact form through and nothing else."""
     def test_rota_exata_passa_resto_pergunta(self):

@@ -13,7 +13,7 @@ RE_EXECUTOR = re.compile(
 RE_EXECUTOR_NT = re.compile(r"(?<![\w.-])(wsl|setx)(?![\w-])")
 RE_CAMINHO = re.compile(r"\S*[/.]\S*")  # a path-like word: its name is not a trust word
 RE_ATRIBUI = re.compile(r"[A-Za-z_]\w*=")
-RE_CONFIAR = re.compile(r"guarda\.py|perfis_confiaveis|(?<![\w-])(tuneup|confiar|trust)(?![\w-])")
+RE_CONFIAR = re.compile(r"(?<![\w-])guarda\.py|perfis_confiaveis|(?<![\w-])(tuneup|confiar|trust)(?![\w-])")
 RE_META = re.compile(r"[;&|<>$`()\n\\{}*?\[~]")  # operators, redirection, expansion, globs
 SAIDAS_NULAS = {"/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty"}
 
@@ -104,7 +104,7 @@ def nivel_do_texto(executor, links, cwd, escrita):
     `links`: real paths of the executors' symlink arguments. Words are matched before ~ expands
     (a HOME path must not count as a citation); roots after."""
     palavras = " ".join([x for x in executor if not RE_CAMINHO.fullmatch(x) or
-                         re.search(r"guarda\.py|perfis_confiaveis", x, re.I)] +
+                         re.search(r"(?<![\w-])guarda\.py|perfis_confiaveis", x, re.I)] +
                         [os.path.basename(x) for x in links]).casefold()
     t = expandido(" ".join(executor + links))
     raizes = {_nt(os.path.normpath(r).casefold()) for r in (RAIZ_PLUGIN, os.path.realpath(RAIZ_PLUGIN))}
