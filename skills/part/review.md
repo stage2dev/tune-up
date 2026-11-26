@@ -24,6 +24,8 @@ The reviewer has no Write. Its final answer is the CRITICAL/HIGH list, a compact
 sh "<plugin>/scripts/py" scripts/guarda.py review-save --dir "<R>" --lens failures --chunk all --round 1 --answer-file "<S>/answer-failures-all-1.txt"
 ```
 
+One plain command with literal paths (no `cd`, `;`, `$R`/`$S` variables): only that form passes the guard without asking the owner.
+
 - `{"ok":true,"lens_ran":true,"path","counts","blocking","rejected"}`: keep only counts + path + at most 25 lines; the fixers read `path` themselves.
 - `{"ok":false,"usage":true,"lens_ran":null,"error"}`: the CALL is wrong (argument, folder, name already used). Fix the call; do not ask the reviewer again.
 - `{"ok":false,"lens_ran":false,"error"}`: that lens did NOT run. Ask the same reviewer once; still invalid = `names.need_you`.

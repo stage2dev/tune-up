@@ -74,7 +74,7 @@ class TextosAgentes(unittest.TestCase):
     def test_part_review(self):
         s = read("skills/part/SKILL.md")
         for k in ["review-save", "review-pending", "rota --part", "in SEQUENCE",
-                  "never counted as approved", "BASE ITEM"]:
+                  "never counted as approved", "BASE ITEM", "ONE plain command"]:
             self.assertIn(k, s, k)
         r = read("skills/part/review.md")
         for k in ["PREVIOUS FINDINGS", "fix ONLY", "boundaries between chunks"]:
