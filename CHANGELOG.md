@@ -2,6 +2,10 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## 2.29.3
+
+- Fix: the Bash guard took any word ending in `guarda.py` (a project file such as `perfil_guarda.py` or `test_perfil_guarda.py`) for the guard itself and asked the owner ("writes to the tune-up profile/plugin"), even in bypass mode. Now only a word that is `guarda.py` itself (alone or after `/`) counts.
+
 ## 2.29.2
 
 - Fix: `part` told the coordinator to call `guarda.py`, but not how; it wrapped `review-save` in `cd <plugin>; ...` or `$R`/`$S` variables, which skips the guard's exemption for the skills' own calls, so the owner was asked about ~10 times per Part even in bypass mode. `part` (and its review page) now says: one plain command, literal paths. The guard is unchanged.
