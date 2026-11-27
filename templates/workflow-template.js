@@ -3,8 +3,8 @@ export const meta = {
   description: 'Items in sequence, base items reviewed at once, the whole Part reviewed once at the end, fixes in sequence, final check',
   phases: [
     { title: 'Execute', detail: 'one executor per item, one after another (sonnet, or opus when risky)' },
-    { title: 'Review', detail: 'base items right away; the whole Part once at the end (lens x chunk, in parallel); failures on sonnet, security and database on opus (sonnet on a recheck unless a previous finding is CRITICAL)' },
-    { title: 'Fix', detail: 'fresh executors in sequence on CRITICAL/HIGH findings (sonnet; opus when round 2, CRITICAL, a non-failures lens or a risky base item), then recheck only the fix diff' },
+    { title: 'Review', detail: 'base items right away; the whole Part once at the end (lens x chunk, in parallel); first review on `models` (default failures sonnet, security and database opus); a recheck on sonnet, on that model once the unit had a CRITICAL' },
+    { title: 'Fix', detail: 'fresh executors in sequence on CRITICAL/HIGH findings (sonnet; opus when round 2, CRITICAL, a non-failures lens or a Part with a risky item), then recheck only the fix diff' },
     { title: 'Check', detail: 'haiku runs the project checks once' },
   ],
 }
@@ -15,16 +15,18 @@ export const meta = {
 // 3. Executors COMMIT on the work branch (never push) and return the hash; reviewers get base + commit and run the diff themselves.
 //    Items run in sequence. Only BASE items are reviewed right after; the whole Part is reviewed once at the end (call 2).
 //    Fixes: max MAX_FIXES, in sequence, the recheck sees only the fix diff. A fix is a NEW sonnet executor, opus when round > 1,
-//    a CRITICAL finding, a finding whose lens is not failures, or a risky base item. Findings keep their lens (lens: u.lens).
-//    Review models: failures sonnet; security/database opus, sonnet on a recheck unless a previous finding is CRITICAL.
-//    `order` (and review.orders) is the order text or one line "ORDER FILE: <absolute path>"; prompts tell the agent to Read it.
-//    Each executed item result carries commit, executor, summary, tests, steps, skills_read, flags: the coordinator reads no handoff.
+//    a CRITICAL finding, a finding whose lens is not failures, or a Part with a risky item. Findings keep their lens (lens: u.lens).
+//    Review models: models[lens] ('sonnet'|'opus'; missing or other: failures sonnet, security/database opus); a recheck on sonnet,
+//    on models[lens] once that unit had a CRITICAL in any round.
+//    `order` is the order text or one line "ORDER FILE: <absolute path>"; review.orders may hold one such line per item, one per line.
+//    Each executed item result carries commit (the last, after fixes; executor_commit when a fix changed it), executor, summary, tests, steps, skills_read, flags: the coordinator reads no handoff.
 // 4. A null, commit-less or usage-limit reply is "interrupted" and not called again, never "approved" and never "done".
 //    Same for a commit that is not a hash, is the base or was already returned: an empty range is never reviewed.
-// Call 1 args (pending line already in progress, see skills/part/review.md): { base: hash, worktree, items: [{ id, order, risky, base: bool, reviewers: ['failures'|'security'|'database'] }] }
+// Shared args: base, worktree, models (the `models` answer of `rota --part`, optional).
+// Call 1 args (pending line already in progress, see skills/part/review.md): { base: hash, worktree, models, items: [{ id, order, risky, base: bool, reviewers: ['failures'|'security'|'database'] }] }
 //   `base` true = reviewed right after (from `guarda.py rota`); `reviewers` is used only for base items.
 // Call 2 (after `guarda.py rota --part`): args = { base, worktree, items: [], review: { commit, reviewers, files, chunks: [{ id, paths: [] }],
-//   stat, baseReviewed: [{ id, commit }], orders } }. Empty or missing reviewers = all three lenses. `files` = every `git diff --name-only`
+//   stat, baseReviewed: [{ id, commit }], orders, risky } }. risky: true when rota answered tune-up:executor-opus for any item of the Part. Empty or missing reviewers = all three lenses. `files` = every `git diff --name-only`
 //   path; `paths` = files or folders; what no chunk takes goes to a `rest` chunk. fixes > 0 in the answer: run `rota --part` again
 //   on base..commit; a lens it newly asks for = call 2 again with only that lens.
 
@@ -82,7 +84,7 @@ const where = `Base: ${args.base}\nWorktree: ${args.worktree}\n`
 const bad = r => interrupted(r) || !Array.isArray(r.findings)
 
 // One review unit (a lens over a chunk, or the boundary unit). Recheck (previous set): ONLY the fix diff.
-function unit(u, range, previous, info, again = '') {
+function unit(u, range, previous, info, again = '', hot = false) {
   const prompt = `${where}Unit: ${key(u)}\n` +
     `Run \`git diff --no-ext-diff --ignore-submodules=none ${range}\` and \`git status --porcelain\` in the worktree (a file outside the commit is a finding; an empty diff = reject with a CRITICAL). Read around the diff only to prove a finding.\n` +
     'DUPLICATION: HIGH only when the copies already diverge or must change together; otherwise MEDIUM.\n' +
@@ -91,11 +93,13 @@ function unit(u, range, previous, info, again = '') {
       : info + (u.paths ? `Only these paths: ${JSON.stringify(u.paths)}\n` : '') +
         (u.boundary ? `BOUNDARY unit: look ONLY at the seams between these chunks (front x back, caller x callee): ${JSON.stringify(u.chunks)}\n` : '')) + again
   const o = { label: `review:${u.lens}:${u.id}`, phase: 'Review', schema: FINDINGS }
-  const cheap = previous.length > 0 && !previous.some(p => String(p.sev).toUpperCase() === 'CRITICAL')   // recheck, nothing CRITICAL before
-  if (u.lens === 'security' && cheap) return agent(prompt, { ...o, model: 'sonnet', effort: 'high', agentType: 'tune-up:reviewer-security' })
+  const asked = (args.models || {})[u.lens], first = ['sonnet', 'opus'].includes(asked) ? asked : u.lens === 'failures' ? 'sonnet' : 'opus'
+  const m = previous.length && !hot ? 'sonnet' : first   // recheck: sonnet until that unit had a CRITICAL
+  if (u.lens === 'security' && m === 'sonnet') return agent(prompt, { ...o, model: 'sonnet', effort: 'high', agentType: 'tune-up:reviewer-security' })
   if (u.lens === 'security') return agent(prompt, { ...o, model: 'opus', effort: 'high', agentType: 'tune-up:reviewer-security' })
-  if (u.lens === 'database' && cheap) return agent(prompt, { ...o, model: 'sonnet', effort: 'high', agentType: 'tune-up:reviewer-database' })
+  if (u.lens === 'database' && m === 'sonnet') return agent(prompt, { ...o, model: 'sonnet', effort: 'high', agentType: 'tune-up:reviewer-database' })
   if (u.lens === 'database') return agent(prompt, { ...o, model: 'opus', effort: 'high', agentType: 'tune-up:reviewer-database' })
+  if (m === 'opus') return agent(prompt, { ...o, model: 'opus', effort: 'high', agentType: 'tune-up:reviewer-failures' })
   return agent(prompt, { ...o, model: 'sonnet', effort: 'high', agentType: 'tune-up:reviewer-failures' })
 }
 
@@ -154,22 +158,23 @@ function chunksOf(rv) {
 
 // Shared by base items and the end review. Returns { status: approved|need_you|interrupted, fixes, open, commit, later }.
 async function reviewLoop(name, units, from, commit, orders, info, risky) {
-  const st = {}, later = {}, previous = {}   // st: unit key -> { open, rejected } from its latest answer
+  const st = {}, later = {}, previous = {}, hot = {}   // st: unit key -> { open, rejected } from its latest answer; hot: had a CRITICAL
   let fixes = 0, last = Infinity, range = `${from}..${commit}`, run = units
   const known = () => units.flatMap(u => (st[key(u)] ? st[key(u)].open : []))
   const res = (status, open) => ({ status, fixes, open, commit, later: Object.values(later) })
   for (;;) {
     phase('Review')
     const got = await parallel(run.map(u => async () => {
-      const prev = previous[key(u)] || [], r = await unit(u, range, prev, info)
+      const prev = previous[key(u)] || [], r = await unit(u, range, prev, info, '', hot[key(u)])
       const why = interrupted(r) ? '' /* never called again */ : bad(r) ? 'had no findings list' : rejects(r.verdict) && !r.findings.some(f => isOpen(f, prev)) ? 'rejected without a CRITICAL/HIGH introduced: justify it with a finding or approve' : ''
-      return why ? unit(u, range, prev, info, `Your previous answer ${why}.\n`) : r   // asked again ONCE
+      return why ? unit(u, range, prev, info, `Your previous answer ${why}.\n`, hot[key(u)]) : r   // asked again ONCE
     }))
     const missing = got.filter(bad).length
     run.forEach((u, i) => {
       const r = got[i], prev = previous[key(u)] || []
       if (bad(r)) return
       st[key(u)] = { open: r.findings.filter(f => isOpen(f, prev)).map(f => ({ ...f, lens: u.lens })), rejected: rejects(r.verdict) }
+      if (st[key(u)].open.some(f => String(f.sev).toUpperCase() === 'CRITICAL')) hot[key(u)] = true
       r.findings.filter(f => !isOpen(f, prev)).forEach(f => { later[`${f.file}:${f.line}:${f.title}`] = f })
     })
     if (missing) { log(`INTERRUPTED ${name}: ${missing} reviewer(s) did not answer (not treated as approved)`); return res('interrupted', known()) }
@@ -204,15 +209,17 @@ for (const item of args.items) {
   if (stopped) { results.push({ id: item.id, status: 'not_run', fixes: 0, open: [], later: [] }); continue }
   phase('Execute')
   const x = baseOk ? await execute(item) : null, c = baseOk ? newCommit(x) : null
-  if (!c) { log(`INTERRUPTED ${item.id}: executor did not finish or returned no new commit`); results.push({ id: item.id, status: 'interrupted', fixes: 0, open: [], later: [] }); stopped = true; continue }
-  const from = tip, got = { commit: c, executor: item.risky ? 'opus' : 'sonnet', summary: x.summary, tests: x.tests, steps: x.steps, skills_read: x.skills_read, flags: x.flags }
+  const said = x && typeof x === 'object' ? { summary: x.summary, tests: x.tests, steps: x.steps, skills_read: x.skills_read, flags: x.flags } : {}
+  if (!c) { log(`INTERRUPTED ${item.id}: executor did not finish or returned no new commit`); results.push({ id: item.id, status: 'interrupted', fixes: 0, open: [], later: [], ...said }); stopped = true; continue }
+  const from = tip, got = { commit: c, executor: item.risky ? 'opus' : 'sonnet', ...said }
   tip = c
   if (!item.base) { results.push({ id: item.id, status: 'built', fixes: 0, open: [], later: [], ...got }); continue }
   const units = lensesFor(item.reviewers, item.id, DEFAULT_LENSES).map(lens => ({ lens, id: item.id }))
   const r = await reviewLoop(item.id, units, from, tip, item.order, `Order:\n${item.order}\n${ORDER_FILE}\n`, !!item.risky)
   tip = r.commit
   if (r.status !== 'approved') stopped = true
-  results.push({ id: item.id, status: r.status === 'approved' ? 'built' : r.status, fixes: r.fixes, open: r.open, later: r.later, ...got })
+  const last = r.commit !== c ? { commit: r.commit, executor_commit: c } : {}   // the item's commit is the one after its fixes
+  results.push({ id: item.id, status: r.status === 'approved' ? 'built' : r.status, fixes: r.fixes, open: r.open, later: r.later, ...got, ...last })
 }
 
 let review = 'pending', check = null
@@ -228,7 +235,7 @@ if (rv && !stopped) {
   seen.push(commit)
   const info = `Whole Part diff stat:\n${rv.stat || '(none)'}\nBase items already reviewed (id, commit): ${JSON.stringify(rv.baseReviewed || [])}\n`
   const r = badArgs ? { status: 'interrupted', fixes: 0, open: [], later: [], commit }
-    : await reviewLoop('part', units, args.base, commit, rv.orders, info, false)
+    : await reviewLoop('part', units, args.base, commit, rv.orders, info, !!rv.risky)
   review = { status: r.status, fixes: r.fixes, open: r.open, later: r.later, commit: r.commit }
   if (r.status === 'approved') {
     phase('Check')

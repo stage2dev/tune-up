@@ -37,13 +37,14 @@ def front_globs(cfg):
 
 def globs_parte(cfg):
     """(the effective lists without the defaults in `globs_off`, the defaults turned off).
-    Never database_globs. A default the project also lists (so it is there twice) stays."""
+    Never database_globs, nor a database default from any list. A default the project also lists
+    (so it is there twice) stays."""
     gl, tirados = globs_efetivos(cfg), []
     fora = cfg.get("globs_off")
     for k in ("risk_globs", "security_globs"):
         extra = cfg.get(k) if isinstance(cfg.get(k), list) else []
-        tira = [g for g in PADROES[k]
-                if isinstance(fora, list) and g in fora and extra.count(g) < 2]
+        tira = [g for g in PADROES[k] if isinstance(fora, list) and g in fora
+                and extra.count(g) < 2 and g not in PADROES["database_globs"]]
         gl[k] = [g for g in gl[k] if g not in tira]
         tirados += [g for g in tira if g not in tirados]
     return gl, tirados
@@ -211,12 +212,13 @@ def rota_parte(files, diff_file, cfg, raiz):
 
 
 def modelos_lentes(lentes):
-    """Model per lens from the user.json role table; missing, inherit or forbidden: opus."""
+    """Model per lens from the user.json role table; missing, inherit, forbidden or haiku: opus."""
     papeis, lista = ler_usuario()[0]["models"], proibidos()
     out = {}
     for r in lentes:
         m = (papeis.get("reviewer-" + r) or {}).get("model")
-        out[r] = "opus" if sem_modelo(m) or modelo_proibido(m, lista) else m
+        ruim = sem_modelo(m) or modelo_proibido(m, lista) or "haiku" in str(m).lower()
+        out[r] = "opus" if ruim else m
     return out
 
 

@@ -66,7 +66,7 @@ Build `~/.config/tune-up/user.json` (keep keys the user already had, such as `pr
     "executor-sonnet": {"model": "sonnet", "effort": "medium"},
     "executor-opus": {"model": "opus", "effort": "medium"},
     "plan-reviewer": {"model": "opus", "effort": "high"},
-    "reviewer-failures": {"model": "opus", "effort": "high"},
+    "reviewer-failures": {"model": "sonnet", "effort": "high"},
     "reviewer-database": {"model": "opus", "effort": "high"},
     "reviewer-security": {"model": "opus", "effort": "high"}
   },

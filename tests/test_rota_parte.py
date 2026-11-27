@@ -90,6 +90,9 @@ class TestParteCaminhos(ParteBase):
                    risk_globs=PADRAO["risk_globs"] + ["**/hooks/**"])
         self.risco(["src/a.sql"], git_diff("src/a.sql"), banco=True,
                    globs_off=["**/*.sql", "**/migrations/**"])  # database_globs never off
+        r = self.risco(["db/migrations/1.py"], git_diff("db/migrations/1.py"), banco=True,
+                       globs_off=["**/*.sql", "**/migrations/**"])
+        self.assertFalse([w for w in r["why"] if w.startswith("globs_off")], r)
 
     def test_backend_e_risco_com_seguranca(self):
         for f in ("app/services/evolution.py", "app/services/broadcast_scheduler.py"):
@@ -358,6 +361,9 @@ class TestParteCli(ParteBase):
         self.assertEqual(r["executor"], R.OPUS, r)  # the project lists the default too: stays
         r = item("db/migrations/1.sql", globs_off=["**/*.sql", "**/migrations/**"])
         self.assertIn("database", r["reviewers"])  # database_globs never off
+        for f in ("db/x.sql", "db/migrations/1.py"):  # a database default stays in risk_globs too
+            r = item(f, globs_off=["**/*.sql", "**/migrations/**"])
+            self.assertEqual((r["executor"], r["reviewers"][-1]), (R.OPUS, "database"), r)
 
     def test_modelo_por_lente_e_override(self):
         d = self.arq(git_diff("app/x.py"))
@@ -369,6 +375,9 @@ class TestParteCli(ParteBase):
         self.assertEqual(self.cli(*args)["models"], {"failures": "opus", "security": "opus"})
         self.user_json({"models": {"reviewer-failures": {"model": "inherit"}}})
         self.assertEqual(self.cli(*args)["models"]["failures"], "opus")
+        self.user_json({"models": {"reviewer-failures": {"model": "claude-Haiku-4-5"},
+                                   "reviewer-security": {"model": "haiku"}}})
+        self.assertEqual(self.cli(*args)["models"], {"failures": "opus", "security": "opus"})
 
     def test_erro_sai_no_formato_da_parte(self):
         d = self.arq(git_diff("src/A.tsx"))

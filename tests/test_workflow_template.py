@@ -303,6 +303,45 @@ class WorkflowBehaviour(unittest.TestCase):
             for l in ("security", "database"):
                 self.assertEqual(by("review:%s:all" % l), ["opus", want], (sev, l))
 
+    def test_review_model_from_models_arg(self):
+        three = self.part(reviewers=["failures", "security", "database"])
+        by = lambda calls, l: [c["model"] for c in calls if c["label"] == "review:%s:all" % l]
+        for models, want in (({"failures": "opus"}, ["opus", "opus", "opus"]), (None, ["sonnet", "opus", "opus"]),
+                             ({"security": "haiku", "database": "sonnet"}, ["sonnet", "opus", "sonnet"])):
+            _, _, calls = self.review("clean", dict(three, models=models))
+            self.assertEqual([by(calls, l)[0] for l in ("failures", "security", "database")], want, models)
+        item = {"id": "A", "order": "o", "base": True, "reviewers": ["failures"]}
+        _, _, calls = self.review("clean", {"items": [item], "models": {"failures": "opus"}})
+        self.assertEqual([c["model"] for c in calls if c["label"] == "review:failures:A"], ["opus"])
+
+    def test_recheck_remembers_an_earlier_critical(self):
+        sc = {"review:security:all": [no(H("a", sev="critical"), H("b")), no(H("b")), OK]}
+        _, _, calls = self.review(sc, self.part(reviewers=["security"]))
+        self.assertEqual([c["model"] for c in calls if c["label"] == "review:security:all"], ["opus", "opus", "opus"])
+
+    def test_item_commit_is_the_last_after_fixes(self):
+        item = {"id": "A", "order": "o", "base": True, "reviewers": ["failures"]}
+        out = self.run_tpl({"review:failures:A": [no(H("a")), OK]}, {"items": [item]})
+        a = out["result"]["items"][0]
+        self.assertEqual((a["status"], a["commit"], a["executor_commit"]), ("built", "1000002", "1000001"))
+        out = self.run_tpl({"review:failures:A": [no(H("a")), no(H("a"))]}, {"items": [item]})
+        a = out["result"]["items"][0]
+        self.assertEqual((a["status"], a["commit"], a["executor_commit"]), ("need_you", "1000002", "1000001"))
+        out = self.run_tpl("clean", {"items": [item]})
+        self.assertNotIn("executor_commit", out["result"]["items"][0])
+
+    def test_interrupted_item_keeps_the_executor_answer(self):
+        item = {"id": "A", "order": "o", "base": True, "reviewers": ["failures"]}
+        out = self.run_tpl({"commits": ["a" * 7, "a" * 7]}, {"items": [item, dict(item, id="B")]})
+        b = out["result"]["items"][1]
+        self.assertEqual((b["status"], b["flags"], b["summary"], b["steps"]), ("interrupted", "f", "s", 3))
+        self.assertFalse({"commit", "executor"} & set(b))
+
+    def test_end_review_risky_routes_the_fix(self):
+        for risky, want in ((True, "opus"), (False, "sonnet"), (None, "sonnet")):
+            _, labels, _ = self.review({R: [no(H("a")), OK]}, self.part(risky=risky))
+            self.assertIn("fix1.1:%s:part" % want, labels, risky)
+
     def test_findings_remember_their_lens(self):
         _, _, calls = self.review({"review:security:all": [no(H("a")), OK]}, self.part(reviewers=["security"]))
         self.assertIn('"lens":"security"', [c for c in calls if "PREVIOUS FINDINGS" in c["prompt"]][0]["prompt"])
@@ -330,7 +369,7 @@ class WorkflowBehaviour(unittest.TestCase):
         self.assertEqual((a["commit"], b["commit"]), ("1000001", "1000002"))
         out = self.run_tpl({"commits": ["b" * 7]}, {"items": [item("A", False, True), item("B", False, True)]})
         for e in out["result"]["items"]:
-            self.assertFalse({"commit", "executor", "summary", "steps"} & set(e))
+            self.assertFalse({"commit", "executor"} & set(e))
 
     def test_order_file_line_reaches_executor_reviewer_and_fix(self):
         line = 'If the order above is an "ORDER FILE: <path>" line, Read that file first'
