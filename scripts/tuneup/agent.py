@@ -233,8 +233,8 @@ def ev_agent(d, cfg):
         feitos.append("model=" + m_fm)
     elif sem_modelo_lido and not revisor:  # revisor recebe model=opus acima
         avisos.append(msg("modelo_nao_lido"))
-    if revisor and modelo and ("haiku" in modelo_l or "sonnet" in modelo_l):
-        avisos.append(msg("revisor_opus"))
+    if revisor and modelo and "haiku" in modelo_l:
+        avisos.append(msg("revisor_haiku"))
     if not ti.get("effort"):
         e = papel.get("effort") or ("high" if revisor else "medium")
         novo["effort"] = e

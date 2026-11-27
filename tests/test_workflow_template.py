@@ -83,7 +83,7 @@ class WorkflowTemplate(unittest.TestCase):
                              len(re.findall(r"\bmodel[\"']?\s*[:=]", text)))
 
     def test_size(self):
-        self.assertLessEqual(len(read().splitlines()), 240)
+        self.assertLessEqual(len(read().splitlines()), 260)
 
     def test_node_syntax(self):
         node = shutil.which("node")
@@ -110,22 +110,23 @@ let n = 0
 // A scenario starting with `{` scripts the replies: `commits` (executors, in order) and one list per
 // reviewer label (the last one repeats); a reviewer without a list approves.
 const script = scenario.startsWith('{') ? JSON.parse(scenario) : null
+const ex = c => ({ commit: c, summary: 's', tests: 't', steps: 3, skills_read: ['x'], flags: 'f' })
 const fake = (prompt, o) => {
   const t = o.agentType
   if (t === 'tune-up:checker') return { passed: true }
-  if (script && t.startsWith('tune-up:executor') && script.commits && script.commits.length) return { commit: script.commits.shift(), summary: 's', tests: 't' }
+  if (script && t.startsWith('tune-up:executor') && script.commits && script.commits.length) return ex(script.commits.shift())
   if (script && t.startsWith('tune-up:reviewer')) {
     const q = script[o.label] || [{ verdict: 'approve', findings: [] }]
     return q.length > 1 ? q.shift() : q[0]
   }
-  if (t.startsWith('tune-up:executor')) return { commit: (0x1000000 + ++n).toString(16), summary: 's', tests: 't' }
+  if (t.startsWith('tune-up:executor')) return ex((0x1000000 + ++n).toString(16))
   const first = !prompt.includes('PREVIOUS FINDINGS')
   const high = { sev: 'HIGH', file: 'a.py', line: 1, introduced: true, proof: 'p', title: 'bug' }
   if (scenario === 'null') return null
   if (scenario === 'clean' || (scenario === 'oneHigh' && !first)) return { verdict: 'approve', findings: [] }
   return { verdict: 'reject', findings: [high] }
 }
-const agent = async (prompt, o) => { calls.push({ label: o.label, prompt }); return fake(prompt, o) }
+const agent = async (prompt, o) => { calls.push({ label: o.label, prompt, model: o.model, agentType: o.agentType }); return fake(prompt, o) }
 const parallel = fns => Promise.all(fns.map(f => f()))
 const result = await mod.default(JSON.parse(argsJson), agent, parallel, null, () => {}, () => {})
 console.log(JSON.stringify({ result, calls }))
@@ -240,7 +241,7 @@ class WorkflowBehaviour(unittest.TestCase):
             _, labels, _ = self.review("clean", self.part(reviewers=lenses))
             self.assertEqual(labels, ["review:%s:all" % l for l in ("failures", "security", "database")] + ["check"], lenses)
         _, labels, _ = self.review({R: [no(H("a"))]}, self.part(reviewers=["failures", "failures"]))
-        self.assertEqual(labels[:2], [R, "fix1.1:part"])
+        self.assertEqual(labels[:2], [R, "fix1.1:sonnet:part"])
 
     def test_bad_end_commit_is_interrupted(self):
         items = [{"id": "A", "order": "o"}]
@@ -291,6 +292,93 @@ class WorkflowBehaviour(unittest.TestCase):
         out = self.run_tpl("neverCloses", {"items": [
             {"id": "A", "order": "o", "base": True}, {"id": "B", "order": "o"}]})
         self.assertEqual([i["status"] for i in out["result"]["items"]], ["need_you", "not_run"])
+
+    def test_review_model_per_lens_and_recheck(self):
+        three = self.part(reviewers=["failures", "security", "database"])
+        for sev, want in (("HIGH", "sonnet"), ("CRITICAL", "opus"), ("critical", "opus")):
+            sc = {"review:%s:all" % l: [no(H("a", sev=sev)), OK] for l in ("security", "database")}
+            _, _, calls = self.review(sc, three)
+            by = lambda label: [c["model"] for c in calls if c["label"] == label]
+            self.assertEqual(set(by("review:failures:all")), {"sonnet"})
+            for l in ("security", "database"):
+                self.assertEqual(by("review:%s:all" % l), ["opus", want], (sev, l))
+
+    def test_review_model_from_models_arg(self):
+        three = self.part(reviewers=["failures", "security", "database"])
+        by = lambda calls, l: [c["model"] for c in calls if c["label"] == "review:%s:all" % l]
+        for models, want in (({"failures": "opus"}, ["opus", "opus", "opus"]), (None, ["sonnet", "opus", "opus"]),
+                             ({"security": "haiku", "database": "sonnet"}, ["sonnet", "opus", "sonnet"])):
+            _, _, calls = self.review("clean", dict(three, models=models))
+            self.assertEqual([by(calls, l)[0] for l in ("failures", "security", "database")], want, models)
+        item = {"id": "A", "order": "o", "base": True, "reviewers": ["failures"]}
+        _, _, calls = self.review("clean", {"items": [item], "models": {"failures": "opus"}})
+        self.assertEqual([c["model"] for c in calls if c["label"] == "review:failures:A"], ["opus"])
+
+    def test_recheck_remembers_an_earlier_critical(self):
+        sc = {"review:security:all": [no(H("a", sev="critical"), H("b")), no(H("b")), OK]}
+        _, _, calls = self.review(sc, self.part(reviewers=["security"]))
+        self.assertEqual([c["model"] for c in calls if c["label"] == "review:security:all"], ["opus", "opus", "opus"])
+
+    def test_item_commit_is_the_last_after_fixes(self):
+        item = {"id": "A", "order": "o", "base": True, "reviewers": ["failures"]}
+        out = self.run_tpl({"review:failures:A": [no(H("a")), OK]}, {"items": [item]})
+        a = out["result"]["items"][0]
+        self.assertEqual((a["status"], a["commit"], a["executor_commit"]), ("built", "1000002", "1000001"))
+        out = self.run_tpl({"review:failures:A": [no(H("a")), no(H("a"))]}, {"items": [item]})
+        a = out["result"]["items"][0]
+        self.assertEqual((a["status"], a["commit"], a["executor_commit"]), ("need_you", "1000002", "1000001"))
+        out = self.run_tpl("clean", {"items": [item]})
+        self.assertNotIn("executor_commit", out["result"]["items"][0])
+
+    def test_interrupted_item_keeps_the_executor_answer(self):
+        item = {"id": "A", "order": "o", "base": True, "reviewers": ["failures"]}
+        out = self.run_tpl({"commits": ["a" * 7, "a" * 7]}, {"items": [item, dict(item, id="B")]})
+        b = out["result"]["items"][1]
+        self.assertEqual((b["status"], b["flags"], b["summary"], b["steps"]), ("interrupted", "f", "s", 3))
+        self.assertFalse({"commit", "executor"} & set(b))
+
+    def test_end_review_risky_routes_the_fix(self):
+        for risky, want in ((True, "opus"), (False, "sonnet"), (None, "sonnet")):
+            _, labels, _ = self.review({R: [no(H("a")), OK]}, self.part(risky=risky))
+            self.assertIn("fix1.1:%s:part" % want, labels, risky)
+
+    def test_findings_remember_their_lens(self):
+        _, _, calls = self.review({"review:security:all": [no(H("a")), OK]}, self.part(reviewers=["security"]))
+        self.assertIn('"lens":"security"', [c for c in calls if "PREVIOUS FINDINGS" in c["prompt"]][0]["prompt"])
+
+    def test_fix_routed_by_risk(self):
+        def fixes(sc, args):
+            _, _, calls = self.review(sc, args)
+            return [(c["label"], c["model"], c["agentType"]) for c in calls if c["label"].startswith("fix")]
+        self.assertEqual(fixes({R: [no(H("a")), OK]}, self.part()), [("fix1.1:sonnet:part", "sonnet", "tune-up:executor-sonnet")])
+        self.assertEqual(fixes({R: [no(H("a", sev="critical")), OK]}, self.part())[0][1:], ("opus", "tune-up:executor-opus"))
+        self.assertEqual(fixes({"review:security:all": [no(H("a")), OK]}, self.part(reviewers=["security"]))[0][0], "fix1.1:opus:part")
+        self.assertEqual([f[0] for f in fixes({R: [no(H("a"), H("b")), no(H("a")), OK]}, self.part())],
+                         ["fix1.1:sonnet:part", "fix2.1:opus:part"])
+        for risky, want in ((True, "opus"), (False, "sonnet")):
+            item = {"id": "A", "order": "o", "base": True, "risky": risky, "reviewers": ["failures"]}
+            self.assertEqual(fixes({"review:failures:A": [no(H("a")), OK]}, {"items": [item]})[0][0], "fix1.1:%s:A" % want)
+
+    def test_results_are_compact_and_complete(self):
+        item = lambda i, risky, base: {"id": i, "order": "o", "risky": risky, "base": base, "reviewers": ["failures"]}
+        out = self.run_tpl("clean", {"items": [item("A", True, True), item("B", False, False)]})
+        a, b = out["result"]["items"]
+        for e, who in ((a, "opus"), (b, "sonnet")):
+            self.assertEqual((e["status"], e["executor"], e["summary"], e["tests"], e["steps"], e["skills_read"], e["flags"]),
+                             ("built", who, "s", "t", 3, ["x"], "f"))
+        self.assertEqual((a["commit"], b["commit"]), ("1000001", "1000002"))
+        out = self.run_tpl({"commits": ["b" * 7]}, {"items": [item("A", False, True), item("B", False, True)]})
+        for e in out["result"]["items"]:
+            self.assertFalse({"commit", "executor"} & set(e))
+
+    def test_order_file_line_reaches_executor_reviewer_and_fix(self):
+        line = 'If the order above is an "ORDER FILE: <path>" line, Read that file first'
+        item = {"id": "A", "order": "ORDER FILE: /x/o.md", "base": True, "reviewers": ["failures"]}
+        _, _, calls = self.review({"review:failures:A": [no(H("a")), OK]}, {"items": [item]})
+        for c in calls:
+            if c["label"].startswith(("exec", "fix")) or c["label"] == "review:failures:A" and "PREVIOUS" not in c["prompt"]:
+                self.assertIn(line, c["prompt"], c["label"])
+                self.assertIn("ORDER FILE: /x/o.md", c["prompt"], c["label"])
 
 
 if __name__ == "__main__":

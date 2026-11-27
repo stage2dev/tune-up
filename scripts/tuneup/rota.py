@@ -203,7 +203,8 @@ def ler_args(argv):
 
 
 def rota(files, diff_file, failed, cfg, raiz, text_file=None):
-    gl = globs_efetivos(cfg)
+    from .rota_parte import globs_parte  # here: it imports this module
+    gl, tirados = globs_parte(cfg)
     risco, seg, banco = gl["risk_globs"], gl["security_globs"], gl["database_globs"]
     files = limpar(files)
     raizes = raizes_de(raiz)
@@ -253,6 +254,7 @@ def rota(files, diff_file, failed, cfg, raiz, text_file=None):
                 why.append("diff keyword in %s line: %s" % (tipo, k))
     if not why:
         why.append("no rule fired: sonnet, failures only")
+    why.extend("globs_off: %s is off" % g for g in tirados)
     scores, fonte = {}, "globs" if risco_glob else "fixed"
     try:  # the router can only keep or raise `executor`; any error keeps the fixed rule
         executor, scores, fonte, extra = roteador.decidir(executor, bool(risco_glob), failed,
@@ -272,7 +274,8 @@ def rota_erro(e):
 
 
 def parte_erro(e):
-    return {"part": True, "risk": True, "reviewers": list(ORDEM), "model": "opus", "effort": "high",
+    return {"part": True, "risk": True, "reviewers": list(ORDEM),
+            "models": {r: "opus" for r in ORDEM}, "effort": "high",
             "lines": None, "chunks": 1, "why": ["error (%s): route up" % type(e).__name__]}
 
 

@@ -2,6 +2,18 @@
 
 Every new rule goes in through `/tune-up:learn`: memory + a change here + a test/eval + a version.
 
+## 2.30.0
+
+Lean Part: Sonnet does more, the coordinator wakes less. Measured on four real Parts before this change: 19 opus executors and no sonnet one, about 40 reviewer calls all on opus (11 of them rechecks), and 105 agent notifications in one Part, each waking the coordinator.
+
+- Per-item route honors `globs_off`, as the Part route already did: a built-in risk or security glob that a trusted profile turns off no longer sends every matching file to opus.
+- `reviewer-failures` runs on sonnet; database and security stay on opus. `rota --part` answers `models` per lens instead of a fixed `model`; an error still lists all three on opus. The guard warns only about a reviewer on haiku.
+- Part workflow template: model per lens; rechecks on sonnet (opus after a CRITICAL); a fix is a sonnet executor, opus for a CRITICAL, a database or security finding, a Part with a risky item or a second fix; results carry commit, tests, steps, skills read and flags per item; orders can go by file (`ORDER FILE:`); takes `models` from `rota --part` and `review.risky`.
+- `part` and `plan`: every independent tool call of a step in one message; agents the next step needs run in the foreground, and the items and reviews of a Part through the Workflow template (one result instead of one wake per agent); a question about the code goes to a mapper; going up from the route needs a written reason; the router text file (`item-N.rota.txt`) is written only when the router is on (it was written for every item and ignored).
+- `plan`: each item lists its files and takes its executor from `rota`.
+- A `user.json` written by an earlier setup keeps `reviewer-failures` on opus until edited; `rota --part` and the end review of the Workflow template follow that table; base-item reviews use the default one.
+- Not proven here: not yet run on a real Part.
+
 ## 2.29.3
 
 - Fix: the Bash guard took any word ending in `guarda.py` (a project file such as `perfil_guarda.py` or `test_perfil_guarda.py`) for the guard itself and asked the owner ("writes to the tune-up profile/plugin"), even in bypass mode. Now only a word that is `guarda.py` itself (alone or after `/`) counts.

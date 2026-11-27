@@ -7,7 +7,9 @@ import re
 
 from .rota import (ORDEM, PADROES, PALAVRAS, RE_HUNK, ZERO, _barra, _normal, _primeiro, candidatos,
                    casa, globs_efetivos, ler_args, limpar, raizes_de, relativo, tem_diff)
+from .agent import proibidos
 from .sessao import log_erro
+from .usuario import ler_usuario, modelo_proibido, sem_modelo
 
 TAMANHO_PEDACO = 1500  # changed lines one reviewer reads
 PALAVRAS_FRENTE = ("supabase.auth", "service_role", ".rpc(", "functions.invoke",
@@ -35,13 +37,14 @@ def front_globs(cfg):
 
 def globs_parte(cfg):
     """(the effective lists without the defaults in `globs_off`, the defaults turned off).
-    Never database_globs. A default the project also lists (so it is there twice) stays."""
+    Never database_globs, nor a database default from any list. A default the project also lists
+    (so it is there twice) stays."""
     gl, tirados = globs_efetivos(cfg), []
     fora = cfg.get("globs_off")
     for k in ("risk_globs", "security_globs"):
         extra = cfg.get(k) if isinstance(cfg.get(k), list) else []
-        tira = [g for g in PADROES[k]
-                if isinstance(fora, list) and g in fora and extra.count(g) < 2]
+        tira = [g for g in PADROES[k] if isinstance(fora, list) and g in fora
+                and extra.count(g) < 2 and g not in PADROES["database_globs"]]
         gl[k] = [g for g in gl[k] if g not in tira]
         tirados += [g for g in tira if g not in tirados]
     return gl, tirados
@@ -202,9 +205,21 @@ def rota_parte(files, diff_file, cfg, raiz):
     if pedacos > 1:
         notas.append("%d changed lines: the coordinator splits by side or item group and adds one "
                      "failures reviewer for the boundaries" % linhas)
-    return {"part": True, "risk": bool(risco), "reviewers": [r for r in ORDEM if r in rev],
-            "model": "opus", "effort": "high", "lines": linhas, "chunks": pedacos,
+    lentes = [r for r in ORDEM if r in rev]
+    return {"part": True, "risk": bool(risco), "reviewers": lentes,
+            "models": modelos_lentes(lentes), "effort": "high", "lines": linhas, "chunks": pedacos,
             "why": (risco or ["every file is front and no risk word: low risk"]) + notas}
+
+
+def modelos_lentes(lentes):
+    """Model per lens from the user.json role table; missing, inherit, forbidden or haiku: opus."""
+    papeis, lista = ler_usuario()[0]["models"], proibidos()
+    out = {}
+    for r in lentes:
+        m = (papeis.get("reviewer-" + r) or {}).get("model")
+        ruim = sem_modelo(m) or modelo_proibido(m, lista) or "haiku" in str(m).lower()
+        out[r] = "opus" if ruim else m
+    return out
 
 
 def rota_parte_args(argv, cfg, raiz):

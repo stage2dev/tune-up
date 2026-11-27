@@ -411,12 +411,17 @@ class TestReviewPending(CLI):
                     self.assertTrue(self.pend("- " + m, script=script)["pending"], conteudo)
 
     def test_import_quebrado(self):
+        sys.path.insert(0, os.path.dirname(SCRIPT))
+        from tuneup.rota import parte_erro, rota_erro
         script = self.copia_quebrada()
         self.assertEqual(self.pend("# ok\n", script=script), {"pending": True, "lines": [], "error": "import failed"})
         r = self.cli("rota", "--part", "--files", "a.py", "--diff-file", "x", script=script)
         self.assertEqual(r, {"part": True, "risk": True, "reviewers": ["failures", "security", "database"],
-                             "model": "opus", "effort": "high", "lines": None, "chunks": 1, "why": mock.ANY})
-        self.assertEqual(self.cli("rota", "--files", "a.py", script=script)["executor"], "tune-up:executor-opus")
+                             "models": {"failures": "opus", "security": "opus", "database": "opus"},
+                             "effort": "high", "lines": None, "chunks": 1, "why": mock.ANY})
+        self.assertEqual(set(r), set(parte_erro(ValueError())))  # same keys as the import-ok error path
+        r = self.cli("rota", "--files", "a.py", script=script)
+        self.assertEqual(r, dict(rota_erro(ValueError()), why=mock.ANY))
 
 
 class TestShip(unittest.TestCase):

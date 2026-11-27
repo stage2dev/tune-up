@@ -1,7 +1,7 @@
 ---
 name: reviewer-failures
 description: "Reviewer of silent failures in a diff: swallowed errors, writes that skip affected-row checks, masking fallbacks, RPC returns that become exceptions, fake-based tests that skip real constraints. Revisa falha silenciosa."
-model: opus
+model: sonnet
 effort: high
 maxTurns: 60
 tools: Read, Grep, Glob, Bash

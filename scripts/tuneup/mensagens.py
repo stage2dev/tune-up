@@ -42,12 +42,13 @@ CATALOG = {
         "pesquisa_escrita": "research mode on: confirm editing %s?",
         # agent
         "fable": "subagents never run on Fable ({owner}'s rule). Use haiku (map/check), "
-                 "sonnet (document/simple item) or opus (database/risky/review).",
+                 "sonnet (document/simple item) or opus (database/risky/security review).",
         "fable_sessao": "the session is on Fable and the subagent would inherit it; declare model "
                         "(haiku, sonnet or opus).",
         "modelo_nao_lido": "tune-up: could not read the session model; declare model in the Agent call.",
-        "revisor_opus": "tune-up: reviewers run on opus high; switch model to opus.",
-        "regra_revisor": "reviewers run on opus high",
+        "revisor_haiku": "tune-up: reviewers never run on haiku; use sonnet (failures lens, rechecks) "
+                         "or opus (database, security).",
+        "regra_revisor": "reviewers run on high effort, never haiku",
         "regra_esforco": "default effort",
         "preenchido": "tune-up: filled %s (%s)",
         # prompt
@@ -156,12 +157,13 @@ CATALOG = {
                                "confirme ou diga \"regra nova\"/\"perfil\" neste turno.",
         "pesquisa_escrita": "modo pesquisa ativo: confirma editar %s?",
         "fable": "subagente nunca roda em Fable (regra de {owner}). Use haiku (mapear/conferir), "
-                 "sonnet (documento/item simples) ou opus (banco/arriscado/revisão).",
+                 "sonnet (documento/item simples) ou opus (banco/arriscado/revisão de segurança).",
         "fable_sessao": "a sessão está em Fable e o subagente herdaria; declare model "
                         "(haiku, sonnet ou opus).",
         "modelo_nao_lido": "tune-up: não li o modelo da sessão; declare model no Agent.",
-        "revisor_opus": "tune-up: revisor roda em opus high; troque model para opus.",
-        "regra_revisor": "revisor roda em opus high",
+        "revisor_haiku": "tune-up: revisor nunca roda em haiku; use sonnet (lente de falhas, "
+                         "reconferência) ou opus (banco, segurança).",
+        "regra_revisor": "revisor roda em esforço high, nunca haiku",
         "regra_esforco": "esforço padrão",
         "preenchido": "tune-up: preenchido %s (%s)",
         "pesquisa_liga": "tune-up: MODO PESQUISA — não altere código, dados nem nada externo; "
